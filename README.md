@@ -17,7 +17,8 @@ internal/
   opslog/        SQLite ops 日志（六表，instance 仓 runtime/ops-log.md）
   plugin/        dsh 插件宿主接口（五方法契约）
 plugins/         control(root直控) / console(总控界面) / execlocal(本地执行) / reporter(上报)
-connectors/      onedev / gitfs / nas / oss / dsh —— 五方法幂等驱动（core_system/concepts/connector.md）
+connectors/      onedev / gitfs / nas / oss / dsh —— 类型层驱动实现 ConnectorProvider（v0.3 拆分，A25）
+internal/workflow/ 执行态机 Workflow（builtin：default-task/simple-shot，A26）
 ```
 
 ## 对应关系
@@ -32,5 +33,5 @@ connectors/      onedev / gitfs / nas / oss / dsh —— 五方法幂等驱动�
 ## 开发约定
 
 - 设计先行：任何本仓代码必须能指回 core_system 的一条声明或 instance 仓的一份设计（P1：没有文档的对象是黑箱）。
-- 契约测试：Connector 五方法三例（首跑/重跑幂等/失败路径）先于实现。
+- 契约测试：Provider 五方法三例（首跑/重跑幂等/失败路径）先于实现；Ops 是运行时挂载（环境+op子集+Workflow），不写死在驱动里。
 - 骨架期的每个 `// TODO` 都对应 open-questions 或落地顺序里的一项（instance 仓 feasibility.md §12）。
