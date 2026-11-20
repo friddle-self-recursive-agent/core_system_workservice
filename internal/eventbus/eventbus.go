@@ -6,14 +6,13 @@ import "time"
 
 // Event 事件（短生命周期数据，非文档对象）。
 type Event struct {
-	ID         string
-	Type       string
-	Source     string
-	Involved   string // involvedRef
-	Selector   map[string]string
-	At         time.Time
-	DedupKey   string
-	Severity   string
+	ID       string
+	Type     string
+	Source   string
+	Involved string // involvedRef：路由按 类型+involved/owner+scope（v0.11 A47，无 selector）
+	At       time.Time
+	DedupKey string
+	Level    string // debug/info/warn/error/fatal（A42）
 }
 
 // Bus 事件总线（Core 内）。
