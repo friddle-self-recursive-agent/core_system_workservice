@@ -16,6 +16,7 @@ internal/
   policy/        准入规则引擎 + 3 条硬规则
   opslog/        SQLite ops 日志（六表，instance 仓 runtime/ops-log.md）
 connectors/      onedev / gitfs / nas / oss / dsh —— 类型层驱动实现 ConnectorProvider（v0.3 拆分，A25）
+internal/refresolve/ 声明式 Ref 运行时解析（v0.10：逻辑声明→owning system 返回真实地址，A46）
 internal/workflow/ Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹车+成本，A41）
 # v0.9（A43）：系统本身无 plugin 概念——dsh 为外部运行时，core 以 dsh plugin 实现；
 # core/console/exec-local 等承载为 dsh 侧实现说明（见 instance 仓 runtime/），不在本仓建 plugin 目录
