@@ -26,15 +26,42 @@ type Contract struct {
 	Undo                            string // full | partial | none
 }
 
-// OpsSpec 使用层：挂载在 global 或 service/instance 的"一份可调用操作"。
+// ProviderSpec 类型层声明（v0.6 简化：就是绑定，A38）。
+// yaml 字段：types/scheme/usage/llmPrompt/download；impl 三形态 tool/image/source。
+type ProviderSpec struct {
+	Types    []string        // 类型标注（scm, ci…）
+	Impl     Impl            // 绑定的实现
+	Download string          // 工具下载地方（image:// git:// pkg://）
+	Scheme   map[string]any  // 使用方式 schema（ops/params，机器读）
+	Usage    string          // 使用方式（人读）
+	LLMPrompt string         // LLM 注入提示：Agent 会话使用本工具时注入
+}
+
+// Impl 绑定的实现三形态。
+type Impl struct {
+	Kind string // tool（外部直接工具）| image（镜像）| source（源代码）
+	Ref  string // source 形态：Ref 指代码地址（自己仓统一管理）；image 形态：镜像地址
+}
+
+// ResolveProviderName 命名解析（A38）：无前缀=默认 org；带前缀=github.com/<org>/<name>。
+func ResolveProviderName(name, defaultOrg string) string {
+	for _, c := range name {
+		if c == '/' {
+			return "github.com/" + name // 带前缀 ⇒ GitHub 完整配置
+		}
+	}
+	return defaultOrg + "/" + name // 无前缀 ⇒ 默认 org
+}
+
+// OpsSpec 使用层：工具调用面/提供的功能（v0.6：无探活/drift/finalizer 概念级机制）。
 // Agent 默认挂 ConnectorOps；使用要权限（P7）。
 type OpsSpec struct {
 	Name        string            // ops 名（Agent/TaskScheme 引用它）
-	Provider    string            // 类型来源（ProviderImpl.Type()）
+	Provider    string            // 类型来源（经命名解析）
 	Workflow    string            // 绑定的 Workflow（缺省 default-task，A26）
 	Config      map[string]string // endpoint 等（值可为 ref:/credential: 引用）
 	Credentials []string          // credential 引用
-	Ops         []string          // 暴露的 op 子集
+	Ops         []string          // 提供的功能（op 子集）
 }
 
 // Event 外部变化（转 eventbus.Event）。
