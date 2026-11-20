@@ -12,7 +12,7 @@ internal/
   repository/    文档库 git 后端（get/apply/list/watch，串行写队列）
   apply/         唯一写路径：Policy→SSA合并→乐观锁→git commit + ops DB 双写
   eventbus/      事件队列：dedupKey 聚合、dispatch 路由、死信
-  loopengine/    Loop 调度：触发合并、backoff、预算、Escalate
+  workflow/      Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹车+成本，A41）
   policy/        准入规则引擎 + 3 条硬规则
   opslog/        SQLite ops 日志（六表，instance 仓 runtime/ops-log.md）
   plugin/        dsh 插件宿主接口（五方法契约）

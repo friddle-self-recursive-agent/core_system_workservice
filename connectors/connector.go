@@ -59,9 +59,9 @@ type OpsSpec struct {
 	Name        string            // ops 名（Agent/TaskScheme 引用它）
 	Provider    string            // 类型来源（经命名解析）
 	Workflow    string            // 绑定的 Workflow（缺省 default-task，A26）
-	Config      map[string]string // endpoint 等（值可为 ref:/credential: 引用）
-	Credentials []string          // credential 引用
-	Ops         []string          // 提供的功能（op 子集）
+	Config     map[string]string // endpoint 等（值可为 ref: 引用）
+	AuthProvider string          // v0.8：鉴权走 Provider.auth.secret（Credential 已删，A40）
+	Ops        []string          // 提供的功能（op 子集）
 }
 
 // Event 外部变化（转 eventbus.Event）。
