@@ -1,4 +1,4 @@
-// Package apply 唯一写路径：Policy → SSA 合并 → 乐观锁 → 双写。
+// Package apply 文档面唯一写路径：Policy → 文档级比对(no-op) → 乐观锁 → 双写。
 // 设计依据：core_system/concepts/apply.md；instance 仓 runtime/ops-log.md。
 package apply
 
@@ -43,6 +43,6 @@ func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (
 	if opt.DryRun {
 		return o.ResourceVersion, nil // TODO: plan 输出
 	}
-	// 2~4. SSA 合并/乐观锁/双写（TODO: skeleton）
+	// 2~4. 文档级比对/乐观锁/双写（TODO: skeleton；语义 diff=LLM 提案制，A33，不做字段级合并）
 	return e.Repo.Write(ctx, o, opt.FieldManager, opt.ReasonRef)
 }
