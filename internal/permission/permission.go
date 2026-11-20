@@ -12,10 +12,21 @@ type Permission struct {
 	Actions []string // read/write/approve/call...
 }
 
-// Role 角色（权限只出现在这里）。
+// Role 角色（权限只出现在这里；A49：原 Bind 的对象挂载并入为 On）。
 type Role struct {
 	Name        string
+	On          []string    // 对象挂载（原 Bind.role/on，A49）
 	Permissions []Permission
+}
+
+// HoldsOn 对象是否挂载了本 role。
+func (r *Role) HoldsOn(obj string) bool {
+	for _, o := range r.On {
+		if o == obj {
+			return true
+		}
+	}
+	return false
 }
 
 // Group 组（只绑 role，不绑权限）。
