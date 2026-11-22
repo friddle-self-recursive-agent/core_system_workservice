@@ -1,7 +1,8 @@
-// Package workflow 执行态机 + 触发规则（v0.8 吸收 Loop，A41）。
+// Package workflow 执行态机 + 触发规则（v0.8 吸收 Loop→Workflow，A41；A67 全局去 loop）。
 // Workflow = 触发规则→事件整理→事件处理（相位态机）→文档回归；
+// 相位/迁移纯声明，预算/成本不在核心循环语义内（budget 是 metrics 关注的东西，暂不做）。
 // TaskScheme 管 Executing 相位内的步骤图。
-// builtin：core-loop（系统级循环）、default-task（任务态机）、simple-shot、watch-only。
+// builtin：core-workflow（系统级循环）、default-task（任务态机）、simple-shot、watch-only。
 package workflow
 
 import "time"
@@ -27,11 +28,11 @@ type Transition struct {
 	To   Phase
 }
 
-// OnFailed 失败出路：backoff → 超限 Escalate（Bind 的人）→ Idle。
+// OnFailed 失败出路：backoff → 超限 Escalate（root / role 持有者双通道）→ Idle。
 type OnFailed struct {
 	Backoff     time.Duration
 	MaxAttempts int
-	EscalateTo  string // bind 引用
+	EscalateTo  string // root（默认）或 role 引用
 }
 
 // Spec Workflow 声明。
@@ -40,36 +41,28 @@ type Spec struct {
 	Phases      []Phase
 	Transitions []Transition
 	OnFailed    OnFailed
-	PhaseBudget map[Phase]time.Duration
 }
 
-// Triggers 触发规则（原 Loop.watch，A41）。
+// Triggers 触发规则（与事件 Level 联动：minLevel 过滤）。
 type Triggers struct {
 	Events   []string        // 事件类型列表（路由按类型+owner，v0.11 A47 无 selector）
 	MinLevel string          // 事件 Level 过滤（A42：debug/info/warn/error/fatal）
 	Resync   time.Duration   // 巡检兜底（level-triggered 保险丝）
 }
 
-// Brakes 刹车三件套（R7 确认保留；可收紧不可关闭）。
+// Brakes 刹车三件套（Workflow 级强制默认：可收紧不可关闭）。
 type Brakes struct {
 	Cooldown         time.Duration // 成功后最小间隔（防震荡）
 	MaxMutationsTick int           // 单轮最大变更数
 	AvoidRepeatFix   bool          // DriftReport 记录"改过什么"，避免重复同类修复
 }
 
-// Cost 一次 loop 的成本（每轮必记 budget_log）。
-type Cost struct {
-	BudgetMinutes int
-	BudgetTokens  int64
-	BudgetMutations int
-}
-
-// FullSpec 完整 Workflow（触发+态机+刹车+成本+回归）。
+// FullSpec 完整 Workflow（触发+态机+刹车+回归）。
+// 成本观测归 metrics（ConnectorOps 收集→agent 报告），核心循环不带预算机器。
 type FullSpec struct {
 	Spec
 	Triggers Triggers
 	Brakes   Brakes
-	Cost     Cost
 }
 
 // Builtin 默认态机（core_system/concepts/workflow.md §3）。
@@ -79,8 +72,8 @@ func Builtin(name string) *Spec {
 		return &Spec{Name: name, Phases: []Phase{Idle, Executing, Reporting}}
 	case "watch-only":
 		return &Spec{Name: name, Phases: []Phase{Idle, Analyzing, Reporting}}
-	case "core-loop":
-		return &Spec{Name: name, Phases: []Phase{ // 系统级循环（A41）
+	case "core-workflow":
+		return &Spec{Name: name, Phases: []Phase{ // 系统级循环（A41；A67 core-loop→core-workflow）
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
 		}}
 	default: // default-task
