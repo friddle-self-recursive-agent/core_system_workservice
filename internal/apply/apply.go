@@ -1,44 +1,144 @@
-// Package apply 文档面唯一写路径：权限系统准入 → 文档级比对(no-op) → 乐观锁 → 双写。
-// 设计依据：core_system/concepts/apply.md；instance 仓 runtime/ops-log.md。
+// Package apply 文档面唯一写路径（core_system/concepts/apply.md）：
+// scheme 准入（野对象拒绝）→ 权限系统准入 → repository.Write（乐观锁/幂等，事务边界在存储串行队列）
+// → DocApplied 事件必发（noop/无差异不发，防自我唤醒）。
+// 设计依据：concepts/apply.md §1/§3/§6、concepts/revision.md、instance 仓 runtime/ops-log.md。
 package apply
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
-// Options Apply 选项（core_system/concepts/apply.md §3）。
+// 拒绝哨兵（读面/桥按此映射状态码；存储层哨兵原样透传）。
+var (
+	// ErrNoFieldManager 无主写入拒绝（apply.md rule 2：任何文档写入必须携带 fieldManager）。
+	ErrNoFieldManager = errors.New("apply: 写入必须携带 fieldManager（无主写入拒绝）")
+	// ErrNotRegistered 野对象拒绝：kind 未在 Scheme 注册（concepts/core.md 闸门）。
+	ErrNotRegistered = errors.New("apply: kind 未注册（野对象拒绝）")
+	// ErrDenied 权限系统准入拒绝（Permission Check / HardRules）。
+	ErrDenied = errors.New("apply: 权限准入拒绝")
+	// ErrObject 对象键不全（kind/scope/name 缺项）。
+	ErrObject = errors.New("apply: 对象键不全（需 kind、scope、name）")
+)
+
+// Options Apply 选项（concepts/apply.md §3）。
 type Options struct {
-	DryRun        bool
-	Force         bool
-	FieldManager  string // 必填，无主写入拒绝（revision.md 规则 1）
-	ReasonRef     string // 指向 DriftReport/Event/工单
+	DryRun       bool   // 零副作用 + 与真执行一致的准入判定（v1 计划=准入+现版本，语义 diff 归 LLM，A33）
+	Force        bool   // 预留：跳过待审区直达（跨系统提案场景；v1 未接线）
+	FieldManager string // 必填（rule 2）
+	ReasonRef    string // 指向 DriftReport/Event/工单（审计回链）
 }
 
-// Engine 写路径引擎。
+// Result 一次 Apply 的结果。
+type Result struct {
+	RV     int64           // 落库后 resourceVersion（noop=现版本；dry-run=现版本，缺席=0）
+	Action string          // create | update | noop；dry-run 恒为 "dry-run"
+	Event  *eventbus.Event // DocApplied 回执（noop/dry-run 无差异=nil，apply.md §3）
+}
+
+// Engine 写路径引擎。文档面写入的唯一编排点——任何写端点都收敛到这里。
 type Engine struct {
-	Repo  repository.Repository
-	Perm  permission.System
+	Sch  *scheme.Scheme
+	Repo repository.Repository
+	Perm *permission.System
+	Bus  *eventbus.Bus
+	// Ops ops DB（拒绝路径审计：denied 行；ok/noop/conflict 行由 repository 双写钩子落）。
+	// nil=拒绝不落审计（不推荐：审计可追溯依赖此表，ops-log.md §2）。
+	Ops opslog.Store
+	// Subject 本进程的写入主体（权限判定输入）。v0.9 权限系统接请求级主体前，
+	// 由部署方按开关声明（cored --allow-apply 本地信任面=显式开启时持 DefaultAdmin）。
+	Subject permission.Subject
 }
 
-// Apply 执行写路径。幂等：同内容 no-op 且不产生事件（防自我唤醒）。
-func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (rv int64, err error) {
+// Apply 执行写路径三步闸门。幂等：同内容重入 no-op，不产生提交、不发事件。
+func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (*Result, error) {
 	if opt.FieldManager == "" {
-		return 0, fmt.Errorf("apply: fieldManager required")
+		return nil, ErrNoFieldManager
 	}
-	// 1. 权限系统准入（v0.9 A44：原 Policy 并入权限系统；人审档命中=ApprovalNeeded）
-	if err := e.Perm.Check(permission.Subject{User: opt.FieldManager}, o.Scope, "write", permission.ByRole); err != nil {
-		return 0, fmt.Errorf("apply: %w", err)
+	if o == nil || o.Kind == "" || o.Name == "" || o.Scope == "" {
+		return nil, ErrObject
 	}
-	if err := permission.HardRules(o.Kind+"/"+o.Name, "write"); err != nil {
-		return 0, err
+	objKey := fmt.Sprintf("%s/%s/%s", o.Kind, o.Scope, o.Name)
+
+	// ① Scheme 准入：野对象拒绝（concepts/core.md：未注册 kind 不落库）。
+	if e.Sch == nil {
+		return nil, fmt.Errorf("%w: scheme 注册表未配置", ErrNotRegistered)
 	}
+	if _, err := e.Sch.Lookup(o.Kind); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return nil, fmt.Errorf("%w: %v", ErrNotRegistered, err)
+	}
+
+	// ② 权限系统准入（apply.md：准入是写路径的一环；A44 硬规则代码级不可放宽）。
+	if e.Perm == nil {
+		return nil, fmt.Errorf("%w: 权限系统未配置", ErrDenied)
+	}
+	if err := e.Perm.Check(e.Subject, o.Scope, "write", permission.ByRole); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return nil, fmt.Errorf("%w: %v", ErrDenied, err)
+	}
+	if err := permission.HardRules(objKey, "write"); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return nil, fmt.Errorf("%w: %v", ErrDenied, err)
+	}
+
+	// ③ dry-run：零副作用（不发事件、不落审计），返回与真执行一致的准入结论 + 现版本。
+	// 语义 diff 计划（哪里变了/是否冲突/合并提案）= LLM 语义活（A33），v1 不做字段级合并。
 	if opt.DryRun {
-		return o.ResourceVersion, nil // TODO: plan 输出
+		cur, err := e.Repo.Get(ctx, o.Kind, o.Scope, o.Name)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return &Result{RV: 0, Action: "dry-run"}, nil // 将创建
+			}
+			return nil, err
+		}
+		return &Result{RV: cur.ResourceVersion, Action: "dry-run"}, nil
 	}
-	// 2~4. 文档级比对/乐观锁/双写（TODO: skeleton；语义 diff=LLM 提案制，A33，不做字段级合并）
-	return e.Repo.Write(ctx, o, opt.FieldManager, opt.ReasonRef)
+
+	// ④ 乐观锁落库（串行队列=事务边界；幂等去 rv 规范比对在存储层）。
+	rv, action, err := e.Repo.Write(ctx, o, opt.FieldManager, opt.ReasonRef)
+	if err != nil {
+		// conflict 审计行由 repository 落（它持有现库版本）；其余错误透传。
+		return nil, err
+	}
+	res := &Result{RV: rv, Action: action}
+
+	// ⑤ DocApplied 必发（apply.md rule 1）：无差异（noop）不发——防自我唤醒循环。
+	// fieldManager 白名单豁免（Workflow 自写回执抑制）随 workflow 引擎接入（declared-deferred）。
+	if action == "noop" {
+		return res, nil
+	}
+	evt := eventbus.Event{
+		Type:     "DocApplied",
+		Source:   "apply",
+		Involved: objKey,
+		DedupKey: fmt.Sprintf("apply:%s:%d", objKey, rv), // 同对象同版本=同因，窗口内聚合
+		Level:    "info",
+	}
+	if e.Bus != nil {
+		if err := e.Bus.Publish(&evt); err != nil {
+			return nil, fmt.Errorf("apply: DocApplied 发布失败（落库已成功 rv=%d）: %w", rv, err)
+		}
+	}
+	res.Event = &evt
+	return res, nil
+}
+
+// audit 拒绝路径审计（denied 行）。审计失败不改变拒绝结论（流水非权威）。
+func (e *Engine) audit(opt Options, objKey string, rv int64, result, decision string) {
+	if e.Ops == nil {
+		return
+	}
+	_ = e.Ops.AppendApply(opslog.ApplyLog{
+		Ts: time.Now(), FieldManager: opt.FieldManager, Obj: objKey,
+		ResourceVersion: rv, Result: result, PolicyDecisions: decision, ReasonRef: opt.ReasonRef,
+	})
 }

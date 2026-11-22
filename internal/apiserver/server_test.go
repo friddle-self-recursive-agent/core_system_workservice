@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
@@ -30,7 +35,7 @@ func testServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("载入 fixture 失败: %v", err)
 	}
-	return httptest.NewServer(New(sch, nil))
+	return httptest.NewServer(New(sch, nil, nil))
 }
 
 func get(t *testing.T, ts *httptest.Server, path string) (int, map[string]any) {
@@ -150,7 +155,7 @@ func objServer(t *testing.T) (*httptest.Server, *repository.GitRepo) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repo.Close() })
-	return httptest.NewServer(New(sch, repo)), repo
+	return httptest.NewServer(New(sch, repo, nil)), repo
 }
 
 func TestObjectsStoreNotConfigured(t *testing.T) {
@@ -175,7 +180,7 @@ func TestObjectsListAndGet(t *testing.T) {
 	}
 	for i := range seed {
 		o := seed[i]
-		if _, err := repo.Write(ctx, &o, "seed", ""); err != nil {
+		if _, _, err := repo.Write(ctx, &o, "seed", ""); err != nil {
 			t.Fatalf("seed %s: %v", o.Name, err)
 		}
 	}
@@ -223,5 +228,140 @@ func TestObjectsErrors(t *testing.T) {
 	code, _ = get(t, ts, "/v1/objects/Agent/absent")
 	if code != http.StatusBadRequest {
 		t.Errorf("缺 scope = %d, 要 400", code)
+	}
+}
+
+// post JSON 到服务器并解析响应（apply 端点测试用）。
+func post(t *testing.T, ts *httptest.Server, path string, payload any) (int, map[string]any) {
+	t.Helper()
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	resp, err := http.Post(ts.URL+path, "application/json", bytes.NewReader(buf))
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&body); err != nil {
+		t.Fatalf("POST %s 响应非 JSON: %v", path, err)
+	}
+	return resp.StatusCode, body
+}
+
+func agentBody(name string, resourceVersion int64) map[string]any {
+	return map[string]any{
+		"kind": "Agent", "scope": "global", "name": name,
+		"resourceVersion": resourceVersion,
+		"content":         "apiVersion: core/v1\nkind: Agent\nmetadata: {name: " + name + ", scope: global}\nspec: {autoLevel: all}\n",
+	}
+}
+
+// TestApplyEndpointDisabled 未开启 --allow-apply：POST /v1/apply 恒 405（缺省只读面不变）。
+func TestApplyEndpointDisabled(t *testing.T) {
+	ts := testServer(t)
+	defer ts.Close()
+	code, body := post(t, ts, "/v1/apply", agentBody("a", 0))
+	if code != http.StatusMethodNotAllowed || !strings.Contains(body["error"].(string), "未开启") {
+		t.Fatalf("未开启写面 = %d %v, 要 405+未开启", code, body)
+	}
+	// GET /v1/apply 也 405（仅 POST 有意义）。
+	code, _ = get(t, ts, "/v1/apply")
+	if code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /v1/apply = %d, 要 405", code)
+	}
+}
+
+// TestApplyEndpointClosedLoop 写面闭环（经真实 git 后端 + apply 引擎）：
+// 创建/更新/DryRun 零副作用/错误映射 400(无主)/404(野对象)/409(冲突)。
+func TestApplyEndpointClosedLoop(t *testing.T) {
+	sch, err := scheme.Load([]byte(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ops.Close()
+	repo, err := repository.NewGit(t.TempDir(), sch, &repository.Options{Ops: ops})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	engine := &apply.Engine{
+		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops,
+		Perm:    &permission.System{},
+		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
+	}
+	ts := httptest.NewServer(New(sch, repo, engine))
+	defer ts.Close()
+
+	// 创建 → 200 create rv=1 + DocApplied 回执。
+	code, body := post(t, ts, "/v1/apply", map[string]any{
+		"kind": "Agent", "scope": "global", "name": "core-headless",
+		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: all}\n",
+		"fieldManager": "agent:bootstrap",
+	})
+	if code != http.StatusOK || body["action"] != "create" || body["rv"] != float64(1) {
+		t.Fatalf("create = %d %v", code, body)
+	}
+	if evt, ok := body["event"].(map[string]any); !ok || evt["type"] != "DocApplied" {
+		t.Fatalf("create 应带 DocApplied 回执: %v", body)
+	}
+	// 读面复测：GET 读出 rv=1。
+	code, body = get(t, ts, "/v1/objects/Agent/core-headless?scope=global")
+	if code != http.StatusOK || body["resourceVersion"] != float64(1) {
+		t.Fatalf("读回 = %d %v", code, body)
+	}
+	// 无主写入 → 400。
+	code, body = post(t, ts, "/v1/apply", agentBody("core-headless", 1))
+	if code != http.StatusBadRequest {
+		t.Fatalf("无主写入 = %d %v, 要 400", code, body)
+	}
+	// 野对象 → 404（kind 未注册；闸门先于存储身份校验）。
+	wild := agentBody("x", 0)
+	wild["fieldManager"] = "agent:bootstrap"
+	wild["kind"] = "Unicorn"
+	code, _ = post(t, ts, "/v1/apply", wild)
+	if code != http.StatusNotFound {
+		t.Fatalf("野对象 = %d, 要 404", code)
+	}
+	// 冲突 → 409（expected/current 版本对）。
+	code, body = post(t, ts, "/v1/apply", map[string]any{
+		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 9,
+		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
+		"fieldManager": "agent:late",
+	})
+	if code != http.StatusConflict || body["expected"] != float64(9) || body["current"] != float64(1) {
+		t.Fatalf("冲突 = %d %v, 要 409(9→1)", code, body)
+	}
+	// dryRun → 200 零副作用。
+	code, body = post(t, ts, "/v1/apply", map[string]any{
+		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 1,
+		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
+		"fieldManager": "agent:bootstrap", "dryRun": true,
+	})
+	if code != http.StatusOK || body["action"] != "dry-run" || body["rv"] != float64(1) {
+		t.Fatalf("dryRun = %d %v", code, body)
+	}
+	code, body = get(t, ts, "/v1/objects/Agent/core-headless?scope=global")
+	if body["resourceVersion"] != float64(1) {
+		t.Fatalf("dryRun 后版本演进 = %v, 要仍 1", body["resourceVersion"])
+	}
+	// 正常更新 → rv=2，读面复测新版本。
+	code, body = post(t, ts, "/v1/apply", map[string]any{
+		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 1,
+		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
+		"fieldManager": "agent:bootstrap",
+	})
+	if code != http.StatusOK || body["action"] != "update" || body["rv"] != float64(2) {
+		t.Fatalf("update = %d %v", code, body)
+	}
+	code, body = get(t, ts, "/v1/objects/Agent/core-headless?scope=global")
+	if body["resourceVersion"] != float64(2) || !strings.Contains(body["content"].(string), "autoLevel: ask") {
+		t.Fatalf("读回新版本 = %v", body)
 	}
 }

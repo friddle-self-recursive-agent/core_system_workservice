@@ -21,7 +21,9 @@ type Repository interface {
 	Get(ctx context.Context, kind, scope, name string) (*Object, error)
 	List(ctx context.Context, kind, scope string) ([]*Object, error)
 	// Write 串行队列内执行：乐观锁校验 + git commit + ops DB 双写。
-	Write(ctx context.Context, o *Object, fieldManager, reasonRef string) (int64, error)
+	// 返回 (resourceVersion, action, error)：action ∈ create|update|noop
+	// （noop=幂等重入零提交零事件；apply 管线据 action 决定 DocApplied 是否必发，concepts/apply.md rule 1）。
+	Write(ctx context.Context, o *Object, fieldManager, reasonRef string) (int64, string, error)
 	// Watch 变更通知（v1：轮询 diff 模拟，instance 仓 loop/loop.md §4 兜底）。
 	Watch(ctx context.Context) (<-chan string, error)
 }

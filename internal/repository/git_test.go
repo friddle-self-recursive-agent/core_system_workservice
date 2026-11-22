@@ -173,7 +173,7 @@ func TestWriteIdempotentReentry(t *testing.T) {
 	ctx := context.Background()
 	body := agentYAML("core-headless", "")
 
-	rv, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", Content: body}, "human:friddle", "plan:loop-2")
+	rv, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", Content: body}, "human:friddle", "plan:loop-2")
 	if err != nil || rv != 1 {
 		t.Fatalf("首次创建: rv=%d err=%v", rv, err)
 	}
@@ -189,14 +189,14 @@ func TestWriteIdempotentReentry(t *testing.T) {
 		t.Fatalf("落盘对象缺 rv 注入: rv=%d content=%s", obj.ResourceVersion, obj.Content)
 	}
 	// 幂等重入（原稿内容重放，expected=1）
-	rv2, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", ResourceVersion: 1, Content: body}, "human:friddle", "")
+	rv2, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", ResourceVersion: 1, Content: body}, "human:friddle", "")
 	if err != nil || rv2 != 1 {
 		t.Fatalf("幂等重写: rv=%d err=%v", rv2, err)
 	}
 	// 幂等重放（expected=0 的 create 语义撞上同内容 → 仍 no-op）
-	rv3, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", Content: body}, "human:friddle", "")
-	if err != nil || rv3 != 1 {
-		t.Fatalf("零版本重放: rv=%d err=%v", rv3, err)
+	rv3, act, err := r.Write(ctx, &Object{Kind: "Agent", Name: "core-headless", Scope: "global", Content: body}, "human:friddle", "")
+	if err != nil || rv3 != 1 || act != "noop" {
+		t.Fatalf("零版本重放: rv=%d action=%s err=%v（要 noop）", rv3, act, err)
 	}
 	if n := r.commitCount(t); n != 1 {
 		t.Fatalf("幂等重入不应产生提交：提交数 = %d, 要 1", n)
@@ -208,11 +208,11 @@ func TestWriteOptimisticLockConflict(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	v1 := agentYAML("a", "")
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", Content: v1}, "fm", ""); err != nil {
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", Content: v1}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
 	// 正常推进：expected=1 → rv 2
-	if rv, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
+	if rv, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
 		Content: agentYAML("a", "\n  retry:\n    maxAttempts: 3")}, "agent:x", "plan:p1"); err != nil || rv != 2 {
 		t.Fatalf("正常更新: rv=%d err=%v", rv, err)
 	}
@@ -220,7 +220,7 @@ func TestWriteOptimisticLockConflict(t *testing.T) {
 		t.Fatalf("提交数 = %d, 要 2", n)
 	}
 	// 陈旧写：expected=1（现库 2）→ Conflict，且 2<3（防活锁预算由上层管）
-	_, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
+	_, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
 		Content: agentYAML("a", "\n  stale: true")}, "agent:y", "")
 	var ce *ConflictError
 	if !errors.As(err, &ce) {
@@ -235,12 +235,12 @@ func TestWriteOptimisticLockConflict(t *testing.T) {
 		t.Fatalf("冲突写污染了现值: %+v", obj)
 	}
 	// 盲写（expected=0 撞不同内容）→ AlreadyExists
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
 		Content: agentYAML("a", "\n  blind: true")}, "agent:z", ""); !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("盲写应得 AlreadyExists, 得 %v", err)
 	}
 	// 幽灵更新（expected>0 但对象不在）→ Conflict(Current=0)
-	_, err = r.Write(ctx, &Object{Kind: "Agent", Name: "ghost", Scope: "global", ResourceVersion: 7,
+	_, _, err = r.Write(ctx, &Object{Kind: "Agent", Name: "ghost", Scope: "global", ResourceVersion: 7,
 		Content: agentYAML("ghost", "")}, "fm", "")
 	if !errors.As(err, &ce) || ce.Current != 0 {
 		t.Fatalf("幽灵更新应得 Conflict(Current=0), 得 %v", err)
@@ -255,7 +255,7 @@ func TestConcurrentWriteSerialization(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	// 共享对象先建：rv=1
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "shared", Scope: "global",
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "shared", Scope: "global",
 		Content: agentYAML("shared", "")}, "bootstrap", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestConcurrentWriteSerialization(t *testing.T) {
 					return
 				}
 				content := agentYAML("shared", fmt.Sprintf("\n  writer: w%d\n  gen: %d", i, attempt))
-				rv, err := r.Write(ctx, &Object{Kind: "Agent", Name: "shared", Scope: "global",
+				rv, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "shared", Scope: "global",
 					ResourceVersion: cur.ResourceVersion, Content: content}, fmt.Sprintf("agent:w%d", i), "")
 				if err == nil {
 					if rv != cur.ResourceVersion+1 {
@@ -296,7 +296,7 @@ func TestConcurrentWriteSerialization(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			name := fmt.Sprintf("own-%02d", i)
-			_, err := r.Write(ctx, &Object{Kind: "Agent", Name: name, Scope: "global",
+			_, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: name, Scope: "global",
 				Content: agentYAML(name, "")}, fmt.Sprintf("agent:w%d", i), "")
 			errs[writers+i] = err
 		}(i)
@@ -338,7 +338,7 @@ func TestWatchEmitsHeadChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 空库无 HEAD：先写一个提交
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
 		Content: agentYAML("a", "")}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestWatchEmitsHeadChanges(t *testing.T) {
 		t.Fatalf("HEAD 非 sha: %q", head1)
 	}
 	// 新提交 → 新事件
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
 		Content: agentYAML("a", "\n  v: 2")}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestDocRoundTripPreservesCommentsAndMD(t *testing.T) {
 	ctx := context.Background()
 	// yaml：注释与行内风格保留
 	body := agentYAML("commented", "")
-	rv, err := r.Write(ctx, &Object{Kind: "Agent", Name: "commented", Scope: "global", Content: body}, "fm", "")
+	rv, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "commented", Scope: "global", Content: body}, "fm", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestDocRoundTripPreservesCommentsAndMD(t *testing.T) {
 	// md frontmatter：正文原样保留、frontmatter 注入 rv 与注释保留
 	//（对象寻址由 kind 的 storage 模板决定，与内容形态 yaml/md 无关）。
 	md := []byte("---\nname: impl\ndocType: ImplDoc # 类型注释\nscope: global\n---\n# 实现文档\n\n正文段落。\n")
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "impl", Scope: "global", Content: md}, "fm", ""); err != nil {
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "impl", Scope: "global", Content: md}, "fm", ""); err != nil {
 		t.Fatalf("md 对象写入: %v", err)
 	}
 	mdObj, err := r.Get(ctx, "Agent", "global", "impl")
@@ -423,7 +423,7 @@ func TestListAcrossScopes(t *testing.T) {
 	}
 	for i := range seed {
 		o := seed[i]
-		if _, err := r.Write(ctx, &o, "seed", ""); err != nil {
+		if _, _, err := r.Write(ctx, &o, "seed", ""); err != nil {
 			t.Fatalf("seed %s: %v", o.Name, err)
 		}
 	}
@@ -466,7 +466,7 @@ func TestWriteGuards(t *testing.T) {
 		{"空内容", &Object{Kind: "Agent", Name: "x", Scope: "global"}, "fm", ErrContent},
 	}
 	for _, c := range cases {
-		if _, err := r.Write(ctx, c.o, c.fm, ""); !errors.Is(err, c.want) {
+		if _, _, err := r.Write(ctx, c.o, c.fm, ""); !errors.Is(err, c.want) {
 			t.Errorf("%s: 得 %v, 要 %v", c.name, err, c.want)
 		}
 	}
@@ -505,12 +505,12 @@ func TestOpsDoubleWrite(t *testing.T) {
 	}
 	defer r.Close()
 	ctx := context.Background()
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global",
 		Content: agentYAML("a", "")}, "human:f", "plan:p"); err != nil {
 		t.Fatal(err)
 	}
 	// 幂等 no-op 也留痕（Result=noop）
-	if _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Name: "a", Scope: "global", ResourceVersion: 1,
 		Content: agentYAML("a", "")}, "human:f", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -540,7 +540,7 @@ func TestCloseSemantics(t *testing.T) {
 	if err := r.Close(); err != nil {
 		t.Fatal("Close 应幂等")
 	}
-	_, err = r.Write(context.Background(), &Object{Kind: "Agent", Name: "a", Scope: "global",
+	_, _, err = r.Write(context.Background(), &Object{Kind: "Agent", Name: "a", Scope: "global",
 		Content: agentYAML("a", "")}, "fm", "")
 	if err == nil {
 		t.Fatal("Close 后写入应失败")

@@ -626,15 +626,17 @@ type writeResp struct {
 // 语义（concepts/revision.md）：
 //   - fm 为空拒绝；kind 未注册拒绝；scope 必填；
 //   - 创建：rv=0，成功后 resourceVersion=1；
-//   - 更新：携带读到的 rv，不符=ConflictError；
+//   - 更新：携带读到的 rv，不符=ConflictError（apply_log 落 conflict 行，现值不损）；
 //   - 幂等重入：内容与库内一致（去 rv 比对）→ no-op，返回现 rv，不产生提交；
 //   - 已存在但 rv=0 盲写 → ErrAlreadyExists。
-func (r *GitRepo) Write(ctx context.Context, o *Object, fieldManager, reasonRef string) (int64, error) {
+//
+// 返回 action ∈ create|update|noop（写面唯一事件判据，concepts/apply.md rule 1）。
+func (r *GitRepo) Write(ctx context.Context, o *Object, fieldManager, reasonRef string) (int64, string, error) {
 	if fieldManager == "" {
-		return 0, ErrNoFieldManager
+		return 0, "", ErrNoFieldManager
 	}
 	if o == nil || o.Content == nil {
-		return 0, fmt.Errorf("%w: 空内容", ErrContent)
+		return 0, "", fmt.Errorf("%w: 空内容", ErrContent)
 	}
 	req := &writeReq{
 		o: &Object{Kind: o.Kind, Name: o.Name, Scope: o.Scope, ResourceVersion: o.ResourceVersion,
@@ -647,15 +649,15 @@ func (r *GitRepo) Write(ctx context.Context, o *Object, fieldManager, reasonRef 
 	select {
 	case r.reqs <- req:
 	case <-r.stop:
-		return 0, ErrClosed
+		return 0, "", ErrClosed
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		return 0, "", ctx.Err()
 	}
 	select {
 	case resp := <-req.resp:
-		return resp.rv, resp.err
+		return resp.rv, resp.action, resp.err
 	case <-ctx.Done():
-		return 0, ctx.Err()
+		return 0, "", ctx.Err()
 	}
 }
 
@@ -754,6 +756,7 @@ func (r *GitRepo) applyWrite(req *writeReq) (int64, string, error) {
 			return 0, "", fmt.Errorf("%w: %s/%s/%s 现版本 %d", ErrAlreadyExists, o.Kind, o.Scope, o.Name, storedMeta.RV)
 		}
 		if o.ResourceVersion != storedMeta.RV {
+			r.logApply(o, storedMeta.RV, "conflict", req) // 审计：冲突行含现库版本（ops-log.md §2 result 枚举）
 			return 0, "", &ConflictError{Kind: o.Kind, Scope: o.Scope, Name: o.Name,
 				Expected: o.ResourceVersion, Current: storedMeta.RV}
 		}
@@ -761,6 +764,7 @@ func (r *GitRepo) applyWrite(req *writeReq) (int64, string, error) {
 	case errors.Is(readErr, fs.ErrNotExist):
 		if o.ResourceVersion != 0 {
 			// 写者读到过它、如今已不在：并发删除，按冲突处理。
+			r.logApply(o, 0, "conflict", req)
 			return 0, "", &ConflictError{Kind: o.Kind, Scope: o.Scope, Name: o.Name,
 				Expected: o.ResourceVersion, Current: 0}
 		}
