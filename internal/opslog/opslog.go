@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // 纯 Go sqlite 驱动（无 cgo；Core 单写者串行，吞吐足够）
@@ -16,12 +17,14 @@ import (
 
 // ApplyLog apply_log 表（ops-log.md §2）：一次 Apply 判定的流水。
 type ApplyLog struct {
-	Ts              time.Time
-	FieldManager    string
+	Ts           time.Time
+	FieldManager string
+	Subject      string // 判定主体标识（v0.9 请求级主体）：denied 行必带（user 优先，断言次之，匿名=anonymous）；
+	//   ok/noop/conflict 行由 repository 双写落（Write 契约冻结不携主体），归属看 fieldManager
 	Obj             string // "kind/scope/name"
 	ResourceVersion int64
 	Result          string // ok | noop | denied | conflict | recover（§3 恢复对账补记）
-	PolicyDecisions string // 权限系统判定摘要（v0.9 接入前为空）
+	PolicyDecisions string // 权限系统判定摘要（v0.9：判定方+域+动作，permission.md 规则 3 留痕）
 	ReasonRef       string // 指向 DriftReport/Event/工单
 }
 
@@ -94,6 +97,7 @@ func (s *SQLiteStore) migrate() error {
 CREATE TABLE IF NOT EXISTS apply_log (
 	ts               TEXT NOT NULL,
 	field_manager    TEXT NOT NULL DEFAULT '',
+	subject          TEXT NOT NULL DEFAULT '',
 	obj              TEXT NOT NULL,
 	resource_version INTEGER NOT NULL DEFAULT 0,
 	result           TEXT NOT NULL,
@@ -117,6 +121,11 @@ CREATE INDEX IF NOT EXISTS event_log_type ON event_log(type);
 	if _, err := s.db.Exec(ddl); err != nil {
 		return fmt.Errorf("opslog: 建表: %w", err)
 	}
+	// 既有 DB 升级：apply_log 补 subject 列（DB 非权威可重建，但原库无损升列更省一次重建）。
+	if _, err := s.db.Exec(`ALTER TABLE apply_log ADD COLUMN subject TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("opslog: apply_log 升列 subject: %w", err)
+	}
 	return nil
 }
 
@@ -132,15 +141,15 @@ func stamp(t time.Time) string {
 
 // AppendApply 落一条 apply 流水（repository 双写钩子与 apply 引擎拒绝路径共用）。
 func (s *SQLiteStore) AppendApply(l ApplyLog) error {
-	const q = `INSERT INTO apply_log (ts, field_manager, obj, resource_version, result, policy_decisions, reason_ref)
-VALUES (?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO apply_log (ts, field_manager, subject, obj, resource_version, result, policy_decisions, reason_ref)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	if l.Result == "" {
 		return errors.New("opslog: apply_log.result 必填（ok|noop|denied|conflict|recover）")
 	}
 	if l.Obj == "" {
 		return errors.New("opslog: apply_log.obj 必填（kind/scope/name）")
 	}
-	_, err := s.db.Exec(q, stamp(l.Ts), l.FieldManager, l.Obj, l.ResourceVersion, l.Result, l.PolicyDecisions, l.ReasonRef)
+	_, err := s.db.Exec(q, stamp(l.Ts), l.FieldManager, l.Subject, l.Obj, l.ResourceVersion, l.Result, l.PolicyDecisions, l.ReasonRef)
 	if err != nil {
 		return fmt.Errorf("opslog: 落 apply_log: %w", err)
 	}
@@ -184,6 +193,32 @@ func (s *SQLiteStore) CountApply(result string) (int, error) {
 		return 0, fmt.Errorf("opslog: 统计 apply_log(%s): %w", result, err)
 	}
 	return n, nil
+}
+
+// QueryApply 按 result 取 apply_log 行（按落库序；验收探针「查询代替日志」机械取证用，
+// 如 denied 行主体归属断言；不属于冻结接口，具体实现方法）。
+func (s *SQLiteStore) QueryApply(result string) ([]ApplyLog, error) {
+	const q = `SELECT ts, field_manager, subject, obj, resource_version, result, policy_decisions, reason_ref
+FROM apply_log WHERE result = ? ORDER BY rowid`
+	rows, err := s.db.Query(q, result)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 apply_log(%s): %w", result, err)
+	}
+	defer rows.Close()
+	var out []ApplyLog
+	for rows.Next() {
+		var l ApplyLog
+		var ts string
+		if err := rows.Scan(&ts, &l.FieldManager, &l.Subject, &l.Obj, &l.ResourceVersion,
+			&l.Result, &l.PolicyDecisions, &l.ReasonRef); err != nil {
+			return nil, fmt.Errorf("opslog: 读 apply_log 行: %w", err)
+		}
+		if l.Ts, err = time.Parse(time.RFC3339Nano, ts); err != nil {
+			return nil, fmt.Errorf("opslog: apply_log.ts 解析 %q: %w", ts, err)
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // CountEvent 按类型统计 event_log 行数（诊断用）。

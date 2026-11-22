@@ -16,6 +16,7 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
@@ -130,6 +131,8 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	})
 	// 写入口（缺省关闭）：POST /v1/apply——收敛到 apply 管线三步闸门，不旁路存储。
 	// 未开启（applier=nil）时恒 405，缺省只读面语义不变。
+	// 主体（v0.9 请求级）：请求体 subject 字段（优先）或 X-Core-Subject 头（同形 JSON）；
+	// 两者皆缺=匿名主体照判（无 role 落点 → 403，进程级本地信任不兜底 HTTP 匿名请求）。
 	// fromDraft=true：稿→面落库（cored-bridge.md §2.2）——差异以草稿缓存为准，不携带 content。
 	mux.HandleFunc("POST /v1/apply", func(w http.ResponseWriter, r *http.Request) {
 		if applier == nil {
@@ -144,6 +147,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		opt := apply.Options{
 			DryRun: req.DryRun, Force: req.Force,
 			FieldManager: req.FieldManager, ReasonRef: req.ReasonRef,
+			Subject: resolveSubject(r, &req),
 		}
 		var res *apply.Result
 		if req.FromDraft {
@@ -308,16 +312,45 @@ func writeObjErr(w http.ResponseWriter, err error) {
 
 // applyRequest POST /v1/apply 请求体（cored-bridge.md 契约；content=文档原文）。
 type applyRequest struct {
-	Kind            string `json:"kind"`
-	Scope           string `json:"scope"`
-	Name            string `json:"name"`
-	ResourceVersion int64  `json:"resourceVersion"`
-	Content         string `json:"content"`
-	FieldManager    string `json:"fieldManager"`
-	ReasonRef       string `json:"reasonRef"`
-	DryRun          bool   `json:"dryRun"`
-	Force           bool   `json:"force"`
-	FromDraft       bool   `json:"fromDraft"` // true=稿→面（§2.2）；content/resourceVersion 须缺省
+	Kind            string          `json:"kind"`
+	Scope           string          `json:"scope"`
+	Name            string          `json:"name"`
+	ResourceVersion int64           `json:"resourceVersion"`
+	Content         string          `json:"content"`
+	FieldManager    string          `json:"fieldManager"`
+	ReasonRef       string          `json:"reasonRef"`
+	DryRun          bool            `json:"dryRun"`
+	Force           bool            `json:"force"`
+	FromDraft       bool            `json:"fromDraft"` // true=稿→面（§2.2）；content/resourceVersion 须缺省
+	Subject         *subjectRequest `json:"subject"`   // 请求级主体（v0.9）；缺席回退 X-Core-Subject 头
+}
+
+// subjectRequest 请求级主体（v0.9，permission.md §3 的 HTTP 投影）：
+// user=主体标识（user-system 目录侧未接前由调用方断言，审计留痕）；
+// roles/groups=主体断言的持有关系——权限只由文档面 Role/Group 对象授予，断言名须能对上装载的对象。
+type subjectRequest struct {
+	User   string   `json:"user"`
+	Roles  []string `json:"roles"`
+	Groups []string `json:"groups"`
+}
+
+// SubjectHeader 主体头名（与请求体 subject 字段同形 JSON；桥接方不便改体时用头）。
+const SubjectHeader = "X-Core-Subject"
+
+// resolveSubject 请求级主体解析：请求体 subject 字段优先，缺席回退 X-Core-Subject 头；
+// 两者皆缺 → 匿名主体（非 nil 指针=强制请求级判定，进程级本地信任不兜底 HTTP 匿名请求）。
+func resolveSubject(r *http.Request, req *applyRequest) *permission.Subject {
+	if req.Subject != nil {
+		return &permission.Subject{User: req.Subject.User, Roles: req.Subject.Roles, Groups: req.Subject.Groups}
+	}
+	if h := r.Header.Get(SubjectHeader); h != "" {
+		var s subjectRequest
+		if err := json.Unmarshal([]byte(h), &s); err == nil {
+			return &permission.Subject{User: s.User, Roles: s.Roles, Groups: s.Groups}
+		}
+		// 头不可解析=视为未携带（匿名照判拒绝；不静默降级成本地信任）。
+	}
+	return &permission.Subject{}
 }
 
 // draftRequest POST /v1/drafts 请求体（cored-bridge.md §2.2）。

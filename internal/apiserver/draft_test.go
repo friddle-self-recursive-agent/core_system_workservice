@@ -39,7 +39,7 @@ func draftServer(t *testing.T) *httptest.Server {
 	drafts := draft.NewStore()
 	engine := &apply.Engine{
 		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops, Drafts: drafts,
-		Perm:    &permission.System{},
+		Perm:    fixturePerm(t), // 授权面=Role 对象（v0.9 对象准入）；fromDraft 同闸门
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
 	}
 	ts := httptest.NewServer(New(sch, repo, engine, drafts))
@@ -213,7 +213,7 @@ func TestDraftValidationErrors(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("wild 草稿应可落（闸门在写路径）: %d", code)
 	}
-	code, _ = post(t, ts, "/v1/apply", map[string]any{
+	code, _ = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Unicorn", "scope": "global", "name": "rainbow", "fromDraft": true, "fieldManager": "agent:confirm",
 	})
 	if code != http.StatusNotFound {
@@ -235,7 +235,7 @@ func TestFromDraftApplyClosedLoop(t *testing.T) {
 	if code, _ := post(t, ts, "/v1/drafts", draftBody("core-headless", 0)); code != http.StatusOK {
 		t.Fatal("落稿失败")
 	}
-	code, body := post(t, ts, "/v1/apply", map[string]any{
+	code, body := postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless", "fromDraft": true, "fieldManager": "agent:confirm",
 	})
 	if code != http.StatusOK || body["action"] != "create" || body["rv"] != float64(1) {
@@ -249,7 +249,7 @@ func TestFromDraftApplyClosedLoop(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("apply 后应清稿: %d", code)
 	}
-	code, body = post(t, ts, "/v1/apply", map[string]any{
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless", "fromDraft": true, "fieldManager": "agent:confirm",
 	})
 	if code != http.StatusNotFound {
@@ -281,7 +281,7 @@ func TestFromDraftApplyClosedLoop(t *testing.T) {
 		t.Fatalf("fromDraft+resourceVersion = %d, 要 400", code)
 	}
 	// ⑤ 正常落库后稿清空（noop 路径由引擎级测试覆盖）。
-	code, body = post(t, ts, "/v1/apply", map[string]any{
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "ci", "fromDraft": true, "fieldManager": "agent:confirm",
 	})
 	if code != http.StatusOK || body["action"] != "create" {

@@ -14,7 +14,7 @@ internal/
   draft/         草稿缓存（编辑与发布分离：代改代审先落稿，apply 落真实差异后清空）
   eventbus/      事件队列：dedupKey 聚合、dispatch 路由、死信
   workflow/      Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹车+成本，A41）
-  permission/    权限系统 v0.9（Role/Group 对象 + Check/ByRole + A44 硬规则）
+  permission/    权限系统 v0.9（Role/Group 对象装载 + 请求级主体 Check + A44 硬规则）
   opslog/        SQLite ops 日志（apply_log/event_log 双轨，instance 仓 runtime/ops-log.md）
 connectors/      gitfs / dsh —— builtin 幂等驱动实现（五方法契约；类型绑定在 WorkService 六面体 connector 面，A53）
                  用法型驱动（onedev/nas/oss 等）不进本仓：放部署侧仓 sybran_usage_connector（rule.md R-ENG-3）

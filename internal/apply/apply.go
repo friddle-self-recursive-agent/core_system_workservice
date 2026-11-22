@@ -36,6 +36,10 @@ type Options struct {
 	Force        bool   // 预留：跳过待审区直达（跨系统提案场景；v1 未接线）
 	FieldManager string // 必填（rule 2）
 	ReasonRef    string // 指向 DriftReport/Event/工单（审计回链）
+	// Subject 请求级主体（v0.9，permission.md §3）：HTTP 写面按请求解析携带（subject 字段/X-Core-Subject），
+	// 指针非 nil 即按请求判定——空主体照判（无 role 落点 → 拒绝，匿名请求不享受 fallback）；
+	// nil=引擎缺省 fallback（e.Subject 进程级本地信任：程序化调用如 bootstrap/工作流自写）。
+	Subject *permission.Subject
 }
 
 // Result 一次 Apply 的结果。
@@ -54,8 +58,9 @@ type Engine struct {
 	// Ops ops DB（拒绝路径审计：denied 行；ok/noop/conflict 行由 repository 双写钩子落）。
 	// nil=拒绝不落审计（不推荐：审计可追溯依赖此表，ops-log.md §2）。
 	Ops opslog.Store
-	// Subject 本进程的写入主体（权限判定输入）。v0.9 权限系统接请求级主体前，
-	// 由部署方按开关声明（cored --allow-apply 本地信任面=显式开启时持 DefaultAdmin）。
+	// Subject 缺省写入主体（权限判定 fallback 输入）。v0.9 请求级主体落地后：
+	// HTTP 写面一律按请求解析（Options.Subject 非 nil 即请求级，不再读本字段）；
+	// 本字段退化为程序化调用的缺省 fallback（cored 本地信任面=显式开启时持 DefaultAdmin）。
 	Subject permission.Subject
 	// Drafts 草稿缓存（apply.md §1 编辑与发布分离）。nil=无草稿面（只读部署不受影响）；
 	// 配置后 ApplyDraft 从缓存取稿走同一三步闸门，成功落库即清稿。
@@ -148,26 +153,33 @@ func (e *Engine) ApplyDraft(ctx context.Context, kind, scope, name string, opt O
 
 // admit 写路径前置闸门（① scheme 准入 ② 权限准入）；拒绝路径落 denied 审计行。
 // Apply 与 ApplyDraft 共用同一条闸门——草稿不旁路 scheme/权限（apply.md：准入是写路径的一环）。
+// 主体解析：Options.Subject 非 nil=请求级主体（空主体照判，匿名不享受 fallback）；
+// nil=引擎缺省 fallback（e.Subject 进程级本地信任，程序化调用）。
 func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
+	sub := e.Subject
+	if opt.Subject != nil {
+		sub = *opt.Subject // 请求级主体：非 nil 即按请求判定（空主体照判，匿名不享受 fallback）
+	}
 	// ① Scheme 准入：野对象拒绝（concepts/core.md：未注册 kind 不落库）。
 	if e.Sch == nil {
 		return fmt.Errorf("%w: scheme 注册表未配置", ErrNotRegistered)
 	}
 	if _, err := e.Sch.Lookup(o.Kind); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
+		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrNotRegistered, err)
 	}
 
 	// ② 权限系统准入（apply.md：准入是写路径的一环；A44 硬规则代码级不可放宽）。
+	// 权限只来自文档面 Role/Group 对象（permission.System 装载面）；主体断言本身不授权。
 	if e.Perm == nil {
 		return fmt.Errorf("%w: 权限系统未配置", ErrDenied)
 	}
-	if err := e.Perm.Check(e.Subject, o.Scope, "write", permission.ByRole); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
+	if err := e.Perm.Check(sub, o.Scope, "write", permission.ByRole); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrDenied, err)
 	}
 	if err := permission.HardRules(objKey, "write"); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
+		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrDenied, err)
 	}
 	return nil
@@ -196,13 +208,14 @@ func (e *Engine) finish(objKey string, rv int64, action string) (*Result, error)
 	return res, nil
 }
 
-// audit 拒绝路径审计（denied 行）。审计失败不改变拒绝结论（流水非权威）。
-func (e *Engine) audit(opt Options, objKey string, rv int64, result, decision string) {
+// audit 拒绝路径审计（denied 行，携主体标识——permission.md 规则 3 判定留痕）。
+// 审计失败不改变拒绝结论（流水非权威）。
+func (e *Engine) audit(opt Options, objKey string, rv int64, result, decision string, sub permission.Subject) {
 	if e.Ops == nil {
 		return
 	}
 	_ = e.Ops.AppendApply(opslog.ApplyLog{
-		Ts: time.Now(), FieldManager: opt.FieldManager, Obj: objKey,
+		Ts: time.Now(), FieldManager: opt.FieldManager, Subject: sub.ID(), Obj: objKey,
 		ResourceVersion: rv, Result: result, PolicyDecisions: decision, ReasonRef: opt.ReasonRef,
 	})
 }

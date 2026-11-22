@@ -342,3 +342,70 @@ func TestApplyDryRunZeroSideEffect(t *testing.T) {
 		t.Fatalf("dry-run 是零副作用，不得落审计行：=%d", n)
 	}
 }
+
+// TestApplyRequestLevelSubject 请求级主体（v0.9，permission.md §3）：
+// Options.Subject 非 nil=按请求判定（引擎 fallback 不兜底空主体）；授权面=Role/Group 对象装载；
+// denied 审计行携带主体标识；Options.Subject=nil → 引擎缺省 fallback（进程级本地信任）。
+func TestApplyRequestLevelSubject(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	perm := &permission.System{}
+	if err := perm.LoadObjects([]permission.ObjectDoc{
+		{Kind: "Role", Name: "writer", Scope: "global", Content: []byte(
+			`kind: Role
+metadata: {name: writer}
+spec:
+  permissions:
+  - {scope: "global/*", actions: [write]}
+`)},
+		{Kind: "Group", Name: "devs", Scope: "global", Content: []byte(
+			`kind: Group
+metadata: {name: devs}
+spec:
+  roles: [role/writer]
+`)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w.engine.Perm = perm
+	obj := func() *repository.Object {
+		return &repository.Object{Kind: "Agent", Name: "doc", Scope: "global", Content: agentYAML("doc", "")}
+	}
+
+	// ① 请求级空主体 → 拒绝（本地信任 admin 不兜底）；denied 行携带主体标识。
+	_, err := w.engine.Apply(ctx, obj(), Options{
+		FieldManager: "agent:a", Subject: &permission.Subject{User: "agent:none"},
+	})
+	if !errors.Is(err, ErrDenied) {
+		t.Fatalf("请求级空主体应拒绝，得 %v", err)
+	}
+	rows, err := w.ops.QueryApply("denied")
+	if err != nil || len(rows) != 1 || rows[0].Subject != "agent:none" {
+		t.Fatalf("denied 行应携带主体 agent:none: %+v err=%v", rows, err)
+	}
+	if !strings.Contains(rows[0].PolicyDecisions, "subject=agent:none") {
+		t.Fatalf("denied 行判定摘要应留痕主体: %q", rows[0].PolicyDecisions)
+	}
+
+	// ② 持 role 主体（断言对上装载的 Role 对象）→ 放行 create。
+	res, err := w.engine.Apply(ctx, obj(), Options{
+		FieldManager: "agent:b", Subject: &permission.Subject{User: "agent:dev", Roles: []string{"role/writer"}},
+	})
+	if err != nil || res.Action != "create" || res.RV != 1 {
+		t.Fatalf("持 role 主体应放行: %+v err=%v", res, err)
+	}
+
+	// ③ group→role 链主体放行（user→group→role，同内容幂等 noop；装载为一次性快照投影）。
+	res, err = w.engine.Apply(ctx, obj(), Options{
+		FieldManager: "agent:c", Subject: &permission.Subject{User: "agent:g", Groups: []string{"group/devs"}},
+	})
+	if err != nil || res.Action != "noop" {
+		t.Fatalf("group 链主体应放行: %+v err=%v", res, err)
+	}
+
+	// ④ Options.Subject=nil → 引擎缺省 fallback（cored 本地信任=DefaultAdmin）。
+	res, err = w.engine.Apply(ctx, obj(), Options{FieldManager: "agent:d"})
+	if err != nil || res.Action != "noop" {
+		t.Fatalf("fallback 主体应放行: %+v err=%v", res, err)
+	}
+}

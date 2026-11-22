@@ -45,9 +45,9 @@ type Spec struct {
 
 // Triggers 触发规则（与事件 Level 联动：minLevel 过滤）。
 type Triggers struct {
-	Events   []string        // 事件类型列表（路由按类型+owner，v0.11 A47 无 selector）
-	MinLevel string          // 事件 Level 过滤（A42：debug/info/warn/error/fatal）
-	Resync   time.Duration   // 巡检兜底（level-triggered 保险丝）
+	Events   []string      // 事件类型列表（路由按类型+owner，v0.11 A47 无 selector）
+	MinLevel string        // 事件 Level 过滤（A42：debug/info/warn/error/fatal）
+	Resync   time.Duration // 巡检兜底（level-triggered 保险丝）
 }
 
 // Brakes 刹车三件套（Workflow 级强制默认：可收紧不可关闭）。

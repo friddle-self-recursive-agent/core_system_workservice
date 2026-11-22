@@ -39,6 +39,75 @@ func testServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(New(sch, nil, nil, nil))
 }
 
+// fixtureAdminRole/fixtureDevRole 授权面 fixture（请求级主体测试的 Role 对象来源——
+// 权限只由 Role 对象授予，主体断言名须对上装载对象）。
+const fixtureAdminRole = `apiVersion: core/v1
+kind: Role
+metadata: {name: fixture-admin, scope: global}
+spec:
+  permissions:
+  - {scope: "global/*", actions: [read, write]}
+`
+
+const fixtureDevRole = `apiVersion: core/v1
+kind: Role
+metadata: {name: fixture-dev, scope: global}
+spec:
+  permissions:
+  - {scope: "systems/dev/*", actions: [read, write]}
+`
+
+// fixturePerm 装载 fixture 授权面（v0.9 对象准入）。
+func fixturePerm(t *testing.T) *permission.System {
+	t.Helper()
+	perm := &permission.System{}
+	if err := perm.LoadObjects([]permission.ObjectDoc{
+		{Kind: "Role", Name: "fixture-admin", Scope: "global", Content: []byte(fixtureAdminRole)},
+		{Kind: "Role", Name: "fixture-dev", Scope: "global", Content: []byte(fixtureDevRole)},
+	}); err != nil {
+		t.Fatalf("装载 fixture 授权面: %v", err)
+	}
+	return perm
+}
+
+// authHeader 请求级主体头（X-Core-Subject，与请求体 subject 同形 JSON）。
+func authHeader(user string, roles ...string) string {
+	b, _ := json.Marshal(map[string]any{"user": user, "roles": roles})
+	return string(b)
+}
+
+// postAuth 以 fixture-admin 主体（X-Core-Subject 头）POST——写面闭环测试的默认主体。
+func postAuth(t *testing.T, ts *httptest.Server, path string, payload any) (int, map[string]any) {
+	t.Helper()
+	return postHeader(t, ts, path, payload, authHeader("agent:test", "role/fixture-admin"))
+}
+
+// postHeader POST 并携带自定义 X-Core-Subject 头（请求级主体解析路径用）。
+func postHeader(t *testing.T, ts *httptest.Server, path string, payload any, subject string) (int, map[string]any) {
+	t.Helper()
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, ts.URL+path, bytes.NewReader(buf))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(SubjectHeader, subject)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&body); err != nil {
+		t.Fatalf("POST %s 响应非 JSON: %v", path, err)
+	}
+	return resp.StatusCode, body
+}
+
 func get(t *testing.T, ts *httptest.Server, path string) (int, map[string]any) {
 	t.Helper()
 	resp, err := http.Get(ts.URL + path)
@@ -294,14 +363,14 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 	defer repo.Close()
 	engine := &apply.Engine{
 		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops,
-		Perm:    &permission.System{},
-		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
+		Perm:    fixturePerm(t),                                                             // 授权面=Role 对象（v0.9 对象准入）
+		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // 程序化 fallback
 	}
 	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore()))
 	defer ts.Close()
 
-	// 创建 → 200 create rv=1 + DocApplied 回执。
-	code, body := post(t, ts, "/v1/apply", map[string]any{
+	// 创建 → 200 create rv=1 + DocApplied 回执（请求级主体经 X-Core-Subject 头）。
+	code, body := postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless",
 		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: all}\n",
 		"fieldManager": "agent:bootstrap",
@@ -318,7 +387,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		t.Fatalf("读回 = %d %v", code, body)
 	}
 	// 无主写入 → 400。
-	code, body = post(t, ts, "/v1/apply", agentBody("core-headless", 1))
+	code, body = postAuth(t, ts, "/v1/apply", agentBody("core-headless", 1))
 	if code != http.StatusBadRequest {
 		t.Fatalf("无主写入 = %d %v, 要 400", code, body)
 	}
@@ -326,12 +395,12 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 	wild := agentBody("x", 0)
 	wild["fieldManager"] = "agent:bootstrap"
 	wild["kind"] = "Unicorn"
-	code, _ = post(t, ts, "/v1/apply", wild)
+	code, _ = postAuth(t, ts, "/v1/apply", wild)
 	if code != http.StatusNotFound {
 		t.Fatalf("野对象 = %d, 要 404", code)
 	}
 	// 冲突 → 409（expected/current 版本对）。
-	code, body = post(t, ts, "/v1/apply", map[string]any{
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 9,
 		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
 		"fieldManager": "agent:late",
@@ -340,7 +409,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		t.Fatalf("冲突 = %d %v, 要 409(9→1)", code, body)
 	}
 	// dryRun → 200 零副作用。
-	code, body = post(t, ts, "/v1/apply", map[string]any{
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 1,
 		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
 		"fieldManager": "agent:bootstrap", "dryRun": true,
@@ -353,7 +422,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		t.Fatalf("dryRun 后版本演进 = %v, 要仍 1", body["resourceVersion"])
 	}
 	// 正常更新 → rv=2，读面复测新版本。
-	code, body = post(t, ts, "/v1/apply", map[string]any{
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
 		"kind": "Agent", "scope": "global", "name": "core-headless", "resourceVersion": 1,
 		"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: ask}\n",
 		"fieldManager": "agent:bootstrap",
@@ -364,5 +433,87 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 	code, body = get(t, ts, "/v1/objects/Agent/core-headless?scope=global")
 	if body["resourceVersion"] != float64(2) || !strings.Contains(body["content"].(string), "autoLevel: ask") {
 		t.Fatalf("读回新版本 = %v", body)
+	}
+}
+
+// TestApplyRequestSubject 请求级主体契约（v0.9）：
+// 匿名拒绝（403）+ denied 审计行携带主体、域外 role 拒绝、请求体 subject 字段放行、
+// 不可解析主体头=匿名照判、草稿落稿不受主体门控（编辑面与存储闸门解耦）。
+func TestApplyRequestSubject(t *testing.T) {
+	sch, err := scheme.Load([]byte(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ops.Close()
+	repo, err := repository.NewGit(t.TempDir(), sch, &repository.Options{Ops: ops})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	engine := &apply.Engine{
+		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops,
+		Perm:    fixturePerm(t),
+		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // fallback：不兜底 HTTP 匿名
+	}
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore()))
+	defer ts.Close()
+	createBody := func() map[string]any {
+		return map[string]any{
+			"kind": "Agent", "scope": "global", "name": "core-headless",
+			"content":      "apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless, scope: global}\nspec: {autoLevel: all}\n",
+			"fieldManager": "agent:bootstrap",
+		}
+	}
+
+	// ① 无主体（体/头皆缺）→ 匿名照判拒绝 403；denied 审计行携带主体=anonymous。
+	code, body := post(t, ts, "/v1/apply", createBody())
+	if code != http.StatusForbidden || !strings.Contains(body["error"].(string), "准入拒绝") {
+		t.Fatalf("匿名 apply = %d %v, 要 403", code, body)
+	}
+	denied, err := ops.QueryApply("denied")
+	if err != nil || len(denied) != 1 {
+		t.Fatalf("denied 审计行查询 = %d 行, err=%v", len(denied), err)
+	}
+	if denied[0].Subject != "anonymous" || denied[0].Obj != "Agent/global/core-headless" {
+		t.Fatalf("denied 行主体不符: %+v", denied[0])
+	}
+	if !strings.Contains(denied[0].PolicyDecisions, "judged by role") {
+		t.Fatalf("denied 行应留痕判定方: %q", denied[0].PolicyDecisions)
+	}
+
+	// ② 持 role 主体但域外（fixture-dev 只授 systems/dev/*）→ 403；denied 行携带该主体。
+	code, body = postHeader(t, ts, "/v1/apply", createBody(), authHeader("agent:limited", "role/fixture-dev"))
+	if code != http.StatusForbidden {
+		t.Fatalf("域外 role apply = %d %v, 要 403", code, body)
+	}
+	denied, _ = ops.QueryApply("denied")
+	if len(denied) != 2 || denied[1].Subject != "agent:limited" {
+		t.Fatalf("denied 行应携带请求主体: %+v", denied)
+	}
+
+	// ③ 请求体 subject 字段 + 命名 role 对象 → 放行 create（体字段优先路径）。
+	b := createBody()
+	b["subject"] = map[string]any{"user": "agent:ci", "roles": []string{"role/fixture-admin"}}
+	code, body = post(t, ts, "/v1/apply", b)
+	if code != http.StatusOK || body["action"] != "create" {
+		t.Fatalf("持 role 主体 apply = %d %v, 要 200 create", code, body)
+	}
+
+	// ④ 不可解析主体头=视为未携带 → 匿名照判 403（不静默降级成本地信任）。
+	code, _ = postHeader(t, ts, "/v1/apply", createBody(), "not-json")
+	if code != http.StatusForbidden {
+		t.Fatalf("坏主体头 apply = %d, 要 403", code)
+	}
+
+	// ⑤ 草稿落稿不受主体门控（编辑面无闸门；准入在 apply 写路径）。
+	code, _ = post(t, ts, "/v1/drafts", map[string]any{
+		"kind": "Agent", "scope": "global", "name": "staged", "content": "x", "fieldManager": "agent/dev",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("落稿 = %d, 要 200（草稿面不接权限闸门）", code)
 	}
 }

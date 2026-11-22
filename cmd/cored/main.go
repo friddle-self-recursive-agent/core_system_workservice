@@ -36,6 +36,7 @@ func main() {
 }
 
 func run() error {
+	ctx := context.Background()
 	schemePath := flag.String("scheme", os.Getenv("CORE_SYSTEM_SCHEME"),
 		"core/scheme.yaml 路径（缺省读 CORE_SYSTEM_SCHEME 环境变量）")
 	docsRoot := flag.String("docs", os.Getenv("CORE_SYSTEM_DOCS"),
@@ -97,15 +98,28 @@ func run() error {
 	drafts := draft.NewStore()
 	var applier apiserver.Applier
 	if *allowApply {
-		// 本地信任面：写面由部署方显式开启，主体在本进程内持内置 admin；
-		// 权限系统 v0.9 接请求级主体后收敛（契约锚定 cored-bridge.md §2.1）。
+		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
+		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
+		// 启动装载=权威快照；事件驱动刷新随 dispatch 接线（declared-deferred）。
+		perm := &permission.System{}
+		objs, err := permDocs(ctx, repo)
+		if err != nil {
+			return err
+		}
+		if err := perm.LoadObjects(objs); err != nil {
+			return fmt.Errorf("权限对象装载失败（授权面宁拒不降级）: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "cored: 权限对象装载 roles=%d groups=%d（global/roles、global/groups）\n",
+			len(perm.Roles), len(perm.Groups))
+		// 主体（v0.9 请求级）：HTTP 写面按请求解析（subject 字段/X-Core-Subject 头，匿名=照判拒绝）；
+		// 进程级本地信任退化为引擎缺省 fallback（程序化调用，如 bootstrap/工作流自写）。
 		engine := &apply.Engine{
 			Sch: sch, Repo: repo, Bus: bus, Ops: store, Drafts: drafts,
-			Perm:    &permission.System{},
+			Perm:    perm,
 			Subject: permission.Subject{User: "cored:local", Roles: []string{permission.DefaultAdmin}},
 		}
 		applier = engine
-		fmt.Fprintf(os.Stderr, "cored: apply 写面已开启（POST /v1/apply；本地信任主体，权限请求级判定待 v0.9 接入）\n")
+		fmt.Fprintf(os.Stderr, "cored: apply 写面已开启（POST /v1/apply；请求级主体判定，匿名拒绝；本地信任仅作引擎 fallback）\n")
 	}
 
 	ln, err := net.Listen("tcp", *addr)
@@ -140,4 +154,23 @@ func run() error {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
+}
+
+// permDocs 投影权限对象（Role/Group，global scope——permission.md §1 作用域 Global）。
+// permission 包不反向依赖存储层：这里把文档对象投影成它的装载输入。
+func permDocs(ctx context.Context, repo *repository.GitRepo) ([]permission.ObjectDoc, error) {
+	if repo == nil {
+		return nil, errors.New("权限对象装载需文档库（--allow-apply 依附 --docs）")
+	}
+	var out []permission.ObjectDoc
+	for _, kind := range []string{"Role", "Group"} {
+		objs, err := repo.List(ctx, kind, "global")
+		if err != nil {
+			return nil, fmt.Errorf("枚举 %s 对象: %w", kind, err)
+		}
+		for _, o := range objs {
+			out = append(out, permission.ObjectDoc{Kind: kind, Name: o.Name, Scope: o.Scope, Content: o.Content})
+		}
+	}
+	return out, nil
 }

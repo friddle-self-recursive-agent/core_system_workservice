@@ -19,8 +19,8 @@ type Spec struct {
 
 // Resolution 解析结果（含缓存）。
 type Resolution struct {
-	Value    string    // 真实地址/实例（只存在于这里，不进 Ref.spec）
-	By       string    // 解析方（system/instance）
+	Value    string // 真实地址/实例（只存在于这里，不进 Ref.spec）
+	By       string // 解析方（system/instance）
 	At       time.Time
 	CacheTTL time.Duration
 }

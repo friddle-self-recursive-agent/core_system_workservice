@@ -23,27 +23,27 @@ type Impl struct {
 
 // Spec 六面体。
 type Spec struct {
-	Category    string          // developer | storage | tool | business…
-	Connector   ConnectorFacet  // 连接面
-	Observation struct {        // 观测面（意图；数据在 MetricsInfo）
+	Category    string         // developer | storage | tool | business…
+	Connector   ConnectorFacet // 连接面
+	Observation struct {       // 观测面（意图；数据在 MetricsInfo）
 		Metrics []struct{ Name, Query string }
 		LogsRef string
 	}
-	Data struct {               // 数据面（Ref 解析权威之一）
+	Data struct { // 数据面（Ref 解析权威之一）
 		Entities []struct{ Name, Store, Access string }
 	}
-	Flows []struct {            // 流程面
+	Flows []struct { // 流程面
 		Name   string
 		Stages []string
 	}
-	Runtime struct {            // 运行状态观测面
+	Runtime struct { // 运行状态观测面
 		Probes []struct {
 			HTTPGet string
 			Version string
 			Period  string
 		}
 	}
-	Tools []Tool                // 工具与调用描述面
+	Tools []Tool // 工具与调用描述面
 }
 
 // Tool 工具条目：cleanup 成对声明（A51，代替 Finalizer）。

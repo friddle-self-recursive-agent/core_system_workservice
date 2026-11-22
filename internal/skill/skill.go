@@ -6,16 +6,16 @@ import "time"
 
 // Skill 一份工具使用经验（注入提示+成功调用示例）。
 type Skill struct {
-	Name       string
-	SourceOps  string    // 来源工具（ConnectorOps 名）
-	When       string    // 适用条件（任务/场景）
-	Prompt     string    // 注入提示（派生自 provider.llmPrompt + 实战修正）
-	Origin     struct {
+	Name      string
+	SourceOps string // 来源工具（ConnectorOps 名）
+	When      string // 适用条件（任务/场景）
+	Prompt    string // 注入提示（派生自 provider.llmPrompt + 实战修正）
+	Origin    struct {
 		SessionRef string
 		CachedAt   time.Time
 	}
 	CachePolicy struct {
-		TTL                      time.Duration
+		TTL                        time.Duration
 		InvalidateOnProviderChange bool
 	}
 }
