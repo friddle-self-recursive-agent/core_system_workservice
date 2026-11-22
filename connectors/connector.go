@@ -1,6 +1,8 @@
 // connectors —— 幂等驱动契约层。
 // v0.13（A53）：ConnectorProvider 并入 WorkService 六面体的 connector 面（见 internal/workservice）；
 // 本包保留五方法幂等实现接口（驱动代码实现它）与 Ops 挂载结构（concepts/connector.md）。
+// 仓库归属（rule.md R-ENG-3）：本目录只放 builtin 驱动（gitfs/dsh）；用法型驱动
+// （onedev/nas/oss 等，换部署即换）在部署侧独立仓（sybran_usage_connector），依赖方向恒为用法仓 → 本仓。
 package connectors
 
 import (
