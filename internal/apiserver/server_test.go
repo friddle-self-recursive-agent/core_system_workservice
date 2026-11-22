@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
@@ -35,7 +36,7 @@ func testServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("载入 fixture 失败: %v", err)
 	}
-	return httptest.NewServer(New(sch, nil, nil))
+	return httptest.NewServer(New(sch, nil, nil, nil))
 }
 
 func get(t *testing.T, ts *httptest.Server, path string) (int, map[string]any) {
@@ -155,7 +156,7 @@ func objServer(t *testing.T) (*httptest.Server, *repository.GitRepo) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repo.Close() })
-	return httptest.NewServer(New(sch, repo, nil)), repo
+	return httptest.NewServer(New(sch, repo, nil, nil)), repo
 }
 
 func TestObjectsStoreNotConfigured(t *testing.T) {
@@ -296,7 +297,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		Perm:    &permission.System{},
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
 	}
-	ts := httptest.NewServer(New(sch, repo, engine))
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore()))
 	defer ts.Close()
 
 	// 创建 → 200 create rv=1 + DocApplied 回执。

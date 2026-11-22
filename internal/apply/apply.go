@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
@@ -56,6 +57,9 @@ type Engine struct {
 	// Subject 本进程的写入主体（权限判定输入）。v0.9 权限系统接请求级主体前，
 	// 由部署方按开关声明（cored --allow-apply 本地信任面=显式开启时持 DefaultAdmin）。
 	Subject permission.Subject
+	// Drafts 草稿缓存（apply.md §1 编辑与发布分离）。nil=无草稿面（只读部署不受影响）；
+	// 配置后 ApplyDraft 从缓存取稿走同一三步闸门，成功落库即清稿。
+	Drafts *draft.Store
 }
 
 // Apply 执行写路径三步闸门。幂等：同内容重入 no-op，不产生提交、不发事件。
@@ -68,26 +72,8 @@ func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (
 	}
 	objKey := fmt.Sprintf("%s/%s/%s", o.Kind, o.Scope, o.Name)
 
-	// ① Scheme 准入：野对象拒绝（concepts/core.md：未注册 kind 不落库）。
-	if e.Sch == nil {
-		return nil, fmt.Errorf("%w: scheme 注册表未配置", ErrNotRegistered)
-	}
-	if _, err := e.Sch.Lookup(o.Kind); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
-		return nil, fmt.Errorf("%w: %v", ErrNotRegistered, err)
-	}
-
-	// ② 权限系统准入（apply.md：准入是写路径的一环；A44 硬规则代码级不可放宽）。
-	if e.Perm == nil {
-		return nil, fmt.Errorf("%w: 权限系统未配置", ErrDenied)
-	}
-	if err := e.Perm.Check(e.Subject, o.Scope, "write", permission.ByRole); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
-		return nil, fmt.Errorf("%w: %v", ErrDenied, err)
-	}
-	if err := permission.HardRules(objKey, "write"); err != nil {
-		e.audit(opt, objKey, 0, "denied", err.Error())
-		return nil, fmt.Errorf("%w: %v", ErrDenied, err)
+	if err := e.admit(objKey, o, opt); err != nil {
+		return nil, err
 	}
 
 	// ③ dry-run：零副作用（不发事件、不落审计），返回与真执行一致的准入结论 + 现版本。
@@ -109,10 +95,88 @@ func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (
 		// conflict 审计行由 repository 落（它持有现库版本）；其余错误透传。
 		return nil, err
 	}
-	res := &Result{RV: rv, Action: action}
+	return e.finish(objKey, rv, action)
+}
 
-	// ⑤ DocApplied 必发（apply.md rule 1）：无差异（noop）不发——防自我唤醒循环。
-	// fieldManager 白名单豁免（Workflow 自写回执抑制）随 workflow 引擎接入（declared-deferred）。
+// ApplyDraft 稿→面落库（apply.md §1「人确定后调用 apply 命令」）：取草稿差异走同一三步闸门，
+// 以草稿 BaseRV 为乐观锁期望值——文档面前移则 Conflict（草稿保留，后写者重读后重整草稿）；
+// 成功（create|update|noop）即清稿（rule 6「apply 后清空」）；无草稿 → draft.ErrNoDraft。
+func (e *Engine) ApplyDraft(ctx context.Context, kind, scope, name string, opt Options) (*Result, error) {
+	if opt.FieldManager == "" {
+		return nil, ErrNoFieldManager
+	}
+	if kind == "" || scope == "" || name == "" {
+		return nil, ErrObject
+	}
+	if e.Drafts == nil {
+		return nil, draft.ErrNoStore
+	}
+	d, err := e.Drafts.Get(kind, scope, name)
+	if err != nil {
+		return nil, err // ErrNoDraft 原样透传（读面映射 404）
+	}
+	objKey := fmt.Sprintf("%s/%s/%s", kind, scope, name)
+	// 稿即写者输入：内容=草稿正文，期望版本=落稿所基于的文档面版本。
+	o := &repository.Object{Kind: kind, Scope: scope, Name: name, ResourceVersion: d.BaseRV, Content: d.Content}
+
+	if err := e.admit(objKey, o, opt); err != nil {
+		return nil, err // 拒绝路径不清稿：稿仍在，改正后再落
+	}
+	if opt.DryRun {
+		// 零副作用：不清稿、不落库，返回与真执行一致的准入结论 + 现版本。
+		cur, err := e.Repo.Get(ctx, kind, scope, name)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return &Result{RV: 0, Action: "dry-run"}, nil // 将创建
+			}
+			return nil, err
+		}
+		return &Result{RV: cur.ResourceVersion, Action: "dry-run"}, nil
+	}
+
+	rv, action, err := e.Repo.Write(ctx, o, opt.FieldManager, opt.ReasonRef)
+	if err != nil {
+		return nil, err // Conflict：草稿保留（乐观锁语义，apply.md §3「后写者重读」）
+	}
+	// rule 6「apply 后清空」：create/update/noop 都算 apply 已确认（noop=稿与面一致，
+	// 空差异无操作不落库不发事件，但稿已被确认消费）。清稿失败=落库成功但缓存脏，如实上抛。
+	if err := e.Drafts.Delete(kind, scope, name); err != nil {
+		return nil, fmt.Errorf("apply: 落库成功（rv=%d action=%s）但清稿失败: %w", rv, action, err)
+	}
+	return e.finish(objKey, rv, action)
+}
+
+// admit 写路径前置闸门（① scheme 准入 ② 权限准入）；拒绝路径落 denied 审计行。
+// Apply 与 ApplyDraft 共用同一条闸门——草稿不旁路 scheme/权限（apply.md：准入是写路径的一环）。
+func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
+	// ① Scheme 准入：野对象拒绝（concepts/core.md：未注册 kind 不落库）。
+	if e.Sch == nil {
+		return fmt.Errorf("%w: scheme 注册表未配置", ErrNotRegistered)
+	}
+	if _, err := e.Sch.Lookup(o.Kind); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return fmt.Errorf("%w: %v", ErrNotRegistered, err)
+	}
+
+	// ② 权限系统准入（apply.md：准入是写路径的一环；A44 硬规则代码级不可放宽）。
+	if e.Perm == nil {
+		return fmt.Errorf("%w: 权限系统未配置", ErrDenied)
+	}
+	if err := e.Perm.Check(e.Subject, o.Scope, "write", permission.ByRole); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return fmt.Errorf("%w: %v", ErrDenied, err)
+	}
+	if err := permission.HardRules(objKey, "write"); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error())
+		return fmt.Errorf("%w: %v", ErrDenied, err)
+	}
+	return nil
+}
+
+// finish 落库后的收尾：DocApplied 必发（apply.md rule 1；noop 无差异不发——防自我唤醒循环）。
+// fieldManager 白名单豁免（Workflow 自写回执抑制）随 workflow 引擎接入（declared-deferred）。
+func (e *Engine) finish(objKey string, rv int64, action string) (*Result, error) {
+	res := &Result{RV: rv, Action: action}
 	if action == "noop" {
 		return res, nil
 	}

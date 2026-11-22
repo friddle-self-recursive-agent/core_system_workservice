@@ -20,6 +20,7 @@ import (
 
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
@@ -91,12 +92,15 @@ func run() error {
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
+	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存落点，读面恒开，写操作随写面开关。
+	// 重启即清（草稿可重放）；持久化随 ops DB 部署决策另行 declared。
+	drafts := draft.NewStore()
 	var applier apiserver.Applier
 	if *allowApply {
 		// 本地信任面：写面由部署方显式开启，主体在本进程内持内置 admin；
 		// 权限系统 v0.9 接请求级主体后收敛（契约锚定 cored-bridge.md §2.1）。
 		engine := &apply.Engine{
-			Sch: sch, Repo: repo, Bus: bus, Ops: store,
+			Sch: sch, Repo: repo, Bus: bus, Ops: store, Drafts: drafts,
 			Perm:    &permission.System{},
 			Subject: permission.Subject{User: "cored:local", Roles: []string{permission.DefaultAdmin}},
 		}
@@ -108,7 +112,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
