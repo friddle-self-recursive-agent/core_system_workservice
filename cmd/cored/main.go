@@ -1,9 +1,9 @@
-// cored Core 常驻进程（v0.1 只读面）：Scheme 载入自检 + 最小只读查询接口。
+// cored Core 常驻进程（v0.2 只读面）：Scheme 载入自检 + 类型注册表/文档对象只读查询接口。
 // 设计依据：core_system_instance/impl/self-recursive-core.md（cored=冷启动入口与调试用途）
 // 与 runtime/cored-bridge.md（plugin↔cored 桥：CORED_READY 就绪行 + /v1 只读端点）。
-// 部署锚点一律经参数/环境注入（--scheme / CORE_SYSTEM_SCHEME），不内置真实路径。
-// 后续增量（skeleton，见 internal/*）：repository(git) + opslog(sqlite) + eventbus
-// + loop engine + apply 管线。
+// 部署锚点一律经参数/环境注入（--scheme/--docs / CORE_SYSTEM_SCHEME/CORE_SYSTEM_DOCS），
+// 不内置真实路径。后续增量（skeleton，见 internal/*）：opslog(sqlite) + eventbus
+// + loop engine + apply 管线（repository git 后端已于 loop-2 落地，只读面已接）。
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
@@ -32,6 +33,8 @@ func main() {
 func run() error {
 	schemePath := flag.String("scheme", os.Getenv("CORE_SYSTEM_SCHEME"),
 		"core/scheme.yaml 路径（缺省读 CORE_SYSTEM_SCHEME 环境变量）")
+	docsRoot := flag.String("docs", os.Getenv("CORE_SYSTEM_DOCS"),
+		"文档库根目录（缺省读 CORE_SYSTEM_DOCS；为空则 /v1/objects 返回 503，scheme 面不受影响）")
 	addr := flag.String("addr", os.Getenv("CORE_SYSTEM_ADDR"),
 		"监听地址（缺省 127.0.0.1:0，即本机回环随机端口）")
 	flag.Parse()
@@ -52,11 +55,23 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: scheme %s/%s 载入通过（kinds=%d doctypes=%d eventtypes=%d dispatch=%d）来自 %s\n",
 		sum.APIVersion, sum.Version, sum.KindCount, sum.DocTypeCount, sum.EventTypeCount, sum.DispatchCount, sch.Source)
 
+	// 文档对象读面：--docs 给定则打开 git 后端（野对象闸门=scheme 注册表）；缺省跳过。
+	var store apiserver.ObjectSource
+	if *docsRoot != "" {
+		repo, err := repository.NewGit(*docsRoot, sch, nil)
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+		store = repo
+		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁；本进程仍只读暴露）\n", repo.Root())
+	}
+
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
