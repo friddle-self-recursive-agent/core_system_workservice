@@ -4,6 +4,11 @@
 package workflow
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,8 +16,9 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
-// TestDeliverProjection 受理投影口径：状态词不含任何「已投递」语义（真实通道投递 deferred
-// ——送达投影出现 ≠ 已送达真实通道）；通道投影=绑定锚点；origin 主/旁留痕；溯源字段同源。
+// TestDeliverProjection 受理投影口径：未注入出站时状态恒受理词 accepted（v0.17 注入后
+// 才异步翻转 sent/failed——送达受理 ≠ 已送达真实通道）；通道投影=绑定锚点；origin 主/旁
+// 留痕；溯源字段同源。
 func TestDeliverProjection(t *testing.T) {
 	d := NewDeliveryLog(nil)
 	d.Deliver(TriggerRecord{
@@ -178,5 +184,218 @@ func TestDeliveryAgentRow(t *testing.T) {
 		dl.Deliveries[0].Channel != Wildcard || dl.Deliveries[0].Type != "HeartbeatLost" ||
 		dl.Deliveries[0].Level != "error" {
 		t.Fatalf("owner 行应恰旁路送达 1 条: %+v", dl)
+	}
+}
+
+// ───────────────────────── v0.17 真实通道出站挂接（受理→异步出站→状态翻转） ─────────────────────────
+
+// stubOutbound 测试注入实现（Outbound 契约）：记录收到的投影，可编程失败/阻塞/panic。
+type stubOutbound struct {
+	mu    sync.Mutex
+	got   []DeliveryRecord
+	fail  error
+	hold  chan struct{} // 非 nil：Send 内阻塞直至放行（队列满/停机语义测试用）
+	paniq bool          // true：Send 内 panic（兜底路径测试用）
+	delay time.Duration // 每次 Send 前延迟（停机在途测试用）
+}
+
+func (s *stubOutbound) Send(_ context.Context, rec DeliveryRecord) error {
+	s.mu.Lock()
+	s.got = append(s.got, rec)
+	s.mu.Unlock()
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
+	if s.paniq {
+		panic("stub 出站爆炸")
+	}
+	if s.hold != nil {
+		<-s.hold
+	}
+	return s.fail
+}
+
+func (s *stubOutbound) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.got)
+}
+
+// waitDeliverState 轮询送达投影直至谓词满足（异步出站完成可观察点；超时 2s）。
+func waitDeliverState(t *testing.T, d *DeliveryLog, pred func(DeliveryState) bool) DeliveryState {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st := d.State()
+		if pred(st) {
+			return st
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("送达投影未在时限内到达期望态: %+v", d.State())
+	return DeliveryState{}
+}
+
+// TestDeliverOutboundSent 出站成功路径：受理即异步出站，status 就地翻转 accepted→sent，
+// Attempts/CompletedAt 留痕，sent 计数进位；注入实现收到的投影=受理投影全字段（信封源头）。
+func TestDeliverOutboundSent(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	stub := &stubOutbound{}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub})
+	defer deliver.Close()
+	h.BindDeliveries(deliver)
+	h.WireExecutor(ExecNotification)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
+	})()
+
+	e := applyEvent(t, b, "Agent/global/probe", 1)
+	waitState(t, h, 1)
+	st := waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Sent == 1 })
+	if st.Failed != 0 || st.Accepted != 1 {
+		t.Fatalf("成功路径计数应 sent=1 failed=0 accepted=1: %+v", st)
+	}
+	rec := st.Deliveries[0]
+	if rec.Status != DeliverSent || rec.Attempts != 1 || rec.CompletedAt.IsZero() || rec.Error != "" {
+		t.Fatalf("成功投影应 {sent, attempts=1, completedAt≠零, error=空}: %+v", rec)
+	}
+	if stub.count() != 1 {
+		t.Fatalf("注入实现应恰被调用 1 次: %d", stub.count())
+	}
+	sent := stub.got[0]
+	if sent.Delivery != rec.Delivery || sent.Channel != "mail-chan" || sent.Origin != OriginRoute ||
+		sent.EventID != e.ID || sent.Type != e.Type || sent.DedupKey != e.DedupKey || sent.Level != e.Level {
+		t.Fatalf("注入实现收到的投影应与受理投影同源: %+v vs %+v", sent, rec)
+	}
+}
+
+// TestDeliverOutboundFailed 出站失败路径：注入实现返回错误 → status=failed，错误文本进
+// 投影（可查），failed 计数进位——诚实投影不吞失败。
+func TestDeliverOutboundFailed(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	stub := &stubOutbound{fail: errors.New("smtp 中继不可达")}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub})
+	defer deliver.Close()
+	h.BindDeliveries(deliver)
+	h.WireExecutor(ExecNotification)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
+	})()
+
+	applyEvent(t, b, "Agent/global/probe", 1)
+	waitState(t, h, 1)
+	st := waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Failed == 1 })
+	if st.Sent != 0 {
+		t.Fatalf("失败路径 sent 应为 0: %+v", st)
+	}
+	rec := st.Deliveries[0]
+	if rec.Status != DeliverFailed || rec.Attempts != 1 || rec.CompletedAt.IsZero() ||
+		rec.Error != "smtp 中继不可达" {
+		t.Fatalf("失败投影应 {failed, attempts=1, 错误文本留存}: %+v", rec)
+	}
+}
+
+// TestDeliverOutboundPanic 注入实现 panic 兜底：判 failed 不拖垮 sink（后续事件照常受理出站）。
+func TestDeliverOutboundPanic(t *testing.T) {
+	stub := &stubOutbound{paniq: true}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub})
+	defer deliver.Close()
+	deliver.Deliver(TriggerRecord{
+		Seq: 1, EventID: "ev1", Type: "Escalate", DedupKey: "k1", Level: "error", ReceivedAt: time.Now(),
+	}, ExecutorBinding{Executor: ExecNotification, Target: Wildcard}, OriginCC)
+	st := waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Failed == 1 })
+	if st.Deliveries[0].Status != DeliverFailed ||
+		!strings.Contains(st.Deliveries[0].Error, "panic") {
+		t.Fatalf("panic 应兜底为 failed 且错误携 panic 痕迹: %+v", st.Deliveries[0])
+	}
+}
+
+// TestDeliverOutboundQueueFull 队列满判 failed 不阻塞受理路径（非阻塞 sink 契约的
+// 机械验证）：阻塞注入实现占住出站协程 → 队列容量 1 → 第 3 条受理入队立即翻 failed
+// （attempts=0=未尝试），错误=出站队列满。
+func TestDeliverOutboundQueueFull(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	hold := make(chan struct{})
+	stub := &stubOutbound{hold: hold}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub, OutboundQueue: 1})
+	defer deliver.Close()
+	defer close(hold)
+	h.BindDeliveries(deliver)
+	h.WireExecutor(ExecNotification)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
+	})()
+
+	applyEvent(t, b, "Agent/global/probe", 1) // ① 出站协程取走并在 Send 内阻塞
+	waitDeliverState(t, deliver, func(s DeliveryState) bool { return stub.count() == 1 })
+	applyEvent(t, b, "Agent/global/probe", 2) // ② 入队（队列占满）
+	applyEvent(t, b, "Agent/global/probe", 3) // ③ 队列满 → 立即 failed
+	waitState(t, h, 3)
+	st := waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Failed == 1 })
+	if st.Accepted != 3 {
+		t.Fatalf("受理路径不应被出站阻塞（accepted=3）: %+v", st)
+	}
+	full := st.Deliveries[2]
+	if full.Status != DeliverFailed || full.Attempts != 0 || !strings.Contains(full.Error, "出站队列满") {
+		t.Fatalf("第 3 条应 {failed, attempts=0, 错误=出站队列满}: %+v", full)
+	}
+}
+
+// TestDeliverCloseStopSemantics 停机语义：在途出站等完成（Close 阻塞直至 sent 进位），
+// 未起跑任务留 accepted（观测面非账本，重启不重放）；Close 幂等，未注入出站=no-op 不挂死。
+func TestDeliverCloseStopSemantics(t *testing.T) {
+	stub := &stubOutbound{delay: 30 * time.Millisecond}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub, OutboundWorkers: 1})
+	for i := 1; i <= 3; i++ {
+		deliver.Deliver(TriggerRecord{
+			Seq: int64(i), EventID: fmt.Sprintf("ev%d", i), Type: "DocApplied",
+			DedupKey: fmt.Sprintf("k%d", i), Level: "info", ReceivedAt: time.Now(),
+		}, ExecutorBinding{Executor: ExecNotification, Target: "mail-chan"}, OriginRoute)
+	}
+	waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Sent >= 2 })
+	deliver.Close() // 在途第 3 条等完成（受超时约束）
+	st := deliver.State()
+	if st.Failed != 0 || st.Sent+st.Failed != 3 {
+		t.Fatalf("停机应等在途完成、零 failed（sent+failed=3）: %+v", st)
+	}
+	if st.Sent != int64(stub.count()) {
+		t.Fatalf("sent 计数应与注入实现实际调用一致: %+v vs %d", st, stub.count())
+	}
+	deliver.Close() // 幂等（不重入、不挂死）
+
+	noop := NewDeliveryLog(nil)
+	noop.Close() // 未注入出站=no-op
+}
+
+// TestDeliverOutboundEvicted 环挤出后出站完成仍进计数（诚实投影：环是观测窗非账本——
+// 已挤出投影无法就地翻转，但 sent 计数不丢）。
+func TestDeliverOutboundEvicted(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	stub := &stubOutbound{}
+	deliver := NewDeliveryLog(&DeliveryOptions{Outbound: stub, RingSize: 1})
+	defer deliver.Close()
+	h.BindDeliveries(deliver)
+	h.WireExecutor(ExecNotification)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
+	})()
+
+	for i := 1; i <= 3; i++ {
+		applyEvent(t, b, "Agent/global/probe", int64(i))
+	}
+	waitState(t, h, 3)
+	st := waitDeliverState(t, deliver, func(s DeliveryState) bool { return s.Sent == 3 })
+	if st.Accepted != 3 || len(st.Deliveries) != 1 || st.Dropped != 2 {
+		t.Fatalf("环口径 accepted=3 dropped=2 len=1: %+v", st)
+	}
+	if st.Deliveries[0].Status != DeliverSent || st.Deliveries[0].Delivery != 3 {
+		t.Fatalf("环内唯一投影应为最新的 #3 且已翻转 sent: %+v", st.Deliveries[0])
+	}
+	if int64(stub.count()) != 3 {
+		t.Fatalf("挤出投影的出站不应丢（实现实际调用=3）: %d", stub.count())
 	}
 }

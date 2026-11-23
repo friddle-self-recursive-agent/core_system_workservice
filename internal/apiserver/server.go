@@ -59,7 +59,8 @@ type RunFace interface {
 }
 
 // DeliveryFace 送达投影查询口面（workflow.DeliveryLog 满足；引擎主体第四段 v0.16——真实
-// 拉起第二子段：notification 送达面接线，delivery=notification 族绑定→送达域的受理投影）。
+// 拉起第二子段：notification 送达面接线，delivery=notification 族绑定→送达域的受理投影；
+// v0.17 收尾——出站注入后 status 翻转 sent/failed 与出站留痕随 State 一并出）。
 type DeliveryFace interface {
 	State() workflow.DeliveryState
 }
@@ -92,7 +93,7 @@ var (
 //	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
 //	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
-//	GET /v1/notifications/deliveries    送达投影面（v0.16 真实拉起第二子段：notification 送达面接线；恒开，§2.3）
+//	GET /v1/notifications/deliveries    送达投影面（v0.16 送达面接线；v0.17 出站状态机 sent/failed；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
@@ -384,10 +385,13 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"count": len(items), "started": st.Started, "dropped": st.Dropped, "runs": items,
 		})
 	})
-	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线）：
+	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线；
+	// v0.17 收尾：受理后的真实通道出站挂接——status 翻转 accepted→sent/failed + 出站留痕）：
 	// 执行面=notification 且装配层已接线的绑定（route 主路与 cc 旁路，origin 维度留痕）推进为
-	// 一条送达投影（送达已受理+通道投影；真实通道投递 deferred——送达投影出现 ≠ 已送达真实
-	// 通道）。旧构建（face 缺席）经兜底 handler 返回 405=代际判别器（与 runs 面同口径）。
+	// 一条送达投影（送达已受理+通道投影；出站注入后异步翻转终态，未注入恒 accepted）。
+	// 旧构建（face 缺席）经兜底 handler 返回 405=代际判别器（与 runs 面同口径）；
+	// 新代新增载荷键 sent/failed/attempts/completedAt（恒在）与 error（有错才在）——
+	// 键的出现/缺席=代际判别器（loop-16 口径）。
 	mux.HandleFunc("GET /v1/notifications/deliveries", func(w http.ResponseWriter, _ *http.Request) {
 		if deliveries == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "送达投影面未接线"})
@@ -396,15 +400,25 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		st := deliveries.State()
 		items := make([]map[string]any, 0, len(st.Deliveries))
 		for _, d := range st.Deliveries {
-			items = append(items, map[string]any{
+			completed := ""
+			if !d.CompletedAt.IsZero() {
+				completed = d.CompletedAt.UTC().Format(time.RFC3339Nano)
+			}
+			item := map[string]any{
 				"delivery": d.Delivery, "channel": d.Channel, "origin": d.Origin,
 				"status": d.Status, "triggerSeq": d.TriggerSeq, "eventId": d.EventID,
 				"type": d.Type, "dedupKey": d.DedupKey, "level": d.Level,
 				"route": d.Route, "owner": d.Owner, "at": d.At.UTC().Format(time.RFC3339Nano),
-			})
+				"attempts": d.Attempts, "completedAt": completed,
+			}
+			if d.Error != "" {
+				item["error"] = d.Error
+			}
+			items = append(items, item)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "deliveries": items,
+			"count": len(items), "accepted": st.Accepted, "sent": st.Sent, "failed": st.Failed,
+			"dropped": st.Dropped, "deliveries": items,
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。

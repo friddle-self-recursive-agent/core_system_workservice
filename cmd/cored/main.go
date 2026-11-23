@@ -23,6 +23,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
@@ -48,6 +49,11 @@ func run() error {
 		"显式开启写面（POST /v1/apply）；缺省 false=只读暴露。开启需同时配置 --docs")
 	opsDB := flag.String("ops-db", "",
 		"ops DB（SQLite）文件路径；为空=进程内存库（DB 非权威可重建，ops-log.md；持久化部署显式传路径）")
+	outboundExec := flag.String("outbound-exec", "",
+		"真实出站 exec 桥命令行（v0.17 进程内自动投递注入；空白分隔+引号段；空=关，送达止于受理投影。"+
+			"实现侧出站命令由部署侧装配注入——依赖方向不反转，cored 不 import 连接器仓）")
+	outboundTimeout := flag.Duration("outbound-timeout", 60*time.Second,
+		"单次出站超时（--outbound-exec 注入时生效）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -97,7 +103,7 @@ func run() error {
 	// 触发骨架（dispatch 接线：第二段 v0.12 订阅面动态化 → 第三段 v0.13 引擎主体第一段
 	// → 第四段 v0.14 引擎主体第二段：派发执行投影 → 第五段 v0.15 引擎主体第三段
 	// 真实拉起第一子段：workflow 触发面接线 → 第六段 v0.16 引擎主体第四段
-	// 真实拉起第二子段：notification 送达面接线）：
+	// 真实拉起第二子段：notification 送达面接线 → 第四段收尾 v0.17：受理后真实通道出站挂接）：
 	// 订阅集合由 scheme.dispatch 表推导（on: 类型集合/通配 *→全类型一条；含通配坍缩），
 	// 留痕携命中行投影 route/cc/for/owner（owner 字面量谓词随解析激活：involved scope 根
 	// systems/<s>→<s>，global/builtin 同名）+ 执行绑定投影 executor/target/wired，
@@ -112,19 +118,41 @@ func run() error {
 	// 相位态机不推进（deferred）。
 	// notification 送达面接线（v0.16）：送达投影落点挂接 + 执行面登记——执行面=notification
 	// 的绑定（route 主路与 cc 旁路，origin 维度留痕）推进为一条送达投影
-	// （GET /v1/notifications/deliveries 查询）。送达=受理+通道投影，真实通道投递 deferred
-	// （送达投影出现 ≠ 已送达真实通道）。agent 唤醒、相位态机→刹车→冷却→minLevel 仍
-	// declared-deferred（cored-bridge.md §2.3）。
+	// （GET /v1/notifications/deliveries 查询）。
+	// 真实通道出站注入（v0.17）：--outbound-exec 给定时受理后异步出站（exec 桥→实现侧出站
+	// 命令，信封协议 connectors.OutboundEnvelope），送达投影 status 翻转 accepted→sent/failed
+	// （sent/failed 计数可查；一次尝试，重试/降级/静默 declared-deferred）。
+	// agent 唤醒、相位态机→刹车→冷却→minLevel 仍 declared-deferred（cored-bridge.md §2.3）。
+	dlOpts := &workflow.DeliveryOptions{}
+	if *outboundExec != "" {
+		argv, err := outbound.ParseCommand(*outboundExec)
+		if err != nil {
+			return fmt.Errorf("--outbound-exec 解析失败: %w", err)
+		}
+		bridge, err := outbound.NewCommand(argv)
+		if err != nil {
+			return fmt.Errorf("--outbound-exec 构建失败: %w", err)
+		}
+		dlOpts.Outbound = execOutbound{cmd: bridge}
+		dlOpts.OutboundTimeout = *outboundTimeout
+		fmt.Fprintf(os.Stderr, "cored: 真实出站已注入（exec 桥 argv=%d 令牌 超时=%s；送达受理后异步出站 status=accepted→sent/failed）\n",
+			len(argv), *outboundTimeout)
+	}
 	runs := workflow.NewRunLog(nil)
-	deliveries := workflow.NewDeliveryLog(nil)
+	deliveries := workflow.NewDeliveryLog(dlOpts)
+	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
+	outboundState := "off（送达止于受理投影）"
+	if dlOpts.Outbound != nil {
+		outboundState = "on（exec 桥）"
+	}
 	triggers := workflow.NewTriggerHub(nil)
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification) // 机械判别器：resolve execution.wired false→true（两执行面）
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs notification送达面=已接线 送达投影=/v1/notifications/deliveries 派发执行余量=agent唤醒/相位态机/真实通道投递）\n",
-		len(sch.Spec.Dispatch), triggers.State().Types)
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs notification送达面=已接线 送达投影=/v1/notifications/deliveries 真实出站=%s 派发执行余量=agent唤醒/相位态机）\n",
+		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。
