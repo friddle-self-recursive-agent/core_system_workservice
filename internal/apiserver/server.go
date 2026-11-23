@@ -58,6 +58,12 @@ type RunFace interface {
 	State() workflow.RunState
 }
 
+// DeliveryFace 送达投影查询口面（workflow.DeliveryLog 满足；引擎主体第四段 v0.16——真实
+// 拉起第二子段：notification 送达面接线，delivery=notification 族绑定→送达域的受理投影）。
+type DeliveryFace interface {
+	State() workflow.DeliveryState
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面。
 var (
@@ -66,6 +72,7 @@ var (
 	_ DraftStaging = (*draft.Store)(nil)
 	_ TriggerFace  = (*workflow.TriggerHub)(nil)
 	_ RunFace      = (*workflow.RunLog)(nil)
+	_ DeliveryFace = (*workflow.DeliveryLog)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -82,7 +89,10 @@ var (
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
 //	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
 //	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
+//	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
+//	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
+//	GET /v1/notifications/deliveries    送达投影面（v0.16 真实拉起第二子段：notification 送达面接线；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
@@ -90,7 +100,8 @@ var (
 // 草稿 GET 属查询面恒开）。drafts 为 nil（缓存未接线）时 /v1/drafts* 返回 503。
 // triggers 为 nil（触发骨架未接线）时 /v1/triggers 与 /v1/triggers/resolve 返回 503。
 // runs 为 nil（run 投影面未接线）时 /v1/workflows/runs 返回 503。
-func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace) http.Handler {
+// deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
+func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -371,6 +382,29 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "started": st.Started, "dropped": st.Dropped, "runs": items,
+		})
+	})
+	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线）：
+	// 执行面=notification 且装配层已接线的绑定（route 主路与 cc 旁路，origin 维度留痕）推进为
+	// 一条送达投影（送达已受理+通道投影；真实通道投递 deferred——送达投影出现 ≠ 已送达真实
+	// 通道）。旧构建（face 缺席）经兜底 handler 返回 405=代际判别器（与 runs 面同口径）。
+	mux.HandleFunc("GET /v1/notifications/deliveries", func(w http.ResponseWriter, _ *http.Request) {
+		if deliveries == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "送达投影面未接线"})
+			return
+		}
+		st := deliveries.State()
+		items := make([]map[string]any, 0, len(st.Deliveries))
+		for _, d := range st.Deliveries {
+			items = append(items, map[string]any{
+				"delivery": d.Delivery, "channel": d.Channel, "origin": d.Origin,
+				"status": d.Status, "triggerSeq": d.TriggerSeq, "eventId": d.EventID,
+				"type": d.Type, "dedupKey": d.DedupKey, "level": d.Level,
+				"route": d.Route, "owner": d.Owner, "at": d.At.UTC().Format(time.RFC3339Nano),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "deliveries": items,
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
