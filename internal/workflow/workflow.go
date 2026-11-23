@@ -2,7 +2,9 @@
 // Workflow = 触发规则→事件整理→事件处理（相位态机）→文档回归；
 // 相位/迁移纯声明，预算/成本不在核心循环语义内（budget 是 metrics 关注的东西，暂不做）。
 // TaskScheme 管 Executing 相位内的步骤图。
-// builtin：core-workflow（系统级循环）、default-task（任务态机）、simple-shot、watch-only。
+// builtin 六项（scheme.yaml runtime.workflows.builtin 同源）：core-workflow（系统级循环）、
+// default-task（任务态机）、simple-shot、watch-only、dev-delivery（研发交付 §1.1）、
+// apply-workflow（workflow 落地 agent 任务态机 §1.2）——相位词汇映射表见 concepts/workflow.md §1。
 // trigger.go：触发骨架（dispatch 接线第一段 v0.11）——TriggerHub 单订阅者收到事件落可查状态
 // （apply→事件→订阅主干第一段），触发引擎主体（dispatch 路由→owner 解析→相位态机→派发→刹车）
 // declared-deferred（cored-bridge.md §2.3）。
@@ -20,6 +22,7 @@ const (
 	AwaitingApproval Phase = "AwaitingApproval"
 	Executing        Phase = "Executing"
 	Verifying        Phase = "Verifying"
+	Deploying        Phase = "Deploying" // dev-delivery 交付相位（v0.19 相位词汇只加不改：Deploy 步=deploy-system 按 envs 升序发布，workflow.md §1.1）
 	Reporting        Phase = "Reporting"
 	Failed           Phase = "Failed"
 )
@@ -68,13 +71,22 @@ type FullSpec struct {
 	Brakes   Brakes
 }
 
-// Builtin 默认态机（core_system/concepts/workflow.md §3）。
+// Builtin 默认态机（core_system/concepts/workflow.md §1 相位词汇映射表——六项 builtin
+// 的声明相位序列，声明面与投影面同源；相位语义只加不改，workflow.md §4）。
 func Builtin(name string) *Spec {
 	switch name {
 	case "simple-shot":
 		return &Spec{Name: name, Phases: []Phase{Idle, Executing, Reporting}}
 	case "watch-only":
 		return &Spec{Name: name, Phases: []Phase{Idle, Analyzing, Reporting}}
+	case "dev-delivery":
+		return &Spec{Name: name, Phases: []Phase{ // §1.1 步锚映射：Analyze→Gate→Plan→Execute→Verify→Deploy→Report
+			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting, Failed,
+		}}
+	case "apply-workflow":
+		return &Spec{Name: name, Phases: []Phase{ // §1.2 落地 agent 任务态机=default-task 词汇全量复用（不另立词汇）
+			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
+		}}
 	case "core-workflow":
 		return &Spec{Name: name, Phases: []Phase{ // 系统级循环（A41；A67 core-loop→core-workflow）
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
@@ -97,13 +109,15 @@ func (s *Spec) Can(from Phase, on string) (Phase, bool) {
 }
 
 // builtinSet 内置 workflow 注册表（判定用；与 Builtin 构造的已声明相位集合同源——
-// scheme.yaml runtime.workflows.builtin 六项中，dev-delivery、apply-workflow 的相位
-// 词汇映射未落设计（Deploy 等步无相位锚），不即兴发明，缺口在对账清单可见）。
+// scheme.yaml runtime.workflows.builtin 六项全量对齐（v0.19：dev-delivery/apply-workflow
+// 相位词汇映射已落设计，concepts/workflow.md §1 映射表——声明先行、注册表随后，不即兴发明）。
 var builtinSet = map[string]bool{
-	"core-workflow": true,
-	"default-task":  true,
-	"simple-shot":   true,
-	"watch-only":    true,
+	"core-workflow":  true,
+	"default-task":   true,
+	"simple-shot":    true,
+	"watch-only":     true,
+	"dev-delivery":   true,
+	"apply-workflow": true,
 }
 
 // IsBuiltin 名是否命中内置 workflow 注册表（run 锚解析的 SpecBuiltin/SpecObject 判据）。

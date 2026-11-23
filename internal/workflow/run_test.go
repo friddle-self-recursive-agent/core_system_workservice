@@ -26,9 +26,10 @@ func TestResolveRunAnchor(t *testing.T) {
 		{"owner-instance-workflow", "core-workflow", SpecBuiltin, 8},                  // 同族词汇同锚
 		{"workflows/watch-only", "watch-only", SpecBuiltin, 3},                        // 直接引用 builtin 命中
 		{"workflows/core-workflow", "core-workflow", SpecBuiltin, 8},                  // 直接引用对账循环本体
-		{"workflows/deploy-system-workflow", "deploy-system-workflow", SpecObject, 0}, // 未命中=平台对象引用
+		{"workflows/dev-delivery", "dev-delivery", SpecBuiltin, 9},                    // v0.19 注册表六项对齐：交付态机 9 相位（含 Deploying）
+		{"workflows/apply-workflow", "apply-workflow", SpecBuiltin, 8},                // 落地 agent 任务态机=default-task 词汇全量复用
+		{"workflows/deploy-system-workflow", "deploy-system-workflow", SpecObject, 0}, // 未命中=平台对象引用（注册表外不收编，锚保留）
 		{"workflows/builtin-root", "builtin-root", SpecObject, 0},                     // 同上（权威表词汇）
-		{"workflows/dev-delivery", "dev-delivery", SpecObject, 0},                     // scheme builtinSet 六项 vs 注册表四项差额=缺口可见（不冒充 builtin）
 		{"root-agent", "", "", 0},                                                     // 非 workflow 家族=空锚（不到达；防御性）
 		{"dead-letter", "", "", 0},                                                    // 死信无 run（none 绑定面，event.md rule 4）
 		{"notification/*", "", "", 0},                                                 // 通道送达面非本 sink 职责
@@ -48,17 +49,55 @@ func TestResolveRunAnchor(t *testing.T) {
 	}
 }
 
-// TestIsBuiltin 注册表判定：已声明相位的四项收编；未落相位声明的（dev-delivery、
-// apply-workflow，scheme builtinSet 六项差额）不冒充 builtin——缺口由 SpecObject 可见。
+// TestIsBuiltin 注册表判定：scheme builtinSet 六项全量对齐（v0.19——声明面相位词汇映射
+// 先行落设计，注册表随后收编，声明↔注册表同源）；注册表外不冒充 builtin。
 func TestIsBuiltin(t *testing.T) {
-	for _, name := range []string{"core-workflow", "default-task", "simple-shot", "watch-only"} {
+	for _, name := range []string{"core-workflow", "default-task", "simple-shot", "watch-only", "dev-delivery", "apply-workflow"} {
 		if !IsBuiltin(name) {
-			t.Errorf("IsBuiltin(%q) 应 true（注册表同源）", name)
+			t.Errorf("IsBuiltin(%q) 应 true（注册表与 scheme builtinSet 六项同源）", name)
 		}
 	}
-	for _, name := range []string{"deploy-system-workflow", "builtin-root", "dev-delivery", "apply-workflow", ""} {
+	for _, name := range []string{"deploy-system-workflow", "builtin-root", ""} {
 		if IsBuiltin(name) {
-			t.Errorf("IsBuiltin(%q) 应 false（相位声明未落设计，不即兴发明）", name)
+			t.Errorf("IsBuiltin(%q) 应 false（注册表外不收编）", name)
+		}
+	}
+}
+
+// TestBuiltinSequences 六项声明相位序列机械锚（concepts/workflow.md §1 映射表的代码同源面）：
+// 序列、首尾相位、dev-delivery 的 Deploying 锚位、apply-workflow 与 default-task 同族全等。
+func TestBuiltinSequences(t *testing.T) {
+	want := map[string][]Phase{
+		"core-workflow":  {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
+		"default-task":   {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
+		"simple-shot":    {Idle, Executing, Reporting},
+		"watch-only":     {Idle, Analyzing, Reporting},
+		"dev-delivery":   {Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting, Failed},
+		"apply-workflow": {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
+	}
+	for name, seq := range want {
+		got := Builtin(name)
+		if got.Name != name || len(got.Phases) != len(seq) {
+			t.Fatalf("Builtin(%q) 序列长度不符: %+v", name, got)
+		}
+		for i, p := range seq {
+			if got.Phases[i] != p {
+				t.Errorf("Builtin(%q).Phases[%d]=%s want %s", name, i, got.Phases[i], p)
+			}
+		}
+	}
+	// 声明面锚点：dev-delivery 的 Deploying=交付相位（§1.1 Deploy 步），序列尾恒 Failed。
+	if Builtin("dev-delivery").Phases[6] != Deploying {
+		t.Fatalf("dev-delivery 相位锚位 6 应为 Deploying: %v", Builtin("dev-delivery").Phases)
+	}
+	// apply-workflow 任务态机=default-task 词汇全量复用（不另立词汇——解耦口径）。
+	a, d := Builtin("apply-workflow").Phases, Builtin("default-task").Phases
+	if len(a) != len(d) {
+		t.Fatalf("apply-workflow 与 default-task 序列应同族全等: %v vs %v", a, d)
+	}
+	for i := range a {
+		if a[i] != d[i] {
+			t.Errorf("apply-workflow[%d]=%s ≠ default-task[%d]=%s", i, a[i], i, d[i])
 		}
 	}
 }

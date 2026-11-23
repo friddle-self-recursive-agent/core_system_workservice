@@ -46,7 +46,7 @@ type RunRecord struct {
 	Workflow   string    // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
 	SpecSource string    // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
 	Phases     []string  // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Phase      string    // 当前相位投影（run 起点=声明首相位；相位态机 deferred 不推进）
+	Phase      string    // 当前相位投影（run 起点=声明首相位；相位推进器余量——声明面已完备 v0.19，推进由引擎段承接）
 	Status     string    // run 状态（v0.15 恒 RunTriggered）
 	TriggerSeq int64     // 来源触发留痕 seq（可回指 GET /v1/triggers records）
 	EventID    string    // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
@@ -115,7 +115,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	}
 	phase := ""
 	if len(phases) > 0 {
-		phase = string(phases[0]) // 声明起点=首相位（相位态机 deferred，起点后不推进）
+		phase = string(phases[0]) // 声明起点=首相位（相位推进器余量，起点后不推进——诚实投影口径不变）
 	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases,
