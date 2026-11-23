@@ -425,7 +425,7 @@ spec:
       storage: global/roles/<name>.yaml
       spec:
         on: "?[]ref"
-        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|*]!}"
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|publish|*]!}"
 `
 
 // TestApplySpecAdmission spec 结构准入：坏对象写入口拦截（⑬E 收口——授权面兜底升为闸门拦截）。

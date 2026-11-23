@@ -180,7 +180,7 @@ spec:
       storage: global/roles/<name>.yaml
       spec:
         on: "?[]ref"                                 
-        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|*]!}"   # 条目子字段必填=decl 后缀 !（先例 ref!）；条目结构完整=授权面与写面闸门共同语义（permission.LoadObjects 同判）
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|publish|*]!}"   # 条目子字段必填=decl 后缀 !（先例 ref!）；条目结构完整=授权面与写面闸门共同语义（permission.LoadObjects 同判）
       status: {holders: "[]User"}                    # user-system 投影
       builtinSet: [global/admin]                     # 全权限不可删
 

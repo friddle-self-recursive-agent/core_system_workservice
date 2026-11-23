@@ -534,7 +534,7 @@ spec:
       storage: global/roles/<name>.yaml
       spec:
         on: "?[]ref"
-        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|*]!}"
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|publish|*]!}"
 `
 
 const roleGateBad = `apiVersion: core/v1

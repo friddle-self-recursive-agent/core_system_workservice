@@ -129,6 +129,7 @@ func TestValidateSpecRolePermissionEntries(t *testing.T) {
 		{"缺 scope（⑬E 形状）", "  - {actions: [read]}\n", "permissions[0].scope: 必填段缺失"},
 		{"缺 actions（⑬E 形状）", "  - {scope: global}\n", "permissions[0].actions: 必填段缺失"},
 		{"actions 枚举外", "  - {scope: global, actions: [fly]}\n", "不在枚举"},
+		{"actions publish（事件发布域——event.md 规则 8 v0.20 枚举扩展）", "  - {scope: events, actions: [publish]}\n", ""},
 	}
 	for _, c := range cases {
 		err := validateKindDoc(t, s, "Role", base+c.entry)
