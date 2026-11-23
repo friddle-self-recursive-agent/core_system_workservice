@@ -409,3 +409,138 @@ spec:
 		t.Fatalf("fallback 主体应放行: %+v err=%v", res, err)
 	}
 }
+
+// ───────────────────────── spec 结构准入（v0.14，loop-10 起点①）─────────────────────────
+
+// roleAdmissionScheme 声明 Role（真实声明形态：子字段必填=decl 后缀 !，先例 ref!）。
+const roleAdmissionScheme = `apiVersion: core/v1
+kind: Scheme
+metadata: {name: role-admission, scope: builtin}
+spec:
+  version: core/v1
+  kinds:
+    - {kind: Scheme, builtin: true, storage: core/scheme.yaml}
+    - kind: Role
+      builtin: true
+      storage: global/roles/<name>.yaml
+      spec:
+        on: "?[]ref"
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|*]!}"
+`
+
+// TestApplySpecAdmission spec 结构准入：坏对象写入口拦截（⑬E 收口——授权面兜底升为闸门拦截）。
+// 缺必填段/枚举外值 → ErrSpecInvalid + denied 审计行 + 零提交零事件；dry-run 同闸门；
+// 准入先于幂等——直写入库的坏内容同内容重入仍拒绝（不 noop）；好对象放行并照常落库发事件。
+func TestApplySpecAdmission(t *testing.T) {
+	dir := t.TempDir()
+	ops, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ops.Close() })
+	sch, err := scheme.Load([]byte(roleAdmissionScheme))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := repository.NewGit(dir, sch, &repository.Options{Ops: ops, WatchInterval: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	bus := eventbus.NewBus(&eventbus.Options{Ops: ops, DedupWindow: 50 * time.Millisecond})
+	received, unsub := bus.Subscribe("DocApplied")
+	t.Cleanup(unsub)
+	engine := &Engine{
+		Sch: sch, Repo: repo, Bus: bus, Ops: ops,
+		Perm:    &permission.System{},
+		Subject: permission.Subject{User: "agent:test", Roles: []string{permission.DefaultAdmin}},
+	}
+	ctx := context.Background()
+	commits := func(t *testing.T) int {
+		t.Helper()
+		cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+		cmd.Dir = repo.Root()
+		out, err := cmd.Output()
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 128 {
+				return 0
+			}
+			t.Fatalf("rev-list: %v", err)
+		}
+		var n int
+		if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n); err != nil {
+			t.Fatalf("提交数解析 %q: %v", out, err)
+		}
+		return n
+	}
+	roleDoc := func(name, body string) *repository.Object {
+		return &repository.Object{Kind: "Role", Name: name, Scope: "global", Content: []byte(body)}
+	}
+	const badNoScope = "apiVersion: core/v1\nkind: Role\nmetadata: {name: %s, scope: global}\nspec:\n  permissions:\n  - {actions: [read]}\n"
+	const badEnum = "apiVersion: core/v1\nkind: Role\nmetadata: {name: gate-enum, scope: global}\nspec:\n  permissions:\n  - {scope: global, actions: [fly]}\n"
+	const goodRole = "apiVersion: core/v1\nkind: Role\nmetadata: {name: gate-ok, scope: global}\nspec:\n  permissions:\n  - {scope: global, actions: [read, write]}\n"
+
+	// ① 坏对象（权限条目缺 scope=⑬E 形状）→ ErrSpecInvalid；denied 行；零提交；零事件。
+	_, err = engine.Apply(ctx, roleDoc("gate-bad", fmt.Sprintf(badNoScope, "gate-bad")), Options{FieldManager: "agent:t"})
+	if !errors.Is(err, ErrSpecInvalid) {
+		t.Fatalf("缺 scope 条目应 ErrSpecInvalid, 得 %v", err)
+	}
+	if !strings.Contains(err.Error(), "permissions[0].scope") {
+		t.Fatalf("拒绝文本应含违规路径: %v", err)
+	}
+	if n, _ := ops.CountApply("denied"); n != 1 {
+		t.Fatalf("denied 审计行 = %d, 要 1", n)
+	}
+	if n := commits(t); n != 0 {
+		t.Fatalf("拒绝零提交, 得 %d", n)
+	}
+	select {
+	case e := <-received:
+		t.Fatalf("拒绝不得发事件: %+v", e)
+	default:
+	}
+
+	// ② 枚举外值 → ErrSpecInvalid；dry-run 同闸门（准入结论一致）且零提交。
+	_, err = engine.Apply(ctx, roleDoc("gate-enum", badEnum), Options{FieldManager: "agent:t", DryRun: true})
+	if !errors.Is(err, ErrSpecInvalid) {
+		t.Fatalf("dry-run 枚举外应同闸门, 得 %v", err)
+	}
+	if n := commits(t); n != 0 {
+		t.Fatalf("dry-run 零提交, 得 %d", n)
+	}
+
+	// ③ 好对象放行：create rv=1 + 事件回执 + ok 行 + 恰 1 提交。
+	res, err := engine.Apply(ctx, roleDoc("gate-ok", goodRole), Options{FieldManager: "agent:t"})
+	if err != nil || res.Action != "create" || res.RV != 1 || res.Event == nil {
+		t.Fatalf("好对象应放行: %+v err=%v", res, err)
+	}
+	select {
+	case e := <-received:
+		if e.ID != res.Event.ID {
+			t.Fatalf("事件回执与订阅收到的应同源: %s vs %s", res.Event.ID, e.ID)
+		}
+	default:
+		t.Fatal("好对象落库应发 DocApplied")
+	}
+	if n, _ := ops.CountApply("ok"); n != 1 {
+		t.Fatalf("ok 行 = %d, 要 1", n)
+	}
+	if n := commits(t); n != 1 {
+		t.Fatalf("提交数 = %d, 要 1（git 提交≙ok 行）", n)
+	}
+
+	// ④ 准入先于幂等：直写坏内容入库（绕过引擎=存储机制面），同内容引擎重入仍拒绝（不 noop）、对象不损。
+	legacy := fmt.Sprintf(badNoScope, "legacy-bad")
+	if _, _, err := repo.Write(ctx, roleDoc("legacy-bad", legacy), "fm:direct", ""); err != nil {
+		t.Fatalf("直写入库（存储层无准入闸门）: %v", err)
+	}
+	_, err = engine.Apply(ctx, &repository.Object{Kind: "Role", Name: "legacy-bad", Scope: "global",
+		ResourceVersion: 1, Content: []byte(legacy)}, Options{FieldManager: "agent:t"})
+	if !errors.Is(err, ErrSpecInvalid) {
+		t.Fatalf("准入先于幂等：库内坏内容同内容重入仍应拒（不 noop）, 得 %v", err)
+	}
+	got, err := repo.Get(ctx, "Role", "global", "legacy-bad")
+	if err != nil || got.ResourceVersion != 1 {
+		t.Fatalf("拒绝对象不损: rv=%v err=%v", got, err)
+	}
+}

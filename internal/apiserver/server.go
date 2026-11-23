@@ -413,6 +413,7 @@ func writeApplyErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, apply.ErrDenied):
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
 	case errors.Is(err, apply.ErrNoFieldManager), errors.Is(err, apply.ErrObject),
+		errors.Is(err, apply.ErrSpecInvalid),
 		errors.Is(err, repository.ErrScope), errors.Is(err, repository.ErrIdentity),
 		errors.Is(err, repository.ErrContent), errors.Is(err, repository.ErrAlreadyExists),
 		errors.Is(err, repository.ErrNoFieldManager):

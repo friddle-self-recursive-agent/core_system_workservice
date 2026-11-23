@@ -3,7 +3,7 @@
 // 与 runtime/cored-bridge.md（plugin↔cored 桥：CORED_READY 就绪行 + /v1 查询面）。
 // 部署锚点一律经参数/环境注入（--scheme/--docs/--ops-db / CORE_SYSTEM_*），不内置真实路径。
 // 写面缺省关闭（缺省只读暴露）；--allow-apply 显式开启后 POST /v1/apply 是唯一写端点，
-// 内部收敛 apply.Engine 三步闸门（scheme 准入→权限准入→乐观锁落库→DocApplied 事件）。
+// 内部收敛 apply.Engine 三步闸门（scheme 准入=kind 注册+spec 结构校验→权限准入→乐观锁落库→DocApplied 事件）。
 package main
 
 import (

@@ -517,3 +517,107 @@ func TestApplyRequestSubject(t *testing.T) {
 		t.Fatalf("落稿 = %d, 要 200（草稿面不接权限闸门）", code)
 	}
 }
+
+// ───────────────────────── spec 结构准入端点面（v0.14，loop-10 起点①）─────────────────────────
+
+// roleGateScheme 声明 Role（真实声明形态：子字段必填=decl 后缀 !，先例 ref!）。
+const roleGateScheme = `apiVersion: core/v1
+kind: Scheme
+metadata: {name: role-gate, scope: builtin}
+spec:
+  version: core/v1
+  kinds:
+    - {kind: Scheme, builtin: true, storage: core/scheme.yaml}
+    - {kind: Agent, builtin: true, storage: global/agents/<name>.yaml}
+    - kind: Role
+      builtin: true
+      storage: global/roles/<name>.yaml
+      spec:
+        on: "?[]ref"
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|*]!}"
+`
+
+const roleGateBad = `apiVersion: core/v1
+kind: Role
+metadata: {name: gate-bad, scope: global}
+spec:
+  permissions:
+  - {actions: [read]}
+`
+
+const roleGateGood = `apiVersion: core/v1
+kind: Role
+metadata: {name: gate-ok, scope: global}
+spec:
+  permissions:
+  - {scope: global, actions: [read, write]}
+`
+
+// TestApplySpecAdmissionEndpoint 坏对象 HTTP 面：spec 结构未过 → 400（写入口拦截，⑬E 收口），
+// 坏对象不落面（对象读面 404）；好对象 200 create；草稿路径稿保留（拒绝不清稿，§2.2）。
+func TestApplySpecAdmissionEndpoint(t *testing.T) {
+	sch, err := scheme.Load([]byte(roleGateScheme))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ops.Close()
+	repo, err := repository.NewGit(t.TempDir(), sch, &repository.Options{Ops: ops})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+	store := draft.NewStore(nil) // 稿缓存同实例接引擎与端点（fromDraft 走引擎草稿面）
+	engine := &apply.Engine{
+		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops, Drafts: store,
+		Perm:    fixturePerm(t),
+		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
+	}
+	ts := httptest.NewServer(New(sch, repo, engine, store, nil))
+	defer ts.Close()
+
+	// 坏 Role（权限条目缺 scope=⑬E 形状）→ 400 + 错误文本含 spec 违规路径。
+	code, body := postAuth(t, ts, "/v1/apply", map[string]any{
+		"kind": "Role", "scope": "global", "name": "gate-bad",
+		"content": roleGateBad, "fieldManager": "agent:t",
+	})
+	if code != http.StatusBadRequest || !strings.Contains(body["error"].(string), "permissions[0].scope") {
+		t.Fatalf("坏 Role = %d %v, 要 400+spec 违规路径", code, body)
+	}
+	// 坏对象不落面：对象读面 404。
+	code, _ = get(t, ts, "/v1/objects/Role/gate-bad?scope=global")
+	if code != http.StatusNotFound {
+		t.Fatalf("坏对象应不落面（404）, 得 %d", code)
+	}
+	// 好 Role → 200 create rv=1。
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
+		"kind": "Role", "scope": "global", "name": "gate-ok",
+		"content": roleGateGood, "fieldManager": "agent:t",
+	})
+	if code != http.StatusOK || body["action"] != "create" || body["rv"] != float64(1) {
+		t.Fatalf("好 Role = %d %v, 要 200 create rv=1", code, body)
+	}
+
+	// 草稿路径：落稿（编辑面不做 scheme 校验）→ fromDraft apply 被闸门拒 → 400 且稿保留（§2.2）。
+	code, body = postAuth(t, ts, "/v1/drafts", map[string]any{
+		"kind": "Role", "scope": "global", "name": "gate-draft",
+		"content": roleGateBad, "fieldManager": "agent:t", "baseResourceVersion": 0,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("落稿 = %d %v, 要 200（编辑面不校验）", code, body)
+	}
+	code, body = postAuth(t, ts, "/v1/apply", map[string]any{
+		"kind": "Role", "scope": "global", "name": "gate-draft",
+		"fromDraft": true, "fieldManager": "agent:t",
+	})
+	if code != http.StatusBadRequest || !strings.Contains(body["error"].(string), "spec") {
+		t.Fatalf("fromDraft 坏稿 = %d %v, 要 400+spec", code, body)
+	}
+	code, body = get(t, ts, "/v1/drafts/Role/gate-draft?scope=global")
+	if code != http.StatusOK {
+		t.Fatalf("拒绝路径稿保留, 得 %d %v", code, body)
+	}
+}

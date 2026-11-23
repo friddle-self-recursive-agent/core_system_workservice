@@ -1,5 +1,5 @@
 // Package apply 文档面唯一写路径（core_system/concepts/apply.md）：
-// scheme 准入（野对象拒绝）→ 权限系统准入 → repository.Write（乐观锁/幂等，事务边界在存储串行队列）
+// scheme 准入（kind 注册 + spec 结构校验）→ 权限系统准入 → repository.Write（乐观锁/幂等，事务边界在存储串行队列）
 // → DocApplied 事件必发（noop/无差异不发，防自我唤醒）。
 // 设计依据：concepts/apply.md §1/§3/§6、concepts/revision.md、instance 仓 runtime/ops-log.md。
 package apply
@@ -28,6 +28,9 @@ var (
 	ErrDenied = errors.New("apply: 权限准入拒绝")
 	// ErrObject 对象键不全（kind/scope/name 缺项）。
 	ErrObject = errors.New("apply: 对象键不全（需 kind、scope、name）")
+	// ErrSpecInvalid spec 结构准入拒绝：对象文档 spec 区未过该 kind 注册声明
+	// （scheme.yaml 机读子集；R-TYPE 有规则即有 checker，checker 在 scheme 包）。
+	ErrSpecInvalid = errors.New("apply: spec 结构未过准入（kind 注册声明校验拒绝）")
 )
 
 // Options Apply 选项（concepts/apply.md §3）。
@@ -164,7 +167,8 @@ func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
 	if e.Sch == nil {
 		return fmt.Errorf("%w: scheme 注册表未配置", ErrNotRegistered)
 	}
-	if _, err := e.Sch.Lookup(o.Kind); err != nil {
+	k, err := e.Sch.Lookup(o.Kind)
+	if err != nil {
 		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrNotRegistered, err)
 	}
@@ -181,6 +185,15 @@ func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
 	if err := permission.HardRules(objKey, "write"); err != nil {
 		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrDenied, err)
+	}
+
+	// ③ spec 结构准入（v0.14）：对象文档 spec 区须过该 kind 注册声明（scheme.yaml 机读子集；
+	// R-TYPE：声明即规则，checker 在 scheme 包 ValidateDoc）。dry-run 与真执行同闸门（准入结论一致）；
+	// 准入先于幂等比对——坏内容即使与库内现存一致也拒绝（现存对象由声明校验器验证全合规）。
+	// 解析失败不在此判（存储层 ErrContent 管辖）。⑬E 收口：坏对象从授权面兜底升为写入口拦截。
+	if err := scheme.ValidateDoc(k, o.Content); err != nil {
+		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
+		return fmt.Errorf("%w: %v", ErrSpecInvalid, err)
 	}
 	return nil
 }
