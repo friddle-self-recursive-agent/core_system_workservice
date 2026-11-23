@@ -3,6 +3,7 @@ package opslog
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -243,5 +244,55 @@ func TestDraftPersistenceAcrossReopen(t *testing.T) {
 	}
 	if diff, err := s2.Reconcile(); err != nil || diff != 0 {
 		t.Fatalf("draft 表不应影响对账: diff=%d err=%v", diff, err)
+	}
+}
+
+// TestQueryEventsOrderLimitClamp 事件归档读查询验收（v0.36 console 读面首段底层）：
+// 最新优先排序、空 Limit=缺省 50、超上限收敛 500（读面防拖库）。
+func TestQueryEventsOrderLimitClamp(t *testing.T) {
+	s, err := OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	base := time.Now().UTC().Add(-time.Hour)
+	// 缺省 Limit（0）下落 3 行 + type 过滤命中 1：全量小库排序断言即可。
+	for i, typ := range []string{"Escalate", "DocApplied", "DocApplied"} {
+		if err := s.AppendEvent(EventLog{
+			Ts: base.Add(time.Duration(i) * time.Minute), EventID: fmt.Sprintf("evt-%d", i),
+			Type: typ, Severity: "info",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := s.QueryEvents(EventQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0].EventID != "evt-2" || rows[2].EventID != "evt-0" {
+		t.Fatalf("要最新优先（evt-2,evt-1,evt-0），得 %+v", rows)
+	}
+	rows, err = s.QueryEvents(EventQuery{Type: "Escalate"})
+	if err != nil || len(rows) != 1 || rows[0].EventID != "evt-0" {
+		t.Fatalf("type 过滤要 1 行 evt-0，得 %+v err=%v", rows, err)
+	}
+	// 超上限收敛：落 MaxEventLimit+3 行，Limit>上限 → 只出 500。
+	for i := 0; i < MaxEventLimit+3; i++ {
+		if err := s.AppendEvent(EventLog{
+			Ts: base.Add(time.Duration(i) * time.Second), EventID: fmt.Sprintf("bulk-%d", i),
+			Type: "DocApplied",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err = s.QueryEvents(EventQuery{Limit: MaxEventLimit + 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != MaxEventLimit {
+		t.Fatalf("超上限应收敛 %d，得 %d", MaxEventLimit, len(rows))
+	}
+	if rows[0].EventID[:4] != "bulk" {
+		t.Fatalf("收敛后最新行=%s, 要 bulk 族（最新优先）", rows[0].EventID)
 	}
 }

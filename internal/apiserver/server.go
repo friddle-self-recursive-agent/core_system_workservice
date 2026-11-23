@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
@@ -82,6 +84,13 @@ type PublisherFace interface {
 	Publish(req eventpub.Request, sub *permission.Subject) (*eventbus.Event, error)
 }
 
+// EventLogFace 事件归档查询口面（opslog.SQLiteStore 满足；v0.36 console 读面首段——
+// event_log 归档行的 HTTP 查询投影 `GET /v1/events`：Welcome 最近重要事件（console-ui.md
+// 屏幕 0 数据来源=event_log）与事件流页（E6）的持久源。只读投影：归档行不删不改）。
+type EventLogFace interface {
+	QueryEvents(q opslog.EventQuery) ([]opslog.EventLog, error)
+}
+
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
 // store/queries 投影读面：指标清单与窗口聚合投影。可选能力：未注入=数据面未装配，
 // /v1/metrics 返回空投影——关断口径缺省可见，与 405 代际判别器分立）。
@@ -105,8 +114,9 @@ type SecretFace interface {
 type Option func(*options)
 
 type options struct {
-	metrics MetricsFace
-	secrets SecretFace
+	metrics  MetricsFace
+	secrets  SecretFace
+	eventLog EventLogFace
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -117,6 +127,11 @@ func WithMetrics(m MetricsFace) Option {
 // WithSecrets 注入部署侧秘密存储口面（v0.34 secret 存储落地首段；--secrets-db 装配）。
 func WithSecrets(s SecretFace) Option {
 	return func(o *options) { o.secrets = s }
+}
+
+// WithEventLog 注入事件归档查询口面（v0.36 console 读面首段 `GET /v1/events`）。
+func WithEventLog(f EventLogFace) Option {
+	return func(o *options) { o.eventLog = f }
 }
 
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
@@ -132,6 +147,7 @@ var (
 	_ PublisherFace = (*eventpub.Publisher)(nil)
 	_ MetricsFace   = (*metricsinfo.Store)(nil)
 	_ SecretFace    = (*secretstore.Store)(nil)
+	_ EventLogFace  = (*opslog.SQLiteStore)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -142,6 +158,8 @@ var (
 //	GET /v1/scheme/kinds/{kind}         单个对象类型详情（get）
 //	GET /v1/objects/{kind}?scope=s      文档对象清单（list；scope 缺省=跨 scope 枚举）
 //	GET /v1/objects/{kind}/{name}?scope=s 单个文档对象（get；对象键=(kind,scope,name)）
+//	GET /v1/events                       事件归档查询面（v0.36 console 读面首段：event_log
+//	                                     最新优先投影；limit/type/level/involved/since）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
 //	GET /v1/drafts/{kind}/{name}?scope=s 单条草稿（含正文；无稿 → 404）
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
@@ -167,6 +185,8 @@ var (
 // deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
 // wakes 为 nil（唤醒投影面未接线）时 /v1/agents/wakes 返回 503。
 // publisher 为 nil（写面关断）时 POST /v1/events 返回 405（与 apply 写面同门控同口径）。
+// eventLog 为 nil（事件归档查询口面未接线）时 GET /v1/events 返回 503（面注册但能力缺席；
+// 装配层随 ops DB 恒注入，此为防御面——旧代判别器仍是 405 兜底）。
 // metrics 未注入（数据面未装配）时 /v1/metrics 返回空投影（关断口径缺省可见——与 405
 // 代际判别器分立：本面恒注册，装配与否只见投影丰瘠）。
 func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace, opts ...Option) http.Handler {
@@ -176,6 +196,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	}
 	metrics := o.metrics
 	secrets := o.secrets
+	eventLog := o.eventLog
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -678,6 +699,46 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"metric": qm, "window": qw, "agg": qa, "value": v})
 	})
+	// 事件归档查询面（v0.36 console 读面首段，cored-bridge.md §2 `GET /v1/events`）：
+	// event_log 归档行的最新优先查询投影（limit/type/level/involved/since 五参最小集；
+	// limit≤0=缺省 50，>500 收敛 500——读面防拖库，全量走重建/导出面）。只读投影恒开
+	// （face 随 ops DB 装配恒在）；旧构建（face 缺席路由未注册）经兜底 handler 返回
+	// 405=代际判别器。数据来源=归档（event.md：审计素材）， Welcome 最近重要事件与
+	// 事件流页（E6）共用本面——渲染数据无双源红线（console-adoption.md §5 规则 2）。
+	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
+		if eventLog == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "事件归档查询面未接线（装配缺 ops DB 口面）"})
+			return
+		}
+		q := opslog.EventQuery{
+			Type:     r.URL.Query().Get("type"),
+			Level:    r.URL.Query().Get("level"),
+			Involved: r.URL.Query().Get("involved"),
+			Limit:    atoiDefault(r.URL.Query().Get("limit"), 0),
+		}
+		if raw := r.URL.Query().Get("since"); raw != "" {
+			t, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("since 不可解析（需 RFC3339）: %v", err)})
+				return
+			}
+			q.Since = t
+		}
+		rows, err := eventLog.QueryEvents(q)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, e := range rows {
+			items = append(items, map[string]any{
+				"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
+				"type": e.Type, "source": e.Source, "involved": e.Involved,
+				"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "events": items})
+	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
@@ -840,6 +901,19 @@ func writeDraftErr(w http.ResponseWriter, err error) {
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
+}
+
+// atoiDefault 极小整数查询参解析（空/非法=def；console 读面 limit 用——防拖库收敛在
+// opslog.QueryEvents 内，本处不复制上限常量）。
+func atoiDefault(raw string, def int) int {
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func writeJSON(w http.ResponseWriter, code int, payload any) {

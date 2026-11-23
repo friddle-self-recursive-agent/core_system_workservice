@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -285,6 +286,75 @@ func (s *SQLiteStore) EventCountsSince(since time.Time) (map[string]int, error) 
 		out[typ]++
 	}
 	return out, rows.Err()
+}
+
+// EventQuery event_log 读查询（v0.36 console 读面首段——event_log 归档行的查询投影，
+// cored-bridge.md §2 `GET /v1/events` 的底层读取）。过滤字段全部精确匹配、空=不过滤；
+// 时间过滤在 Go 侧逐行解析（同 EventCountsSince：RFC3339Nano 去尾零致字面序≠时序）。
+type EventQuery struct {
+	Type     string // 精确匹配（空=不过滤）
+	Level    string // 精确匹配（空=不过滤）
+	Involved string // 精确匹配（空=不过滤）
+	Since    time.Time // 时间下界含端点（零值=不限）
+	Limit    int       // ≤0=缺省 50；>MaxEventLimit 收敛（读面防拖库——归档全量走重建/导出面）
+}
+
+// MaxEventLimit 读面单次返回行数上限（防拖库；归档全量不属于查询面职责）。
+const MaxEventLimit = 500
+
+// DefaultEventLimit Limit 非正值时的缺省行数。
+const DefaultEventLimit = 50
+
+// QueryEvents event_log 归档行查询（最新优先：ts 降序，同刻按 rowid 降序——机械对账可复现）。
+// 不属于冻结 Store 接口，扩展走新方法（ops-log.md §2：具体实现方法不占冻结签名）。
+func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
+	const q0 = `SELECT ts, event_id, type, source, involved, dedup_key, severity, routed_to FROM event_log`
+	rows, err := s.db.Query(q0)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 event_log: %w", err)
+	}
+	defer rows.Close()
+	limit := q.Limit
+	if limit <= 0 {
+		limit = DefaultEventLimit
+	}
+	if limit > MaxEventLimit {
+		limit = MaxEventLimit
+	}
+	var all []EventLog
+	for rows.Next() {
+		var l EventLog
+		var ts string
+		if err := rows.Scan(&ts, &l.EventID, &l.Type, &l.Source, &l.Involved, &l.DedupKey, &l.Severity, &l.RoutedTo); err != nil {
+			return nil, fmt.Errorf("opslog: 读 event_log 行: %w", err)
+		}
+		if l.Ts, err = time.Parse(time.RFC3339Nano, ts); err != nil {
+			return nil, fmt.Errorf("opslog: event_log.ts 解析 %q: %w", ts, err)
+		}
+		if q.Type != "" && l.Type != q.Type {
+			continue
+		}
+		if q.Level != "" && l.Severity != q.Level {
+			continue
+		}
+		if q.Involved != "" && l.Involved != q.Involved {
+			continue
+		}
+		if !q.Since.IsZero() && l.Ts.Before(q.Since) {
+			continue
+		}
+		all = append(all, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("opslog: 遍历 event_log: %w", err)
+	}
+	// 最新优先（时间降序；同刻按归档序 rowid 降序——all 保持扫描序即 rowid 升序，
+	// 稳定排序后末尾先出）。
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Ts.After(all[j].Ts) })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
 }
 
 // UpsertDraft 写穿一条草稿（draft 表；同键覆盖=最新代改稿，CreatedAt 由调用方定格）。

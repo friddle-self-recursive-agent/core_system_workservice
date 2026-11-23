@@ -509,7 +509,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets)...), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store)...), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -635,13 +635,18 @@ func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
 }
 
 // apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
-func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store) []apiserver.Option {
+func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore) []apiserver.Option {
 	var opts []apiserver.Option
 	if metricsFace != nil {
 		opts = append(opts, apiserver.WithMetrics(metricsFace))
 	}
 	if secrets != nil {
 		opts = append(opts, apiserver.WithSecrets(secrets))
+	}
+	// 事件归档查询面（v0.36 console 读面首段 GET /v1/events）：ops DB 恒装配（含内存库
+	// ——DB 非权威可重建，归档读面照常成立），恒注入不缺位。
+	if store != nil {
+		opts = append(opts, apiserver.WithEventLog(store))
 	}
 	return opts
 }
