@@ -175,6 +175,80 @@ func TestEventsArchiveBadSinceIs400(t *testing.T) {
 	}
 }
 
+// TestEventsArchiveUntilCursorPaging E7 向后分页游标（console-adoption.md §1.14 L43-06 Go 面）：
+// until=严格早于（半开窗 [since, until)）——上一页最旧行 ts 作下一页 until，相邻页零重叠。
+func TestEventsArchiveUntilCursorPaging(t *testing.T) {
+	store, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	base := time.Now().UTC().Add(-time.Hour)
+	for i := 0; i < 6; i++ {
+		if err := store.AppendEvent(opslog.EventLog{
+			Ts: base.Add(time.Duration(i) * time.Minute), EventID: fmt.Sprintf("evt-%d", i),
+			Type: "DocApplied", Source: "apply", Involved: "Rule/global/r", Severity: "info",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ts := evArchiveServer(t, store)
+	// 第一页：limit=2 → 最新 2 行（evt-5, evt-4）。
+	_, out := evGet(t, ts.URL+"/v1/events?limit=2")
+	arr := out["events"].([]any)
+	if len(arr) != 2 || arr[0].(map[string]any)["eventId"] != "evt-5" {
+		t.Fatalf("第一页要最新 2 行，得 %v", arr)
+	}
+	// 第二页：until=第一页最旧行 ts（evt-4 时刻）→ 严格早于 = evt-0…evt-3，evt-4 不重复。
+	oldest := arr[1].(map[string]any)["ts"].(string)
+	cursor, err := time.Parse(time.RFC3339Nano, oldest)
+	if err != nil {
+		t.Fatalf("回执 ts 不可解析: %v", err)
+	}
+	_, out = evGet(t, ts.URL+"/v1/events?limit=500&until="+cursor.Format(time.RFC3339Nano))
+	arr2 := out["events"].([]any)
+	if out["count"].(float64) != 4 {
+		t.Fatalf("第二页要 4 行（严格早于游标），得 %v", out["count"])
+	}
+	seen := map[string]bool{}
+	for _, it := range arr {
+		seen[it.(map[string]any)["eventId"].(string)] = true
+	}
+	for _, it := range arr2 {
+		id := it.(map[string]any)["eventId"].(string)
+		if seen[id] {
+			t.Errorf("相邻页重叠：eventId=%s 同时出现在两页", id)
+		}
+	}
+	if arr2[0].(map[string]any)["eventId"] != "evt-3" {
+		t.Errorf("第二页仍最新优先，首行得 %v", arr2[0])
+	}
+	// until+since 组合=半开窗：[3min, 5min) = evt-3, evt-4 两行。
+	since := base.Add(3 * time.Minute).Format(time.RFC3339)
+	until := base.Add(5 * time.Minute).Format(time.RFC3339)
+	_, out = evGet(t, ts.URL+"/v1/events?since="+since+"&until="+until)
+	if out["count"].(float64) != 2 {
+		t.Errorf("半开窗 [3,5) 要 2 行，得 %v", out["count"])
+	}
+	// 端点严格不含：until=evt-4 时刻，evt-4 不在第二页首行。
+}
+
+func TestEventsArchiveBadUntilIs400(t *testing.T) {
+	store, err := opslog.OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ts := evArchiveServer(t, store)
+	code, out := evGet(t, ts.URL+"/v1/events?until=not-a-time")
+	if code != http.StatusBadRequest {
+		t.Fatalf("until 不可解析应 400，得 %d", code)
+	}
+	if _, ok := out["error"]; !ok {
+		t.Errorf("错误载荷缺 error: %v", out)
+	}
+}
+
 func TestEventsArchiveFaceAbsent503(t *testing.T) {
 	// face 未注入=503（面注册但能力缺席）；旧代（路由未注册）仍是 405 兜底=代际判别器。
 	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil, nil))

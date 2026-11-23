@@ -374,6 +374,8 @@ type EventQuery struct {
 	Level    string // 精确匹配（空=不过滤）
 	Involved string // 精确匹配（空=不过滤）
 	Since    time.Time // 时间下界含端点（零值=不限）
+	Until    time.Time // 时间上界严格不含（零值=不限）——v0.39 E7：向后分页游标（上一页最旧行 ts，
+	                   //  取 strictly-earlier 行实现翻页；与 Since 组合=半开窗 [since, until)）
 	Limit    int       // ≤0=缺省 50；>MaxEventLimit 收敛（读面防拖库——归档全量走重建/导出面）
 }
 
@@ -425,6 +427,9 @@ func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
 			continue
 		}
 		if !q.Since.IsZero() && l.Ts.Before(q.Since) {
+			continue
+		}
+		if !q.Until.IsZero() && !l.Ts.Before(q.Until) {
 			continue
 		}
 		all = append(all, l)

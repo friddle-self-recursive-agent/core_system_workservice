@@ -723,10 +723,11 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		writeJSON(w, http.StatusOK, map[string]any{"metric": qm, "window": qw, "agg": qa, "value": v})
 	})
 	// 事件归档查询面（v0.36 console 读面首段，cored-bridge.md §2 `GET /v1/events`）：
-	// event_log 归档行的最新优先查询投影（limit/type/level/involved/since 五参最小集；
-	// limit≤0=缺省 50，>500 收敛 500——读面防拖库，全量走重建/导出面）。只读投影恒开
-	// （face 随 ops DB 装配恒在）；旧构建（face 缺席路由未注册）经兜底 handler 返回
-	// 405=代际判别器。数据来源=归档（event.md：审计素材）， Welcome 最近重要事件与
+	// event_log 归档行的最新优先查询投影（limit/type/level/involved/since/until 六参最小集；
+	// limit≤0=缺省 50，>500 收敛 500——读面防拖库，全量走重建/导出面）。since/until=半开窗
+	// [since, until)（until 严格不含端点——E7 向后分页游标：取上一页最旧行 ts 翻页，零重叠）。
+	// 只读投影恒开（face 随 ops DB 装配恒在）；旧构建（face 缺席路由未注册）经兜底 handler
+	// 返回 405=代际判别器。数据来源=归档（event.md：审计素材）， Welcome 最近重要事件与
 	// 事件流页（E6）共用本面——渲染数据无双源红线（console-adoption.md §5 规则 2）。
 	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		if eventLog == nil {
@@ -746,6 +747,14 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				return
 			}
 			q.Since = t
+		}
+		if raw := r.URL.Query().Get("until"); raw != "" {
+			t, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("until 不可解析（需 RFC3339）: %v", err)})
+				return
+			}
+			q.Until = t
 		}
 		rows, err := eventLog.QueryEvents(q)
 		if err != nil {
