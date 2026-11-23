@@ -219,3 +219,13 @@ func HardRules(obj, action string) error {
 	}
 	return nil
 }
+
+// HumanReviewKind 人审档对象类（首段，permission.md §4 机读判定 + event.md 规则 9）：
+// 授权面装载类（Role|Group——LoadObjects 收编的 kind 即授权面本体）。
+// 锚=规则 5/P7「改 role/绑定=改权限=高敏变更（人审）」：对授权面自身的写被拒=试图变更
+// 权限结构=人审档，写路径引擎据此自产 ApprovalNeeded。hard rules 拒绝≠人审档（永不可批，
+// 不产事件）；dry-run 零副作用不产事件。对象类清单可扩（User/Provider/builtin scope 随
+// 声明面扩展入表），首段只收 Role|Group 与装载面同源。
+func HumanReviewKind(kind string) bool {
+	return kind == "Role" || kind == "Group"
+}

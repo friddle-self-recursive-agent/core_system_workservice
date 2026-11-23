@@ -180,6 +180,7 @@ func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
 	}
 	if err := e.Perm.Check(sub, o.Scope, "write", permission.ByRole); err != nil {
 		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
+		e.emitApprovalNeeded(o.Kind, objKey, opt) // 人审档拒绝：自产 ApprovalNeeded（拒绝结论不变，事件是通知）
 		return fmt.Errorf("%w: %v", ErrDenied, err)
 	}
 	if err := permission.HardRules(objKey, "write"); err != nil {
@@ -219,6 +220,37 @@ func (e *Engine) finish(objKey string, rv int64, action string) (*Result, error)
 	}
 	res.Event = &evt
 	return res, nil
+}
+
+// emitApprovalNeeded 人审档拒绝的自产事件（v0.21 引擎内部真实事件源首段）：
+// 写路径权限准入拒绝 ∧ 被拒对象属人审档（permission.HumanReviewKind=授权面装载类
+// Role|Group——permission.md §4 机读判定 + event.md 规则 9）时自产 ApprovalNeeded 进总线，
+// 走与注入/引擎内部事件同一条主干（窗口去重/订阅派发/event_log 归档零旁路），主路
+// notification/* 送达（scheme.yaml 派发行）。与注入面同主干差异三处（event.md 规则 9）：
+// source 服务侧判定恒 "permission"；类型注册闸门前置——ApprovalNeeded 未注册即不发布
+// （注册表是引擎内部源的唯一开关）；level 缺省=注册表 defaultLevel 投影。
+// dedupKey="permission:<obj>"（注册表 dedup "<rule>:<obj>" 的机读实例：同对象待审变更
+// 窗口聚合防风暴）。dry-run 零副作用不产事件；发布失败不改变拒绝结论（拒绝与审计留痕
+// 是权威，事件是通知——audit 已先行落行）。hard rules 拒绝在独立分支，不经此路径。
+func (e *Engine) emitApprovalNeeded(kind, objKey string, opt Options) {
+	if opt.DryRun || e.Bus == nil || e.Sch == nil {
+		return
+	}
+	if !permission.HumanReviewKind(kind) {
+		return
+	}
+	et, err := e.Sch.LookupEventType("ApprovalNeeded")
+	if err != nil {
+		return // 未注册不发布（注册表闸门，声明先行的机械落点）
+	}
+	evt := eventbus.Event{
+		Type:     "ApprovalNeeded",
+		Source:   "permission",
+		Involved: objKey,
+		DedupKey: "permission:" + objKey,
+		Level:    et.DefaultLevel, // 注册表缺省投影（ApprovalNeeded→warn）；空值由总线归一 info
+	}
+	_ = e.Bus.Publish(&evt) // 发布失败不改变拒绝结论（可丢语义，event.md §1）
 }
 
 // audit 拒绝路径审计（denied 行，携主体标识——permission.md 规则 3 判定留痕）。
