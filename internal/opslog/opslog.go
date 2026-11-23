@@ -40,6 +40,23 @@ type EventLog struct {
 	RoutedTo string // 命中的订阅方（空=死信）
 }
 
+// DraftRow draft 表一行（ops-log.md §2）：草稿缓存的持久化面（--ops-db 持久化部署）。
+// 草稿不是文档面（无 Revision，git 权威不受碰）也不是操作流水——它是「待发布稿」缓存，
+// 落 ops DB 是部署决策（可丢弃可重建：丢草稿=丢待确认编辑，可重放；不碰文档面权威性）。
+// 本包不 import draft 包（两叶解耦）：draft 包定义同名语义的 Persistence 消费方接口，
+// 字段映射由装配方（cmd/cored）完成。
+type DraftRow struct {
+	Kind         string
+	Scope        string
+	Name         string
+	Content      []byte
+	FieldManager string
+	ReasonRef    string
+	BaseRV       int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 // Store ops DB 接口。三个方法签名 v1 冻结（instance 仓 runtime/ops-log.md；扩展走新方法，不改签名）。
 type Store interface {
 	AppendApply(l ApplyLog) error
@@ -117,6 +134,18 @@ CREATE TABLE IF NOT EXISTS event_log (
 	routed_to TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS event_log_type ON event_log(type);
+CREATE TABLE IF NOT EXISTS draft (
+	kind          TEXT NOT NULL,
+	scope         TEXT NOT NULL,
+	name          TEXT NOT NULL,
+	content       TEXT NOT NULL,
+	field_manager TEXT NOT NULL,
+	reason_ref    TEXT NOT NULL DEFAULT '',
+	base_rv       INTEGER NOT NULL DEFAULT 0,
+	created_at    TEXT NOT NULL,
+	updated_at    TEXT NOT NULL,
+	PRIMARY KEY (kind, scope, name)
+);
 `
 	if _, err := s.db.Exec(ddl); err != nil {
 		return fmt.Errorf("opslog: 建表: %w", err)
@@ -226,6 +255,74 @@ func (s *SQLiteStore) CountEvent(eventType string) (int, error) {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM event_log WHERE type = ?`, eventType).Scan(&n); err != nil {
 		return 0, fmt.Errorf("opslog: 统计 event_log(%s): %w", eventType, err)
+	}
+	return n, nil
+}
+
+// UpsertDraft 写穿一条草稿（draft 表；同键覆盖=最新代改稿，CreatedAt 由调用方定格）。
+// 不属于冻结 Store 接口——草稿持久化是部署决策（--ops-db 持久化面），具体实现方法。
+func (s *SQLiteStore) UpsertDraft(r DraftRow) error {
+	if r.Kind == "" || r.Scope == "" || r.Name == "" {
+		return errors.New("opslog: draft 行需 kind、scope、name")
+	}
+	if r.FieldManager == "" || len(r.Content) == 0 {
+		return errors.New("opslog: draft 行需 field_manager 与非空 content")
+	}
+	const q = `INSERT INTO draft (kind, scope, name, content, field_manager, reason_ref, base_rv, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (kind, scope, name) DO UPDATE SET
+	content=excluded.content, field_manager=excluded.field_manager, reason_ref=excluded.reason_ref,
+	base_rv=excluded.base_rv, updated_at=excluded.updated_at` // created_at 不动——首次落稿定格
+	_, err := s.db.Exec(q, r.Kind, r.Scope, r.Name, string(r.Content), r.FieldManager, r.ReasonRef,
+		r.BaseRV, stamp(r.CreatedAt), stamp(r.UpdatedAt))
+	if err != nil {
+		return fmt.Errorf("opslog: 落 draft(%s/%s/%s): %w", r.Kind, r.Scope, r.Name, err)
+	}
+	return nil
+}
+
+// DeleteDraft 删一条草稿；键不存在=幂等成功（0 行受影响不算错——缓存/存储短暂不一致时写穿不放大）。
+func (s *SQLiteStore) DeleteDraft(kind, scope, name string) error {
+	if _, err := s.db.Exec(`DELETE FROM draft WHERE kind = ? AND scope = ? AND name = ?`, kind, scope, name); err != nil {
+		return fmt.Errorf("opslog: 删 draft(%s/%s/%s): %w", kind, scope, name, err)
+	}
+	return nil
+}
+
+// ListDrafts 全量草稿行（按对象键排序——确定性恢复，机械对账可复现）。
+func (s *SQLiteStore) ListDrafts() ([]DraftRow, error) {
+	const q = `SELECT kind, scope, name, content, field_manager, reason_ref, base_rv, created_at, updated_at
+FROM draft ORDER BY kind, scope, name`
+	rows, err := s.db.Query(q)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 draft: %w", err)
+	}
+	defer rows.Close()
+	var out []DraftRow
+	for rows.Next() {
+		var r DraftRow
+		var content, created, updated string
+		if err := rows.Scan(&r.Kind, &r.Scope, &r.Name, &content, &r.FieldManager,
+			&r.ReasonRef, &r.BaseRV, &created, &updated); err != nil {
+			return nil, fmt.Errorf("opslog: 读 draft 行: %w", err)
+		}
+		r.Content = []byte(content)
+		if r.CreatedAt, err = time.Parse(time.RFC3339Nano, created); err != nil {
+			return nil, fmt.Errorf("opslog: draft.created_at 解析 %q: %w", created, err)
+		}
+		if r.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated); err != nil {
+			return nil, fmt.Errorf("opslog: draft.updated_at 解析 %q: %w", updated, err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// CountDraft 草稿行数（诊断与恢复探针用）。
+func (s *SQLiteStore) CountDraft() (int, error) {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM draft`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("opslog: 统计 draft: %w", err)
 	}
 	return n, nil
 }

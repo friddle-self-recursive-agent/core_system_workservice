@@ -93,9 +93,21 @@ func run() error {
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
-	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存落点，读面恒开，写操作随写面开关。
-	// 重启即清（草稿可重放）；持久化随 ops DB 部署决策另行 declared。
-	drafts := draft.NewStore()
+	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
+	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
+	// 缺省纯内存语义不变（重启即清，草稿可重放）。
+	var draftOpts *draft.Options
+	if *opsDB != "" {
+		draftOpts = &draft.Options{Persistence: draftOpsStore{store}}
+	}
+	drafts := draft.NewStore(draftOpts)
+	if draftOpts != nil {
+		restored, skipped, err := drafts.Restore()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "cored: 草稿恢复 restored=%d skipped=%d（--ops-db 持久化部署，draft 表）\n", restored, skipped)
+	}
 	var applier apiserver.Applier
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
@@ -171,6 +183,38 @@ func permDocs(ctx context.Context, repo *repository.GitRepo) ([]permission.Objec
 		for _, o := range objs {
 			out = append(out, permission.ObjectDoc{Kind: kind, Name: o.Name, Scope: o.Scope, Content: o.Content})
 		}
+	}
+	return out, nil
+}
+
+// draftOpsStore draft.Persistence 的 ops DB 实现（装配层适配器）：draft 与 opslog 两包
+// 保持叶子解耦，字段映射只在此处发生（draft.Draft ↔ opslog.DraftRow）。
+type draftOpsStore struct{ s *opslog.SQLiteStore }
+
+func (a draftOpsStore) PutDraft(d *draft.Draft) error {
+	return a.s.UpsertDraft(opslog.DraftRow{
+		Kind: d.Kind, Scope: d.Scope, Name: d.Name, Content: d.Content,
+		FieldManager: d.FieldManager, ReasonRef: d.ReasonRef, BaseRV: d.BaseRV,
+		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+	})
+}
+
+func (a draftOpsStore) DeleteDraft(kind, scope, name string) error {
+	return a.s.DeleteDraft(kind, scope, name)
+}
+
+func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
+	rows, err := a.s.ListDrafts()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*draft.Draft, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, &draft.Draft{
+			Kind: r.Kind, Scope: r.Scope, Name: r.Name, Content: r.Content,
+			FieldManager: r.FieldManager, ReasonRef: r.ReasonRef, BaseRV: r.BaseRV,
+			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		})
 	}
 	return out, nil
 }

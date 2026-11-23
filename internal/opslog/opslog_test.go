@@ -149,3 +149,99 @@ func TestMigrateAddsSubjectColumn(t *testing.T) {
 		t.Fatalf("denied 行 = %d, 要 1", n)
 	}
 }
+
+// --- draft 表（ops-log.md §2 扩行；草稿持久化部署决策：--ops-db 持久化面） ---
+
+func TestDraftUpsertListDelete(t *testing.T) {
+	s, err := OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	created := time.Date(2026, 11, 22, 9, 0, 0, 0, time.UTC)
+	updated := created.Add(30 * time.Minute)
+	row := DraftRow{
+		Kind: "Agent", Scope: "global", Name: "ci-runner",
+		Content: []byte("apiVersion: core/v1\nkind: Agent\n"), FieldManager: "agent/dev",
+		ReasonRef: "drift-report/7", BaseRV: 4, CreatedAt: created, UpdatedAt: updated,
+	}
+	if err := s.UpsertDraft(row); err != nil {
+		t.Fatalf("落 draft 行: %v", err)
+	}
+	rows, err := s.ListDrafts()
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("ListDrafts = %d 行 err=%v", len(rows), err)
+	}
+	got := rows[0]
+	if got.Kind != "Agent" || got.Scope != "global" || got.Name != "ci-runner" ||
+		string(got.Content) != string(row.Content) || got.FieldManager != "agent/dev" ||
+		got.ReasonRef != "drift-report/7" || got.BaseRV != 4 ||
+		!got.CreatedAt.Equal(created) || !got.UpdatedAt.Equal(updated) {
+		t.Fatalf("字段回读不符: %+v", got)
+	}
+	// 同键覆盖=最新代改稿：created_at 定格、updated_at/内容更新、仍只一行。
+	if err := s.UpsertDraft(DraftRow{
+		Kind: "Agent", Scope: "global", Name: "ci-runner", Content: []byte("v2"),
+		FieldManager: "agent/reviewer", BaseRV: 6, CreatedAt: created, UpdatedAt: updated.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("覆稿: %v", err)
+	}
+	rows, err = s.ListDrafts()
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("覆稿后行数 = %d err=%v", len(rows), err)
+	}
+	if !rows[0].CreatedAt.Equal(created) || !rows[0].UpdatedAt.Equal(updated.Add(time.Hour)) ||
+		string(rows[0].Content) != "v2" || rows[0].FieldManager != "agent/reviewer" || rows[0].BaseRV != 6 {
+		t.Fatalf("覆稿后应为最新稿且 created_at 定格: %+v", rows[0])
+	}
+	// 弃稿 + 幂等（键不存在的删除=成功 0 行）。
+	if err := s.DeleteDraft("Agent", "global", "ci-runner"); err != nil {
+		t.Fatalf("删稿: %v", err)
+	}
+	if err := s.DeleteDraft("Agent", "global", "ci-runner"); err != nil {
+		t.Fatalf("幂等删稿: %v", err)
+	}
+	if n, err := s.CountDraft(); err != nil || n != 0 {
+		t.Fatalf("删后 draft 行 = %d err=%v", n, err)
+	}
+	// 必填校验：键不全 / 无主 / 空稿。
+	if err := s.UpsertDraft(DraftRow{Scope: "global", Name: "x", FieldManager: "m", Content: []byte("c")}); err == nil {
+		t.Fatal("缺 kind 应被拒")
+	}
+	if err := s.UpsertDraft(DraftRow{Kind: "Agent", Scope: "global", Name: "x", Content: []byte("c")}); err == nil {
+		t.Fatal("缺 field_manager 应被拒")
+	}
+	if err := s.UpsertDraft(DraftRow{Kind: "Agent", Scope: "global", Name: "x", FieldManager: "m"}); err == nil {
+		t.Fatal("空稿应被拒")
+	}
+}
+
+func TestDraftPersistenceAcrossReopen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ops.db")
+	s, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := DraftRow{Kind: "Agent", Scope: "global", Name: "persist-me", Content: []byte("正文"),
+		FieldManager: "agent/dev", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := s.UpsertDraft(row); err != nil {
+		t.Fatal(err)
+	}
+	// draft 表不参与 §3 对账不变量（对账对象=apply_log(ok) vs DocApplied；草稿是缓存非账）。
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := OpenSQLite(path) // 重开=重启恢复入口（cored --ops-db 启动恢复读的就是它）
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	rows, err := s2.ListDrafts()
+	if err != nil || len(rows) != 1 || rows[0].Name != "persist-me" || string(rows[0].Content) != "正文" {
+		t.Fatalf("重开后恢复稿: %d 行 err=%v %+v", len(rows), err, rows)
+	}
+	if diff, err := s2.Reconcile(); err != nil || diff != 0 {
+		t.Fatalf("draft 表不应影响对账: diff=%d err=%v", diff, err)
+	}
+}

@@ -366,7 +366,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		Perm:    fixturePerm(t),                                                             // 授权面=Role 对象（v0.9 对象准入）
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // 程序化 fallback
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore()))
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil)))
 	defer ts.Close()
 
 	// 创建 → 200 create rv=1 + DocApplied 回执（请求级主体经 X-Core-Subject 头）。
@@ -459,7 +459,7 @@ func TestApplyRequestSubject(t *testing.T) {
 		Perm:    fixturePerm(t),
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // fallback：不兜底 HTTP 匿名
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore()))
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil)))
 	defer ts.Close()
 	createBody := func() map[string]any {
 		return map[string]any{

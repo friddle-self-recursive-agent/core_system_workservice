@@ -13,8 +13,8 @@ import (
 
 // ProviderImpl 类型层：支持什么类型、对应什么代码（一个驱动包实现一份）。
 type ProviderImpl interface {
-	Type() string            // 类型标注（如 onedev-driver）
-	Types() []string         // 支持的能力类型（如 scm, ci）
+	Type() string    // 类型标注（如 onedev-driver）
+	Types() []string // 支持的能力类型（如 scm, ci）
 	Version() string
 	Contract() Contract
 	// 五方法幂等实现（P4）：
@@ -49,12 +49,12 @@ func ResolveProviderName(name, defaultOrg string) string {
 // OpsSpec 使用层：工具调用面/提供的功能（v0.6：无探活/drift/finalizer 概念级机制）。
 // Agent 默认挂 ConnectorOps；使用要权限（P7）。v0.13：Workservice 指向六面体（A53）。
 type OpsSpec struct {
-	Name        string            // ops 名（Agent/TaskScheme 引用它）
-	Workservice string            // v0.13 A53：指向 WorkService（原 Provider 字段）
-	Workflow    string            // 绑定的 Workflow（缺省 default-task，A26）
-	Config     map[string]string // endpoint 等（值可为 ref: 引用）
-	AuthProvider string          // v0.8：鉴权走 Provider.auth.secret（Credential 已删，A40）
-	Ops        []string          // 提供的功能（op 子集）
+	Name         string            // ops 名（Agent/TaskScheme 引用它）
+	Workservice  string            // v0.13 A53：指向 WorkService（原 Provider 字段）
+	Workflow     string            // 绑定的 Workflow（缺省 default-task，A26）
+	Config       map[string]string // endpoint 等（值可为 ref: 引用）
+	AuthProvider string            // v0.8：鉴权走 Provider.auth.secret（Credential 已删，A40）
+	Ops          []string          // 提供的功能（op 子集）
 }
 
 // Event 外部变化（转 eventbus.Event）。

@@ -17,7 +17,7 @@ import (
 func draftWorld(t *testing.T) (*world, *draft.Store) {
 	t.Helper()
 	w := newWorld(t)
-	ds := draft.NewStore()
+	ds := draft.NewStore(nil)
 	w.engine.Drafts = ds
 	return w, ds
 }

@@ -36,7 +36,7 @@ func draftServer(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repo.Close() })
-	drafts := draft.NewStore()
+	drafts := draft.NewStore(nil)
 	engine := &apply.Engine{
 		Sch: sch, Repo: repo, Bus: eventbus.NewBus(nil), Ops: ops, Drafts: drafts,
 		Perm:    fixturePerm(t), // 授权面=Role 对象（v0.9 对象准入）；fromDraft 同闸门
@@ -89,7 +89,7 @@ func TestDraftReadFaceAlwaysOn(t *testing.T) {
 
 	// 写面关闭、缓存在线：GET 恒开返回空清单，写操作 405。
 	sch, _ := scheme.Load([]byte(fixture))
-	ts2 := httptest.NewServer(New(sch, nil, nil, draft.NewStore()))
+	ts2 := httptest.NewServer(New(sch, nil, nil, draft.NewStore(nil)))
 	defer ts2.Close()
 	code, body = get(t, ts2, "/v1/drafts")
 	if code != http.StatusOK || body["count"] != float64(0) {
