@@ -1,8 +1,8 @@
 // run_test.go —— 对账 run 投影面验收（引擎主体第三段 v0.15——真实拉起第一子段；
-// v0.23 相位推进器首段——迁移判定=声明序列单调前进）：
-// 锚解析纯映射（对账锚→core-workflow、直接引用→builtin 注册表/平台对象可见）+
-// run 环容量/丢最旧/dropped 可见 + 受理即启动口径（builtin=running/第二相位、object=triggered 不推进）
-// + 迁移判定纯函数（尾相位/越界/空序列不前进）。
+// v0.23 相位推进器首段——迁移判定=声明序列单调前进；v0.25 显式迁移表首段——判定器=声明表
+// 查表）：锚解析纯映射（对账锚→core-workflow、直接引用→builtin 注册表/平台对象可见）+
+// run 环容量/丢最旧/dropped 可见 + 受理即启动口径（builtin=running/第二相位、object=triggered
+// 不推进）+ 声明表物化锚（相邻行+审批边/非相邻驳回边）+ 判定器查表（尾相位/越界/空表零迁移）。
 package workflow
 
 import (
@@ -38,14 +38,19 @@ func TestResolveRunAnchor(t *testing.T) {
 		{"", "", "", 0},                                                               // 空 route=空锚
 	}
 	for _, c := range cases {
-		wf, source, phases := resolveRunAnchor(c.route)
+		wf, source, phases, trans := resolveRunAnchor(c.route)
 		if wf != c.wf || source != c.source || len(phases) != c.nPha {
 			t.Errorf("resolveRunAnchor(%q)={%s,%s,%d} want {%s,%s,%d}",
 				c.route, wf, source, len(phases), c.wf, c.source, c.nPha)
 		}
+		// 声明表随锚投影（v0.25）：builtin 命中=物化表非空；object/空锚=不投影。
+		if (len(trans) > 0) != (c.source == SpecBuiltin) {
+			t.Errorf("resolveRunAnchor(%q) 声明表投影与来源不符：source=%s trans=%d",
+				c.route, source, len(trans))
+		}
 	}
 	// 对账锚的声明起点=core-workflow 首相位 Idle（起点投影可判）。
-	_, _, phases := resolveRunAnchor("owner-workflow")
+	_, _, phases, _ := resolveRunAnchor("owner-workflow")
 	if phases[0] != string(Idle) {
 		t.Fatalf("对账 run 起点应为首相位 Idle，得 %s", phases[0])
 	}
@@ -157,6 +162,23 @@ func TestRunStartProjection(t *testing.T) {
 	if len(r.Phases) == 0 || r.Phases[len(r.Phases)-1] != string(Failed) {
 		t.Fatalf("相位序列应携声明全序列（尾=Failed）: %v", r.Phases)
 	}
+	// 声明表随 run 投影（v0.25 显式迁移表首段）：物化表非空、首行=受理查表的推进行
+	//（Idle,advance,Analyzing）、审批边在表（新载荷键=代际判别器的代码同源面）。
+	if len(r.Transitions) == 0 {
+		t.Fatalf("builtin run 应携物化声明表: %+v", r.Transitions)
+	}
+	if r.Transitions[0].From != string(Idle) || r.Transitions[0].On != EdgeAdvance || r.Transitions[0].To != string(Analyzing) {
+		t.Fatalf("声明表首行应 {Idle,advance,Analyzing}: %+v", r.Transitions[0])
+	}
+	var hasReject bool
+	for _, row := range r.Transitions {
+		if row.On == SignalReject && row.From == string(AwaitingApproval) && row.To == string(Failed) {
+			hasReject = true
+		}
+	}
+	if !hasReject {
+		t.Fatalf("声明表应携驳回边（非相邻表行先例）: %+v", r.Transitions)
+	}
 }
 
 // TestObjectRunPhasesEmptyArray object 源 run 的相位载荷形状：锚保留、相位不投影，
@@ -171,6 +193,10 @@ func TestObjectRunPhasesEmptyArray(t *testing.T) {
 	if r.Phases == nil || len(r.Phases) != 0 {
 		t.Fatalf("object 源 run 相位应为空数组（非 nil）: %#v", r.Phases)
 	}
+	// 声明表同口径：object 源不投影=空数组（非 nil——spec 随文档面不在本进程）。
+	if r.Transitions == nil || len(r.Transitions) != 0 {
+		t.Fatalf("object 源 run 声明表应为空数组（非 nil）: %#v", r.Transitions)
+	}
 	if r.SpecSource != SpecObject || r.Phase != "" {
 		t.Fatalf("object 源 run 口径 {object, 空相位起点}: %+v", r)
 	}
@@ -180,26 +206,120 @@ func TestObjectRunPhasesEmptyArray(t *testing.T) {
 	}
 }
 
-// TestAdvancePhase 迁移判定纯函数（v0.23 相位推进器首段）：沿声明序列单调前进一步；
-// 序列尾/不在序列内/空序列不前进（受理态保留）。
-func TestAdvancePhase(t *testing.T) {
-	seq := phaseNames(Builtin("core-workflow").Phases) // Idle→…→Failed
-	if p, ok := advancePhase(seq, "Idle"); !ok || p != string(Analyzing) {
-		t.Fatalf("Idle 应前进一步到 Analyzing: %s %v", p, ok)
+// TestBuiltinTransitionTable 显式迁移表首段（v0.25，workflow.md 规则 14）——builtin 声明表
+// 物化机械锚：表=声明序列物化相邻行（from=seq[i] on=advance to=seq[i+1]，行数=len-1）
+// +审批边表行先例（含闸锚序列：批准边+驳回边；无闸锚序列=无审批边）；驳回边
+// （AwaitingApproval→Failed）=表的首处**非相邻**迁移行（机械判别器）。
+func TestBuiltinTransitionTable(t *testing.T) {
+	// core-workflow：8 相位 → 7 相邻行 + 批准边 + 驳回边 = 9 行。
+	cw := Builtin("core-workflow")
+	if got := len(cw.Transitions); got != 9 {
+		t.Fatalf("core-workflow 物化表应 9 行（7 相邻+批准+驳回），得 %d: %+v", got, cw.Transitions)
 	}
-	if p, ok := advancePhase(seq, string(Verifying)); !ok || p != string(Reporting) {
-		t.Fatalf("Verifying 应前进一步到 Reporting: %s %v", p, ok)
+	for i := 0; i+1 < len(cw.Phases); i++ {
+		row := cw.Transitions[i]
+		if row.From != cw.Phases[i] || row.On != EdgeAdvance || row.To != cw.Phases[i+1] {
+			t.Errorf("相邻行 %d 应 {%s,advance,%s}: %+v", i, cw.Phases[i], cw.Phases[i+1], row)
+		}
 	}
-	// 序列尾（终点相位）不前进：ok=false 原相位保留。
-	if p, ok := advancePhase(seq, string(Failed)); ok || p != string(Failed) {
-		t.Fatalf("序列尾 Failed 不应前进: %s %v", p, ok)
+	// 审批边=表行先例：批准边目标=闸锚后继（与相邻行同目标异事件名）；驳回边=非相邻终点锚。
+	if to, ok := cw.Can(AwaitingApproval, SignalResume); !ok || to != Executing {
+		t.Fatalf("批准边应查表命中 AwaitingApproval→Executing: %s %v", to, ok)
 	}
-	// 当前相位不在序列内（含空串）与空序列：不前进。
-	if _, ok := advancePhase(seq, "Nowhere"); ok {
-		t.Fatalf("不在序列内的相位不应前进")
+	if to, ok := cw.Can(AwaitingApproval, SignalReject); !ok || to != Failed {
+		t.Fatalf("驳回边应查表命中 AwaitingApproval→Failed（非相邻迁移按表命中——机械判别器）: %s %v", to, ok)
 	}
-	if _, ok := advancePhase(nil, "Idle"); ok {
-		t.Fatalf("空序列不应前进")
+	// Can 实接（v0.25 前 builtin 表恒空=永不命中）：相邻推进行与未知 on 的判定面。
+	if to, ok := cw.Can(Idle, EdgeAdvance); !ok || to != Analyzing {
+		t.Fatalf("推进行应查表命中 Idle→Analyzing: %s %v", to, ok)
+	}
+	if _, ok := cw.Can(Idle, SignalReject); ok {
+		t.Fatalf("非闸锚源无驳回边，不应命中")
+	}
+	if _, ok := cw.Can(AwaitingApproval, "DocApplied"); ok {
+		t.Fatalf("未知 on 不应命中（查表未命中=零迁移）")
+	}
+	// 非相邻迁移=表驱动而非序列推导的构造反证：手工 spec 声明非相邻推进行（Idle→Reporting），
+	// 查表命中即迁移——判定器只认表行，不隐式走序列。
+	synthetic := &Spec{
+		Name: "synthetic", Phases: []Phase{Idle, Analyzing, Reporting, Failed},
+		Transitions: []Transition{{From: Idle, On: EdgeAdvance, To: Reporting}},
+	}
+	if to, ok := synthetic.Can(Idle, EdgeAdvance); !ok || to != Reporting {
+		t.Fatalf("非相邻推进行应按表命中 Idle→Reporting（不隐式走序列）: %s %v", to, ok)
+	}
+	// 无闸锚序列（simple-shot/watch-only）=无审批边（零动作面在表物化即收口）；
+	// 无终点锚序列亦无驳回边。
+	for _, name := range []string{"simple-shot", "watch-only"} {
+		s := Builtin(name)
+		wantRows := len(s.Phases) - 1
+		if got := len(s.Transitions); got != wantRows {
+			t.Fatalf("%s 无闸锚序列应恰 %d 相邻行（无审批边），得 %d", name, wantRows, got)
+		}
+		for _, row := range s.Transitions {
+			if row.On != EdgeAdvance {
+				t.Errorf("%s 不应出现审批边行: %+v", name, row)
+			}
+		}
+	}
+	// 六项 builtin 全量：有闸锚序列的审批边成对出现（批准+驳回）。
+	for _, name := range []string{"core-workflow", "default-task", "dev-delivery", "apply-workflow"} {
+		s := Builtin(name)
+		var grant, reject bool
+		for _, row := range s.Transitions {
+			if row.From == AwaitingApproval && row.On == SignalResume && row.To == s.Phases[indexGate(s.Phases)+1] {
+				grant = true
+			}
+			if row.From == AwaitingApproval && row.On == SignalReject && row.To == Failed {
+				reject = true
+			}
+		}
+		if !grant || !reject {
+			t.Errorf("%s 审批边应成对物化（批准+驳回）: grant=%v reject=%v", name, grant, reject)
+		}
+	}
+}
+
+// indexGate 闸锚序位（辅助断言用）。
+func indexGate(seq []Phase) int {
+	for i, p := range seq {
+		if p == AwaitingApproval {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestStepByTable 判定器=纯查表（v0.25）：from+on 命中→to；未命中=零迁移（受理首步/
+// 批准/驳回三路径共用同一落点）；空表与 nil 表=零迁移（object 源口径）。
+func TestStepByTable(t *testing.T) {
+	table := transitionRows(Builtin("core-workflow").Transitions)
+	if p, ok := stepByTable(table, string(Idle), EdgeAdvance); !ok || p != string(Analyzing) {
+		t.Fatalf("Idle 推进行应命中 Analyzing: %s %v", p, ok)
+	}
+	if p, ok := stepByTable(table, string(Verifying), EdgeAdvance); !ok || p != string(Reporting) {
+		t.Fatalf("Verifying 推进行应命中 Reporting: %s %v", p, ok)
+	}
+	// 非相邻迁移按表命中（驳回边）。
+	if p, ok := stepByTable(table, string(AwaitingApproval), SignalReject); !ok || p != string(Failed) {
+		t.Fatalf("驳回边应命中 AwaitingApproval→Failed: %s %v", p, ok)
+	}
+	// 序列尾（终点相位）无推进行：零迁移。
+	if p, ok := stepByTable(table, string(Failed), EdgeAdvance); ok || p != string(Failed) {
+		t.Fatalf("序列尾 Failed 零迁移: %s %v", p, ok)
+	}
+	// 当前相位不在表内（含空串）/未知 on/空表/nil 表：零迁移。
+	if _, ok := stepByTable(table, "Nowhere", EdgeAdvance); ok {
+		t.Fatalf("不在表内的源相位零迁移")
+	}
+	if _, ok := stepByTable(table, "", EdgeAdvance); ok {
+		t.Fatalf("空源相位零迁移")
+	}
+	if _, ok := stepByTable(nil, string(Idle), EdgeAdvance); ok {
+		t.Fatalf("nil 表零迁移（object 源口径）")
+	}
+	if _, ok := stepByTable([]TransitionRow{}, string(Idle), EdgeAdvance); ok {
+		t.Fatalf("空表零迁移")
 	}
 }
 

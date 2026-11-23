@@ -7,11 +7,14 @@
 // 相位推进器首段（v0.23——迁移判定=声明序列单调前进，workflows 规则 12）：run 受理即启动
 // 信号——引擎在受理路径上执行**单步迁移判定**：builtin run 从声明首相位沿声明相位序列单调
 // 前进一步（Idle→Analyzing），status 词形翻转 triggered→running（触发已受理→首步进行中）。
-// 迁移判定为纯函数 advancePhase（序列即声明：builtin 相位序列为线性声明，concepts/workflow.md
-// 「相位机=标准 FSM，序即声明」——显式 Transition 表/异步推进属推进器更后续段，
-// 换实现不动本查询面词汇）；object 源 run 相位不投影=无从迁移，status 恒 triggered；
-// 已居序列尾（Failed 等终点）不再前进。受理与首步推进同拍完成（同步路径——真实异步派发
-// deferred，投影面只见推进后形态）。
+// v0.25 显式迁移表首段：迁移判定从「序列前进」泛化为**声明表驱动**（workflows 规则 14）——
+// builtin 表=声明序列物化相邻行（from=seq[i] on=advance to=seq[i+1]，序列前进=表的特例）
+// +挂起-恢复审批边=表行先例；判定器=纯查表（from+on 命中→to，未命中=零迁移），受理首步/
+// 批准恢复/驳回终态三路径共用同一查表落点（行为面不变，序列语义零翻转）；object 源 run
+// 相位与表均不投影=无从迁移，status 恒 triggered；已居序列尾（Failed 等终点）不再前进。
+// 受理与首步推进同拍完成（同步路径——真实异步派发 deferred，投影面只见推进后形态）。
+// 查询面声明表可见键：run 载荷新增 transitions（物化表行投影 from/on/to——新载荷键出现
+// =代际判别器）。
 //
 // 挂起-恢复首段（v0.24——闸锚挂起判定+审批信号迁移，workflows 规则 13/event.md 规则 11）：
 // 闸锚=声明相位序列中的 AwaitingApproval 锚（人批闸；闸锚必须在声明序列内，无闸锚的序列
@@ -99,6 +102,23 @@ const (
 	SpecObject  = "object"  // 平台对象引用（Workflow 对象，spec 随文档面；run 只留锚）
 )
 
+// TransitionRow 迁移表行投影（v0.25 显式迁移表首段——查询面载荷词汇：from/on/to 小写键，
+// 表行可回指声明面；物化口径见 MaterializeTransitions）。
+type TransitionRow struct {
+	From string `json:"from"` // 迁移源相位
+	On   string `json:"on"`   // 迁移事件名（advance=序列推进；ApprovalGranted/ApprovalRejected=审批边）
+	To   string `json:"to"`   // 迁移目标相位
+}
+
+// transitionRows 声明表 → 投影行（声明面 → 留痕面；顺序保留）。
+func transitionRows(ts []Transition) []TransitionRow {
+	out := make([]TransitionRow, len(ts))
+	for i, t := range ts {
+		out[i] = TransitionRow{From: string(t.From), On: t.On, To: string(t.To)}
+	}
+	return out
+}
+
 // ReconcileWorkflow 对账锚的循环本体锚（owner 对账 workflow → core-workflow）。
 // 依据：concepts/workflow.md——core-workflow=系统级循环（触发→整理→处理→回归），
 // 即「收到事件的反应=触发一次 Workflow 对账」的那个对账循环。
@@ -107,20 +127,21 @@ const ReconcileWorkflow = "core-workflow"
 // RunRecord 一条对账 run 投影（触发面→workflow 域的执行留痕；观测面非账本，
 // 账本=event_log 归档，ops-log.md §2）。
 type RunRecord struct {
-	Run        int64     // run 序号（本 sink 进程内单调递增，1 起）
-	Workflow   string    // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
-	SpecSource string    // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
-	Phases     []string  // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Phase      string    // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空；v0.24 审批提升落闸锚/批准续行/驳回落终点锚）
-	Status     string    // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；object 源恒 triggered）
-	TriggerSeq int64     // 来源触发留痕 seq（可回指 GET /v1/triggers records）
-	EventID    string    // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
-	Type       string    // 事件类型
-	DedupKey   string    // 与发布方回执同源
-	Route      string    // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
-	Owner      string    // owner 解析值（对账锚的 owner 维度在此承载）
-	Target     string    // 执行面锚点投影（=ExecutorBinding.Target）
-	StartedAt  time.Time // run 起始时刻（收到留痕同刻）
+	Run         int64           // run 序号（本 sink 进程内单调递增，1 起）
+	Workflow    string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
+	SpecSource  string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
+	Phases      []string        // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
+	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；object 源不投影=空数组——新载荷键=代际判别器）
+	Phase       string          // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表）
+	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；object 源恒 triggered）
+	TriggerSeq  int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
+	EventID     string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
+	Type        string          // 事件类型
+	DedupKey    string          // 与发布方回执同源
+	Route       string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
+	Owner       string          // owner 解析值（对账锚的 owner 维度在此承载）
+	Target      string          // 执行面锚点投影（=ExecutorBinding.Target）
+	StartedAt   time.Time       // run 起始时刻（收到留痕同刻）
 }
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
@@ -178,7 +199,7 @@ func NewRunLog(opts *RunOptions) *RunLog {
 
 // StartRun 记一条 run 投影（环满丢最旧，dropped 计数可见）。锚解析见 resolveRunAnchor。
 func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
-	wf, source, phases := resolveRunAnchor(rec.Route)
+	wf, source, phases, trans := resolveRunAnchor(rec.Route)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
@@ -191,9 +212,10 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	status := RunTriggered
 	if len(phases) > 0 {
 		phase = string(phases[0]) // 受理投影=声明首相位（起点词先落，迁移判定在其上判）
-		// 相位推进器首段（v0.23）：受理即启动信号——引擎单步迁移判定，沿声明序列
-		// 前进一步并把状态词翻转为 running（advancePhase 纯函数，判定口径见包注释）。
-		if next, ok := advancePhase(phases, phase); ok {
+		// 相位推进器首段（v0.23）+显式迁移表首段（v0.25）：受理即启动信号——引擎单步迁移
+		// 判定，按声明表查推进行（from=首相位 on=advance）并把状态词翻转为 running
+		//（stepByTable 纯查表，判定口径见包注释——序列前进=表的特例）。
+		if next, ok := stepByTable(trans, phase, EdgeAdvance); ok {
 			phase, status = next, RunRunning
 		}
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
@@ -206,18 +228,24 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	if phases == nil {
 		phases = []string{} // object 源不投影相位：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
 	}
+	if trans == nil {
+		trans = []TransitionRow{} // object 源不投影声明表：载荷形状归一同口径（新键可 len）
+	}
 	r.ring = append(r.ring, RunRecord{
-		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases,
+		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
 		Phase: phase, Status: status,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, StartedAt: rec.ReceivedAt,
 	})
 }
 
-// ResumeSignal 审批信号的 run 域迁移判定（挂起-恢复首段 v0.24，workflows 规则 13）：
+// ResumeSignal 审批信号的 run 域迁移判定（挂起-恢复首段 v0.24，workflows 规则 13）——
+// v0.25 显式迁移表首段起批准/驳回迁移判定走声明表查表（stepByTable，规则 14：批准/驳回
+// 边=表行先例，物化随 spec 携带在 run 投影上）：
 // 审批信号族事件按 involved=Workflow 对象引用寻径，作用于该锚**最新 run**（环内该锚
 // 最大 Run 序号=现势 run）。判定三层：审批提升=相位落闸锚挂起（声明无闸锚=零动作）；
-// 批准=闸锚沿声明序列续行（恢复，status 翻回 running）；驳回=终态（相位=声明终点锚）。
+// 批准=查表命中审批边（闸锚 on=ApprovalGranted）续行（恢复，status 翻回 running）；
+// 驳回=查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，非相邻行）终态。
 // 零动作防御面：非审批信号族/involved 非 Workflow 引用/object 源（相位不投影无从迁移）/终态/
 // 非挂起态无可恢复/锚无 run——一律原样保留（事件仍是留痕，迁移判定不命中不冒充动作）。
 // 幂等同拍：审批提升对已挂起 run 重复到达=零动作（已是闸锚挂起态）。
@@ -244,11 +272,11 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 				return
 			}
 			run.Phase, run.Status = string(AwaitingApproval), RunSuspended
-		case "resume": // 批准：闸锚沿声明序列续行（非闸锚挂起态=零动作；序列尾=零动作防御）
+		case "resume": // 批准：查表命中审批边（闸锚 on=ApprovalGranted）沿表续行（非闸锚挂起态=零动作；表无批准边=零动作防御）
 			if run.Status != RunSuspended || Phase(run.Phase) != AwaitingApproval {
 				return
 			}
-			next, ok := advancePhase(run.Phases, run.Phase)
+			next, ok := stepByTable(run.Transitions, run.Phase, SignalResume)
 			if !ok {
 				return
 			}
@@ -257,11 +285,15 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			if Phase(next) == AwaitingApproval {
 				run.Status = RunSuspended
 			}
-		case "reject": // 驳回：闸锚→声明终点锚终态（非挂起态/声明无终点锚=零动作）
-			if run.Status != RunSuspended || !containsPhase(run.Phases, string(Failed)) {
+		case "reject": // 驳回：查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，表的首处非相邻行）终态（非挂起态/表无驳回边=零动作）
+			if run.Status != RunSuspended {
 				return
 			}
-			run.Phase, run.Status = string(Failed), RunFailed
+			to, ok := stepByTable(run.Transitions, run.Phase, SignalReject)
+			if !ok {
+				return
+			}
+			run.Phase, run.Status = to, RunFailed
 		}
 		return // 只作用现势 run（最新命中即返回）
 	}
@@ -286,36 +318,37 @@ func (r *RunLog) State() RunState {
 	return RunState{Started: r.started, Dropped: r.dropped, Runs: runs}
 }
 
-// advancePhase 相位迁移判定首段（v0.23 纯函数）：沿声明相位序列从当前相位单调前进一步。
-// 迁移规则=序列前进（builtin 相位序列为线性声明，concepts/workflow.md「相位机=标准 FSM，
-// 序即声明」——触发受理即启动信号；显式 Transition 表/异步推进属推进器更后续段，落此扩展；
-// 挂起-恢复首段 v0.24 已落：闸锚挂起判定在受理与审批信号两路径上共用本判定）。已居序列尾
-// （终点相位）、当前相位不在序列内、序列为空 → 不前进（ok=false，受理态保留）。
-func advancePhase(phases []string, cur string) (string, bool) {
-	for i, p := range phases {
-		if p == cur && i+1 < len(phases) {
-			return phases[i+1], true
+// stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中
+// from+on 行 → to；未命中=零迁移（ok=false，原相位保留）。判定器从「序列前进」泛化为
+// 「声明表驱动」：受理首步（on=advance）与审批边（on=ApprovalGranted/ApprovalRejected）
+// 共用同一查表落点——序列前进=表的特例（表=序列物化相邻行，MaterializeTransitions），
+// 非相邻迁移按表命中（驳回边=表的首处非相邻行，机械判别器）。行为面不变：既有序列语义
+// 零翻转（物化相邻行⟷序列前进等价）。
+func stepByTable(table []TransitionRow, from, on string) (string, bool) {
+	for _, t := range table {
+		if t.From == from && t.On == on {
+			return t.To, true
 		}
 	}
-	return cur, false
+	return from, false
 }
 
 // resolveRunAnchor 命中行 route 原文 → run 投影的 workflow 锚（纯映射；引擎主体第三段 v0.15）。
 // 口径见包注释；直接引用按 builtin 注册表解析，未命中=平台对象引用（SpecObject，锚保留、
-// 相位不投影——对象 spec 随文档面，不在本进程）。
-func resolveRunAnchor(routeTarget string) (wf, source string, phases []string) {
+// 相位与声明表均不投影——对象 spec 随文档面，不在本进程）。
+func resolveRunAnchor(routeTarget string) (wf, source string, phases []string, trans []TransitionRow) {
 	if name, ok := strings.CutPrefix(routeTarget, "workflows/"); ok && name != "" {
 		if IsBuiltin(name) {
 			spec := Builtin(name)
-			return spec.Name, SpecBuiltin, phaseNames(spec.Phases)
+			return spec.Name, SpecBuiltin, phaseNames(spec.Phases), transitionRows(spec.Transitions)
 		}
-		return name, SpecObject, nil // 平台对象引用：锚可见，spec 随文档面
+		return name, SpecObject, nil, nil // 平台对象引用：锚可见，spec 随文档面
 	}
 	if _, ok := strings.CutSuffix(routeTarget, "-workflow"); ok && routeTarget != "-workflow" {
 		spec := Builtin(ReconcileWorkflow) // 对账锚 → 对账循环锚 core-workflow（owner 维度在留痕）
-		return spec.Name, SpecBuiltin, phaseNames(spec.Phases)
+		return spec.Name, SpecBuiltin, phaseNames(spec.Phases), transitionRows(spec.Transitions)
 	}
-	return "", "", nil // 防御性：非 workflow 家族原文原样可见（空锚）
+	return "", "", nil, nil // 防御性：非 workflow 家族原文原样可见（空锚）
 }
 
 // phaseNames 相位序列投影为字符串切片（声明面 → 留痕面；顺序保留）。

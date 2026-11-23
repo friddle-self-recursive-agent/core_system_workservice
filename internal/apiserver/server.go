@@ -416,7 +416,8 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	})
 	// 对账 run 投影面（§2.3 v0.15 引擎主体第三段——真实拉起第一子段：workflow 触发面接线；
 	// v0.23 相位推进器首段：受理即启动——引擎单步迁移判定随受理同拍完成，builtin run
-	// phase=声明第二相位∧status=running；run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
+	// phase=声明第二相位∧status=running；v0.25 显式迁移表首段：载荷新增 transitions=物化
+	// 声明表行投影（新载荷键=代际判别器）。run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
 	// handler 返回 405=代际判别器（与 loop-13 固化口径一致）。
 	mux.HandleFunc("GET /v1/workflows/runs", func(w http.ResponseWriter, _ *http.Request) {
 		if runs == nil {
@@ -428,7 +429,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		for _, r := range st.Runs {
 			items = append(items, map[string]any{
 				"run": r.Run, "workflow": r.Workflow, "specSource": r.SpecSource,
-				"phases": r.Phases, "phase": r.Phase, "status": r.Status,
+				"phases": r.Phases, "transitions": r.Transitions, "phase": r.Phase, "status": r.Status,
 				"triggerSeq": r.TriggerSeq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "route": r.Route, "owner": r.Owner,
 				"target": r.Target, "startedAt": r.StartedAt.UTC().Format(time.RFC3339Nano),

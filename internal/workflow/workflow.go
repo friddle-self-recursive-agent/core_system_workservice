@@ -73,32 +73,73 @@ type FullSpec struct {
 
 // Builtin 默认态机（core_system/concepts/workflow.md §1 相位词汇映射表——六项 builtin
 // 的声明相位序列，声明面与投影面同源；相位语义只加不改，workflow.md §4）。
+// v0.25 显式迁移表首段：builtin 表随构造物化（序列物化相邻行+审批边表行先例，
+// MaterializeTransitions），判定器查表不再读序列——Can 与 run 域迁移判定同源。
 func Builtin(name string) *Spec {
 	switch name {
 	case "simple-shot":
-		return &Spec{Name: name, Phases: []Phase{Idle, Executing, Reporting}}
+		return builtinSpec(name, []Phase{Idle, Executing, Reporting})
 	case "watch-only":
-		return &Spec{Name: name, Phases: []Phase{Idle, Analyzing, Reporting}}
+		return builtinSpec(name, []Phase{Idle, Analyzing, Reporting})
 	case "dev-delivery":
-		return &Spec{Name: name, Phases: []Phase{ // §1.1 步锚映射：Analyze→Gate→Plan→Execute→Verify→Deploy→Report
+		return builtinSpec(name, []Phase{ // §1.1 步锚映射：Analyze→Gate→Plan→Execute→Verify→Deploy→Report
 			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting, Failed,
-		}}
+		})
 	case "apply-workflow":
-		return &Spec{Name: name, Phases: []Phase{ // §1.2 落地 agent 任务态机=default-task 词汇全量复用（不另立词汇）
+		return builtinSpec(name, []Phase{ // §1.2 落地 agent 任务态机=default-task 词汇全量复用（不另立词汇）
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
-		}}
+		})
 	case "core-workflow":
-		return &Spec{Name: name, Phases: []Phase{ // 系统级循环（A41；A67 core-loop→core-workflow）
+		return builtinSpec(name, []Phase{ // 系统级循环（A41；A67 core-loop→core-workflow）
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
-		}}
+		})
 	default: // default-task
-		return &Spec{Name: "default-task", Phases: []Phase{
+		return builtinSpec("default-task", []Phase{
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
-		}}
+		})
 	}
 }
 
-// Can 迁移合法性判定。
+// builtinSpec 构造 builtin spec：相位序列 + 声明表物化（workflow.md 规则 14——表=序列
+// 物化相邻行+审批边表行先例；判定器查表，行为面与序列前进等价）。
+func builtinSpec(name string, seq []Phase) *Spec {
+	return &Spec{Name: name, Phases: seq, Transitions: MaterializeTransitions(seq)}
+}
+
+// EdgeAdvance 推进事件名（声明表物化相邻行的 on 词——序列前进=表的特例，workflow.md 规则 14）。
+const EdgeAdvance = "advance"
+
+// MaterializeTransitions builtin 声明表物化（v0.25 显式迁移表首段，workflow.md 规则 14）。
+// 纯函数：声明相位序列 → 迁移表行集。
+//   - 相邻行：from=seq[i] on=advance to=seq[i+1]（序列前进=表的特例——表行全量物化）；
+//   - 审批边表行先例（规则 13 挂起-恢复的表侧落点）：批准边 from=闸锚 on=ApprovalGranted
+//     to=闸锚后继（与相邻行同目标、异事件名——恢复判定查表）；驳回边 from=闸锚
+//     on=ApprovalRejected to=终点锚 Failed——**表的首处非相邻迁移行**（机械判别器：
+//     非相邻迁移按表命中）。
+//
+// 声明无闸锚/无终点锚的序列=无对应审批边（无挂起面/驳回零迁移的表侧落点——零动作面在
+// 表物化即收口，判定器无需特判）。
+func MaterializeTransitions(seq []Phase) []Transition {
+	rows := make([]Transition, 0, len(seq)+2)
+	for i := 0; i+1 < len(seq); i++ {
+		rows = append(rows, Transition{From: seq[i], On: EdgeAdvance, To: seq[i+1]})
+	}
+	for i, p := range seq {
+		if p != AwaitingApproval {
+			continue
+		}
+		if i+1 < len(seq) {
+			rows = append(rows, Transition{From: p, On: SignalResume, To: seq[i+1]})
+		}
+		if containsPhase(phaseNames(seq), string(Failed)) {
+			rows = append(rows, Transition{From: p, On: SignalReject, To: Failed})
+		}
+	}
+	return rows
+}
+
+// Can 迁移合法性判定（v0.25 显式迁移表首段起实接：Builtin 物化声明表——查表命中
+// from+on → to，未命中=零迁移；与 run 域判定器 stepByTable 同一查表口径，workflow.md 规则 14）。
 func (s *Spec) Can(from Phase, on string) (Phase, bool) {
 	for _, t := range s.Transitions {
 		if t.From == from && t.On == on {
