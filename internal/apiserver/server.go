@@ -89,6 +89,9 @@ type PublisherFace interface {
 // 屏幕 0 数据来源=event_log）与事件流页（E6）的持久源。只读投影：归档行不删不改）。
 type EventLogFace interface {
 	QueryEvents(q opslog.EventQuery) ([]opslog.EventLog, error)
+	// GroupEvents (type,involved) 分组计数（v0.37 console 读面第二段——聚合计数源底层读取；
+	// 具体方法不占冻结 Store 签名，QueryEvents 同款口面约定）。
+	GroupEvents(q opslog.EventQuery) ([]opslog.EventGroup, int64, bool, error)
 }
 
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
@@ -585,6 +588,9 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"triggerSeq": r.TriggerSeq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "route": r.Route, "owner": r.Owner,
 				"target": r.Target, "startedAt": r.StartedAt.UTC().Format(time.RFC3339Nano),
+				// v0.37 console 读面第二段：来源留痕 involved 投影（run 涉及对象链第一跳——
+				// 运行抽屉「涉及文档」取本字段落对象链接，无前端拼凑；新载荷键=代际判别器）。
+				"involved": r.Involved,
 				// v0.32 刹车首段：生效刹车值投影（声明→留痕面——spec.brakes 钳定后的每锚生效值；
 				// 新载荷键=代际判别器）。
 				"brakes": map[string]any{
@@ -738,6 +744,27 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "events": items})
+	})
+	// workflow 运行管理聚合面（v0.37 console 读面第二段，E3——cored-bridge.md §2
+	// `GET /v1/workflows`）：三源同投（① 声明=builtin 注册表+文档库 Workflow 对象；
+	// ② 现势=run 环每锚最新 run 的相位/状态；③ 计数=event_log 归档分组 × dispatch 决议，
+	// workflow.RunAnchor 与 run 投影同一锚解析）。只读 GET；旧构建（路由未注册）经兜底
+	// handler 405=代际判别器。投影/构造细节见 workflows_face.go。
+	mux.HandleFunc("GET /v1/workflows", func(w http.ResponseWriter, r *http.Request) {
+		rows, scanned, capped := collectWorkflowRows(r.Context(), objects, runs, triggers, eventLog)
+		items := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			items = append(items, map[string]any{
+				"name": row.Name, "specSource": row.SpecSource, "phases": row.Phases,
+				"objects": workflowObjectsJSON(row.Objects), "effective": row.Effective,
+				"latest": row.Latest, "runsTotal": row.RunsTotal, "runs24h": row.Runs24h,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items), "window": "24h",
+			"scanned": scanned, "scanCapped": capped, // 计数=有界窗如实标注（不冒充全量承诺）
+			"workflows": items,
+		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

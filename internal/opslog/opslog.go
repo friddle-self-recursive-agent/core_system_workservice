@@ -288,6 +288,84 @@ func (s *SQLiteStore) EventCountsSince(since time.Time) (map[string]int, error) 
 	return out, rows.Err()
 }
 
+// EventGroup event_log 归档行的 (type, involved) 分组计数（v0.37 console 读面第二段——
+// workflow 运行管理聚合投影 `GET /v1/workflows` 的底层读取：每组的触发量与派发决议由
+// 上层按组解析一次（dispatch 表快照纯函数），归档行不重复判定）。
+type EventGroup struct {
+	Type     string
+	Involved string
+	Count    int
+}
+
+// MaxGroupScanRows 分组查询的归档扫描行数上限（防拖库同口径；超出=结果带 capped 标记，
+// 调用方按「扫描有界」如实投影——聚合计数不冒充全量）。
+const MaxGroupScanRows = 20000
+
+// GroupEvents event_log 分组计数（v0.37 console 读面第二段；不属于冻结 Store 接口，扩展走
+// 新方法）。过滤语义同 QueryEvents（Type/Level/Involved 精确匹配、Since 时间下界）；
+// 分组键=(type, involved)——计数按计数排序降序、同数按 (type, involved) 字典序（机械可复现）。
+// scanned=实际扫描行数（过滤前）；capped=扫描触及上限提前收口（计数=有界窗，非全量承诺）。
+func (s *SQLiteStore) GroupEvents(q EventQuery) (groups []EventGroup, scanned int64, capped bool, err error) {
+	rows, err := s.db.Query(`SELECT ts, type, involved, severity FROM event_log`)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("opslog: 查询 event_log 分组: %w", err)
+	}
+	defer rows.Close()
+	key := func(t, inv string) string { return t + "\x00" + inv }
+	agg := map[string]*EventGroup{}
+	for rows.Next() {
+		if scanned >= MaxGroupScanRows {
+			capped = true
+			break
+		}
+		var ts, typ, inv, sev string
+		if err := rows.Scan(&ts, &typ, &inv, &sev); err != nil {
+			return nil, 0, false, fmt.Errorf("opslog: 读 event_log 行: %w", err)
+		}
+		scanned++
+		t, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, 0, false, fmt.Errorf("opslog: event_log.ts 解析 %q: %w", ts, err)
+		}
+		if q.Type != "" && typ != q.Type {
+			continue
+		}
+		if q.Level != "" && sev != q.Level {
+			continue
+		}
+		if q.Involved != "" && inv != q.Involved {
+			continue
+		}
+		if !q.Since.IsZero() && t.Before(q.Since) {
+			continue
+		}
+		k := key(typ, inv)
+		g, ok := agg[k]
+		if !ok {
+			g = &EventGroup{Type: typ, Involved: inv}
+			agg[k] = g
+		}
+		g.Count++
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, false, fmt.Errorf("opslog: 遍历 event_log: %w", err)
+	}
+	groups = make([]EventGroup, 0, len(agg))
+	for _, g := range agg {
+		groups = append(groups, *g)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].Count != groups[j].Count {
+			return groups[i].Count > groups[j].Count
+		}
+		if groups[i].Type != groups[j].Type {
+			return groups[i].Type < groups[j].Type
+		}
+		return groups[i].Involved < groups[j].Involved
+	})
+	return groups, scanned, capped, nil
+}
+
 // EventQuery event_log 读查询（v0.36 console 读面首段——event_log 归档行的查询投影，
 // cored-bridge.md §2 `GET /v1/events` 的底层读取）。过滤字段全部精确匹配、空=不过滤；
 // 时间过滤在 Go 侧逐行解析（同 EventCountsSince：RFC3339Nano 去尾零致字面序≠时序）。

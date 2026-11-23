@@ -144,6 +144,9 @@ type RunRecord struct {
 	Route       string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
 	Owner       string          // owner 解析值（对账锚的 owner 维度在此承载）
 	Target      string          // 执行面锚点投影（=ExecutorBinding.Target）
+	Involved    string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
+	//                             v0.37 console 读面第二段新增载荷键=代际判别器：运行抽屉「涉及文档」
+	//                             直接取本字段落对象链接，无前端拼凑）
 	StartedAt   time.Time       // run 起始时刻（收到留痕同刻）
 }
 
@@ -287,7 +290,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
 		Phase: phase, Status: status, Brakes: brk,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
-		Route: rec.Route, Owner: rec.Owner, Target: b.Target, StartedAt: rec.ReceivedAt,
+		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
 	})
 }
 
@@ -384,6 +387,14 @@ func stepByTable(table []TransitionRow, from, on string) (string, bool) {
 		}
 	}
 	return from, false
+}
+
+// RunAnchor 派发 route 原文 → run 锚名与声明来源（v0.37 console 读面第二段导出面：
+// `GET /v1/workflows` 聚合投影按 dispatch 决议归档计数时复用同一锚解析——聚合与 run 投影
+// 同一解析函数，无双源；空锚=""）。source 词汇：builtin=内置注册表命中；object=平台对象引用。
+func RunAnchor(routeTarget string) (wf, source string) {
+	wf, source, _, _ = resolveRunAnchor(routeTarget)
+	return wf, source
 }
 
 // resolveRunAnchor 命中行 route 原文 → run 投影的 workflow 锚（纯映射；引擎主体第三段 v0.15）。

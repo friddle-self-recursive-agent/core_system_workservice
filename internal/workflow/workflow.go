@@ -10,7 +10,10 @@
 // declared-deferred（cored-bridge.md §2.3）。
 package workflow
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // Phase 相位。
 type Phase string
@@ -163,3 +166,24 @@ var builtinSet = map[string]bool{
 
 // IsBuiltin 名是否命中内置 workflow 注册表（run 锚解析的 SpecBuiltin/SpecObject 判据）。
 func IsBuiltin(name string) bool { return builtinSet[name] }
+
+// BuiltinPhaseNames 内置 workflow 的声明相位序列投影（v0.37 console 读面第二段导出面：
+// `GET /v1/workflows` 聚合投影的 builtin 相位词汇与 run 投影同源——phaseNames 同一映射，
+// 无双源；未命中=空）。
+func BuiltinPhaseNames(name string) []string {
+	if !IsBuiltin(name) {
+		return []string{}
+	}
+	return phaseNames(Builtin(name).Phases)
+}
+
+// BuiltinNames 内置 workflow 注册表名清单（v0.37 console 读面第二段导出面：聚合面行集
+// 三源并集的注册表半边——缺任何一源都不吞行；字典序确定性投影）。
+func BuiltinNames() []string {
+	out := make([]string, 0, len(builtinSet))
+	for n := range builtinSet {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
