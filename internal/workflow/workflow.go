@@ -3,6 +3,9 @@
 // 相位/迁移纯声明，预算/成本不在核心循环语义内（budget 是 metrics 关注的东西，暂不做）。
 // TaskScheme 管 Executing 相位内的步骤图。
 // builtin：core-workflow（系统级循环）、default-task（任务态机）、simple-shot、watch-only。
+// trigger.go：触发骨架（dispatch 接线第一段 v0.11）——TriggerHub 单订阅者收到事件落可查状态
+// （apply→事件→订阅主干第一段），触发引擎主体（dispatch 路由→owner 解析→相位态机→派发→刹车）
+// declared-deferred（cored-bridge.md §2.3）。
 package workflow
 
 import "time"

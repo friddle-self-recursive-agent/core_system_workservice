@@ -127,7 +127,21 @@ func (b *Bus) Publish(e *Event) error {
 			routed = append(routed, s)
 		}
 	}
+	slow := 0
 	if len(routed) == 0 {
+		b.pushDeadLocked(*e)
+	}
+	// 投递与退订同锁互斥：退订关频道在锁内进行，投递（非阻塞 select）也在锁内——
+	// 排除「路由快照已含订阅方、退订抢先关频道」的 send-on-closed 竞态。
+	// 非阻塞投递锁内驻留有界（满即转死信，不等待消费者）。
+	for _, s := range routed {
+		select {
+		case s.ch <- *e:
+		default: // 慢消费者：转死信（可丢语义，event.md §1）
+			slow++
+		}
+	}
+	for range slow {
 		b.pushDeadLocked(*e)
 	}
 	b.mu.Unlock()
@@ -143,16 +157,6 @@ func (b *Bus) Publish(e *Event) error {
 			Ts: e.At, EventID: e.ID, Type: e.Type, Source: e.Source,
 			Involved: e.Involved, DedupKey: e.DedupKey, Severity: e.Level, RoutedTo: routedTo,
 		})
-	}
-
-	for _, s := range routed {
-		select {
-		case s.ch <- *e:
-		default: // 慢消费者：转死信（可丢语义，event.md §1）
-			b.mu.Lock()
-			b.pushDeadLocked(*e)
-			b.mu.Unlock()
-		}
 	}
 	return nil
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 )
 
 func main() {
@@ -93,6 +94,15 @@ func run() error {
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
+	// 触发骨架（dispatch 接线第一段 v0.11）：单订阅者挂 DocApplied，收到落可查状态
+	// （GET /v1/triggers 收到留痕——eventId/dedupKey 与 apply 回执/event_log 同源）。
+	// 随总线装配、查询面恒开（写面关断时 DocApplied 不产生，received=0 照常 200）；
+	// 触发引擎主体（dispatch 表路由→owner 解析→相位态机→派发→刹车）declared-deferred
+	// （cored-bridge.md §2.3）。
+	triggers := workflow.NewTriggerHub(nil)
+	stopTriggers := triggers.Attach(bus, "DocApplied")
+	defer stopTriggers()
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已接线 DocApplied（单订阅者→GET /v1/triggers；引擎主体 declared-deferred）\n")
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。
@@ -177,7 +187,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
