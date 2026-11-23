@@ -1,7 +1,7 @@
 // objspec.go —— 对象 spec 解析面（v0.27 对象声明表解析首段=表投影；v0.28 相位投影+迁移
 // 判定接线，workflows 规则 16 下一段）。
 // 规则 14 显式迁移表首段（v0.25）只物化了 builtin 表；平台 Workflow 对象的自声明
-//（spec.phases 相位序列+spec.transitions 迁移表，scheme.yaml 声明终态形态）随文档面存在。
+// （spec.phases 相位序列+spec.transitions 迁移表，scheme.yaml 声明终态形态）随文档面存在。
 // v0.27 把声明表首段落为**投影**；v0.28 把相位序列一并投影——投影即点亮判定：相位投影后
 // 受理首步/审批信号/异步推进三条判定路径对 object 源自然生效（判定器零改动——stepByTable
 // 纯查表落点通用，推进器已完全表驱动，接表即得全量推进语义）。
@@ -14,12 +14,14 @@
 package workflow
 
 import (
+	"time"
+
 	"gopkg.in/yaml.v3"
 )
 
 // SpecView 对象 spec 投影（v0.28 相位投影段——同一份对象声明的两面一次解析：相位序列
 // +声明迁移表）。两个字段同口径：nil/空=未声明=零投影（不冒充空声明）；非空=声明投影
-//（顺序保留，原样不解释语义——判定是查表落点的事）。
+// （顺序保留，原样不解释语义——判定是查表落点的事）。
 type SpecView struct {
 	Phases      []string        // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
 	Transitions []TransitionRow // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
@@ -89,4 +91,48 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 		}
 	}
 	return view
+}
+
+// docsBrakesDecl 文档原文的 spec.brakes 声明形态（scheme.yaml Workflow spec brakes 键——
+// cooldown 时长词形+maxMutationsPerTick 计数；avoidRepeatFix 随 DriftReport 回归声明面顺延，
+// 本段不解析不投影）。形态合法性由写路径 scheme 校验闸门承担，此处只做声明→收紧值的映射。
+type docsBrakesDecl struct {
+	Spec struct {
+		Brakes struct {
+			Cooldown            string `yaml:"cooldown"`
+			MaxMutationsPerTick int    `yaml:"maxMutationsPerTick"`
+		} `yaml:"brakes"`
+	} `yaml:"spec"`
+}
+
+// ResolveBrakes 实现 BrakesResolver（v0.32 刹车首段——spec.brakes 声明收紧值的解析面；
+// 零缓存口径同 ResolveSpec：每次现读现投）。未挂 Lookup/未命中/损坏文档/未声明=ok=false
+// （强制默认兜底——不冒充空声明）。宽松方向钳定在 clampBrakes（生效值侧），解析面只透传
+// 声明值原样。
+func (d DocsSpecs) ResolveBrakes(name string) (Brakes, bool) {
+	if d.Lookup == nil || name == "" {
+		return Brakes{}, false
+	}
+	raw, ok := d.Lookup(name)
+	if !ok {
+		return Brakes{}, false
+	}
+	var doc docsBrakesDecl
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return Brakes{}, false // 损坏文档不投影（防御性同 ResolveSpec 口径）
+	}
+	decl := doc.Spec.Brakes
+	if decl.Cooldown == "" && decl.MaxMutationsPerTick == 0 {
+		return Brakes{}, false // 未声明 brakes=强制默认兜底（不冒充空声明）
+	}
+	var b Brakes
+	if decl.Cooldown != "" {
+		dur, err := time.ParseDuration(decl.Cooldown)
+		if err != nil {
+			return Brakes{}, false // 词形非法=未声明口径（写路径校验闸门是形态权威）
+		}
+		b.Cooldown = dur
+	}
+	b.MaxMutationsTick = decl.MaxMutationsPerTick
+	return b, true
 }

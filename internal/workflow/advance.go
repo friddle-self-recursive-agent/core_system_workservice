@@ -25,18 +25,27 @@ import (
 
 // Advance 异步推进入口（线程安全——RunLog.mu 已在；每拍一次，环内每 run 至多单步）。
 // 返回本拍推进的 run 数（累计值随 RunState.Advances 投影可查——查询面观测点）。
+// v0.32 刹车首段（workflows 规则 17）：推进拍变更上限——刹车闸挂接时，每拍对每锚的 run
+// 相位变更数受生效刹车值约束（变更单元=run 相位变更留痕；上限只计实际迁移，序列尾零动作
+// 不占额）；超限 run 本拍零动作、下拍续推（level-triggered 不丢拍；capped 计数可见）。
+// 未挂接=零刹车既有行为面零翻转（基线保护）。
 func (r *RunLog) Advance() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	advanced := 0
+	mutated := map[string]int{} // 本拍每锚已发生迁移数（刹车闸挂接时生效）
 	for i := range r.ring {
 		run := &r.ring[i]
 		if len(run.Phases) == 0 || run.Status != RunRunning {
 			continue // 相位未投影（未声明 phases 的 object 源）/ 非进行中（triggered/suspended/failed）=零动作
 		}
+		if r.opts.Brakes.Enabled && run.Brakes.MaxMutationsTick > 0 && mutated[run.Workflow] >= run.Brakes.MaxMutationsTick {
+			r.capped++ // 超限本拍零动作（下拍续推——level-triggered 不丢拍）
+			continue
+		}
 		next, ok := stepByTable(run.Transitions, run.Phase, EdgeAdvance)
 		if !ok {
-			continue // 序列尾（无 advance 行命中）=零动作停（不冒充执行完毕）
+			continue // 序列尾（无 advance 行命中）=零动作停（不冒充执行完毕；不占变更上限额）
 		}
 		run.Phase = next
 		switch Phase(next) {
@@ -45,6 +54,7 @@ func (r *RunLog) Advance() int {
 		case Failed: // 落终点锚=终态（迁移终点语义——非引擎失败语义）
 			run.Status = RunFailed
 		}
+		mutated[run.Workflow]++
 		advanced++
 	}
 	r.advances += int64(advanced)

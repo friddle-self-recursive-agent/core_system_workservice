@@ -436,12 +436,21 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"triggerSeq": r.TriggerSeq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "route": r.Route, "owner": r.Owner,
 				"target": r.Target, "startedAt": r.StartedAt.UTC().Format(time.RFC3339Nano),
+				// v0.32 刹车首段：生效刹车值投影（声明→留痕面——spec.brakes 钳定后的每锚生效值；
+				// 新载荷键=代际判别器）。
+				"brakes": map[string]any{
+					"cooldown":         r.Brakes.Cooldown.String(),
+					"maxMutationsTick": r.Brakes.MaxMutationsTick,
+					"source":           r.Brakes.Source,
+				},
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "started": st.Started, "dropped": st.Dropped,
 			"advances": st.Advances, // v0.26 异步推进首段：累计推进 run·步计数（新载荷键=代际判别器）
-			"runs": items,
+			"braked":   st.Braked,   // v0.32 刹车首段：累计冷却门拦阻触发数（新载荷键=代际判别器）
+			"capped":   st.Capped,   // v0.32 刹车首段：累计推进拍上限拦阻 run·步数（新载荷键=代际判别器）
+			"runs":     items,
 		})
 	})
 	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线；

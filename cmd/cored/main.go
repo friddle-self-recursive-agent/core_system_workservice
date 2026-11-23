@@ -74,6 +74,12 @@ func run() error {
 			"开启时装配层桥接数据面指标样本通道并按装配阈值声明做服务侧判定，越限自产 MetricThreshold 进总线——"+
 			"source 服务侧判定恒 metrics，metrics 事件落 run 同拍即拍（workflow.md 规则 15，零新开关）；"+
 			"数据面（MetricsInfo 投影）declared-deferred——现装配零样本源=no-source 缺口可见）")
+	brakesFlag := flag.Bool("brakes", false,
+		"刹车闸（v0.32 刹车首段，workflow.md 规则 17；缺省 false=关断零刹车不改行为面。"+
+			"开启时两路生效：受理路径冷却门（同锚同 involved cooldown 窗口内触发不落 run，braked 计数可见；"+
+			"跨 involved 不互踩——防震荡语义粒度=同一对象）+推进拍变更上限（每拍每锚 run 相位变更数受生效刹车值约束，"+
+			"capped 计数可见；超限本拍零动作下拍续推）。刹车值=spec.brakes 声明收紧（宽松方向钳回强制默认——"+
+			"可收紧不可关闭）；文档库未挂载=全锚强制默认）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -168,10 +174,15 @@ func run() error {
 	// 投影，零缓存=apply 落库即生效；相位投影即点亮既有表驱动判定——判定器零改动）。未挂
 	// 文档库=能力缺席，既有行为面不变。
 	runOpts := &workflow.RunOptions{}
+	runOpts.Brakes.Enabled = *brakesFlag // 刹车闸挂接态（缺省关断=零刹车既有行为面零翻转）
 	objSpecState := "off（未挂文档库——object 源表不投影）"
+	brakesResolverState := "defaults"
 	if repo != nil {
-		runOpts.Specs = workflow.DocsSpecs{Lookup: workflowDocLookup(repo)}
+		docsSpecs := workflow.DocsSpecs{Lookup: workflowDocLookup(repo)}
+		runOpts.Specs = docsSpecs
+		runOpts.Brakes.Resolver = docsSpecs // spec.brakes 声明收紧（未命中=强制默认兜底）
 		objSpecState = "on"
+		brakesResolverState = "docs"
 	}
 	runs := workflow.NewRunLog(runOpts)
 	deliveries := workflow.NewDeliveryLog(dlOpts)
@@ -288,6 +299,11 @@ func run() error {
 		go advancer.Run(advCtx)
 	}
 	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响；事件拍=v0.29 引擎内部源落 run 同拍全量推进（巡检拍与推进拍合一——总闸同闸不旁路，source=core 三重闸））\n", advanceState)
+	brakesState := "off"
+	if *brakesFlag {
+		brakesState = "on(" + brakesResolverState + ")"
+	}
+	fmt.Fprintf(os.Stderr, "cored: 刹车闸=%s（--brakes；on=受理路径冷却门（同锚同 involved cooldown 窗口内触发不落 run——braked 计数可见；跨 involved 不互踩）+推进拍变更上限（每拍每锚 run 相位变更数受生效刹车值约束——capped 计数可见，超限本拍零动作下拍续推）——workflow.md 规则 17；刹车值=spec.brakes 声明收紧，宽松方向钳回强制默认（可收紧不可关闭）；off=关断零刹车缺省不改行为面）\n", brakesState)
 	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 解析 v0.27 表投影+v0.28 相位投影与迁移判定接线——object 源 run 相位/声明表按文档库 spec 投影，声明了 phases 的对象参与既有表驱动判定；未声明 phases=零投影既有行为面不变）\n", objSpecState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；

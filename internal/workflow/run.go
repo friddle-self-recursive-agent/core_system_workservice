@@ -136,6 +136,7 @@ type RunRecord struct {
 	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
 	Phase       string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
 	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
+	Brakes      BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
 	TriggerSeq  int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
 	EventID     string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
 	Type        string          // 事件类型
@@ -151,6 +152,8 @@ type RunState struct {
 	Started  int64       // 累计 start（含已被环挤出的）
 	Dropped  int64       // 环溢出丢弃计数（可观测）
 	Advances int64       // 累计异步推进的 run·步计数（v0.26 异步推进首段——新载荷键=代际判别器）
+	Braked   int64       // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
+	Capped   int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
 	Runs     []RunRecord // 环内 run 投影（旧→新）
 }
 
@@ -181,18 +184,25 @@ type RunOptions struct {
 	// 键）；相位投影即点亮既有表驱动判定（受理首步/审批信号/异步推进三路径自然生效，判定器
 	// 零改动）；未声明 phases 的对象=零投影既有口径不稀释。
 	Specs SpecResolver
+	// Brakes 刹车闸挂接项（v0.32 刹车首段，workflows 规则 17——可选能力，缺省零值=
+	// 零刹车既有行为面零翻转：触发全落 run、推进不限量）。注入开启后冷却门（受理路径）
+	// 与推进拍变更上限（推进路径）按生效刹车值生效（解析面未注入=全锚强制默认）。
+	Brakes BrakeOptions
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
 type RunLog struct {
 	opts RunOptions
 
-	mu       sync.Mutex
-	seq      int64
-	ring     []RunRecord
-	started  int64
-	dropped  int64
-	advances int64 // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
+	mu           sync.Mutex
+	seq          int64
+	ring         []RunRecord
+	started      int64
+	dropped      int64
+	advances     int64                // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
+	braked       int64                // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
+	capped       int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
+	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
 // NewRunLog 构建 run 投影落点。
@@ -204,6 +214,7 @@ func NewRunLog(opts *RunOptions) *RunLog {
 	if r.opts.RingSize <= 0 {
 		r.opts.RingSize = 256
 	}
+	r.lastAccepted = map[string]time.Time{}
 	return r
 }
 
@@ -226,8 +237,23 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			phases = view.Phases
 		}
 	}
+	// 刹车首段（v0.32，workflows 规则 17）：每锚生效刹车值（表驱动——spec.brakes → 强制
+	// 默认钳定 → 生效值；声明→留痕面投影不依赖挂接态）。冷却门只在刹车闸挂接时生效（未挂
+	// 接=零刹车既有行为面零翻转——基线保护）：同锚同 involved 最新 run 受理时刻起 cooldown
+	// 窗口内的后续触发不落 run（触发留痕仍在——braked 计数可见）；窗口外照落；跨 involved
+	// 不互踩（防震荡语义粒度=同一对象）。cooldown 锚首段=run 受理时刻（rec.ReceivedAt）。
+	// 判定在锁外算生效值（解析面文件 IO 不持 r.mu），闸判在锁内（braked/lastAccepted 并发安全）。
+	brk := effectiveBrakes(r.opts.Brakes.Resolver, wf)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.opts.Brakes.Enabled && brk.Cooldown > 0 {
+		key := brakeKey(wf, rec.Involved)
+		if last, ok := r.lastAccepted[key]; ok && rec.ReceivedAt.Sub(last) < brk.Cooldown {
+			r.braked++ // 拦阻=触发留痕仍在、run 不落（防震荡——冷却窗口语义）
+			return
+		}
+		r.lastAccepted[key] = rec.ReceivedAt
+	}
 	r.seq++
 	r.started++
 	if excess := len(r.ring) + 1 - r.opts.RingSize; excess > 0 {
@@ -259,7 +285,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
-		Phase: phase, Status: status,
+		Phase: phase, Status: status, Brakes: brk,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, StartedAt: rec.ReceivedAt,
 	})
@@ -342,7 +368,7 @@ func (r *RunLog) State() RunState {
 	defer r.mu.Unlock()
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
-	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Runs: runs}
+	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Runs: runs}
 }
 
 // stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中
