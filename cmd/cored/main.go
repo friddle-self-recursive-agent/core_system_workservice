@@ -151,7 +151,16 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 真实出站已注入（exec 桥 argv=%d 令牌 超时=%s；送达受理后异步出站 status=accepted→sent/failed）\n",
 			len(argv), *outboundTimeout)
 	}
-	runs := workflow.NewRunLog(nil)
+	// 对象声明表解析首段（v0.27，workflows 规则 16）：文档库挂载即注入对象 spec 解析面
+	//（object 源 run 声明表投影自文档库 spec.transitions，零缓存=apply 落库即生效；投影≠
+	// 判定：相位不投影零迁移，判定接线顺延）。未挂文档库=能力缺席，既有行为面不变。
+	runOpts := &workflow.RunOptions{}
+	objSpecState := "off（未挂文档库——object 源表不投影）"
+	if repo != nil {
+		runOpts.Specs = workflow.DocsSpecs{Lookup: workflowDocLookup(repo)}
+		objSpecState = "on"
+	}
+	runs := workflow.NewRunLog(runOpts)
 	deliveries := workflow.NewDeliveryLog(dlOpts)
 	wakes := workflow.NewWakeLog(nil)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
@@ -196,6 +205,7 @@ func run() error {
 		go advancer.Run(advCtx)
 	}
 	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响）\n", advanceState)
+	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 声明表解析首段 v0.27——object 源 run transitions 按文档库 spec.transitions 投影，声明行集顺序保留；投影≠判定：相位不投影零迁移，判定接线顺延）\n", objSpecState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。
@@ -318,6 +328,37 @@ func run() error {
 
 // permDocs 投影权限对象（Role/Group，global scope——permission.md §1 作用域 Global）。
 // permission 包不反向依赖存储层：这里把文档对象投影成它的装载输入。
+// workflowDocLookup 对象声明表解析首段（v0.27）装配侧查找：按 workflow 锚名在文档库全
+// scope 取 Workflow 对象原文（List 跨 scope 通配；global 同名优先——作用域覆盖语义的确定性
+// 投影）。零缓存：每次现读（git 后端权威，apply 落库即生效）。未挂库/未命中=nil。
+func workflowDocLookup(repo *repository.GitRepo) func(string) ([]byte, bool) {
+	return func(name string) ([]byte, bool) {
+		if repo == nil || name == "" {
+			return nil, false
+		}
+		objs, err := repo.List(context.Background(), "Workflow", "")
+		if err != nil {
+			return nil, false
+		}
+		var pick *repository.Object
+		for _, o := range objs {
+			if o.Name != name {
+				continue
+			}
+			if o.Scope == "global" {
+				return o.Content, true // global 同名优先（确定性投影）
+			}
+			if pick == nil {
+				pick = o
+			}
+		}
+		if pick == nil {
+			return nil, false
+		}
+		return pick.Content, true
+	}
+}
+
 func permDocs(ctx context.Context, repo *repository.GitRepo) ([]permission.ObjectDoc, error) {
 	if repo == nil {
 		return nil, errors.New("权限对象装载需文档库（--allow-apply 依附 --docs）")

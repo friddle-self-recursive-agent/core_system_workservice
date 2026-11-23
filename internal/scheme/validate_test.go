@@ -191,6 +191,36 @@ func TestValidateSpecUnknownAndProsePass(t *testing.T) {
 	}
 }
 
+// TestValidateWorkflowTransitions 对象声明表形态锚（对象声明表解析首段 v0.27，workflows
+// 规则 16）：spec.transitions 声明终态形态（scheme.yaml `?[]{from: Phase, on: string,
+// to: Phase}`）的校验闸门在位——好对象放行（apply 落库通道）、非数组拦、行非映射拦。
+func TestValidateWorkflowTransitions(t *testing.T) {
+	// 权威声明直读（fixture=冻结快照滞后于 v0.25 新增字段；同 TestValidateDocAuthoritativeScheme 口径）。
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml"))
+	if errors.Is(err, fs.ErrNotExist) {
+		t.Skipf("权威 scheme.yaml 不可达（standalone 检出）: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("读权威声明: %v", err)
+	}
+	s, err := Load(raw)
+	if err != nil {
+		t.Fatalf("载入权威声明: %v", err)
+	}
+	good := "apiVersion: core/v1\nkind: Workflow\nmetadata: {name: w, scope: global}\nspec:\n  transitions:\n  - {from: Idle, on: advance, to: Analyzing}\n  - {from: Idle, on: ApprovalRejected, to: Failed}\n"
+	if err := validateKindDoc(t, s, "Workflow", good); err != nil {
+		t.Fatalf("声明表好对象应放行（落库通道在位）: %v", err)
+	}
+	badList := "apiVersion: core/v1\nkind: Workflow\nmetadata: {name: w, scope: global}\nspec: {transitions: not-a-list}\n"
+	if err := validateKindDoc(t, s, "Workflow", badList); err == nil || !strings.Contains(err.Error(), "须为数组") {
+		t.Fatalf("transitions 非数组应拦: %v", err)
+	}
+	badRow := "apiVersion: core/v1\nkind: Workflow\nmetadata: {name: w, scope: global}\nspec:\n  transitions:\n  - 3\n"
+	if err := validateKindDoc(t, s, "Workflow", badRow); err == nil || !strings.Contains(err.Error(), "须为映射") {
+		t.Fatalf("transitions 行须为映射: %v", err)
+	}
+}
+
 // TestValidateDocParseFailureSkipped 解析不可达移交存储层 ErrContent 管辖（准入不重复判）。
 func TestValidateDocParseFailureSkipped(t *testing.T) {
 	s := mustRealScheme(t)

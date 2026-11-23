@@ -11,7 +11,8 @@
 // builtin 表=声明序列物化相邻行（from=seq[i] on=advance to=seq[i+1]，序列前进=表的特例）
 // +挂起-恢复审批边=表行先例；判定器=纯查表（from+on 命中→to，未命中=零迁移），受理首步/
 // 批准恢复/驳回终态三路径共用同一查表落点（行为面不变，序列语义零翻转）；object 源 run
-// 相位与表均不投影=无从迁移，status 恒 triggered；已居序列尾（Failed 等终点）不再前进。
+// 相位不投影=无从迁移，status 恒 triggered（v0.27 起 object 源声明表可投影——投影≠判定，
+// 判定接线顺延）；已居序列尾（Failed 等终点）不再前进。
 // 受理与首步推进同拍完成（同步路径——真实异步派发 deferred，投影面只见推进后形态）。
 // 查询面声明表可见键：run 载荷新增 transitions（物化表行投影 from/on/to——新载荷键出现
 // =代际判别器）。
@@ -131,7 +132,7 @@ type RunRecord struct {
 	Workflow    string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
 	SpecSource  string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
 	Phases      []string        // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；object 源不投影=空数组——新载荷键=代际判别器）
+	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27 对象声明表解析首段：object 源=文档库 spec.transitions 投影（装配注入解析面时）——相位仍不投影零迁移，判定接线顺延）
 	Phase       string          // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表）
 	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；object 源恒 triggered）
 	TriggerSeq  int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
@@ -173,6 +174,11 @@ type ResumeSink interface {
 type RunOptions struct {
 	// RingSize run 环容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	RingSize int
+	// Specs 对象 spec 解析面（对象声明表解析首段 v0.27，workflows 规则 16——可选能力，
+	// 缺省 nil=既有行为面不变：object 源表不投影零迁移）。注入后 object 源 run 的声明表
+	// 按对象 spec.transitions 投影（builtin 物化口径之外的第二表来源——同一载荷键）；
+	// 相位仍不投影、迁移判定不接线（投影≠判定，判定接线=下一段 declared-deferred）。
+	Specs SpecResolver
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
@@ -202,6 +208,16 @@ func NewRunLog(opts *RunOptions) *RunLog {
 // StartRun 记一条 run 投影（环满丢最旧，dropped 计数可见）。锚解析见 resolveRunAnchor。
 func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	wf, source, phases, trans := resolveRunAnchor(rec.Route)
+	// 对象声明表解析首段（v0.27，workflows 规则 16）：object 源且装配层注入了解析面 →
+	// 声明表按对象 spec.transitions 投影（声明→留痕面，顺序保留）。解析在锁外（文档库读
+	// 面文件 IO 不持 r.mu——hub 同步调用路径不因投影阻塞）。投影≠判定：相位仍不投影
+	//（phases 恒空）→ 下方受理首步判定分支与 ResumeSignal/Advance 的「相位不投影=零动作」
+	// 防御面原样生效，object 源行为面零翻转；相位投影与迁移判定接线=下一段。
+	if source == SpecObject && len(trans) == 0 && r.opts.Specs != nil {
+		if rows := r.opts.Specs.ResolveSpec(wf); len(rows) > 0 {
+			trans = rows
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
@@ -337,7 +353,7 @@ func stepByTable(table []TransitionRow, from, on string) (string, bool) {
 
 // resolveRunAnchor 命中行 route 原文 → run 投影的 workflow 锚（纯映射；引擎主体第三段 v0.15）。
 // 口径见包注释；直接引用按 builtin 注册表解析，未命中=平台对象引用（SpecObject，锚保留、
-// 相位与声明表均不投影——对象 spec 随文档面，不在本进程）。
+// 相位不投影——对象 spec 随文档面，声明表投影由装配层注入的解析面承接，v0.27 首段）。
 func resolveRunAnchor(routeTarget string) (wf, source string, phases []string, trans []TransitionRow) {
 	if name, ok := strings.CutPrefix(routeTarget, "workflows/"); ok && name != "" {
 		if IsBuiltin(name) {
