@@ -24,6 +24,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
@@ -32,6 +33,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 )
 
@@ -47,13 +49,24 @@ func run() error {
 	schemePath := flag.String("scheme", os.Getenv("CORE_SYSTEM_SCHEME"),
 		"core/scheme.yaml 路径（缺省读 CORE_SYSTEM_SCHEME 环境变量）")
 	docsRoot := flag.String("docs", os.Getenv("CORE_SYSTEM_DOCS"),
-		"文档库根目录（缺省读 CORE_SYSTEM_DOCS；为空则 /v1/objects 返回 503，scheme 面不受影响）")
+		"文档库根目录（缺省读 CORE_SYSTEM_DOCS；为空则 /v1/objects 返回 503，scheme 面不受影响。"+
+			"git 后端=权威布局根；sqlite 后端=种子导入来源（空库一次性导入，非空库不导入））")
+	docsBackend := flag.String("docs-backend", "git",
+		"文档存储后端（v0.34 文档 storage 走 sqlite 首段；git|sqlite。git=既有行为面缺省零翻转；"+
+			"sqlite=docs DB 为权威内容面（--docs-db 文件路径必配），git 布局降级为导入导出格式（--docs 给定时种子导入））")
+	docsDB := flag.String("docs-db", "",
+		"docs DB（SQLite）文件路径（--docs-backend sqlite 必配；文档内容权威，不可丢弃——与 ops DB "+
+			"可丢弃口径分立，秘密库再分离，见 --secrets-db）")
 	addr := flag.String("addr", os.Getenv("CORE_SYSTEM_ADDR"),
 		"监听地址（缺省 127.0.0.1:0，即本机回环随机端口）")
 	allowApply := flag.Bool("allow-apply", false,
 		"显式开启写面（POST /v1/apply）；缺省 false=只读暴露。开启需同时配置 --docs")
 	opsDB := flag.String("ops-db", "",
 		"ops DB（SQLite）文件路径；为空=进程内存库（DB 非权威可重建，ops-log.md；持久化部署显式传路径）")
+	secretsDB := flag.String("secrets-db", "",
+		"秘密库（SQLite）文件路径（v0.34 secret 存储落地首段；为空=秘密面关断。凭据真实值只落本库"+
+			"（0600 权限独立文件——秘密=权威运行时值非缓存，不随可丢弃的 ops DB 走）；公开仓只见引用，"+
+			"任何查询面只出名称零值出（脱敏红线，provider.md 规则 2/6）")
 	outboundExec := flag.String("outbound-exec", "",
 		"真实出站 exec 桥命令行（v0.17 进程内自动投递注入；空白分隔+引号段；空=关，送达止于受理投影。"+
 			"实现侧出站命令由部署侧装配注入——依赖方向不反转，cored 不 import 连接器仓）")
@@ -71,9 +84,12 @@ func run() error {
 			"watch 事件落 run 同拍即拍（workflow.md 规则 15 v0.30 段，零新开关）")
 	metricsSource := flag.Bool("metrics-source", false,
 		"metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13；缺省 false=关断零事件不改行为面。"+
-			"开启时装配层桥接数据面指标样本通道并按装配阈值声明做服务侧判定，越限自产 MetricThreshold 进总线——"+
+			"开启时装配层桥接数据面指标样本通道并按声明面阈值绑定做服务侧判定，越限自产 MetricThreshold 进总线——"+
 			"source 服务侧判定恒 metrics，metrics 事件落 run 同拍即拍（workflow.md 规则 15，零新开关）；"+
-			"数据面（MetricsInfo 投影）declared-deferred——现装配零样本源=no-source 缺口可见）")
+			"阈值声明面=文档库 WorkService.observation.metrics（v0.33 数据面首段随行件）——零声明=no-source 缺口可见）")
+	metricsWindow := flag.Duration("metrics-window", 30*time.Second,
+		"MetricsInfo 数据面采样窗口（v0.33 数据面首段；随 --metrics-source 生效。装配层自观测采样器"+
+			"每窗口查询 ops DB event_log 流水做窗口计数入样本库——查询投影即样本；<=0=数据面关断零样本）")
 	brakesFlag := flag.Bool("brakes", false,
 		"刹车闸（v0.32 刹车首段，workflow.md 规则 17；缺省 false=关断零刹车不改行为面。"+
 			"开启时两路生效：受理路径冷却门（同锚同 involved cooldown 窗口内触发不落 run，braked 计数可见；"+
@@ -89,7 +105,13 @@ func run() error {
 		*addr = "127.0.0.1:0"
 	}
 	if *allowApply && *docsRoot == "" {
-		return errors.New("--allow-apply 需要文档库：同时给 --docs（写面依附文档库 git 后端）")
+		return errors.New("--allow-apply 需要文档库：同时给 --docs（写面依附文档库后端）")
+	}
+	if *docsBackend != "git" && *docsBackend != "sqlite" {
+		return fmt.Errorf("--docs-backend 只允许 git|sqlite（实得 %q）", *docsBackend)
+	}
+	if *docsBackend == "sqlite" && *docsDB == "" {
+		return errors.New("--docs-backend sqlite 需要 docs DB：同时给 --docs-db（文档内容权威，不可丢内存）")
 	}
 
 	// 启动自检：scheme 载入校验失败即退出（非 0），桥接方据退出码判定。
@@ -111,17 +133,46 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: ops DB=进程内存（未配 --ops-db；重启即清，DB 非权威）\n")
 	}
 
-	// 文档对象读面 + 串行写队列：--docs 给定则打开 git 后端（野对象闸门=scheme 注册表）。
+	// 秘密库（v0.34 secret 存储落地首段）：凭据真实值的部署侧权威面（--secrets-db 独立
+	// 文件 0600——秘密不随可丢弃的 ops DB 走）。--secrets-db 给定时装配 API 面（列表只出
+	// 名称零值出）与引用式解析锚（CORE_SYSTEM_SECRETS_DB 经出站桥 env 传给实现侧命令——
+	// 凭据值本身永不跨进程边界）。空=关断：secret: 来源解析缺口可见（引用面照常声明）。
+	var secrets *secretstore.Store
+	secretsState := "off"
+	if *secretsDB != "" {
+		secrets, err = secretstore.OpenSQLite(*secretsDB)
+		if err != nil {
+			return err
+		}
+		defer secrets.Close()
+		secretsState = "on(" + secrets.Path() + ")"
+	}
+	fmt.Fprintf(os.Stderr, "cored: 秘密库=%s（--secrets-db；on=凭据值部署侧权威面+脱敏 API 面 /v1/secrets 零值出；off=secret: 来源解析缺口可见——引用面照常声明）\n", secretsState)
+
+	// 文档对象读面 + 串行写队列：--docs 给定则打开文档库后端（野对象闸门=scheme 注册表）。
+	// --docs-backend 选择权威后端（v0.34 首段）：git=既有行为面缺省零翻转；sqlite=docs DB
+	// 权威内容面（--docs 旧布局根作种子导入来源，空库一次性导入保留 rv，非空库不导入=幂等）。
 	var store2 apiserver.ObjectSource
-	var repo *repository.GitRepo
-	if *docsRoot != "" {
-		repo, err = repository.NewGit(*docsRoot, sch, &repository.Options{Ops: store})
+	var repo repository.Repository
+	switch {
+	case *docsBackend == "sqlite":
+		repo, err = repository.OpenSQLite(*docsDB, sch, &repository.Options{Ops: store}, *docsRoot)
 		if err != nil {
 			return err
 		}
 		defer repo.Close()
 		store2 = repo
-		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", repo.Root())
+		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 db=%s（sqlite 后端，串行写+乐观锁；种子导入来源=%q 空库一次性导入）\n",
+			*docsDB, *docsRoot)
+	case *docsRoot != "":
+		gr, err := repository.NewGit(*docsRoot, sch, &repository.Options{Ops: store})
+		if err != nil {
+			return err
+		}
+		repo = gr
+		defer repo.Close()
+		store2 = repo
+		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())
 	}
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
@@ -163,6 +214,11 @@ func run() error {
 		bridge, err := outbound.NewCommand(argv)
 		if err != nil {
 			return fmt.Errorf("--outbound-exec 构建失败: %w", err)
+		}
+		if secrets != nil {
+			// 部署装配锚经子进程 env 注入（凭据值本身永不跨进程边界——实现侧经引用式
+			// 取值自行解析 secret:<name>，依赖方向声明不变，provider.md 规则 6）。
+			bridge.ExtraEnv = []string{"CORE_SYSTEM_SECRETS_DB=" + secrets.Path()}
 		}
 		dlOpts.Outbound = execOutbound{cmd: bridge}
 		dlOpts.OutboundTimeout = *outboundTimeout
@@ -264,22 +320,56 @@ func run() error {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "cored: watch 源=%s（--watch-source；on=装配层 watch 桥驱动 Watch 契约通道自产 ExternalChanged source=connector dedupKey=驱动侧因由——event.md 规则 12；no-driver=已开启但注册表无 Watch 契约驱动；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", watchState)
-	// metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13）：装配层桥接数据面指标
-	// 样本通道，越限样本服务侧判定自产 MetricThreshold 进总线（source 服务侧判定恒 metrics；
-	// 类型注册闸门前置；level=注册表缺省投影 warn；dedupKey=<metric>:<window> 因由口径）。
-	// 旗标关断（缺省）=零样本源零事件，缺省不改行为面；metrics 事件落 run 同拍即拍
-	// （workflow.md 规则 15——拍面驱动源集合扩展，零新开关）。数据面（MetricsInfo 投影）
-	// declared-deferred——现装配零样本源=no-source（缺口可见不静默）；真实样本生产者随
-	// 数据面落地顺延接入本契约（装配层绑定声明，契约不变）。
+	// metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13）+ MetricsInfo 数据面
+	// 首段（v0.33，event.md 规则 13 数据面落点）：数据面=进程内样本库（store/queries 投影，
+	// 可丢弃可重建）+自观测采样器（ops DB event_log 流水窗口计数——查询投影即样本）+读面
+	// /v1/metrics；信号面=阈值桥（契约不变）——解耦口径：数据面零信号面依赖，信号面不持
+	// 数据面，装配层持两者经样本通道适配。阈值声明面=文档库 WorkService.observation.metrics
+	// 告警面（v0.33 随行件：判定谓词落声明面——服务侧桥只判定不发明；逐对象 involved=
+	// WorkService/<name> 源级绑定锚）。旗标关断（缺省）=零样本源零事件，缺省不改行为面；
+	// metrics 事件落 run 同拍即拍（workflow.md 规则 15——拍面驱动源集合扩展，零新开关）。
 	metricsState := "off"
+	metricsPlaneState := "off"
+	var metricsStore *metricsinfo.Store
+	var metricsFace apiserver.MetricsFace
 	if *metricsSource {
+		metricsStore = metricsinfo.NewStore()
+		metricsFace = metricsStore
+		// 数据面真实生产者首段：装配层自观测采样器（ops DB event_log 流水窗口计数）。
+		sampler := metricsinfo.NewSampler(metricsStore, *metricsWindow, store.EventCountsSince)
+		if sampler.Enabled() {
+			metricsPlaneState = "on(" + sampler.Window().String() + ")"
+			metricsCtx, cancelMetricsPlane := context.WithCancel(context.Background())
+			defer cancelMetricsPlane()
+			go sampler.Run(metricsCtx)
+		} else {
+			metricsPlaneState = "off（窗口<=0）"
+		}
 		if _, err := sch.LookupEventType(metricsrc.EventType); err != nil {
 			metricsState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
 		} else {
-			// 装配层样本源绑定（数据面落地前=零源；真实 MetricsInfo 投影接入点在下方扩源）。
+			// 阈值声明面绑定（v0.33 首段）：文档库 WorkService 对象 observation.metrics 告警面
+			// → 桥阈值绑定；逐对象 involved=WorkService/<name>（源级绑定锚——每源独立扇出通道，
+			// 多对象互不争抢样本）。零声明=零源（no-source 缺口可见——数据面照常产样本，判定静默）。
 			var metricsSrcs []metricsrc.Source
+			if repo != nil {
+				wss, err := repo.List(ctx, "WorkService", "")
+				if err != nil {
+					return fmt.Errorf("枚举 WorkService 阈值声明面: %w", err)
+				}
+				for _, o := range wss {
+					ths := metricsrc.WorkserviceThresholds(o.Content)
+					if len(ths) == 0 {
+						continue // 零告警面声明的对象零绑定（缺口可见口径：判定静默）
+					}
+					metricsSrcs = append(metricsSrcs, metricsrc.Source{
+						Name: o.Name, Involved: "WorkService/" + o.Name,
+						Samples: metricsSamplePump(metricsStore.Subscribe()), Thresholds: ths,
+					})
+				}
+			}
 			if len(metricsSrcs) == 0 {
-				metricsState = "no-source" // 已开启∧类型已注册∧装配零样本源（缺口可见）
+				metricsState = "no-source" // 已开启∧类型已注册∧文档面零告警声明（缺口可见）
 			} else {
 				metricsState = fmt.Sprintf("on(%d)", len(metricsSrcs))
 				metricsCtx, cancelMetricsSrc := context.WithCancel(context.Background())
@@ -288,7 +378,8 @@ func run() error {
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>——event.md 规则 13；no-source=已开启∧类型已注册∧装配零样本源——数据面 declared-deferred 缺口可见；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
+	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>——event.md 规则 13；no-source=已开启∧类型已注册∧文档面零告警声明——判定静默缺口可见，数据面照常产样本 /v1/metrics 可查；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
+	fmt.Fprintf(os.Stderr, "cored: metrics 数据面=%s（--metrics-window；on=MetricsInfo store/queries 投影+自观测采样器 event_log 窗口计数——查询投影即样本 /v1/metrics 可查，解耦口径=数据面零信号面依赖；off=关断零样本缺省不改行为面）\n", metricsPlaneState)
 	// run 相位异步推进器（v0.26）：构建已提前（事件拍挂接须先于订阅主干），此处只做
 	// 定时拍启动与 stderr 装配锚报告。事件拍（v0.29）已随总闸在挂接点生效。
 	advanceState := "off"
@@ -395,7 +486,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets)...), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -425,12 +516,25 @@ func run() error {
 	return nil
 }
 
+// metricsSamplePump 数据面→信号面样本通道适配（装配层持两者——metricsinfo 与 metricsrc
+// 两包零互依，解耦口径的机械落点；字段直投不改造——窗口标签由样本侧声明服务侧透传同口径）。
+func metricsSamplePump(in <-chan metricsinfo.Sample) <-chan metricsrc.Sample {
+	out := make(chan metricsrc.Sample)
+	go func() {
+		for smp := range in { // 反压即丢由数据面扇出侧承担（订阅缓冲满即丢）——此处直投
+			out <- metricsrc.Sample{Metric: smp.Metric, Value: smp.Value, Window: smp.Window}
+		}
+		close(out)
+	}()
+	return out
+}
+
 // permDocs 投影权限对象（Role/Group，global scope——permission.md §1 作用域 Global）。
 // permission 包不反向依赖存储层：这里把文档对象投影成它的装载输入。
 // workflowDocLookup 对象声明表解析首段（v0.27）装配侧查找：按 workflow 锚名在文档库全
 // scope 取 Workflow 对象原文（List 跨 scope 通配；global 同名优先——作用域覆盖语义的确定性
 // 投影）。零缓存：每次现读（git 后端权威，apply 落库即生效）。未挂库/未命中=nil。
-func workflowDocLookup(repo *repository.GitRepo) func(string) ([]byte, bool) {
+func workflowDocLookup(repo repository.Repository) func(string) ([]byte, bool) {
 	return func(name string) ([]byte, bool) {
 		if repo == nil || name == "" {
 			return nil, false
@@ -458,7 +562,7 @@ func workflowDocLookup(repo *repository.GitRepo) func(string) ([]byte, bool) {
 	}
 }
 
-func permDocs(ctx context.Context, repo *repository.GitRepo) ([]permission.ObjectDoc, error) {
+func permDocs(ctx context.Context, repo repository.Repository) ([]permission.ObjectDoc, error) {
 	if repo == nil {
 		return nil, errors.New("权限对象装载需文档库（--allow-apply 依附 --docs）")
 	}
@@ -505,4 +609,16 @@ func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
 		})
 	}
 	return out, nil
+}
+
+// apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
+func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store) []apiserver.Option {
+	var opts []apiserver.Option
+	if metricsFace != nil {
+		opts = append(opts, apiserver.WithMetrics(metricsFace))
+	}
+	if secrets != nil {
+		opts = append(opts, apiserver.WithSecrets(secrets))
+	}
+	return opts
 }

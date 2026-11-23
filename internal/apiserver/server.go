@@ -18,10 +18,12 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 )
 
 // ObjectSource 文档对象读取源（Repository 的读半边；接口化便于测试注入假仓库）。
@@ -80,6 +82,43 @@ type PublisherFace interface {
 	Publish(req eventpub.Request, sub *permission.Subject) (*eventbus.Event, error)
 }
 
+// MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
+// store/queries 投影读面：指标清单与窗口聚合投影。可选能力：未注入=数据面未装配，
+// /v1/metrics 返回空投影——关断口径缺省可见，与 405 代际判别器分立）。
+type MetricsFace interface {
+	Metrics() []string
+	Count(metric string) int
+	Query(q metricsinfo.Query) (float64, bool)
+}
+
+// SecretFace 部署侧秘密存储口面（secretstore.Store 满足；v0.34 secret 存储落地首段——
+// 用户 2026-11-23 指示：凭据脱敏默认走 Secret，运行时态不导出）。脱敏口径：本面一切
+// 投影只出名称与更新时刻，**值只进不出**（Set 受理即吞值，任何 GET/列表不回显）。
+type SecretFace interface {
+	List() ([]secretstore.SecretInfo, error)
+	Set(name, value string) error
+	Delete(name string) error
+}
+
+// Option 查询面构建选项（既有九参构建签名不变——增量面走可变选项装配，测试与装配层
+// 既有调用零迁移）。
+type Option func(*options)
+
+type options struct {
+	metrics MetricsFace
+	secrets SecretFace
+}
+
+// WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
+func WithMetrics(m MetricsFace) Option {
+	return func(o *options) { o.metrics = m }
+}
+
+// WithSecrets 注入部署侧秘密存储口面（v0.34 secret 存储落地首段；--secrets-db 装配）。
+func WithSecrets(s SecretFace) Option {
+	return func(o *options) { o.secrets = s }
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
@@ -91,6 +130,8 @@ var (
 	_ DeliveryFace  = (*workflow.DeliveryLog)(nil)
 	_ WakeFace      = (*workflow.WakeLog)(nil)
 	_ PublisherFace = (*eventpub.Publisher)(nil)
+	_ MetricsFace   = (*metricsinfo.Store)(nil)
+	_ SecretFace    = (*secretstore.Store)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -110,6 +151,11 @@ var (
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
 //	GET /v1/notifications/deliveries    送达投影面（v0.16 送达面接线；v0.17 出站状态机 sent/failed；恒开，§2.3）
 //	GET /v1/agents/wakes                唤醒投影面（v0.18 引擎主体第五段：agent 触发面接线；恒开，§2.3）
+//	GET /v1/metrics                     数据面指标清单投影（v0.33 MetricsInfo 数据面首段；空投影=关断口径可见）
+//	GET /v1/metrics/query               数据面查询投影（窗口聚合最小集；未命中=404 不冒充零值）
+//	GET /v1/secrets                     秘密元数据清单（v0.34；只出名称/更新时刻，值永不回显——脱敏红线）
+//	POST /v1/secrets                    秘密落值（--allow-apply 门控；未开启=405；受理即吞值，回执零值）
+//	DELETE /v1/secrets/{name}           秘密删除（--allow-apply 门控；幂等）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //	POST /v1/events                     事件注入面（v0.20 发布面；--allow-apply 门控；未开启=405；event.md 规则 8）
 //
@@ -121,7 +167,15 @@ var (
 // deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
 // wakes 为 nil（唤醒投影面未接线）时 /v1/agents/wakes 返回 503。
 // publisher 为 nil（写面关断）时 POST /v1/events 返回 405（与 apply 写面同门控同口径）。
-func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace) http.Handler {
+// metrics 未注入（数据面未装配）时 /v1/metrics 返回空投影（关断口径缺省可见——与 405
+// 代际判别器分立：本面恒注册，装配与否只见投影丰瘠）。
+func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace, opts ...Option) http.Handler {
+	o := &options{}
+	for _, f := range opts {
+		f(o)
+	}
+	metrics := o.metrics
+	secrets := o.secrets
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -278,6 +332,80 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"id": ev.ID, "type": ev.Type, "dedupKey": ev.DedupKey,
 			"level": ev.Level, "source": ev.Source, "involved": ev.Involved,
 		})
+	})
+
+	// 秘密存储面（v0.34 secret 存储落地首段，provider.md 规则 2/6 运行时面；cored
+	// --secrets-db 装配）：GET /v1/secrets 列表只出名称与更新时刻（**值永不回显**——脱敏
+	// 红线）；POST /v1/secrets 落值（受理即吞值，回执零值）；DELETE /v1/secrets/{name} 幂等
+	// 删除。写操作与 apply/events 写面同门控（--allow-apply；未开启恒 405=代际判别器）；
+	// face 未注入（--secrets-db 未配置）时全部 503（面注册但能力缺席，关断口径可见）。
+	mux.HandleFunc("GET /v1/secrets", func(w http.ResponseWriter, _ *http.Request) {
+		if secrets == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "秘密存储未配置（cored 缺 --secrets-db）"})
+			return
+		}
+		rows, err := secrets.List()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		type row struct {
+			Name      string    `json:"name"`
+			UpdatedAt time.Time `json:"updatedAt"`
+		}
+		out := make([]row, 0, len(rows))
+		for _, r0 := range rows {
+			out = append(out, row{Name: r0.Name, UpdatedAt: r0.UpdatedAt})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(out), "secrets": out})
+	})
+	mux.HandleFunc("POST /v1/secrets", func(w http.ResponseWriter, r *http.Request) {
+		if applier == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "写路径未开启（cored 缺 --allow-apply；缺省只读）"})
+			return
+		}
+		if secrets == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "秘密存储未配置（cored 缺 --secrets-db）"})
+			return
+		}
+		var req struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("请求体不可解析: %v", err)})
+			return
+		}
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name 必填"})
+			return
+		}
+		if err := secrets.Set(req.Name, req.Value); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		// 回执零值（受理即吞值——请求体里的 value 不出现在任何响应/留痕）。
+		writeJSON(w, http.StatusOK, map[string]any{"name": req.Name, "set": true})
+	})
+	mux.HandleFunc("DELETE /v1/secrets/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if applier == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "写路径未开启（cored 缺 --allow-apply；缺省只读）"})
+			return
+		}
+		if secrets == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "秘密存储未配置（cored 缺 --secrets-db）"})
+			return
+		}
+		name := r.PathValue("name")
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name 必填"})
+			return
+		}
+		if err := secrets.Delete(name); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": name, "deleted": true})
 	})
 
 	// 草稿缓存面（cored-bridge.md §2.2；apply.md §1 编辑与发布分离）：GET 属查询面恒开；
@@ -514,6 +642,38 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "wakes": items,
 		})
 	})
+	// 数据面查询面（v0.33 MetricsInfo 数据面首段——store/queries 投影读面）：指标清单
+	// （样本保留数，排序确定性投影）与窗口聚合查询（queries 最小集投影）。数据面未装配
+	// =空投影（关断口径可见）；查询未命中/声明面外聚合=404（不冒充零值）。数据面零信号
+	// 面依赖同口径——本面只读样本库，零总线零判定。
+	mux.HandleFunc("GET /v1/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		items := []map[string]any{}
+		if metrics != nil {
+			for _, name := range metrics.Metrics() {
+				items = append(items, map[string]any{"name": name, "samples": metrics.Count(name)})
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"metrics": items, "total": len(items)})
+	})
+	mux.HandleFunc("GET /v1/metrics/query", func(w http.ResponseWriter, r *http.Request) {
+		qm := r.URL.Query().Get("metric")
+		qw := r.URL.Query().Get("window")
+		qa := r.URL.Query().Get("agg")
+		if qm == "" || qa == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "metrics 查询需 metric 与 agg 参数"})
+			return
+		}
+		if metrics == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "数据面未装配（关断口径）"})
+			return
+		}
+		v, ok := metrics.Query(metricsinfo.Query{Metric: qm, Window: qw, Agg: qa})
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "无投影结果（未知聚合或无同键样本）", "metric": qm, "window": qw, "agg": qa})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"metric": qm, "window": qw, "agg": qa, "value": v})
+	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
@@ -655,7 +815,7 @@ func writeApplyErr(w http.ResponseWriter, err error) {
 		errors.Is(err, apply.ErrSpecInvalid),
 		errors.Is(err, repository.ErrScope), errors.Is(err, repository.ErrIdentity),
 		errors.Is(err, repository.ErrContent), errors.Is(err, repository.ErrAlreadyExists),
-		errors.Is(err, repository.ErrNoFieldManager):
+		errors.Is(err, repository.ErrNoFieldManager), errors.Is(err, repository.ErrCredentialSource):
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 	case errors.Is(err, repository.ErrClosed):
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": err.Error()})

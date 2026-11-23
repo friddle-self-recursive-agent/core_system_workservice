@@ -34,6 +34,7 @@ spec:
     - {kind: ConnectorOps, builtin: true, storage: "global/connector-ops/<name>.yaml | systems/<s>/connector-ops/<name>.yaml | systems/<s>/instances/<i>/connector-ops/<name>.yaml"}
     - {kind: Ref, builtin: true, storage: "global/refs/<name>.yaml | systems/<s>/refs/<name>.yaml"}
     - {kind: Skill, builtin: true, storage: systems/<s>/instances/<i>/skills/<name>.yaml}
+    - {kind: Provider, builtin: true, storage: global/providers/<name>.yaml}
 `
 
 func mustScheme(t *testing.T) *scheme.Scheme {

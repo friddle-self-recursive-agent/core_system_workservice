@@ -35,7 +35,11 @@ const DefaultWaitDelay = 3 * time.Second
 
 // Command exec 出站桥（并发安全：无共享可变状态，一次 Send 一个子进程会话）。
 type Command struct {
-	argv      []string
+	argv []string
+	// ExtraEnv 附加进子进程 env 的键值对（K=V 形态；后置=同名覆盖 os.Environ 既有值）。
+	// 用途：部署侧装配锚注入（如 --secrets-db 文件路径——凭据值本身永不走此通道，
+	// 子进程经引用式取值自行解析，provider.md 规则 6 依赖方向声明不变）。
+	ExtraEnv []string
 	WaitDelay time.Duration // 超时击杀后管道释放等待上界（0 → DefaultWaitDelay）
 }
 
@@ -99,7 +103,7 @@ func (c *Command) Send(ctx context.Context, env connectors.OutboundEnvelope) err
 		return fmt.Errorf("outbound: 信封编码失败: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, c.argv[0], c.argv[1:]...)
-	cmd.Env = Environ() // 全量透传（显式声明依赖方向：secret 只在实现侧进程内解析）
+	cmd.Env = append(Environ(), c.ExtraEnv...) // 全量透传+部署装配锚附加（凭据值不经此通道）
 	waitDelay := c.WaitDelay
 	if waitDelay <= 0 {
 		waitDelay = DefaultWaitDelay

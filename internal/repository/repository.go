@@ -13,17 +13,21 @@ type Object struct {
 	Content         []byte // yaml/md 原文
 }
 
-// Repository 存储接口（未来换 DB 只换实现，布局降级为导入导出格式）。
-// 对象键 = (kind, scope, name)：scope 四层物化为目录前缀（layout.md §2「路径=scope」），
+// Repository 存储接口（后端可换：git 布局 / sqlite docs DB——权威=部署所择后端，
+// layout.md §2「路径=scope」的 git 布局降级为导入导出格式）。
+// 对象键 = (kind, scope, name)：scope 四层物化为目录前缀（git 后端）或键列（sqlite 后端），
 // 同名对象可并存于不同 scope（如 Workflow 的 global 与系统两栖，scheme.yaml storage 交替模板），
 // 故 scope 必须入键；scope="" 仅用于 List 的跨 scope 枚举。
 type Repository interface {
 	Get(ctx context.Context, kind, scope, name string) (*Object, error)
 	List(ctx context.Context, kind, scope string) ([]*Object, error)
-	// Write 串行队列内执行：乐观锁校验 + git commit + ops DB 双写。
+	// Write 串行队列内执行：乐观锁校验 + 权威落库 + ops DB 双写。
 	// 返回 (resourceVersion, action, error)：action ∈ create|update|noop
 	// （noop=幂等重入零提交零事件；apply 管线据 action 决定 DocApplied 是否必发，concepts/apply.md rule 1）。
 	Write(ctx context.Context, o *Object, fieldManager, reasonRef string) (int64, string, error)
-	// Watch 变更通知（v1：轮询 diff 模拟，instance 仓 loop/loop.md §4 兜底）。
+	// Watch 变更通知（git 后端=轮询 diff 模拟；sqlite 后端=进程内写直通知——单权威在库
+	// 无外部进程可改库）。
 	Watch(ctx context.Context) (<-chan string, error)
+	// Close 关停后端（写队列排空后退出；幂等）。
+	Close() error
 }

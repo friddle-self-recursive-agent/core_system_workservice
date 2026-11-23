@@ -79,7 +79,7 @@ func newApprovalWorld(t *testing.T, schemeYAML string) *approvalWorld {
 		t.Fatalf("ops DB: %v", err)
 	}
 	t.Cleanup(func() { _ = ops.Close() })
-	bus := eventbus.NewBus(&eventbus.Options{Ops: ops, DedupWindow: 80 * time.Millisecond})
+	bus := eventbus.NewBus(&eventbus.Options{Ops: ops, DedupWindow: 1200 * time.Millisecond})
 	w := &approvalWorld{ops: ops, bus: bus}
 	w.eng = &Engine{
 		Sch: sch, Bus: bus, Ops: ops, Repo: nil,
@@ -229,7 +229,7 @@ func TestApprovalNeededDedupWindowAggregates(t *testing.T) {
 	if evts := drain(ch); len(evts) != 1 {
 		t.Fatalf("窗口内同 obj 三次拒绝应聚合为 1 条: got %d", len(evts))
 	}
-	time.Sleep(120 * time.Millisecond) // 出窗
+	time.Sleep(1500 * time.Millisecond) // 出窗（窗口 1.2s——重载下三次 apply 的耗时也不致出窗，判据确定性优先）
 	if _, err := w.eng.Apply(t.Context(), o, opt); !errors.Is(err, ErrDenied) {
 		t.Fatalf("出窗后拒绝: %v", err)
 	}

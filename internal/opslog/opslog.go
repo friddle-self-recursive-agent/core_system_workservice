@@ -259,6 +259,34 @@ func (s *SQLiteStore) CountEvent(eventType string) (int, error) {
 	return n, nil
 }
 
+// EventCountsSince 窗口内 event_log 按类型行数（v0.33 MetricsInfo 数据面首段真实生产者的
+// 查询投影落点——事件流水窗口计数即样本；不属于冻结 Store 接口，扩展走新方法）。
+// 时间过滤在 Go 侧逐行解析（RFC3339Nano 去尾零致字面序≠时序，SQL 字符串比较有边界伪差
+// ——量级与可重建口径下全量扫描过滤足够；since 零值=全量）。查询失败=调用方本拍零样本。
+func (s *SQLiteStore) EventCountsSince(since time.Time) (map[string]int, error) {
+	rows, err := s.db.Query(`SELECT ts, type FROM event_log`)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 event_log 窗口计数: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var ts, typ string
+		if err := rows.Scan(&ts, &typ); err != nil {
+			return nil, fmt.Errorf("opslog: 读 event_log 行: %w", err)
+		}
+		t, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, fmt.Errorf("opslog: event_log.ts 解析 %q: %w", ts, err)
+		}
+		if !since.IsZero() && t.Before(since) {
+			continue
+		}
+		out[typ]++
+	}
+	return out, rows.Err()
+}
+
 // UpsertDraft 写穿一条草稿（draft 表；同键覆盖=最新代改稿，CreatedAt 由调用方定格）。
 // 不属于冻结 Store 接口——草稿持久化是部署决策（--ops-db 持久化面），具体实现方法。
 func (s *SQLiteStore) UpsertDraft(r DraftRow) error {

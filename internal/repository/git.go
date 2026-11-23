@@ -553,7 +553,13 @@ func (r *GitRepo) Get(_ context.Context, kind, scope, name string) (*Object, err
 // List 枚举对象：scope 给定则限定前缀，scope="" 跨 scope 通配（模板可展开的全部分支）。
 // 不可解析/损坏的文件跳过不致命（只读面宽松；写路径才强校验）。
 func (r *GitRepo) List(_ context.Context, kind, scope string) ([]*Object, error) {
-	k, err := r.sch.Lookup(kind)
+	return globObjects(r.root, r.sch, kind, scope)
+}
+
+// globObjects git 布局的读半边：按 storage 模板通配枚举 (kind, scope) 下全部对象文件
+// （GitRepo.List 与 sqlite 后端种子导入共用——git 布局=导入导出格式口径的机械落点）。
+func globObjects(root string, sch *scheme.Scheme, kind, scope string) ([]*Object, error) {
+	k, err := sch.Lookup(kind)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotRegistered, err)
 	}
@@ -564,7 +570,7 @@ func (r *GitRepo) List(_ context.Context, kind, scope string) ([]*Object, error)
 	seen := map[string]bool{}
 	var out []*Object
 	for _, pat := range pats {
-		matches, _ := filepath.Glob(filepath.Join(r.root, filepath.FromSlash(pat)))
+		matches, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(pat)))
 		sort.Strings(matches)
 		for _, path := range matches {
 			if seen[path] {
@@ -727,6 +733,9 @@ func (r *GitRepo) applyWrite(req *writeReq) (int64, string, error) {
 	}
 	inCanon, err := canonicalWithoutRV(o.Content)
 	if err != nil {
+		return 0, "", err
+	}
+	if err := checkCredentialSource(o.Kind, inDoc); err != nil {
 		return 0, "", err
 	}
 
