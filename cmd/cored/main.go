@@ -169,11 +169,25 @@ func run() error {
 	if dlOpts.Outbound != nil {
 		outboundState = "on（exec 桥）"
 	}
+	// run 相位异步推进器（v0.26 相位推进器异步推进首段，workflow.md 规则 15）：装配层定时器
+	// 每拍对每现势 run 单步查表推进（stepByTable 复用，判定器不动）——落闸锚挂起、落终点锚
+	// 终态、序列尾零动作停；triggered/suspended/failed 零动作防御。interval=0 关断（缺省不改
+	// 既有行为面——受理首步同步推进 v0.23 口径恒在；与巡检保险丝同款装配范式）。
+	// v0.29 提前构建：事件驱动推进面的挂接（BindEventAdvance）须先于订阅主干 AttachDispatch
+	// （同 Bind* 口径——事件开始流入后无接线窗口）；定时拍 goroutine 仍在下方启动。
+	advancer := workflow.NewAdvancer(runs, *advanceInterval)
 	triggers := workflow.NewTriggerHub(nil)
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
 	triggers.BindAgents(wakes)
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
+	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：
+	// **只在推进总闸开启时挂接**（--advance-interval>0）——总闸关断=事件拍缺席，事件驱动源
+	// 不旁路总闸（推进=一个行为面一个总闸，关断语义单一可预期；巡检-only 部署行为面零翻转）。
+	// 事件拍面=引擎内部源事件（source=core）落 run 的同拍全量单步推进（与定时拍同一查表落点）。
+	if advancer.Enabled() {
+		triggers.BindEventAdvance(runs)
+	}
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
 	// 定时巡检源（v0.22 引擎内部源第二段，event.md 规则 10）：装配层定时器到点自产
@@ -193,19 +207,16 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
-	// run 相位异步推进器（v0.26 相位推进器异步推进首段，workflow.md 规则 15）：装配层定时器
-	// 每拍对每现势 run 单步查表推进（stepByTable 复用，判定器不动）——落闸锚挂起、落终点锚
-	// 终态、序列尾零动作停；triggered/suspended/failed 零动作防御。interval=0 关断（缺省不改
-	// 既有行为面——受理首步同步推进 v0.23 口径恒在；与巡检保险丝同款装配范式）。
+	// run 相位异步推进器（v0.26）：构建已提前（事件拍挂接须先于订阅主干），此处只做
+	// 定时拍启动与 stderr 装配锚报告。事件拍（v0.29）已随总闸在挂接点生效。
 	advanceState := "off"
-	advancer := workflow.NewAdvancer(runs, *advanceInterval)
 	if advancer.Enabled() {
 		advanceState = "on(" + advancer.Interval().String() + ")"
 		advCtx, cancelAdvance := context.WithCancel(context.Background())
 		defer cancelAdvance()
 		go advancer.Run(advCtx)
 	}
-	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响）\n", advanceState)
+	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响；事件拍=v0.29 引擎内部源落 run 同拍全量推进（巡检拍与推进拍合一——总闸同闸不旁路，source=core 三重闸））\n", advanceState)
 	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 解析 v0.27 表投影+v0.28 相位投影与迁移判定接线——object 源 run 相位/声明表按文档库 spec 投影，声明了 phases 的对象参与既有表驱动判定；未声明 phases=零投影既有行为面不变）\n", objSpecState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；

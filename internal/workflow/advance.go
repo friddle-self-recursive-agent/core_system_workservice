@@ -51,6 +51,21 @@ func (r *RunLog) Advance() int {
 	return advanced
 }
 
+// EventAdvanceSink 事件驱动推进面（v0.29 事件驱动推进源首段——巡检拍与推进拍合一，
+// workflow.md 规则 15 v0.29 段）——RunSink 的**可选能力接口**：实现侧声明承接「引擎内部源
+// 事件落 run 同拍」的全量推进拍（与定时拍同一查表落点/同一落点语义——判定器零改动，只加
+// 驱动源）。hub 按能力断言转发（类型断言失败=不转发——能力增量不破既有 sink 契约，
+// ResumeSink 同款范式）；**挂接时机由装配层控制**（推进总闸 `--advance-interval` 开启才
+// 挂接——事件驱动源不旁路总闸，关断语义组合声明面先定）；转发前提=该事件**落了 run** ∧
+// `source=core`（引擎内部源审计事实，event.md 规则 10 服务侧判定口径——首段生产者=
+// ReconcileTick；connector watch/metrics 阈值等其余引擎内部源随各自声明面顺延自动纳入）。
+type EventAdvanceSink interface {
+	Advance() int
+}
+
+// 编译期断言：RunLog 满足 EventAdvanceSink（事件拍面在位——v0.29）。
+var _ EventAdvanceSink = (*RunLog)(nil)
+
 // Advancer 装配层定时驱动器（v0.26 异步推进首段）——patrol.Ticker 同款装配范式：
 // 生产者=装配层定时器（触发面非请求端点）；cored 装配层持有，每拍调推进入口。
 // 缺省关断（interval=0 零推进）：缺省不改既有行为面，按部署显式开启。

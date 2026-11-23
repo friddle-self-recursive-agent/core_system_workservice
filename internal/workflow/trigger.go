@@ -140,7 +140,12 @@ type TriggerHub struct {
 	runs     RunSink               // workflow 触发面 run 投影落点（BindRuns 挂接；nil=不推进 run）
 	deliver  DeliverySink          // notification 送达面送达投影落点（BindDeliveries 挂接；nil=不推进送达）
 	wakes    WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
+	advance  EventAdvanceSink      // 事件驱动推进面落点（v0.29 BindEventAdvance 挂接；nil=事件拍缺席——推进总闸关断）
 }
+
+// SourceEngineInternal 引擎内部源事件的 source 审计值（event.md 规则 10 服务侧判定口径——
+// 引擎自身产生的心跳/巡检类来源标注；与 patrol.EventSource 同字面，声明面=event.md 规则 10）。
+const SourceEngineInternal = "core"
 
 // NewTriggerHub 构建触发骨架。
 func NewTriggerHub(opts *TriggerOptions) *TriggerHub {
@@ -254,8 +259,20 @@ func (h *TriggerHub) record(e eventbus.Event) {
 	// 受理即启动——引擎单步迁移判定随受理同拍完成；v0.25 显式迁移表首段：判定器=声明表
 	// 查表，run.go stepByTable；后续推进/挂起-恢复已落 v0.24，异步推进 deferred）。
 	// 同步调用：sink 契约=非阻塞进程内投影（run.go RunSink），锁内调用保 run 与留痕同序。
+	landed := false
 	if h.runs != nil && h.wired[ExecWorkflow] && d.Exec.Executor == ExecWorkflow {
 		h.runs.StartRun(rec, d.Exec)
+		landed = true
+	}
+	// 事件驱动推进源首段（v0.29——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：引擎
+	// 内部源事件落 run 的同拍对该拍现势 run 全量执行一次单步推进（与定时拍同一查表落点——
+	// 判定器零改动，只加驱动源；本拍新落 run 参与本拍——全量口径不含特判，受理首步与事件拍
+	// 是两条独立口径的拍步）。拍的三重闸：①落了 run（未落 run 的事件不拍）；②source=core
+	//（引擎内部源审计事实——人注/connector 注入/权限自产事件不拍，source 维度分立）；③装配
+	// 层已挂接（BindEventAdvance 只在推进总闸开启时调用——事件驱动源不旁路总闸，关断语义
+	// 组合声明面先定）。锁内同步调用：与留痕/run 同序（确定性——新落 run 同拍即得第二拍步）。
+	if landed && rec.Source == SourceEngineInternal && h.advance != nil {
+		h.advance.Advance()
 	}
 	// 真实拉起第二子段（v0.16）：notification 送达面已接线（WireExecutor 登记 +
 	// BindDeliveries 挂接）时，执行面=notification 的绑定推进为一条送达投影——route 主路与
@@ -339,6 +356,18 @@ func (h *TriggerHub) BindAgents(sink WakeSink) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.wakes = sink
+}
+
+// BindEventAdvance 挂接事件驱动推进面（v0.29 事件驱动推进源首段，workflow.md 规则 15
+// v0.29 段）。**挂接时机=装配层推进总闸开启时**（--advance-interval>0）——总闸关断=
+// 不挂接=事件拍缺席（事件驱动源不旁路总闸：推进=一个行为面一个总闸，关断语义单一可预期；
+// 巡检-only 部署行为面零翻转）。事件拍的三重闸另两者在 hub.record 内（落了 run ∧
+// source=core）。幂等；nil=解除挂接。须在 AttachDispatch 前调用（同 Bind* 口径——事件
+// 开始流入后无接线窗口）。sink 契约见 EventAdvanceSink（非阻塞、不回调 hub）。
+func (h *TriggerHub) BindEventAdvance(sink EventAdvanceSink) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.advance = sink
 }
 
 // execBindingLocked 目标 → 执行面绑定（纯映射 execFor + hub 接线态覆写）。
