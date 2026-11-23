@@ -182,7 +182,7 @@ func run() error {
 	triggers.BindAgents(wakes)
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：
-	// **只在推进总闸开启时挂接**（--advance-interval>0）——总闸关断=事件拍缺席，事件驱动源
+	// **只在推进总闸开启时挂接**（推进总闸旗标 interval>0）——总闸关断=事件拍缺席，事件驱动源
 	// 不旁路总闸（推进=一个行为面一个总闸，关断语义单一可预期；巡检-only 部署行为面零翻转）。
 	// 事件拍面=引擎内部源事件（source=core）落 run 的同拍全量单步推进（与定时拍同一查表落点）。
 	if advancer.Enabled() {
