@@ -70,7 +70,7 @@ var (
 //	GET /v1/drafts/{kind}/{name}?scope=s 单条草稿（含正文；无稿 → 404）
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
-//	GET /v1/triggers                    触发骨架查询面（dispatch 接线第一段；恒开，§2.3）
+//	GET /v1/triggers                    触发骨架查询面（dispatch 接线第二段：表驱动订阅；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
@@ -283,9 +283,11 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"resource": fmt.Sprintf("%s/%s/%s", kind, scope, name), "action": "discarded",
 		})
 	})
-	// 触发骨架面（cored-bridge.md §2.3；dispatch 接线第一段 v0.11）：GET 恒开——
-	// 「apply 落面→DocApplied 事件→订阅收到留痕」主干第一段的机械可验查询面。
-	// 留痕是进程内观测面（账本=event_log 归档）；写面关断不影响本端点（received=0 照常 200）。
+	// 触发骨架面（cored-bridge.md §2.3；dispatch 接线第二段 v0.12 订阅面动态化）：GET 恒开——
+	// 「apply 落面→事件→订阅收到留痕」主干第一段的机械可验查询面；
+	// types=dispatch 表推导订阅集合（"*"=通配），records 携命中行投影 route/for
+	// （全表未命中=dead-letter，死信兜底可见）。留痕是进程内观测面（账本=event_log 归档）；
+	// 写面关断不影响本端点（received=0 照常 200）。
 	mux.HandleFunc("GET /v1/triggers", func(w http.ResponseWriter, _ *http.Request) {
 		if triggers == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "触发骨架未接线"})
@@ -297,7 +299,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			records = append(records, map[string]any{
 				"seq": r.Seq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "source": r.Source, "involved": r.Involved,
-				"level":      r.Level,
+				"level": r.Level, "route": r.Route, "for": r.For,
 				"at":         r.At.UTC().Format(time.RFC3339Nano),
 				"receivedAt": r.ReceivedAt.UTC().Format(time.RFC3339Nano),
 			})

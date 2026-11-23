@@ -116,4 +116,63 @@ func TestTriggersFaceRecordsTrace(t *testing.T) {
 	if fmt.Sprintf("%v", r["receivedAt"]) == "" || fmt.Sprintf("%v", r["at"]) == "" {
 		t.Fatalf("at/receivedAt 应为 RFC3339 字符串: %v", r)
 	}
+	// 裸 Attach（未挂 dispatch 表）→ route/for 留空（路由标注只在表驱动挂接下出现）。
+	if r["route"] != "" || r["for"] != "" {
+		t.Fatalf("裸 Attach 留痕不应带 route/for: %v", r)
+	}
+}
+
+// TestTriggersFaceTableDrivenWiring 表驱动挂接的端点投影：types=表推导集合（"*"=通配坍缩）、
+// records 携命中行 route/for、全表未命中=dead-letter（cored-bridge.md §2.3 v0.12）。
+func TestTriggersFaceTableDrivenWiring(t *testing.T) {
+	sch := testScheme(t)
+	bus := eventbus.NewBus(nil)
+	hub := workflow.NewTriggerHub(nil)
+	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})()
+
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	defer ts.Close()
+
+	e := eventbus.Event{
+		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
+		DedupKey: "apply:Agent/global/probe:1", Level: "info",
+	}
+	if err := bus.Publish(&e); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(time.Second)
+	var got struct {
+		Types   []string         `json:"types"`
+		Records []map[string]any `json:"records"`
+	}
+	for {
+		resp, err := http.Get(ts.URL + "/v1/triggers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.NewDecoder(resp.Body).Decode(&got)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Records) >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("表驱动留痕未在时限内可查")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if len(got.Types) != 1 || got.Types[0] != "*" {
+		t.Fatalf("types 应坍缩为 [*]（判别器：≠固定 [DocApplied]），得 %v", got.Types)
+	}
+	r := got.Records[0]
+	if r["route"] != "owner-workflow" || r["for"] != "owner:*" {
+		t.Fatalf("留痕应携命中行投影 route=owner-workflow for=owner:*，得 %v", r)
+	}
 }

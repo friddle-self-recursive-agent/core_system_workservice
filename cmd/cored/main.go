@@ -94,15 +94,17 @@ func run() error {
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
-	// 触发骨架（dispatch 接线第一段 v0.11）：单订阅者挂 DocApplied，收到落可查状态
-	// （GET /v1/triggers 收到留痕——eventId/dedupKey 与 apply 回执/event_log 同源）。
-	// 随总线装配、查询面恒开（写面关断时 DocApplied 不产生，received=0 照常 200）；
-	// 触发引擎主体（dispatch 表路由→owner 解析→相位态机→派发→刹车）declared-deferred
-	// （cored-bridge.md §2.3）。
+	// 触发骨架（dispatch 接线第二段 v0.12：订阅面动态化）：订阅集合由 scheme.dispatch 表
+	// 推导（on: 类型集合/通配 *→全类型一条；含通配坍缩），留痕携命中行投影 route/for，
+	// 全表未命中=dead-letter 兜底可见（GET /v1/triggers；eventId/dedupKey 与 apply 回执/
+	// event_log 同源）。随总线装配、查询面恒开（写面关断时不产生事件，received=0 照常 200）；
+	// 触发引擎主体（owner 字面量解析→相位态机→派发→刹车）declared-deferred
+	// （cored-bridge.md §2.3）——route 只留痕不派发。
 	triggers := workflow.NewTriggerHub(nil)
-	stopTriggers := triggers.Attach(bus, "DocApplied")
+	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已接线 DocApplied（单订阅者→GET /v1/triggers；引擎主体 declared-deferred）\n")
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v；引擎主体 declared-deferred）\n",
+		len(sch.Spec.Dispatch), triggers.State().Types)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。

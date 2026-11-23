@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
 // applyEvent 模拟 apply.Engine.finish 的 DocApplied 发布（同源字段投影）。
@@ -215,5 +216,198 @@ func TestTriggerHubPublishStateRace(t *testing.T) {
 	}
 	if got := len(b.DeadLetters()); got == 0 && st.Received < n {
 		t.Fatalf("未送达事件应全部可见于死信：received=%d dead=%d", st.Received, got)
+	}
+}
+
+// ═══════════ dispatch 第二段（v0.12 订阅面动态化 + for 谓词首段） ═══════════
+
+// pub 发布任意类型事件（connector/external 场景投影；involved=kind/scope/name 同构 objKey）。
+func pub(t *testing.T, b *eventbus.Bus, typ, involved string) eventbus.Event {
+	t.Helper()
+	e := eventbus.Event{Type: typ, Source: "connector", Involved: involved,
+		DedupKey: typ + ":" + involved + ":" + time.Now().String(), Level: "info"}
+	if err := b.Publish(&e); err != nil {
+		t.Fatalf("发布 %s: %v", typ, err)
+	}
+	return e
+}
+
+// waitReceived 等接收计数达预期（订阅 goroutine 异步排干）。
+func waitReceived(t *testing.T, h *TriggerHub, want int64) TriggerState {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		st := h.State()
+		if st.Received == want {
+			return st
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("收到数不达预期：want=%d got=%d", want, st.Received)
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
+// TestAttachDispatchTableSet 表驱动订阅集合：on 值按表序去重；types=推导集合（判别锚：
+// types ≠ 固定 [DocApplied] 而是表行集合）。
+func TestAttachDispatchTableSet(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "ExternalChanged", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "DocApplied", For: "any", Dispatch: "deadletter"}, // 重复类型去重
+	})()
+
+	if got := h.State().Types; len(got) != 2 || got[0] != "DocApplied" || got[1] != "ExternalChanged" {
+		t.Fatalf("订阅集合应=[DocApplied ExternalChanged]（表序去重），得 %v", got)
+	}
+	pub(t, b, "ExternalChanged", "ServiceInstance/developer-system/ci")
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	st := waitReceived(t, h, 2)
+	// 分型计数：留痕按类型各记一条（多类型发布→订阅留痕分型）。
+	counts := map[string]int{}
+	for _, r := range st.Records {
+		counts[r.Type]++
+	}
+	if counts["DocApplied"] != 1 || counts["ExternalChanged"] != 1 {
+		t.Fatalf("分型计数不符: %v", counts)
+	}
+}
+
+// TestAttachDispatchWildcardCollapse 含通配行 → 坍缩为单条全类型订阅：任意类型都收到一条留痕
+// （未注册类型兜底命中），且不因通配+枚举并存而重复计数。
+func TestAttachDispatchWildcardCollapse(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})()
+
+	if got := h.State().Types; len(got) != 1 || got[0] != "*" {
+		t.Fatalf("含通配应坍缩 types=[*]，得 %v", got)
+	}
+	// 未注册类型（表内无具体行）→ 通配兜底命中，收到一条（不是三条）。
+	pub(t, b, "TemplateFound", "Connector/developer-system/t1")
+	st := waitReceived(t, h, 1)
+	if st.Records[0].Type != "TemplateFound" {
+		t.Fatalf("通配订阅应收到未枚举类型: %+v", st.Records[0])
+	}
+}
+
+// TestAttachDispatchRowResolution 行解析投影：表序首行胜出，route/for 落留痕（只留痕不派发）；
+// scope:builtin/* 命中 builtin scope；未命中任何行 → route=dead-letter 兜底可见；
+// owner 字面量行首段不命中（顺延后行）。
+func TestAttachDispatchRowResolution(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent"}, // owner 字面量=引擎主体，首段不命中
+		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})()
+
+	pub(t, b, "DocApplied", "Agent/global/probe")                               // 行1
+	pub(t, b, "HeartbeatLost", "Agent/global/a1")                               // 行2 不命中 → 行3 scope global 不命中 → 行4
+	pub(t, b, "SessionClosed", "Scheme/builtin/scheme")                         // 行3 scope:builtin/* 命中
+	pub(t, b, "MetricThreshold", "ServiceInstance/systems/developer-system/ci") // 行4 兜底
+	st := waitReceived(t, h, 4)
+	want := []struct{ typ, route, forSel string }{
+		{"DocApplied", "owner-workflow", "owner:*"},
+		{"HeartbeatLost", "deadletter", "any"},
+		{"SessionClosed", "workflows/builtin-root", "scope:builtin/*"},
+		{"MetricThreshold", "deadletter", "any"},
+	}
+	for i, w := range want {
+		r := st.Records[i]
+		if r.Type != w.typ || r.Route != w.route || r.For != w.forSel {
+			t.Fatalf("留痕[%d] 行解析不符：want %v 得 {%s %s %s}", i, w, r.Type, r.Route, r.For)
+		}
+	}
+}
+
+// TestAttachDispatchNoMatchDeadLetter 全表未命中（畸形谓词行只行）→ route=dead-letter。
+func TestAttachDispatchNoMatchDeadLetter(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "bad-predicate", Dispatch: "nowhere"}, // 畸形谓词不命中
+	})()
+
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	st := waitReceived(t, h, 1)
+	if st.Records[0].Route != DeadLetterRoute {
+		t.Fatalf("全表未命中应标 dead-letter，得 %q", st.Records[0].Route)
+	}
+}
+
+// TestAttachDispatchEmptyTable 空表=不订阅：事件收不到留痕、落总线死信（路由不到可见）。
+func TestAttachDispatchEmptyTable(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, nil)()
+
+	if got := h.State().Types; len(got) != 0 {
+		t.Fatalf("空表应零订阅，得 %v", got)
+	}
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	time.Sleep(50 * time.Millisecond)
+	if got := h.State().Received; got != 0 {
+		t.Fatalf("空表不应有留痕：received=%d", got)
+	}
+	if len(b.DeadLetters()) == 0 {
+		t.Fatal("空表事件应落总线死信（可见）")
+	}
+}
+
+// TestAttachDispatchUnsubscribeDrain 表驱动订阅的总退订排干（第二段复验第一段语义）。
+func TestAttachDispatchUnsubscribeDrain(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	stop := h.AttachDispatch(b, []scheme.DispatchRule{{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"}})
+
+	pub(t, b, "DocApplied", "Agent/global/pre")
+	waitReceived(t, h, 1)
+
+	stop()
+	stop() // 总退订幂等
+	pub(t, b, "DocApplied", "Agent/global/post")
+	time.Sleep(50 * time.Millisecond)
+	if got := h.State().Received; got != 1 {
+		t.Fatalf("退订后不应新增留痕：received=%d", got)
+	}
+	if len(b.DeadLetters()) == 0 {
+		t.Fatal("退订后事件应转总线死信")
+	}
+}
+
+// TestForMatchPredicate 谓词首段口径单测：any/owner:*/scope 前缀式/等值/畸形/未知选择器。
+func TestForMatchPredicate(t *testing.T) {
+	cases := []struct {
+		pred, involved string
+		want           bool
+	}{
+		{"any", "Agent/global/a", true},
+		{"owner:*", "Agent/global/a", true},
+		{"owner:agent", "Agent/global/a", false}, // owner 字面量=引擎主体
+		{"scope:builtin/*", "Scheme/builtin/scheme", true},
+		{"scope:builtin/*", "Workflow/builtin/x/y", true}, // 子路径命中
+		{"scope:builtin/*", "Agent/global/a", false},      // global 不命中 builtin
+		{"scope:global", "Agent/global/a", true},          // 无 /* 等值
+		{"scope:global/*", "Agent/global/a", true},        // 前缀式
+		{"scope:systems/developer-system/*", "ServiceInstance/systems/developer-system/ci", true},
+		{"bad-predicate", "Agent/global/a", false}, // 畸形
+		{"kind:Agent", "Agent/global/a", false},    // 未知选择器
+		{"any", "", true},
+		{"scope:builtin/*", "Scheme", false}, // involved 无 scope 段 → 空 scope 不命中
+	}
+	for _, c := range cases {
+		if got := forMatch(c.pred, c.involved); got != c.want {
+			t.Errorf("forMatch(%q,%q)=%v want %v", c.pred, c.involved, got, c.want)
+		}
 	}
 }
