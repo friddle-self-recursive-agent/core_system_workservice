@@ -7,6 +7,7 @@ package permission
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
 
 // Permission 一条权限（scope 域 + 动作）。
@@ -93,27 +94,44 @@ func (j JudgedBy) String() string {
 	return fmt.Sprintf("judged-by(%d)", int(j))
 }
 
-// System 权限系统。
-type System struct {
+// Snapshot 权威快照（装载即快照，objects.go）：不可变整体替换——判定高频读/装载低频写，
+// 读方无锁共享（热装载原子换指针，判定永远对某一代完整快照进行，不判半装载态）。
+// Gen 权威代次：成功装载一次 +1（0=从未装载）——判定依据可追（permission.md 规则 3 留痕）。
+type Snapshot struct {
 	Roles  map[string]*Role
 	Groups map[string]*Group
+	Gen    uint64
 }
+
+// System 权限系统。零值=空授权面（nil 快照）：除内置 admin 字面量外全拒（fail-closed）。
+type System struct {
+	snap atomic.Pointer[Snapshot]
+}
+
+// Snapshot 当前权威快照；未装载=nil（调用方按空授权面处理）。
+func (s *System) Snapshot() *Snapshot { return s.snap.Load() }
 
 // DefaultAdmin 内置全权限角色（不可删，A45）。
 const DefaultAdmin = "global/admin"
 
 // Check 本系统内动作判定。判定方由调用方声明（灵活）；跨系统请求走 RequestCross。
+// 快照读取点：原子取当前代——热装载（LoadObjects/热刷新）只整体替换，不锁判定路径。
 func (s *System) Check(sub Subject, scope, action string, by JudgedBy) error {
 	for _, r := range sub.Roles {
-		if name := normalizeRef(r); name == DefaultAdmin {
-			return nil // 默认全权限
-		} else if role, ok := s.Roles[name]; ok && role.Holds(scope, action) {
-			return nil
+		if normalizeRef(r) == DefaultAdmin {
+			return nil // 默认全权限（字面量，不依赖装载快照——本地信任 fallback 最低保障）
 		}
 	}
-	for _, name := range s.groupsRoles(sub) {
-		if role, ok := s.Roles[name]; ok && role.Holds(scope, action) {
-			return nil
+	if snap := s.snap.Load(); snap != nil {
+		for _, r := range sub.Roles {
+			if role, ok := snap.Roles[normalizeRef(r)]; ok && role.Holds(scope, action) {
+				return nil
+			}
+		}
+		for _, name := range groupsRoles(snap, sub) {
+			if role, ok := snap.Roles[name]; ok && role.Holds(scope, action) {
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("permission: denied %s on %s (subject=%s judged by %s)", action, scope, sub.ID(), by)
@@ -125,10 +143,10 @@ func (s *System) RequestCross(bSubject Subject, bScope, action string, by Judged
 	return s.Check(bSubject, bScope, action, by)
 }
 
-func (s *System) groupsRoles(sub Subject) []string {
+func groupsRoles(snap *Snapshot, sub Subject) []string {
 	var out []string
 	for _, g := range sub.Groups {
-		if grp, ok := s.Groups[normalizeRef(g)]; ok {
+		if grp, ok := snap.Groups[normalizeRef(g)]; ok {
 			out = append(out, grp.Roles...)
 		}
 	}

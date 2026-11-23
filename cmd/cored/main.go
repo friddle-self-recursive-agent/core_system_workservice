@@ -112,7 +112,7 @@ func run() error {
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
 		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
-		// 启动装载=权威快照；事件驱动刷新随 dispatch 接线（declared-deferred）。
+		// 启动装载=权威快照（失败=拒绝启动，授权面宁拒不降级）；其后事件驱动热装载（见下）。
 		perm := &permission.System{}
 		objs, err := permDocs(ctx, repo)
 		if err != nil {
@@ -121,8 +121,47 @@ func run() error {
 		if err := perm.LoadObjects(objs); err != nil {
 			return fmt.Errorf("权限对象装载失败（授权面宁拒不降级）: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "cored: 权限对象装载 roles=%d groups=%d（global/roles、global/groups）\n",
-			len(perm.Roles), len(perm.Groups))
+		snap := perm.Snapshot()
+		fmt.Fprintf(os.Stderr, "cored: 权限对象装载 roles=%d groups=%d gen=%d（global/roles、global/groups）\n",
+			len(snap.Roles), len(snap.Groups), snap.Gen)
+
+		// 热装载（v0.10 免重启）：repository.Watch 变更信号（轮询 HEAD）→ 重投影 → 快照整体替换。
+		// 失败语义（declared，cored-bridge.md §1）：保旧快照 + stderr 告警 + 定时重试自愈；
+		// 不半装载、不打死运行中授权面（投影读与写面串行队列不互斥，暂态撕读/坏对象都不放大为停摆）。
+		runCtx, cancelWatch := context.WithCancel(context.Background())
+		defer cancelWatch()
+		src, err := repo.Watch(runCtx)
+		if err != nil {
+			return fmt.Errorf("权限热装载订阅文档库变更: %w", err)
+		}
+		changes := make(chan struct{}, 1)
+		go func() {
+			defer close(changes)
+			for range src { // sha 信号无载荷：连续变更合并，一次重投影装到最新面
+				select {
+				case changes <- struct{}{}:
+				default:
+				}
+			}
+		}()
+		ref := &permission.Refresher{
+			Sys:  perm,
+			Load: func() ([]permission.ObjectDoc, error) { return permDocs(runCtx, repo) },
+			Reloaded: func(res permission.RefreshResult) {
+				if res.Ok {
+					fmt.Fprintf(os.Stderr, "cored: 权限热装载 gen=%d roles=%d groups=%d（文档面变更→快照替换）\n",
+						res.Gen, res.Roles, res.Groups)
+				} else {
+					fmt.Fprintf(os.Stderr, "cored: 权限热装载失败（保旧快照+定时重试自愈）: %v\n", res.Err)
+				}
+			},
+		}
+		go func() {
+			if err := ref.Run(runCtx, changes); err != nil && !errors.Is(err, context.Canceled) {
+				fmt.Fprintf(os.Stderr, "cored: 权限热装载异常退场: %v\n", err)
+			}
+		}()
+
 		// 主体（v0.9 请求级）：HTTP 写面按请求解析（subject 字段/X-Core-Subject 头，匿名=照判拒绝）；
 		// 进程级本地信任退化为引擎缺省 fallback（程序化调用，如 bootstrap/工作流自写）。
 		engine := &apply.Engine{

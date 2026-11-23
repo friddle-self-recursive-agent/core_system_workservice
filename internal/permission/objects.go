@@ -1,7 +1,8 @@
 // objects.go Role/Group 对象准入装载（concepts/permission.md §3：权限只绑 role，
 // group 只绑 role；对象住 global/roles/<name>.yaml、global/groups/<name>.yaml——core/scheme.yaml Role/Group 行）。
 // 装载即权威快照：文档面 Role/Group 对象是授权面的唯一来源——主体断言的 role 名必须能对上
-// 这里装载的对象才产生权限（断言本身不授权）。刷新随文档面事件（dispatch 接线后），当前=启动装载。
+// 这里装载的对象才产生权限（断言本身不授权）。装载时机：启动（失败=拒绝启动，宁拒不降级）
+// + 事件驱动热装载（refresh.go：变更信号→重投影→整体替换，失败=保旧快照）。
 package permission
 
 import (
@@ -83,7 +84,12 @@ func (s *System) LoadObjects(docs []ObjectDoc) error {
 			groups[name] = &Group{Name: name, Roles: bound}
 		}
 	}
-	s.Roles = roles
-	s.Groups = groups
+	// 替换语义收口：全批校验通过后整体上架（原子指针替换）——读者永远看到某一代完整快照；
+	// 任一环节失败不触达此行 = 旧快照原封不动（热装载保旧语义的机制保证，refresh.go）。
+	gen := uint64(1)
+	if cur := s.snap.Load(); cur != nil {
+		gen = cur.Gen + 1 // 权威代次：成功装载一次 +1（判定留痕可追，permission.md 规则 3）
+	}
+	s.snap.Store(&Snapshot{Roles: roles, Groups: groups, Gen: gen})
 	return nil
 }

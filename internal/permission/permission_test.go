@@ -46,8 +46,12 @@ func loadFixtures(t *testing.T) *System {
 
 func TestLoadObjectsAndCheck(t *testing.T) {
 	s := loadFixtures(t)
-	if len(s.Roles) != 2 || len(s.Groups) != 1 {
-		t.Fatalf("装载计数不符: roles=%d groups=%d", len(s.Roles), len(s.Groups))
+	snap := s.Snapshot()
+	if snap == nil || len(snap.Roles) != 2 || len(snap.Groups) != 1 {
+		t.Fatalf("装载计数不符: roles=%v groups=%v", snap, snap)
+	}
+	if snap.Gen != 1 {
+		t.Fatalf("首次装载代次应为 1，得 %d", snap.Gen)
 	}
 
 	// role 权限表查表：断言 role 名（带 kind 前缀惯例）命中对象授权。
@@ -158,7 +162,7 @@ func TestLoadObjectsRejectsBadDocs(t *testing.T) {
 			t.Fatalf("%s: 应拒绝", c.name)
 		}
 	}
-	// 整体拒绝=不半装载：坏文档批次后表保持空（快照替换语义）。
+	// 整体拒绝=不半装载：坏文档批次后表保持空（快照替换语义——失败批次不上架，旧快照/nil 原封不动）。
 	s := &System{}
 	bad := append([]ObjectDoc{
 		{Kind: "Role", Name: "good", Scope: "global", Content: []byte(roleReadonly)},
@@ -166,8 +170,8 @@ func TestLoadObjectsRejectsBadDocs(t *testing.T) {
 	if err := s.LoadObjects(bad); err == nil {
 		t.Fatal("含坏对象批次应整体拒绝")
 	}
-	if len(s.Roles) != 0 {
-		t.Fatalf("拒绝批次不得半装载: roles=%d", len(s.Roles))
+	if cur := s.Snapshot(); cur != nil {
+		t.Fatalf("拒绝批次不得半装载: roles=%d", len(cur.Roles))
 	}
 }
 
