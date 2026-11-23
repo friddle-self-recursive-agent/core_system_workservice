@@ -25,7 +25,7 @@ func testScheme(t *testing.T) *scheme.Scheme {
 }
 
 func TestTriggersFaceNilReturnsUnavailable(t *testing.T) {
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil, nil))
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/v1/triggers")
 	if err != nil {
@@ -53,7 +53,7 @@ func TestTriggersFaceRecordsTrace(t *testing.T) {
 	stop := hub.Attach(bus, "DocApplied")
 	defer stop()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil, nil))
 	defer ts.Close()
 
 	// 未收到前：200 空面（查询面恒开，与写面开关无关）。
@@ -143,7 +143,7 @@ func TestTriggersFaceTableDrivenWiring(t *testing.T) {
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil, nil))
 	defer ts.Close()
 
 	e := eventbus.Event{
@@ -203,7 +203,7 @@ func TestTriggersResolveFace(t *testing.T) {
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil, nil))
 	defer ts.Close()
 
 	var d struct {
@@ -289,7 +289,7 @@ func TestTriggersExecutionProjection(t *testing.T) {
 		{On: "Escalate", For: "any", Dispatch: "mystery-face"}, // 未知目标族=unbound 可见
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil, nil))
 	defer ts.Close()
 
 	get := func(url string) (int, map[string]any) {
@@ -404,7 +404,7 @@ func TestTriggersExecutionProjection(t *testing.T) {
 // triggerSeq, eventId, route, owner, target, startedAt}]}。
 func TestWorkflowRunsFace(t *testing.T) {
 	// 未接线 → 503（查询面语义与 triggers 同口径）。
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil, nil))
 	resp, err := http.Get(ts.URL + "/v1/workflows/runs")
 	if err != nil {
 		t.Fatal(err)
@@ -425,7 +425,7 @@ func TestWorkflowRunsFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 	})()
-	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, runs, nil, nil))
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, runs, nil, nil, nil))
 	defer ts2.Close()
 	e := eventbus.Event{
 		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
@@ -485,7 +485,7 @@ func TestWorkflowRunsFace(t *testing.T) {
 // 固有提供（代际判别器与 runs 面同口径）。
 func TestNotificationsDeliveriesFace(t *testing.T) {
 	// 未接线 → 503（查询面语义与 runs 面同口径）。
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil, nil))
 	resp, err := http.Get(ts.URL + "/v1/notifications/deliveries")
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +506,7 @@ func TestNotificationsDeliveriesFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
 	})()
-	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, deliver, nil))
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, deliver, nil, nil))
 	defer ts2.Close()
 	e := eventbus.Event{
 		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
@@ -563,7 +563,7 @@ func TestNotificationsDeliveriesFace(t *testing.T) {
 // 由兜底 handler 固有提供（代际判别器与 runs/送达面同口径）。
 func TestAgentsWakesFace(t *testing.T) {
 	// 未接线 → 503（查询面语义与 runs/送达面同口径）。
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil, nil))
 	resp, err := http.Get(ts.URL + "/v1/agents/wakes")
 	if err != nil {
 		t.Fatal(err)
@@ -584,7 +584,7 @@ func TestAgentsWakesFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "Escalate", For: "any", Dispatch: "root-agent", CC: "notification/*"},
 	})()
-	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, wakes))
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, wakes, nil))
 	defer ts2.Close()
 	e := eventbus.Event{
 		Type: "Escalate", Source: "engine", Involved: "Agent/global/probe",

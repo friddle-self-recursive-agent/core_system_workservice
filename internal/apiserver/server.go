@@ -16,6 +16,8 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
@@ -71,16 +73,24 @@ type WakeFace interface {
 	State() workflow.WakeState
 }
 
+// PublisherFace 事件发布面口面（eventpub.Publisher 满足；v0.20 多类型事件注入面首段：
+// 类型注册校验+发布权限域判定+level 缺省投影+总线发布——注入走同一 trigger 主干，
+// concepts/event.md 规则 8）。
+type PublisherFace interface {
+	Publish(req eventpub.Request, sub *permission.Subject) (*eventbus.Event, error)
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
-// workflow.TriggerHub 满足触发骨架口面。
+// workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
-	_ ObjectSource = (*repository.GitRepo)(nil)
-	_ Applier      = (*apply.Engine)(nil)
-	_ DraftStaging = (*draft.Store)(nil)
-	_ TriggerFace  = (*workflow.TriggerHub)(nil)
-	_ RunFace      = (*workflow.RunLog)(nil)
-	_ DeliveryFace = (*workflow.DeliveryLog)(nil)
-	_ WakeFace     = (*workflow.WakeLog)(nil)
+	_ ObjectSource  = (*repository.GitRepo)(nil)
+	_ Applier       = (*apply.Engine)(nil)
+	_ DraftStaging  = (*draft.Store)(nil)
+	_ TriggerFace   = (*workflow.TriggerHub)(nil)
+	_ RunFace       = (*workflow.RunLog)(nil)
+	_ DeliveryFace  = (*workflow.DeliveryLog)(nil)
+	_ WakeFace      = (*workflow.WakeLog)(nil)
+	_ PublisherFace = (*eventpub.Publisher)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -97,12 +107,11 @@ var (
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
 //	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
 //	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
-//	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
-//	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
 //	GET /v1/notifications/deliveries    送达投影面（v0.16 送达面接线；v0.17 出站状态机 sent/failed；恒开，§2.3）
 //	GET /v1/agents/wakes                唤醒投影面（v0.18 引擎主体第五段：agent 触发面接线；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
+//	POST /v1/events                     事件注入面（v0.20 发布面；--allow-apply 门控；未开启=405；event.md 规则 8）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
 // applier 为 nil（未开启 --allow-apply）时 POST /v1/apply 与草稿写操作返回 405（缺省只读面不变；
@@ -111,7 +120,8 @@ var (
 // runs 为 nil（run 投影面未接线）时 /v1/workflows/runs 返回 503。
 // deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
 // wakes 为 nil（唤醒投影面未接线）时 /v1/agents/wakes 返回 503。
-func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace) http.Handler {
+// publisher 为 nil（写面关断）时 POST /v1/events 返回 405（与 apply 写面同门控同口径）。
+func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -234,6 +244,40 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			resp["event"] = map[string]any{"id": res.Event.ID, "type": res.Event.Type, "dedupKey": res.Event.DedupKey}
 		}
 		writeJSON(w, http.StatusOK, resp)
+	})
+
+	// 事件注入面（v0.20 发布面首段，concepts/event.md 规则 8；写面随 --allow-apply 门控，
+	// 未开启恒 405 与 apply 写面同口径）：POST /v1/events——类型注册校验（Scheme.eventTypes，
+	// 事件只校验类型注册）→ 主体发布权判定（publish × events 资源域，与 apply 写权限域分立）
+	// → level 缺省=注册表 defaultLevel 投影 → 总线发布（与引擎内部事件同一条主干：窗口去重/
+	// 订阅派发/event_log 归档零旁路）。注入通道 source 由服务侧判定恒 human，载荷声明的 source
+	// 不采纳（来源标注是审计事实不是请求参数）；回执 {id,type,dedupKey,level,source,involved}
+	// 与留痕 eventId 同源。旧构建（face 缺席）经兜底 handler 返回 405=代际判别器。
+	mux.HandleFunc("POST /v1/events", func(w http.ResponseWriter, r *http.Request) {
+		if publisher == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "事件注入面未开启（cored 缺 --allow-apply；缺省只读）"})
+			return
+		}
+		var req eventsRequest
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("请求体不可解析: %v", err)})
+			return
+		}
+		if req.Source != "" && req.Source != eventpub.SourceHuman {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("载荷声明的 source=%q 不采纳：来源标注由服务侧判定（注入通道恒 %s）", req.Source, eventpub.SourceHuman)})
+			return
+		}
+		ev, err := publisher.Publish(eventpub.Request{
+			Type: req.Type, Involved: req.Involved, Level: req.Level, DedupKey: req.DedupKey,
+		}, subjectFrom(r, req.Subject))
+		if err != nil {
+			writePublishErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": ev.ID, "type": ev.Type, "dedupKey": ev.DedupKey,
+			"level": ev.Level, "source": ev.Source, "involved": ev.Involved,
+		})
 	})
 
 	// 草稿缓存面（cored-bridge.md §2.2；apply.md §1 编辑与发布分离）：GET 属查询面恒开；
@@ -520,11 +564,12 @@ type subjectRequest struct {
 // SubjectHeader 主体头名（与请求体 subject 字段同形 JSON；桥接方不便改体时用头）。
 const SubjectHeader = "X-Core-Subject"
 
-// resolveSubject 请求级主体解析：请求体 subject 字段优先，缺席回退 X-Core-Subject 头；
-// 两者皆缺 → 匿名主体（非 nil 指针=强制请求级判定，进程级本地信任不兜底 HTTP 匿名请求）。
-func resolveSubject(r *http.Request, req *applyRequest) *permission.Subject {
-	if req.Subject != nil {
-		return &permission.Subject{User: req.Subject.User, Roles: req.Subject.Roles, Groups: req.Subject.Groups}
+// subjectFrom 请求级主体解析（apply/events 写面共用）：subject 字段优先，缺席回退
+// X-Core-Subject 头；两者皆缺 → 匿名主体（非 nil 指针=强制请求级判定，进程级本地信任
+// 不兜底 HTTP 匿名请求）。
+func subjectFrom(r *http.Request, sr *subjectRequest) *permission.Subject {
+	if sr != nil {
+		return &permission.Subject{User: sr.User, Roles: sr.Roles, Groups: sr.Groups}
 	}
 	if h := r.Header.Get(SubjectHeader); h != "" {
 		var s subjectRequest
@@ -534,6 +579,37 @@ func resolveSubject(r *http.Request, req *applyRequest) *permission.Subject {
 		// 头不可解析=视为未携带（匿名照判拒绝；不静默降级成本地信任）。
 	}
 	return &permission.Subject{}
+}
+
+// resolveSubject POST /v1/apply 请求级主体解析（subjectFrom 的 apply 侧入口）。
+func resolveSubject(r *http.Request, req *applyRequest) *permission.Subject {
+	return subjectFrom(r, req.Subject)
+}
+
+// eventsRequest POST /v1/events 请求体（v0.20 发布面；source 仅接受 human 值或缺省——
+// 服务侧强制判定，其他值=400）。
+type eventsRequest struct {
+	Type     string          `json:"type"`
+	Involved string          `json:"involved"`
+	Level    string          `json:"level"`
+	DedupKey string          `json:"dedupKey"`
+	Source   string          `json:"source"` // 载荷声明不采纳：非 human 值直接拒绝（来源=服务侧判定）
+	Subject  *subjectRequest `json:"subject"`
+}
+
+// writePublishErr 发布面错误 → HTTP 状态码映射（cored-bridge.md §2.3 v0.20）。
+func writePublishErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, eventpub.ErrNotRegistered):
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+	case errors.Is(err, eventpub.ErrDenied):
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+	case errors.Is(err, eventpub.ErrNoType), errors.Is(err, eventpub.ErrLevel),
+		errors.Is(err, eventbus.ErrRejected):
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	}
 }
 
 // draftRequest POST /v1/drafts 请求体（cored-bridge.md §2.2）。

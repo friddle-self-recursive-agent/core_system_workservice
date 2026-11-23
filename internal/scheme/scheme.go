@@ -178,6 +178,18 @@ func (s *Scheme) Lookup(kind string) (Kind, error) {
 	return Kind{}, fmt.Errorf("scheme: kind %q not registered", kind)
 }
 
+// LookupEventType 事件类型注册查询（事件发布面 v0.20 入口：事件只校验类型注册不校验
+// 内容，concepts/event.md §2 边界+规则 8——注入面以本表为类型合法性唯一权威）。
+// 未注册返回错误；命中返回注册项指针（DefaultLevel 等由发布面按表投影）。
+func (s *Scheme) LookupEventType(typ string) (*EventType, error) {
+	for i := range s.Spec.EventTypes {
+		if s.Spec.EventTypes[i].Type == typ {
+			return &s.Spec.EventTypes[i], nil
+		}
+	}
+	return nil, fmt.Errorf("scheme: 事件类型 %q 未注册", typ)
+}
+
 // ListKinds 返回全部已注册对象类型（只读清单）。
 func (s *Scheme) ListKinds() []Kind {
 	out := make([]Kind, len(s.Spec.Kinds))

@@ -48,7 +48,7 @@ func TestDeliveriesOutboundKeysAndFlip(t *testing.T) {
 	defer hub0.AttachDispatch(bus0, []scheme.DispatchRule{
 		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
 	})()
-	ts0 := httptest.NewServer(New(sch, nil, nil, nil, hub0, nil, dl0, nil))
+	ts0 := httptest.NewServer(New(sch, nil, nil, nil, hub0, nil, dl0, nil, nil))
 	defer ts0.Close()
 	code, empty := get(t, ts0, "/v1/notifications/deliveries")
 	if code != 200 {
@@ -74,7 +74,7 @@ func TestDeliveriesOutboundKeysAndFlip(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, dl, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, dl, nil, nil))
 	defer ts.Close()
 
 	if err := bus.Publish(&eventbus.Event{Type: "DocApplied", Source: "apply",

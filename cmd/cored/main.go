@@ -22,6 +22,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
@@ -158,7 +159,7 @@ func run() error {
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备））\n",
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
@@ -176,6 +177,7 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 草稿恢复 restored=%d skipped=%d（--ops-db 持久化部署，draft 表）\n", restored, skipped)
 	}
 	var applier apiserver.Applier
+	var publisher apiserver.PublisherFace
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
 		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
@@ -237,14 +239,19 @@ func run() error {
 			Subject: permission.Subject{User: "cored:local", Roles: []string{permission.DefaultAdmin}},
 		}
 		applier = engine
+		// 事件注入面（v0.20 发布面首段，event.md 规则 8）：与 apply 写面同门控（--allow-apply），
+		// 发布权限域与 apply 写权限域分立（publish × events 资源域）；注入走与引擎内部事件
+		// 同一条总线主干（去重/订阅派发/event_log 归档零旁路）；source 服务侧判定恒 human。
+		publisher = &eventpub.Publisher{Sch: sch, Bus: bus, Perm: perm}
 		fmt.Fprintf(os.Stderr, "cored: apply 写面已开启（POST /v1/apply；请求级主体判定，匿名拒绝；本地信任仅作引擎 fallback）\n")
+		fmt.Fprintf(os.Stderr, "cored: 事件注入面已开启（POST /v1/events；动作=publish × 域=events 与 apply 写面分立；注入通道 source=human——v0.20）\n")
 	}
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
