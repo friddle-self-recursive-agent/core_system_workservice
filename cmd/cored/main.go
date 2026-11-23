@@ -103,7 +103,8 @@ func run() error {
 	// 触发骨架（dispatch 接线：第二段 v0.12 订阅面动态化 → 第三段 v0.13 引擎主体第一段
 	// → 第四段 v0.14 引擎主体第二段：派发执行投影 → 第五段 v0.15 引擎主体第三段
 	// 真实拉起第一子段：workflow 触发面接线 → 第六段 v0.16 引擎主体第四段
-	// 真实拉起第二子段：notification 送达面接线 → 第四段收尾 v0.17：受理后真实通道出站挂接）：
+	// 真实拉起第二子段：notification 送达面接线 → 第四段收尾 v0.17：受理后真实通道出站挂接
+	// → 第七段 v0.18 引擎主体第五段：agent 唤醒面接线）：
 	// 订阅集合由 scheme.dispatch 表推导（on: 类型集合/通配 *→全类型一条；含通配坍缩），
 	// 留痕携命中行投影 route/cc/for/owner（owner 字面量谓词随解析激活：involved scope 根
 	// systems/<s>→<s>，global/builtin 同名）+ 执行绑定投影 executor/target/wired，
@@ -122,7 +123,11 @@ func run() error {
 	// 真实通道出站注入（v0.17）：--outbound-exec 给定时受理后异步出站（exec 桥→实现侧出站
 	// 命令，信封协议 connectors.OutboundEnvelope），送达投影 status 翻转 accepted→sent/failed
 	// （sent/failed 计数可查；一次尝试，重试/降级/静默 declared-deferred）。
-	// agent 唤醒、相位态机→刹车→冷却→minLevel 仍 declared-deferred（cored-bridge.md §2.3）。
+	// agent 唤醒面接线（v0.18）：唤醒投影落点挂接 + 执行面登记——执行面=agent（`<p>-agent`
+	// 族：Escalate→root-agent、HeartbeatLost→parent-agent）的绑定（route 主路与 cc 旁路，
+	// origin 维度留痕）推进为一条唤醒投影（GET /v1/agents/wakes 查询）。唤醒投影出现 ≠
+	// agent 会话已拉起（真实拉起=agent-session 域，declared-deferred）。
+	// 相位态机→刹车→冷却→minLevel 仍 declared-deferred（cored-bridge.md §2.3）。
 	dlOpts := &workflow.DeliveryOptions{}
 	if *outboundExec != "" {
 		argv, err := outbound.ParseCommand(*outboundExec)
@@ -140,6 +145,7 @@ func run() error {
 	}
 	runs := workflow.NewRunLog(nil)
 	deliveries := workflow.NewDeliveryLog(dlOpts)
+	wakes := workflow.NewWakeLog(nil)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
 	outboundState := "off（送达止于受理投影）"
 	if dlOpts.Outbound != nil {
@@ -148,10 +154,11 @@ func run() error {
 	triggers := workflow.NewTriggerHub(nil)
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
-	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification) // 机械判别器：resolve execution.wired false→true（两执行面）
+	triggers.BindAgents(wakes)
+	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs notification送达面=已接线 送达投影=/v1/notifications/deliveries 真实出站=%s 派发执行余量=agent唤醒/相位态机）\n",
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位态机）\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
@@ -237,7 +244,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

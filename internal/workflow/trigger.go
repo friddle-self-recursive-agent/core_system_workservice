@@ -7,7 +7,11 @@
 // → 第六段 v0.16 引擎主体第四段（真实拉起第二子段）：notification 送达面接线——
 // 执行面=notification 的绑定（route 主路与 cc 旁路，origin 维度留痕）且装配层已登记
 // （WireExecutor+BindDeliveries）时，留痕推进为一条送达投影（deliver.go；查询面
-// /v1/notifications/deliveries））：
+// /v1/notifications/deliveries）→ 第四段收尾 v0.17：受理后真实通道出站挂接（送达状态机
+// accepted→sent/failed，deliver.go）
+// → 第七段 v0.18 引擎主体第五段（真实拉起第三子段）：agent 唤醒面接线——
+// 执行面=agent 的绑定（route 主路与 cc 旁路，origin 维度留痕）且装配层已登记
+// （WireExecutor+BindAgents）时，留痕推进为一条唤醒投影（wake.go；查询面 /v1/agents/wakes））：
 // 订阅总线事件流，收到即落**进程内可查状态**（收到留痕：事件 id/dedupKey/type/at/receivedAt
 // + 命中行投影 route/for/owner/cc + 执行绑定投影 executor/target/wired）。
 // 订阅集合由 scheme.dispatch 表推导（on: 值表序去重、通配 * 坍缩全类型一条）+ for 谓词口径
@@ -18,10 +22,11 @@
 // 若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），命中行投影 route/cc/for/owner/row
 // + execution 投影（route/cc 目标的执行面绑定：映射表 execFor 家族收编，未知目标=unbound
 // 缺口可见不静默吞并；wired=执行面接线态，装配层登记前恒 false——诚实投影）。
-// 触发引擎主体剩余面（agent 唤醒、相位态机→刹车→冷却→minLevel、notification 真实通道
-// 投递）declared-deferred（cored-bridge.md §2.3）——决策面回答「路由到哪 + 谁来执行」，
+// 触发引擎主体剩余面（相位态机→刹车→冷却→minLevel、通知重试/降级/静默窗口、agent 真实
+// 拉起）declared-deferred（cored-bridge.md §2.3）——决策面回答「路由到哪 + 谁来执行」，
 // workflow 面把触发推进为对账 run 起点（v0.15），notification 面把绑定推进为送达受理投影
-// （v0.16，route+cc 双路），其余执行面不派发。
+// （v0.16，route+cc 双路），agent 面把绑定推进为唤醒受理投影（v0.18，route+cc 双路），
+// 真实拉起/相位推进仍 deferred。
 package workflow
 
 import (
@@ -132,6 +137,7 @@ type TriggerHub struct {
 	wired    map[string]bool       // 执行面接线态（WireExecutor 登记；缺省全 false=真实拉起 deferred）
 	runs     RunSink               // workflow 触发面 run 投影落点（BindRuns 挂接；nil=不推进 run）
 	deliver  DeliverySink          // notification 送达面送达投影落点（BindDeliveries 挂接；nil=不推进送达）
+	wakes    WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
 }
 
 // NewTriggerHub 构建触发骨架。
@@ -259,13 +265,25 @@ func (h *TriggerHub) record(e eventbus.Event) {
 			h.deliver.Deliver(rec, d.CCExec, OriginCC)
 		}
 	}
+	// 真实拉起第三子段（v0.18）：agent 唤醒面已接线（WireExecutor 登记 + BindAgents 挂接）
+	// 时，执行面=agent 的绑定推进为一条唤醒投影——route 主路与 cc 旁路双路收编（origin
+	// 维度留痕，与送达面同口径；wake.go）。同一锁内推进：唤醒与留痕/run/送达同序；
+	// 非 agent 执行面与未接线态不推进（单登记不生效）。
+	if h.wakes != nil && h.wired[ExecAgent] {
+		if d.Exec.Executor == ExecAgent {
+			h.wakes.Wake(rec, d.Exec, OriginRoute)
+		}
+		if d.CCExec.Executor == ExecAgent {
+			h.wakes.Wake(rec, d.CCExec, OriginCC)
+		}
+	}
 }
 
 // WireExecutor 登记执行面接线态（引擎主体第二段 v0.14 登记 → 第三段 v0.15 起装配层对
 // 已落地执行面实际登记）。登记前投影 wired 恒 false——诚实投影：执行计划可查 ≠ 执行面
 // 已在位。幂等；登记即生效（下次决策投影照读）。v0.15 装配层登记 ExecWorkflow
 // （run 投影面在位，run.go）；v0.16 登记 ExecNotification（送达投影面在位，deliver.go）；
-// agent 面落地轮登记（登记前仍 false）。
+// v0.18 登记 ExecAgent（唤醒投影面在位，wake.go）。
 func (h *TriggerHub) WireExecutor(kinds ...string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -295,6 +313,17 @@ func (h *TriggerHub) BindDeliveries(sink DeliverySink) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.deliver = sink
+}
+
+// BindAgents 挂接 agent 触发面的唤醒投影落点（引擎主体第五段 v0.18）。挂接本身不翻转
+// wired——真实拉起的接线判定=装配层**同时**登记 WireExecutor(ExecAgent)
+// （机械判别器：决策投影 wired 翻转 ∧ 唤醒面出现，与 run/送达面同口径）。幂等；nil=解除
+// 挂接。须在 AttachDispatch 前调用（事件开始流入后无接线窗口）。sink 契约见 WakeSink
+// （非阻塞、不回调 hub）。
+func (h *TriggerHub) BindAgents(sink WakeSink) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.wakes = sink
 }
 
 // execBindingLocked 目标 → 执行面绑定（纯映射 execFor + hub 接线态覆写）。
@@ -341,7 +370,7 @@ func (h *TriggerHub) resolveDecisionLocked(typ, involved string) DispatchDecisio
 //	dead-letter             → none         死信无执行，观测兜底可见（event.md rule 4）
 //	notification/<channel>  → notification 通道投影（*=全部已绑通道）
 //	workflows/<name>        → workflow     直接 workflow 引用（deploy-system-workflow 等）
-//	<p>-agent（p≠空）        → agent        agent 唤醒面（parent、root 等）
+//	<p>-agent（p≠空）        → agent        agent 唤醒面（parent、root 等；v0.18 接线）
 //	<p>-workflow（p≠空）     → workflow     owner 对账 workflow（p=owner 锚语义，如 owner-instance）
 //	其余（含 observation-bus/instance-docs 等未设计执行面的目标族）→ unbound 原样投影（缺口可见）
 func execFor(target string) ExecutorBinding {

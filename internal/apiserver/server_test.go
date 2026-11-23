@@ -36,7 +36,7 @@ func testServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("载入 fixture 失败: %v", err)
 	}
-	return httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil))
+	return httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil, nil))
 }
 
 // fixtureAdminRole/fixtureDevRole 授权面 fixture（请求级主体测试的 Role 对象来源——
@@ -225,7 +225,7 @@ func objServer(t *testing.T) (*httptest.Server, *repository.GitRepo) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = repo.Close() })
-	return httptest.NewServer(New(sch, repo, nil, nil, nil, nil, nil)), repo
+	return httptest.NewServer(New(sch, repo, nil, nil, nil, nil, nil, nil)), repo
 }
 
 func TestObjectsStoreNotConfigured(t *testing.T) {
@@ -366,7 +366,7 @@ func TestApplyEndpointClosedLoop(t *testing.T) {
 		Perm:    fixturePerm(t),                                                             // 授权面=Role 对象（v0.9 对象准入）
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // 程序化 fallback
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil), nil, nil, nil))
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil), nil, nil, nil, nil))
 	defer ts.Close()
 
 	// 创建 → 200 create rv=1 + DocApplied 回执（请求级主体经 X-Core-Subject 头）。
@@ -459,7 +459,7 @@ func TestApplyRequestSubject(t *testing.T) {
 		Perm:    fixturePerm(t),
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}}, // fallback：不兜底 HTTP 匿名
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil), nil, nil, nil))
+	ts := httptest.NewServer(New(sch, repo, engine, draft.NewStore(nil), nil, nil, nil, nil))
 	defer ts.Close()
 	createBody := func() map[string]any {
 		return map[string]any{
@@ -576,7 +576,7 @@ func TestApplySpecAdmissionEndpoint(t *testing.T) {
 		Perm:    fixturePerm(t),
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, store, nil, nil, nil))
+	ts := httptest.NewServer(New(sch, repo, engine, store, nil, nil, nil, nil))
 	defer ts.Close()
 
 	// 坏 Role（权限条目缺 scope=⑬E 形状）→ 400 + 错误文本含 spec 违规路径。

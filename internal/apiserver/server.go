@@ -65,6 +65,12 @@ type DeliveryFace interface {
 	State() workflow.DeliveryState
 }
 
+// WakeFace 唤醒投影查询口面（workflow.WakeLog 满足；引擎主体第五段 v0.18——真实拉起
+// 第三子段：agent 触发面接线，wake=`<p>-agent` 族绑定→agent 域的受理投影）。
+type WakeFace interface {
+	State() workflow.WakeState
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面。
 var (
@@ -74,6 +80,7 @@ var (
 	_ TriggerFace  = (*workflow.TriggerHub)(nil)
 	_ RunFace      = (*workflow.RunLog)(nil)
 	_ DeliveryFace = (*workflow.DeliveryLog)(nil)
+	_ WakeFace     = (*workflow.WakeLog)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -94,6 +101,7 @@ var (
 //	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
 //	GET /v1/notifications/deliveries    送达投影面（v0.16 送达面接线；v0.17 出站状态机 sent/failed；恒开，§2.3）
+//	GET /v1/agents/wakes                唤醒投影面（v0.18 引擎主体第五段：agent 触发面接线；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
@@ -102,7 +110,8 @@ var (
 // triggers 为 nil（触发骨架未接线）时 /v1/triggers 与 /v1/triggers/resolve 返回 503。
 // runs 为 nil（run 投影面未接线）时 /v1/workflows/runs 返回 503。
 // deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
-func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace) http.Handler {
+// wakes 为 nil（唤醒投影面未接线）时 /v1/agents/wakes 返回 503。
+func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -419,6 +428,31 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "accepted": st.Accepted, "sent": st.Sent, "failed": st.Failed,
 			"dropped": st.Dropped, "deliveries": items,
+		})
+	})
+	// 唤醒投影面（§2.3 v0.18 引擎主体第五段——真实拉起第三子段：agent 触发面接线）：
+	// 执行面=agent（`<p>-agent` 族：root-agent/parent-agent）且装配层已接线的绑定（route
+	// 主路与 cc 旁路，origin 维度留痕）推进为一条唤醒投影（唤醒已受理+agent 锚投影；
+	// 唤醒投影出现 ≠ agent 会话已拉起——诚实投影与 run/送达面同口径）。Escalate→root-agent
+	// 行的机械观察点。旧构建（face 缺席）经兜底 handler 返回 405=代际判别器（runs/送达面
+	// 同口径）。
+	mux.HandleFunc("GET /v1/agents/wakes", func(w http.ResponseWriter, _ *http.Request) {
+		if wakes == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "唤醒投影面未接线"})
+			return
+		}
+		st := wakes.State()
+		items := make([]map[string]any, 0, len(st.Wakes))
+		for _, wk := range st.Wakes {
+			items = append(items, map[string]any{
+				"wake": wk.Wake, "agent": wk.Agent, "origin": wk.Origin,
+				"status": wk.Status, "level": wk.Level, "triggerSeq": wk.TriggerSeq,
+				"eventId": wk.EventID, "type": wk.Type, "dedupKey": wk.DedupKey,
+				"route": wk.Route, "owner": wk.Owner, "at": wk.At.UTC().Format(time.RFC3339Nano),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "wakes": items,
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。

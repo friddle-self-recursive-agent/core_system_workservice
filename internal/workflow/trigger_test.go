@@ -746,3 +746,6 @@ func TestWorkflowFaceWiring(t *testing.T) {
 
 // runsSink 测试取面（hub.runs 私有；测试经同包访问）。
 func (h *TriggerHub) runsSink() RunSink { return h.runs }
+
+// agentsSink 测试取面（hub.wakes 私有；测试经同包访问）。
+func (h *TriggerHub) agentsSink() WakeSink { return h.wakes }

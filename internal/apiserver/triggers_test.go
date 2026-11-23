@@ -25,7 +25,7 @@ func testScheme(t *testing.T) *scheme.Scheme {
 }
 
 func TestTriggersFaceNilReturnsUnavailable(t *testing.T) {
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/v1/triggers")
 	if err != nil {
@@ -53,7 +53,7 @@ func TestTriggersFaceRecordsTrace(t *testing.T) {
 	stop := hub.Attach(bus, "DocApplied")
 	defer stop()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
 	defer ts.Close()
 
 	// 未收到前：200 空面（查询面恒开，与写面开关无关）。
@@ -143,7 +143,7 @@ func TestTriggersFaceTableDrivenWiring(t *testing.T) {
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
 	defer ts.Close()
 
 	e := eventbus.Event{
@@ -203,7 +203,7 @@ func TestTriggersResolveFace(t *testing.T) {
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
 	defer ts.Close()
 
 	var d struct {
@@ -289,7 +289,7 @@ func TestTriggersExecutionProjection(t *testing.T) {
 		{On: "Escalate", For: "any", Dispatch: "mystery-face"}, // 未知目标族=unbound 可见
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, nil))
 	defer ts.Close()
 
 	get := func(url string) (int, map[string]any) {
@@ -404,7 +404,7 @@ func TestTriggersExecutionProjection(t *testing.T) {
 // triggerSeq, eventId, route, owner, target, startedAt}]}。
 func TestWorkflowRunsFace(t *testing.T) {
 	// 未接线 → 503（查询面语义与 triggers 同口径）。
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
 	resp, err := http.Get(ts.URL + "/v1/workflows/runs")
 	if err != nil {
 		t.Fatal(err)
@@ -425,7 +425,7 @@ func TestWorkflowRunsFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 	})()
-	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, runs, nil))
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, runs, nil, nil))
 	defer ts2.Close()
 	e := eventbus.Event{
 		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
@@ -485,7 +485,7 @@ func TestWorkflowRunsFace(t *testing.T) {
 // 固有提供（代际判别器与 runs 面同口径）。
 func TestNotificationsDeliveriesFace(t *testing.T) {
 	// 未接线 → 503（查询面语义与 runs 面同口径）。
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
 	resp, err := http.Get(ts.URL + "/v1/notifications/deliveries")
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +506,7 @@ func TestNotificationsDeliveriesFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "any", Dispatch: "notification/mail-chan"},
 	})()
-	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, deliver))
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, deliver, nil))
 	defer ts2.Close()
 	e := eventbus.Event{
 		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
@@ -552,5 +552,94 @@ func TestNotificationsDeliveriesFace(t *testing.T) {
 	}
 	if d["triggerSeq"].(float64) != 1 {
 		t.Fatalf("送达应携来源留痕 seq=1: %v", d)
+	}
+}
+
+// TestAgentsWakesFace 唤醒投影面（cored-bridge.md §2.3 v0.18 引擎主体第五段——
+// 真实拉起第三子段）：nil 面 503；接线（BindAgents+WireExecutor(ExecAgent)）后唤醒可查
+// ——载荷形状 {count, accepted, dropped, wakes:[{wake, agent, origin, status, level,
+// triggerSeq, eventId, type, dedupKey, route, owner, at}]}；Escalate→root-agent 行
+// 机械验证（决策投影 wired 翻转 ∧ 唤醒面出现，两面合证同口径）；旧代（face 缺席）405
+// 由兜底 handler 固有提供（代际判别器与 runs/送达面同口径）。
+func TestAgentsWakesFace(t *testing.T) {
+	// 未接线 → 503（查询面语义与 runs/送达面同口径）。
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil, nil, nil))
+	resp, err := http.Get(ts.URL + "/v1/agents/wakes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	ts.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("唤醒面未接线应 503，得 %d", resp.StatusCode)
+	}
+
+	// 接线后：Escalate（root-agent 主路 + notification/* 旁路）→ 唤醒可查且溯源字段同源。
+	sch := testScheme(t)
+	bus := eventbus.NewBus(nil)
+	hub := workflow.NewTriggerHub(nil)
+	wakes := workflow.NewWakeLog(nil)
+	hub.BindAgents(wakes)
+	hub.WireExecutor(workflow.ExecAgent)
+	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
+		{On: "Escalate", For: "any", Dispatch: "root-agent", CC: "notification/*"},
+	})()
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, nil, nil, wakes))
+	defer ts2.Close()
+	e := eventbus.Event{
+		Type: "Escalate", Source: "engine", Involved: "Agent/global/probe",
+		DedupKey: "core-workflow:probe:retries", Level: "error",
+	}
+	if err := bus.Publish(&e); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(time.Second)
+	var got struct {
+		Count    int              `json:"count"`
+		Accepted int64            `json:"accepted"`
+		Dropped  int64            `json:"dropped"`
+		Wakes    []map[string]any `json:"wakes"`
+	}
+	for {
+		resp, err := http.Get(ts2.URL + "/v1/agents/wakes")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.NewDecoder(resp.Body).Decode(&got)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Count >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("唤醒投影未在时限内可查（真实拉起第三子段判据失败）")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if got.Accepted != 1 || got.Dropped != 0 || len(got.Wakes) != 1 {
+		t.Fatalf("唤醒面口径应 accepted=1 dropped=0 count=1: %+v", got)
+	}
+	w := got.Wakes[0]
+	if w["agent"] != "root" || w["origin"] != "route" || w["status"] != "accepted" ||
+		w["type"] != "Escalate" || w["level"] != "error" || w["route"] != "root-agent" ||
+		w["owner"] != "global" || w["eventId"] != e.ID || w["dedupKey"] != e.DedupKey {
+		t.Fatalf("唤醒载荷不符: %v", w)
+	}
+	if w["triggerSeq"].(float64) != 1 {
+		t.Fatalf("唤醒应携来源留痕 seq=1: %v", w)
+	}
+
+	// 决策投影 wired 翻转（两面合证之一面：唤醒面出现已由上段证实）。
+	code, body := get(t, ts2, "/v1/triggers/resolve?type=Escalate&involved=Agent/global/probe")
+	if code != http.StatusOK {
+		t.Fatalf("决策面应 200，得 %d", code)
+	}
+	ex := body["execution"].(map[string]any)
+	rt := ex["route"].(map[string]any)
+	if rt["executor"] != "agent" || rt["target"] != "root" || rt["wired"] != true {
+		t.Fatalf("Escalate 决策投影应 agent/root/wired=true: %v", ex)
 	}
 }
