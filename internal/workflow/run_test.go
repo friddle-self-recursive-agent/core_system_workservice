@@ -1,6 +1,8 @@
-// run_test.go —— 对账 run 投影面验收（引擎主体第三段 v0.15——真实拉起第一子段）：
+// run_test.go —— 对账 run 投影面验收（引擎主体第三段 v0.15——真实拉起第一子段；
+// v0.23 相位推进器首段——迁移判定=声明序列单调前进）：
 // 锚解析纯映射（对账锚→core-workflow、直接引用→builtin 注册表/平台对象可见）+
-// run 环容量/丢最旧/dropped 可见 + 状态词与起点投影（相位态机 deferred 的诚实口径）。
+// run 环容量/丢最旧/dropped 可见 + 受理即启动口径（builtin=running/第二相位、object=triggered 不推进）
+// + 迁移判定纯函数（尾相位/越界/空序列不前进）。
 package workflow
 
 import (
@@ -128,8 +130,10 @@ func TestRunLogRing(t *testing.T) {
 	}
 }
 
-// TestRunStartProjection 起点 projection 的诚实口径：status=triggered、phase=声明首相位、
-// 状态词不含任何「已完成/执行中」语义（相位态机 deferred——run 出现 ≠ 对账执行完毕）。
+// TestRunStartProjection 受理投影的诚实口径（v0.23 相位推进器首段）：受理即启动——引擎
+// 单步迁移判定把 builtin run 从声明首相位沿序列推进一步（Idle→Analyzing）、状态词翻转
+// triggered→running；相位序列仍携声明全序列（尾=Failed）。「run 出现 ≠ 对账执行完毕」
+// 口径不变：running=首步进行中，非执行完毕。
 func TestRunStartProjection(t *testing.T) {
 	runs := NewRunLog(nil)
 	runs.StartRun(TriggerRecord{
@@ -141,11 +145,11 @@ func TestRunStartProjection(t *testing.T) {
 		t.Fatalf("应 1 条 run: %+v", st)
 	}
 	r := st.Runs[0]
-	if r.Status != RunTriggered {
-		t.Fatalf("run 状态应为起点词 triggered: %+v", r)
+	if r.Status != RunRunning {
+		t.Fatalf("builtin run 受理即启动，状态应为 running: %+v", r)
 	}
-	if r.Workflow != ReconcileWorkflow || r.SpecSource != SpecBuiltin || r.Phase != string(Idle) {
-		t.Fatalf("对账锚 run 应 {core-workflow,builtin,Idle}: %+v", r)
+	if r.Workflow != ReconcileWorkflow || r.SpecSource != SpecBuiltin || r.Phase != string(Analyzing) {
+		t.Fatalf("对账锚 run 应 {core-workflow,builtin,Analyzing}（声明首相位 Idle 沿序列前进一步）: %+v", r)
 	}
 	if r.TriggerSeq != 7 || r.Owner != "global" || r.Target != "owner" || r.Route != "owner-workflow" {
 		t.Fatalf("run 溯源字段不符: %+v", r)
@@ -169,5 +173,32 @@ func TestObjectRunPhasesEmptyArray(t *testing.T) {
 	}
 	if r.SpecSource != SpecObject || r.Phase != "" {
 		t.Fatalf("object 源 run 口径 {object, 空相位起点}: %+v", r)
+	}
+	// 相位不投影=无从迁移：object 源 run 不被推进，status 恒受理词（v0.23 口径）。
+	if r.Status != RunTriggered {
+		t.Fatalf("object 源 run 状态应恒 triggered（相位不投影无从迁移）: %+v", r)
+	}
+}
+
+// TestAdvancePhase 迁移判定纯函数（v0.23 相位推进器首段）：沿声明序列单调前进一步；
+// 序列尾/不在序列内/空序列不前进（受理态保留）。
+func TestAdvancePhase(t *testing.T) {
+	seq := phaseNames(Builtin("core-workflow").Phases) // Idle→…→Failed
+	if p, ok := advancePhase(seq, "Idle"); !ok || p != string(Analyzing) {
+		t.Fatalf("Idle 应前进一步到 Analyzing: %s %v", p, ok)
+	}
+	if p, ok := advancePhase(seq, string(Verifying)); !ok || p != string(Reporting) {
+		t.Fatalf("Verifying 应前进一步到 Reporting: %s %v", p, ok)
+	}
+	// 序列尾（终点相位）不前进：ok=false 原相位保留。
+	if p, ok := advancePhase(seq, string(Failed)); ok || p != string(Failed) {
+		t.Fatalf("序列尾 Failed 不应前进: %s %v", p, ok)
+	}
+	// 当前相位不在序列内（含空串）与空序列：不前进。
+	if _, ok := advancePhase(seq, "Nowhere"); ok {
+		t.Fatalf("不在序列内的相位不应前进")
+	}
+	if _, ok := advancePhase(nil, "Idle"); ok {
+		t.Fatalf("空序列不应前进")
 	}
 }

@@ -248,7 +248,8 @@ func (h *TriggerHub) record(e eventbus.Event) {
 	}
 	h.ring = append(h.ring, rec)
 	// 真实拉起第一子段（v0.15）：workflow 触发面已接线（WireExecutor 登记 + BindRuns 挂接）
-	// 时，route 目标执行面=workflow 的留痕推进为一次对账 run 投影（起点留痕，相位态机 deferred）。
+	// 时，route 目标执行面=workflow 的留痕推进为一次对账 run 投影（v0.23 相位推进器首段：
+	// 受理即启动——引擎单步迁移判定随受理同拍完成，run.go advancePhase；后续推进/挂起-恢复 deferred）。
 	// 同步调用：sink 契约=非阻塞进程内投影（run.go RunSink），锁内调用保 run 与留痕同序。
 	if h.runs != nil && h.wired[ExecWorkflow] && d.Exec.Executor == ExecWorkflow {
 		h.runs.StartRun(rec, d.Exec)

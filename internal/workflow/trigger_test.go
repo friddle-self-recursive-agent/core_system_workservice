@@ -690,10 +690,10 @@ func TestWorkflowFaceWiring(t *testing.T) {
 	}
 	r := rs.Runs[0]
 	rec := st.Records[0]
-	if r.Workflow != ReconcileWorkflow || r.SpecSource != SpecBuiltin || r.Status != RunTriggered ||
-		r.Phase != string(Idle) || r.TriggerSeq != rec.Seq || r.Route != "owner-workflow" ||
+	if r.Workflow != ReconcileWorkflow || r.SpecSource != SpecBuiltin || r.Status != RunRunning ||
+		r.Phase != string(Analyzing) || r.TriggerSeq != rec.Seq || r.Route != "owner-workflow" ||
 		r.Owner != rec.Owner || r.Target != "owner" || r.EventID != rec.EventID {
-		t.Fatalf("对账锚 run 投影不符: %+v vs 留痕 %+v", r, rec)
+		t.Fatalf("对账锚 run 投影不符（v0.23 迁移判定首段：受理即启动 running/Analyzing）: %+v vs 留痕 %+v", r, rec)
 	}
 	if len(r.Phases) != 8 || r.Phases[0] != string(Idle) || r.Phases[7] != string(Failed) {
 		t.Fatalf("run 应携声明相位全序列: %v", r.Phases)
@@ -707,8 +707,8 @@ func TestWorkflowFaceWiring(t *testing.T) {
 	if len(rs.Runs) != 3 {
 		t.Fatalf("两条直接引用应各产生一条 run（共 3）: %+v", rs)
 	}
-	if rs.Runs[1].Workflow != "watch-only" || rs.Runs[1].SpecSource != SpecBuiltin || rs.Runs[1].Phase != string(Idle) {
-		t.Fatalf("builtin 直接引用 run 不符: %+v", rs.Runs[1])
+	if rs.Runs[1].Workflow != "watch-only" || rs.Runs[1].SpecSource != SpecBuiltin || rs.Runs[1].Phase != string(Analyzing) {
+		t.Fatalf("builtin 直接引用 run 不符（v0.23 受理即启动=第二相位）: %+v", rs.Runs[1])
 	}
 	if rs.Runs[2].Workflow != "deploy-system-workflow" || rs.Runs[2].SpecSource != SpecObject ||
 		len(rs.Runs[2].Phases) != 0 || rs.Runs[2].Phase != "" {

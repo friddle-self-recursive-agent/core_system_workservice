@@ -464,10 +464,10 @@ func TestWorkflowRunsFace(t *testing.T) {
 		t.Fatalf("run 面口径应 started=1 dropped=0 count=1: %+v", got)
 	}
 	r := got.Runs[0]
-	if r["workflow"] != "core-workflow" || r["specSource"] != "builtin" || r["status"] != "triggered" ||
-		r["phase"] != "Idle" || r["route"] != "owner-workflow" || r["owner"] != "global" ||
+	if r["workflow"] != "core-workflow" || r["specSource"] != "builtin" || r["status"] != "running" ||
+		r["phase"] != "Analyzing" || r["route"] != "owner-workflow" || r["owner"] != "global" ||
 		r["target"] != "owner" || r["eventId"] != e.ID {
-		t.Fatalf("run 载荷不符: %v", r)
+		t.Fatalf("run 载荷不符（v0.23 迁移判定首段：受理即启动 running/Analyzing）: %v", r)
 	}
 	if r["triggerSeq"].(float64) != 1 {
 		t.Fatalf("run 应携来源留痕 seq=1: %v", r)

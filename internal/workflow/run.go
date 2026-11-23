@@ -4,9 +4,18 @@
 // =workflow 且装配层已登记接线（TriggerHub.WireExecutor(ExecWorkflow)）时，触发骨架把该次
 // 决策推进为一条 RunRecord（一次对账的起点投影），查询面见 GET /v1/workflows/runs。
 //
-// 解耦边界（诚实投影）：run 记录=触发已受理 + 声明起点（builtin 锚的首相位），**不含相位态机
-// 推进**（相位态机/刹车/冷却/minLevel 仍属引擎主体余量，cored-bridge.md §2.3）——run 出现
-// ≠ 对账已执行完毕，只等于「触发面已把事件接进 workflow 域」。
+// 相位推进器首段（v0.23——迁移判定=声明序列单调前进，workflows 规则 12）：run 受理即启动
+// 信号——引擎在受理路径上执行**单步迁移判定**：builtin run 从声明首相位沿声明相位序列单调
+// 前进一步（Idle→Analyzing），status 词形翻转 triggered→running（触发已受理→首步进行中）。
+// 迁移判定为纯函数 advancePhase（序列即声明：builtin 相位序列为线性声明，concepts/workflow.md
+// 「相位机=标准 FSM，序即声明」——显式 Transition 表/挂起-恢复/异步推进属推进器后续段，
+// 换实现不动本查询面词汇）；object 源 run 相位不投影=无从迁移，status 恒 triggered；
+// 已居序列尾（Failed 等终点）不再前进。受理与首步推进同拍完成（同步路径——真实异步派发
+// deferred，投影面只见推进后形态）。
+//
+// 诚实投影边界不变：run 出现 ≠ 对账执行完毕——status=running 只证明引擎已把 run 推进到
+// 声明序列第二相位（Analyzing 进行中），后续相位推进/刹车/冷却/minLevel 仍属引擎主体余量
+//（cored-bridge.md §2.3）。
 //
 // 锚解析（resolveRunAnchor，纯映射，与 execFor 家族收编同构）：
 //   - 以 workflows 为前缀的直接引用 → 按名解析：builtin 注册表命中=内置 spec（相位序列可投影）；
@@ -23,9 +32,10 @@ import (
 	"time"
 )
 
-// run 状态词汇（v0.15 只有起点；相位推进落地轮在此扩枚举）。
+// run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running）。
 const (
-	RunTriggered = "triggered" // 触发已受理（run 投影终点=相位态机 deferred）
+	RunTriggered = "triggered" // 触发已受理（object 源 run 的终点态——相位不投影无从迁移）
+	RunRunning   = "running"   // 引擎已把 run 从声明首相位沿序列推进一步（首步进行中；非执行完毕）
 )
 
 // spec 来源词汇（run 锚解析的声明来源投影）。
@@ -46,8 +56,8 @@ type RunRecord struct {
 	Workflow   string    // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
 	SpecSource string    // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
 	Phases     []string  // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Phase      string    // 当前相位投影（run 起点=声明首相位；相位推进器余量——声明面已完备 v0.19，推进由引擎段承接）
-	Status     string    // run 状态（v0.15 恒 RunTriggered）
+	Phase      string    // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空）
+	Status     string    // run 状态（builtin=RunRunning 引擎已推进首步；object=RunTriggered 受理态）
 	TriggerSeq int64     // 来源触发留痕 seq（可回指 GET /v1/triggers records）
 	EventID    string    // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
 	Type       string    // 事件类型
@@ -114,15 +124,21 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		r.dropped += int64(excess)
 	}
 	phase := ""
+	status := RunTriggered
 	if len(phases) > 0 {
-		phase = string(phases[0]) // 声明起点=首相位（相位推进器余量，起点后不推进——诚实投影口径不变）
+		phase = string(phases[0]) // 受理投影=声明首相位（起点词先落，迁移判定在其上判）
+		// 相位推进器首段（v0.23）：受理即启动信号——引擎单步迁移判定，沿声明序列
+		// 前进一步并把状态词翻转为 running（advancePhase 纯函数，判定口径见包注释）。
+		if next, ok := advancePhase(phases, phase); ok {
+			phase, status = next, RunRunning
+		}
 	}
 	if phases == nil {
 		phases = []string{} // object 源不投影相位：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
 	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases,
-		Phase: phase, Status: RunTriggered,
+		Phase: phase, Status: status,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, StartedAt: rec.ReceivedAt,
 	})
@@ -135,6 +151,19 @@ func (r *RunLog) State() RunState {
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
 	return RunState{Started: r.started, Dropped: r.dropped, Runs: runs}
+}
+
+// advancePhase 相位迁移判定首段（v0.23 纯函数）：沿声明相位序列从当前相位单调前进一步。
+// 迁移规则=序列前进（builtin 相位序列为线性声明，concepts/workflow.md「相位机=标准 FSM，
+// 序即声明」——触发受理即启动信号；显式 Transition 表/挂起-恢复属推进器后续段，落此扩展）。
+// 已居序列尾（终点相位）、当前相位不在序列内、序列为空 → 不前进（ok=false，受理态保留）。
+func advancePhase(phases []string, cur string) (string, bool) {
+	for i, p := range phases {
+		if p == cur && i+1 < len(phases) {
+			return phases[i+1], true
+		}
+	}
+	return cur, false
 }
 
 // resolveRunAnchor 命中行 route 原文 → run 投影的 workflow 锚（纯映射；引擎主体第三段 v0.15）。

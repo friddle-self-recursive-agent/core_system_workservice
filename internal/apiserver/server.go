@@ -414,9 +414,9 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"execution": map[string]any{"route": d.Exec, "cc": d.CCExec},
 		})
 	})
-	// 对账 run 投影面（§2.3 v0.15 引擎主体第三段——真实拉起第一子段：workflow 触发面接线）：
-	// route 目标执行面=workflow 且装配层已接线的留痕推进为一次 run 投影（触发已受理+声明
-	// 起点；相位态机 deferred——run 出现 ≠ 对账执行完毕）。旧构建（face 缺席）经兜底
+	// 对账 run 投影面（§2.3 v0.15 引擎主体第三段——真实拉起第一子段：workflow 触发面接线；
+	// v0.23 相位推进器首段：受理即启动——引擎单步迁移判定随受理同拍完成，builtin run
+	// phase=声明第二相位∧status=running；run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
 	// handler 返回 405=代际判别器（与 loop-13 固化口径一致）。
 	mux.HandleFunc("GET /v1/workflows/runs", func(w http.ResponseWriter, _ *http.Request) {
 		if runs == nil {
