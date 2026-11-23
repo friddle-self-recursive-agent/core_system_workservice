@@ -134,12 +134,12 @@ spec:
         llm: "?{provider: ref, model: string}"         # 该 workflow 用的 LLM
         triggers: "{events: {types: []string, minLevel}, timer: {resync}}"
         ingest: "{dedup: {window}, group: {by, max}, filterLevels}"
-        phases: "[]Phase"                              # 含 Paused（挂起态，见 onEscalate）
+        phases: "[]Phase"                              # 含 Paused（挂起态，见 onEscalate）；引擎词汇基座=Agent.status.phase 八相位 + workflow 域交付锚 Deploying（concepts/workflow.md §1 映射表）
         onEscalate: "{action: pause|finish-tick|continue(默认 pause), notify: bind-role}"   # AUTO 处理不了的事件到达时的暂停策略（可配置）
         onFailed: "{backoff, maxAttempts, escalate: {to: root, notify: role-holders}}"
         brakes: "{cooldown, maxMutationsPerTick, avoidRepeatFix}"    # 强制默认（可收紧不可关闭）
         regression: "{statusWriteback: bool, reports: [DriftReport, SessionLog]}"
-      builtinSet: [core-workflow, default-task, simple-shot, watch-only, dev-delivery, apply-workflow]   # 改 builtin 项=高敏权限项；预算/成本归 metrics 域（暂不做）
+      builtinSet: [core-workflow, default-task, simple-shot, watch-only, dev-delivery, apply-workflow]   # 改 builtin 项=高敏权限项；六项相位词汇映射见 concepts/workflow.md §1（运行时注册表同源）；预算/成本归 metrics 域（暂不做）
 
     - kind: Provider                 # 账号包
       builtin: true
@@ -180,7 +180,7 @@ spec:
       storage: global/roles/<name>.yaml
       spec:
         on: "?[]ref"                                 
-        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|publish|*]!}"   # 条目子字段必填=decl 后缀 !（先例 ref!）；条目结构完整=授权面与写面闸门共同语义（permission.LoadObjects 同判）
+        permissions: "[]{scope: 'global|systems/<n>/*'!, actions: [read|write|approve|call|publish|*]!}"   # 条目子字段必填=decl 后缀 !（先例 ref!）；条目结构完整=授权面与写面闸门共同语义（permission.LoadObjects 同判）；publish=事件发布域动作（event.md 规则 8 v0.20——发布权限域与 apply 写权限域分立）
       status: {holders: "[]User"}                    # user-system 投影
       builtinSet: [global/admin]                     # 全权限不可删
 
@@ -256,6 +256,10 @@ spec:
 
   # ============================================================
   # 三、事件类型
+  # 发布面（v0.20，event.md 规则 8）：全部注册类型可经写面注入端点发布——类型注册校验
+  # +level 缺省=defaultLevel 投影+同管线去重/派发/归档（零旁路）；发布动作=publish × events
+  # 资源域，与 apply 写权限域分立；注入通道的 source 由服务侧判定恒 human（本表 source 列
+  # 是引擎内部来源声明，不是注入载荷参数）。
   # ============================================================
   eventTypes:
     - {type: ExternalChanged,  source: connector, defaultLevel: info,  dedup: "<obj>:<change>:hash", route: owner-workflow}
@@ -267,7 +271,8 @@ spec:
     - {type: HeartbeatLost,    source: core,      defaultLevel: error, dedup: "<agent>",             route: parent-agent+notification/*}
     - {type: InstallRequested, source: human,     defaultLevel: info,  dedup: "<template>:<target>", route: workflows/deploy-system-workflow}
     - {type: TemplateFound,    source: connector, defaultLevel: info,  dedup: "<org>:<template>",    route: workflows/deploy-system-workflow}
-    - {type: SessionClosed,    source: agent,     defaultLevel: info,  dedup: "<session>",           route: instance-docs}   
+    - {type: SessionClosed,    source: agent,     defaultLevel: info,  dedup: "<session>",           route: instance-docs}
+    - {type: ReconcileTick,    source: core,      defaultLevel: info,  dedup: "reconcile:<at>",      route: workflows/core-workflow}   # 定时巡检到点（level-triggered 保险丝，event.md §7；引擎内部源二段=cored 定时器自产）
 
   # ============================================================
   # 四、事件路由（穷举缺省 + 死信兜底）
@@ -283,8 +288,9 @@ spec:
     - {on: InstallRequested, for: "any",            dispatch: workflows/deploy-system-workflow}
     - {on: TemplateFound,    for: "any",            dispatch: workflows/deploy-system-workflow}
     - {on: SessionClosed,    for: "owner:instance", dispatch: instance-docs}
+    - {on: ReconcileTick,    for: "any",            dispatch: workflows/core-workflow}   # 巡检到点→一次全量对账 run（对账锚=系统级循环本体）
     - {on: "*",              for: "scope:builtin/*", dispatch: workflows/builtin-root}
-    - {on: "*",              for: "any",            dispatch: dead-letter}    # 死信必须可见
+    - {on: "*",              for: "any",            dispatch: dead-letter}   # 死信必须可见（词汇=hub 合成死信/eventbus routed_to 同一词）
 
   # ============================================================
   # 五、运行时

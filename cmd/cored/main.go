@@ -25,6 +25,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/patrol"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
@@ -55,6 +56,9 @@ func run() error {
 			"实现侧出站命令由部署侧装配注入——依赖方向不反转，cored 不 import 连接器仓）")
 	outboundTimeout := flag.Duration("outbound-timeout", 60*time.Second,
 		"单次出站超时（--outbound-exec 注入时生效）")
+	reconcileInterval := flag.Duration("reconcile-interval", 0,
+		"定时巡检事件源间隔（v0.22 引擎内部源第二段，event.md 规则 10；0=关断零事件，缺省不改行为面；"+
+			"开启需 Scheme 注册 ReconcileTick——注册表是引擎内部源唯一开关）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -159,8 +163,23 @@ func run() error {
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9））\n",
+	// 定时巡检源（v0.22 引擎内部源第二段，event.md 规则 10）：装配层定时器到点自产
+	// ReconcileTick 进总线（与注入/引擎内部事件同一条主干零旁路——窗口去重/订阅派发/
+	// event_log 归档），route=workflows/core-workflow 推进为一次全量对账 run 投影。
+	// 注册表闸门前置：未注册即不启动；interval=0 关断零事件（缺省行为面不变）。
+	patrolState := "off"
+	patrolTicker := patrol.New(bus, sch, *reconcileInterval)
+	if patrolTicker.Enabled() {
+		patrolState = "on(" + patrolTicker.Interval().String() + ")"
+		patrolCtx, cancelPatrol := context.WithCancel(context.Background())
+		defer cancelPatrol()
+		go patrolTicker.Run(patrolCtx)
+	} else if *reconcileInterval > 0 {
+		patrolState = "unregistered" // interval>0 但类型未注册：闸门前置不启动（缺口可见）
+	}
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
+	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。
