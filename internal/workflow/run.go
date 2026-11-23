@@ -146,9 +146,10 @@ type RunRecord struct {
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
 type RunState struct {
-	Started int64       // 累计 start（含已被环挤出的）
-	Dropped int64       // 环溢出丢弃计数（可观测）
-	Runs    []RunRecord // 环内 run 投影（旧→新）
+	Started  int64       // 累计 start（含已被环挤出的）
+	Dropped  int64       // 环溢出丢弃计数（可观测）
+	Advances int64       // 累计异步推进的 run·步计数（v0.26 异步推进首段——新载荷键=代际判别器）
+	Runs     []RunRecord // 环内 run 投影（旧→新）
 }
 
 // RunSink workflow 触发面的 run 投影落点（引擎主体第三段 v0.15）。
@@ -178,11 +179,12 @@ type RunOptions struct {
 type RunLog struct {
 	opts RunOptions
 
-	mu      sync.Mutex
-	seq     int64
-	ring    []RunRecord
-	started int64
-	dropped int64
+	mu       sync.Mutex
+	seq      int64
+	ring     []RunRecord
+	started  int64
+	dropped  int64
+	advances int64 // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
 }
 
 // NewRunLog 构建 run 投影落点。
@@ -315,7 +317,7 @@ func (r *RunLog) State() RunState {
 	defer r.mu.Unlock()
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
-	return RunState{Started: r.started, Dropped: r.dropped, Runs: runs}
+	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Runs: runs}
 }
 
 // stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中

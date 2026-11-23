@@ -59,6 +59,9 @@ func run() error {
 	reconcileInterval := flag.Duration("reconcile-interval", 0,
 		"定时巡检事件源间隔（v0.22 引擎内部源第二段，event.md 规则 10；0=关断零事件，缺省不改行为面；"+
 			"开启需 Scheme 注册 ReconcileTick——注册表是引擎内部源唯一开关）")
+	advanceInterval := flag.Duration("advance-interval", 0,
+		"run 相位异步推进间隔（v0.26 相位推进器异步推进首段，workflow.md 规则 15；0=关断，缺省不改行为面——"+
+			"受理首步同步推进不受影响。每拍对每现势 run 单步查表推进（stepByTable 复用）：落闸锚挂起、落终点锚终态、序列尾零动作停）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -180,6 +183,19 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
+	// run 相位异步推进器（v0.26 相位推进器异步推进首段，workflow.md 规则 15）：装配层定时器
+	// 每拍对每现势 run 单步查表推进（stepByTable 复用，判定器不动）——落闸锚挂起、落终点锚
+	// 终态、序列尾零动作停；triggered/suspended/failed 零动作防御。interval=0 关断（缺省不改
+	// 既有行为面——受理首步同步推进 v0.23 口径恒在；与巡检保险丝同款装配范式）。
+	advanceState := "off"
+	advancer := workflow.NewAdvancer(runs, *advanceInterval)
+	if advancer.Enabled() {
+		advanceState = "on(" + advancer.Interval().String() + ")"
+		advCtx, cancelAdvance := context.WithCancel(context.Background())
+		defer cancelAdvance()
+		go advancer.Run(advCtx)
+	}
+	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响）\n", advanceState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。

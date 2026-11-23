@@ -417,7 +417,8 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 对账 run 投影面（§2.3 v0.15 引擎主体第三段——真实拉起第一子段：workflow 触发面接线；
 	// v0.23 相位推进器首段：受理即启动——引擎单步迁移判定随受理同拍完成，builtin run
 	// phase=声明第二相位∧status=running；v0.25 显式迁移表首段：载荷新增 transitions=物化
-	// 声明表行投影（新载荷键=代际判别器）。run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
+	// 声明表行投影（新载荷键=代际判别器）；v0.26 异步推进首段：载荷新增 advances=累计异步
+	// 推进计数（新载荷键=代际判别器）。run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
 	// handler 返回 405=代际判别器（与 loop-13 固化口径一致）。
 	mux.HandleFunc("GET /v1/workflows/runs", func(w http.ResponseWriter, _ *http.Request) {
 		if runs == nil {
@@ -436,7 +437,9 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"count": len(items), "started": st.Started, "dropped": st.Dropped, "runs": items,
+			"count": len(items), "started": st.Started, "dropped": st.Dropped,
+			"advances": st.Advances, // v0.26 异步推进首段：累计推进 run·步计数（新载荷键=代际判别器）
+			"runs": items,
 		})
 	})
 	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线；
