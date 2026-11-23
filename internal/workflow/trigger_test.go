@@ -658,3 +658,91 @@ func TestResolveDecisionExecProjection(t *testing.T) {
 		t.Fatalf("未挂表应无执行计划（零值绑定）: %+v", d)
 	}
 }
+
+// ═══════════ 引擎主体第三段（v0.15：真实拉起第一子段——workflow 触发面接线+对账 run 投影） ═══════════
+
+// TestWorkflowFaceWiring workflow 触发面接线（真实拉起第一子段）：
+// 装配层双登记（BindRuns + WireExecutor(ExecWorkflow)）后，route 目标执行面=workflow 的
+// 留痕推进为一次对账 run 投影（对账锚→core-workflow；直接引用→builtin/平台对象可见）；
+// 其余执行面（notification/agent/none）不产生 run；单登记（只 BindRuns 未 WireExecutor）
+// 不推进——接线判定=两登记同时在场（机械判别器：wired 翻转 ∧ run 面出现）。
+func TestWorkflowFaceWiring(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	runs := NewRunLog(nil)
+	h.BindRuns(runs)
+	h.WireExecutor(ExecWorkflow)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "InstallRequested", For: "any", Dispatch: "workflows/watch-only"},
+		{On: "TemplateFound", For: "any", Dispatch: "workflows/deploy-system-workflow"}, // 非builtin=平台对象引用
+		{On: "Escalate", For: "any", Dispatch: "root-agent"},
+		{On: "ApprovalNeeded", For: "any", Dispatch: "notification/*"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
+	})()
+
+	// 对账锚：owner-workflow → run {core-workflow, builtin, Idle 起点, triggered}。
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	st := waitState(t, h, 1)
+	rs := runs.State()
+	if len(rs.Runs) != 1 {
+		t.Fatalf("对账锚事件应产生 1 条 run: %+v", rs)
+	}
+	r := rs.Runs[0]
+	rec := st.Records[0]
+	if r.Workflow != ReconcileWorkflow || r.SpecSource != SpecBuiltin || r.Status != RunTriggered ||
+		r.Phase != string(Idle) || r.TriggerSeq != rec.Seq || r.Route != "owner-workflow" ||
+		r.Owner != rec.Owner || r.Target != "owner" || r.EventID != rec.EventID {
+		t.Fatalf("对账锚 run 投影不符: %+v vs 留痕 %+v", r, rec)
+	}
+	if len(r.Phases) != 8 || r.Phases[0] != string(Idle) || r.Phases[7] != string(Failed) {
+		t.Fatalf("run 应携声明相位全序列: %v", r.Phases)
+	}
+
+	// 直接引用：builtin 命中=按名；未命中=平台对象引用（锚保留、相位空——缺口/对象面可见）。
+	pub(t, b, "InstallRequested", "Agent/global/probe")
+	pub(t, b, "TemplateFound", "Agent/global/probe")
+	waitState(t, h, 3)
+	rs = runs.State()
+	if len(rs.Runs) != 3 {
+		t.Fatalf("两条直接引用应各产生一条 run（共 3）: %+v", rs)
+	}
+	if rs.Runs[1].Workflow != "watch-only" || rs.Runs[1].SpecSource != SpecBuiltin || rs.Runs[1].Phase != string(Idle) {
+		t.Fatalf("builtin 直接引用 run 不符: %+v", rs.Runs[1])
+	}
+	if rs.Runs[2].Workflow != "deploy-system-workflow" || rs.Runs[2].SpecSource != SpecObject ||
+		len(rs.Runs[2].Phases) != 0 || rs.Runs[2].Phase != "" {
+		t.Fatalf("非 builtin 直接引用应投影平台对象引用（锚保留相位空）: %+v", rs.Runs[2])
+	}
+
+	// 其余执行面不产生 run：agent 送达面、notification 通道、死信兜底。
+	n := len(runs.State().Runs)
+	pub(t, b, "Escalate", "Agent/global/probe")
+	pub(t, b, "ApprovalNeeded", "Role/global/r")
+	pub(t, b, "MysteryType", "Agent/global/probe")  // 全表未命中→合成死信
+	pub(t, b, "UnknownType2", "Agent/global/probe") // 显式 dead-letter 行
+	waitState(t, h, 7)
+	if got := len(runs.State().Runs); got != n {
+		t.Fatalf("非 workflow 执行面不得产生 run：before=%d after=%d", n, got)
+	}
+
+	// 单登记不推进（只 BindRuns 未 WireExecutor）：接线判定=两登记同时在场。
+	h2 := NewTriggerHub(nil)
+	h2.BindRuns(NewRunLog(nil))
+	defer h2.AttachDispatch(b, []scheme.DispatchRule{{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"}})()
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	waitState(t, h2, 1)
+	if rs := h2.runsSink().(*RunLog).State(); len(rs.Runs) != 0 {
+		t.Fatalf("未登记 wired 不应推进 run（诚实投影）: %+v", rs)
+	}
+
+	// 只 WireExecutor 未 BindRuns：不推进也不 panic（sink 缺席=投影面未挂）。
+	h3 := NewTriggerHub(nil)
+	h3.WireExecutor(ExecWorkflow)
+	defer h3.AttachDispatch(b, []scheme.DispatchRule{{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"}})()
+	pub(t, b, "DocApplied", "Agent/global/probe")
+	waitState(t, h3, 1)
+}
+
+// runsSink 测试取面（hub.runs 私有；测试经同包访问）。
+func (h *TriggerHub) runsSink() RunSink { return h.runs }

@@ -52,6 +52,12 @@ type TriggerFace interface {
 	Resolve(typ, involved string) workflow.DispatchDecision
 }
 
+// RunFace 对账 run 投影查询口面（workflow.RunLog 满足；引擎主体第三段 v0.15——真实拉起
+// 第一子段：workflow 触发面接线，run=触发面→workflow 域的执行留痕起点投影）。
+type RunFace interface {
+	State() workflow.RunState
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面。
 var (
@@ -59,6 +65,7 @@ var (
 	_ Applier      = (*apply.Engine)(nil)
 	_ DraftStaging = (*draft.Store)(nil)
 	_ TriggerFace  = (*workflow.TriggerHub)(nil)
+	_ RunFace      = (*workflow.RunLog)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -75,13 +82,15 @@ var (
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
 //	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
 //	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
+//	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
 // applier 为 nil（未开启 --allow-apply）时 POST /v1/apply 与草稿写操作返回 405（缺省只读面不变；
 // 草稿 GET 属查询面恒开）。drafts 为 nil（缓存未接线）时 /v1/drafts* 返回 503。
 // triggers 为 nil（触发骨架未接线）时 /v1/triggers 与 /v1/triggers/resolve 返回 503。
-func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace) http.Handler {
+// runs 为 nil（run 投影面未接线）时 /v1/workflows/runs 返回 503。
+func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -338,6 +347,30 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"type": typ, "involved": involved, "matched": d.Matched,
 			"route": d.Route, "cc": d.CC, "for": d.For, "owner": d.Owner, "row": d.Row,
 			"execution": map[string]any{"route": d.Exec, "cc": d.CCExec},
+		})
+	})
+	// 对账 run 投影面（§2.3 v0.15 引擎主体第三段——真实拉起第一子段：workflow 触发面接线）：
+	// route 目标执行面=workflow 且装配层已接线的留痕推进为一次 run 投影（触发已受理+声明
+	// 起点；相位态机 deferred——run 出现 ≠ 对账执行完毕）。旧构建（face 缺席）经兜底
+	// handler 返回 405=代际判别器（与 loop-13 固化口径一致）。
+	mux.HandleFunc("GET /v1/workflows/runs", func(w http.ResponseWriter, _ *http.Request) {
+		if runs == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "run 投影面未接线"})
+			return
+		}
+		st := runs.State()
+		items := make([]map[string]any, 0, len(st.Runs))
+		for _, r := range st.Runs {
+			items = append(items, map[string]any{
+				"run": r.Run, "workflow": r.Workflow, "specSource": r.SpecSource,
+				"phases": r.Phases, "phase": r.Phase, "status": r.Status,
+				"triggerSeq": r.TriggerSeq, "eventId": r.EventID, "type": r.Type,
+				"dedupKey": r.DedupKey, "route": r.Route, "owner": r.Owner,
+				"target": r.Target, "startedAt": r.StartedAt.UTC().Format(time.RFC3339Nano),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items), "started": st.Started, "dropped": st.Dropped, "runs": items,
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。

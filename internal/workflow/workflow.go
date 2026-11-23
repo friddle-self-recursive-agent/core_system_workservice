@@ -95,3 +95,16 @@ func (s *Spec) Can(from Phase, on string) (Phase, bool) {
 	}
 	return from, false
 }
+
+// builtinSet 内置 workflow 注册表（判定用；与 Builtin 构造的已声明相位集合同源——
+// scheme.yaml runtime.workflows.builtin 六项中，dev-delivery、apply-workflow 的相位
+// 词汇映射未落设计（Deploy 等步无相位锚），不即兴发明，缺口在对账清单可见）。
+var builtinSet = map[string]bool{
+	"core-workflow": true,
+	"default-task":  true,
+	"simple-shot":   true,
+	"watch-only":    true,
+}
+
+// IsBuiltin 名是否命中内置 workflow 注册表（run 锚解析的 SpecBuiltin/SpecObject 判据）。
+func IsBuiltin(name string) bool { return builtinSet[name] }

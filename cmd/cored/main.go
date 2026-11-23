@@ -95,7 +95,8 @@ func run() error {
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
 	// 触发骨架（dispatch 接线：第二段 v0.12 订阅面动态化 → 第三段 v0.13 引擎主体第一段
-	// → 第四段 v0.14 引擎主体第二段：派发执行投影）：
+	// → 第四段 v0.14 引擎主体第二段：派发执行投影 → 第五段 v0.15 引擎主体第三段
+	// 真实拉起第一子段：workflow 触发面接线）：
 	// 订阅集合由 scheme.dispatch 表推导（on: 类型集合/通配 *→全类型一条；含通配坍缩），
 	// 留痕携命中行投影 route/cc/for/owner（owner 字面量谓词随解析激活：involved scope 根
 	// systems/<s>→<s>，global/builtin 同名）+ 执行绑定投影 executor/target/wired，
@@ -103,14 +104,19 @@ func run() error {
 	// （GET /v1/triggers；eventId/dedupKey 与 apply 回执/event_log 同源）；
 	// 派发决策可查询（GET /v1/triggers/resolve：对表快照回答「若到达路由到哪、由谁执行」，
 	// 零副作用；execution 投影=route/cc 目标执行面绑定，未知目标=unbound 缺口可见）。
-	// 随总线装配、查询面恒开（写面关断时不产生事件，received=0 照常 200）；
-	// 执行面接线（真实拉起）装配层不登记（wired 全 false 诚实投影）；
-	// 触发引擎主体剩余面（真实拉起→相位态机→刹车→冷却→minLevel）declared-deferred
-	// （cored-bridge.md §2.3）——决策面只投影决策与执行绑定，不执行派发。
+	// 随总线装配、查询面恒开（写面关断时不产生事件，received=0 照常 200）。
+	// workflow 触发面接线（v0.15）：run 投影落点挂接 + 执行面登记——route 目标执行面=workflow
+	// 的留痕推进为一次对账 run 投影（对账锚→core-workflow；直接引用→按 builtin 注册表解析，
+	// 未命中=平台对象引用可见；GET /v1/workflows/runs 查询）。run=触发已受理+声明起点，
+	// 相位态机不推进（deferred）。notification 送达、agent 唤醒、cc 旁路投递、相位态机→刹车
+	// →冷却→minLevel 仍 declared-deferred（cored-bridge.md §2.3）。
+	runs := workflow.NewRunLog(nil)
 	triggers := workflow.NewTriggerHub(nil)
+	triggers.BindRuns(runs)
+	triggers.WireExecutor(workflow.ExecWorkflow) // 机械判别器：resolve execution.wired false→true
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
-	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 派发执行=deferred）\n",
+	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs 派发执行余量=notification/agent/cc旁路/相位态机）\n",
 		len(sch.Spec.Dispatch), triggers.State().Types)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
@@ -196,7 +202,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

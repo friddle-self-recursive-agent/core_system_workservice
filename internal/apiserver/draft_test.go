@@ -42,7 +42,7 @@ func draftServer(t *testing.T) *httptest.Server {
 		Perm:    fixturePerm(t), // 授权面=Role 对象（v0.9 对象准入）；fromDraft 同闸门
 		Subject: permission.Subject{User: "test", Roles: []string{permission.DefaultAdmin}},
 	}
-	ts := httptest.NewServer(New(sch, repo, engine, drafts, nil))
+	ts := httptest.NewServer(New(sch, repo, engine, drafts, nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -89,7 +89,7 @@ func TestDraftReadFaceAlwaysOn(t *testing.T) {
 
 	// 写面关闭、缓存在线：GET 恒开返回空清单，写操作 405。
 	sch, _ := scheme.Load([]byte(fixture))
-	ts2 := httptest.NewServer(New(sch, nil, nil, draft.NewStore(nil), nil))
+	ts2 := httptest.NewServer(New(sch, nil, nil, draft.NewStore(nil), nil, nil))
 	defer ts2.Close()
 	code, body = get(t, ts2, "/v1/drafts")
 	if code != http.StatusOK || body["count"] != float64(0) {

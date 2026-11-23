@@ -25,7 +25,7 @@ func testScheme(t *testing.T) *scheme.Scheme {
 }
 
 func TestTriggersFaceNilReturnsUnavailable(t *testing.T) {
-	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil))
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil))
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/v1/triggers")
 	if err != nil {
@@ -53,7 +53,7 @@ func TestTriggersFaceRecordsTrace(t *testing.T) {
 	stop := hub.Attach(bus, "DocApplied")
 	defer stop()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil))
 	defer ts.Close()
 
 	// 未收到前：200 空面（查询面恒开，与写面开关无关）。
@@ -143,7 +143,7 @@ func TestTriggersFaceTableDrivenWiring(t *testing.T) {
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil))
 	defer ts.Close()
 
 	e := eventbus.Event{
@@ -203,7 +203,7 @@ func TestTriggersResolveFace(t *testing.T) {
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil))
 	defer ts.Close()
 
 	var d struct {
@@ -289,7 +289,7 @@ func TestTriggersExecutionProjection(t *testing.T) {
 		{On: "Escalate", For: "any", Dispatch: "mystery-face"}, // 未知目标族=unbound 可见
 		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
-	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub, nil))
 	defer ts.Close()
 
 	get := func(url string) (int, map[string]any) {
@@ -395,5 +395,85 @@ func TestTriggersExecutionProjection(t *testing.T) {
 	route, _ := ex["route"].(map[string]any)
 	if route["executor"] != "workflow" || route["target"] != "owner" || route["wired"] != true {
 		t.Fatalf("留痕应携执行计划快照 workflow/owner/wired=true: %v", recs[0]["execution"])
+	}
+}
+
+// TestWorkflowRunsFace 对账 run 投影面（cored-bridge.md §2.3 v0.15 引擎主体第三段——
+// 真实拉起第一子段）：nil 面 503；接线（BindRuns+WireExecutor）后 run 可查——载荷形状
+// {count, started, dropped, runs:[{run, workflow, specSource, phases, phase, status,
+// triggerSeq, eventId, route, owner, target, startedAt}]}。
+func TestWorkflowRunsFace(t *testing.T) {
+	// 未接线 → 503（查询面语义与 triggers 同口径）。
+	ts := httptest.NewServer(New(testScheme(t), nil, nil, nil, nil, nil))
+	resp, err := http.Get(ts.URL + "/v1/workflows/runs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	ts.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("run 面未接线应 503，得 %d", resp.StatusCode)
+	}
+
+	// 接线后：DocApplied（owner-workflow）→ run 可查且溯源字段同源。
+	sch := testScheme(t)
+	bus := eventbus.NewBus(nil)
+	hub := workflow.NewTriggerHub(nil)
+	runs := workflow.NewRunLog(nil)
+	hub.BindRuns(runs)
+	hub.WireExecutor(workflow.ExecWorkflow)
+	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+	})()
+	ts2 := httptest.NewServer(New(sch, nil, nil, nil, hub, runs))
+	defer ts2.Close()
+	e := eventbus.Event{
+		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
+		DedupKey: "apply:Agent/global/probe:9", Level: "info",
+	}
+	if err := bus.Publish(&e); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(time.Second)
+	var got struct {
+		Count   int              `json:"count"`
+		Started int64            `json:"started"`
+		Dropped int64            `json:"dropped"`
+		Runs    []map[string]any `json:"runs"`
+	}
+	for {
+		resp, err := http.Get(ts2.URL + "/v1/workflows/runs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.NewDecoder(resp.Body).Decode(&got)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Count >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("run 未在时限内可查（真实拉起第一子段判据失败）")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if got.Started != 1 || got.Dropped != 0 || len(got.Runs) != 1 {
+		t.Fatalf("run 面口径应 started=1 dropped=0 count=1: %+v", got)
+	}
+	r := got.Runs[0]
+	if r["workflow"] != "core-workflow" || r["specSource"] != "builtin" || r["status"] != "triggered" ||
+		r["phase"] != "Idle" || r["route"] != "owner-workflow" || r["owner"] != "global" ||
+		r["target"] != "owner" || r["eventId"] != e.ID {
+		t.Fatalf("run 载荷不符: %v", r)
+	}
+	if r["triggerSeq"].(float64) != 1 {
+		t.Fatalf("run 应携来源留痕 seq=1: %v", r)
+	}
+	phases, ok := r["phases"].([]any)
+	if !ok || len(phases) != 8 || phases[0] != "Idle" {
+		t.Fatalf("run 应携声明相位序列: %v", r["phases"])
 	}
 }
