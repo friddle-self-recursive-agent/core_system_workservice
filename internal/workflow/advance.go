@@ -12,9 +12,9 @@
 //   - 序列尾（无 advance 行命中）→ 零动作停（status 保持 running——诚实投影不冒充执行完毕，
 //     「run 出现 ≠ 对账执行完毕」口径不变）。
 //
-// 零动作防御面：triggered（object 源相位不投影无从迁移）、suspended（挂起面不前进——审批
-// 信号之前相位机等待）、failed（终态不迁移）一律原样保留；每拍每 run 至多一步（逐段承接，
-// 不跳步不并发推进同 run）。缺省关断（interval=0）：缺省不改既有行为面，推进按部署显式开启
+// 零动作防御面：相位未投影（未声明 phases 的 object 源——零投影口径不稀释）、triggered、
+// suspended（挂起面不前进——审批信号之前相位机等待）、failed（终态不迁移）一律原样保留；
+// 每拍每 run 至多一步（逐段承接，不跳步不并发推进同 run）。缺省关断（interval=0）：缺省不改既有行为面，推进按部署显式开启
 // （受理首步同步推进不受关断影响——v0.23 口径恒在）。
 package workflow
 
@@ -32,7 +32,7 @@ func (r *RunLog) Advance() int {
 	for i := range r.ring {
 		run := &r.ring[i]
 		if len(run.Phases) == 0 || run.Status != RunRunning {
-			continue // object 源相位不投影 / 非进行中（triggered/suspended/failed）=零动作
+			continue // 相位未投影（未声明 phases 的 object 源）/ 非进行中（triggered/suspended/failed）=零动作
 		}
 		next, ok := stepByTable(run.Transitions, run.Phase, EdgeAdvance)
 		if !ok {

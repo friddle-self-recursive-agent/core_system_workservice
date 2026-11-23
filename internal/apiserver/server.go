@@ -418,8 +418,10 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// v0.23 相位推进器首段：受理即启动——引擎单步迁移判定随受理同拍完成，builtin run
 	// phase=声明第二相位∧status=running；v0.25 显式迁移表首段：载荷新增 transitions=物化
 	// 声明表行投影（新载荷键=代际判别器）；v0.26 异步推进首段：载荷新增 advances=累计异步
-	// 推进计数（新载荷键=代际判别器）。run 出现 ≠ 对账执行完毕口径不变）。旧构建（face 缺席）经兜底
-	// handler 返回 405=代际判别器（与 loop-13 固化口径一致）。
+	// 推进计数（新载荷键=代际判别器）；v0.28 对象源相位投影与判定接线：object 源 run 相位/
+	// 状态随对象自声明 spec 参与同一表驱动判定——未声明 phases=零投影口径不变）。run 出现 ≠
+	// 对账执行完毕口径不变。旧构建（face 缺席）经兜底 handler 返回 405=代际判别器
+	//（与 loop-13 固化口径一致）。
 	mux.HandleFunc("GET /v1/workflows/runs", func(w http.ResponseWriter, _ *http.Request) {
 		if runs == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "run 投影面未接线"})

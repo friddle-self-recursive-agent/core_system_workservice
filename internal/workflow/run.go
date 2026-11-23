@@ -11,8 +11,9 @@
 // builtin 表=声明序列物化相邻行（from=seq[i] on=advance to=seq[i+1]，序列前进=表的特例）
 // +挂起-恢复审批边=表行先例；判定器=纯查表（from+on 命中→to，未命中=零迁移），受理首步/
 // 批准恢复/驳回终态三路径共用同一查表落点（行为面不变，序列语义零翻转）；object 源 run
-// 相位不投影=无从迁移，status 恒 triggered（v0.27 起 object 源声明表可投影——投影≠判定，
-// 判定接线顺延）；已居序列尾（Failed 等终点）不再前进。
+// 自 v0.28 起随对象自声明 spec（spec.phases 相位序列+spec.transitions 迁移表，装配层注入
+// 解析面）参与同一查表判定——相位投影即点亮判定，判定器零改动；未声明 phases 的对象=零
+// 投影，status 恒 triggered（零投影口径不稀释）；已居序列尾（Failed 等终点）不再前进。
 // 受理与首步推进同拍完成（同步路径——真实异步派发 deferred，投影面只见推进后形态）。
 // 查询面声明表可见键：run 载荷新增 transitions（物化表行投影 from/on/to——新载荷键出现
 // =代际判别器）。
@@ -52,7 +53,7 @@ import (
 // run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running；v0.24 挂起-恢复
 // 首段扩枚举 suspended/failed——闸锚挂起与终态迁移的 status 词形）。
 const (
-	RunTriggered = "triggered" // 触发已受理（object 源 run 的终点态——相位不投影无从迁移）
+	RunTriggered = "triggered" // 触发已受理（相位未投影 run 的稳态——零投影口径不稀释）
 	RunRunning   = "running"   // 引擎已把 run 从声明首相位沿序列推进一步（首步进行中；非执行完毕）
 	RunSuspended = "suspended" // 闸锚挂起（相位机等待外部审批信号——非终态非执行完毕）
 	RunFailed    = "failed"    // 驳回终态（相位=声明终点锚；迁移终点，非引擎失败语义）
@@ -131,10 +132,10 @@ type RunRecord struct {
 	Run         int64           // run 序号（本 sink 进程内单调递增，1 起）
 	Workflow    string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
 	SpecSource  string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
-	Phases      []string        // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27 对象声明表解析首段：object 源=文档库 spec.transitions 投影（装配注入解析面时）——相位仍不投影零迁移，判定接线顺延）
-	Phase       string          // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表）
-	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；object 源恒 triggered）
+	Phases      []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
+	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
+	Phase       string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
+	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
 	TriggerSeq  int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
 	EventID     string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
 	Type        string          // 事件类型
@@ -174,10 +175,11 @@ type ResumeSink interface {
 type RunOptions struct {
 	// RingSize run 环容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	RingSize int
-	// Specs 对象 spec 解析面（对象声明表解析首段 v0.27，workflows 规则 16——可选能力，
-	// 缺省 nil=既有行为面不变：object 源表不投影零迁移）。注入后 object 源 run 的声明表
-	// 按对象 spec.transitions 投影（builtin 物化口径之外的第二表来源——同一载荷键）；
-	// 相位仍不投影、迁移判定不接线（投影≠判定，判定接线=下一段 declared-deferred）。
+	// Specs 对象 spec 解析面（对象声明表解析 v0.27+v0.28 相位投影接线，workflows 规则 16
+	// ——可选能力，缺省 nil=既有行为面不变：object 源零投影零迁移）。注入后 object 源 run
+	// 的相位序列与声明表按对象 spec 投影（builtin 物化口径之外的第二声明来源——同一载荷
+	// 键）；相位投影即点亮既有表驱动判定（受理首步/审批信号/异步推进三路径自然生效，判定器
+	// 零改动）；未声明 phases 的对象=零投影既有口径不稀释。
 	Specs SpecResolver
 }
 
@@ -208,14 +210,20 @@ func NewRunLog(opts *RunOptions) *RunLog {
 // StartRun 记一条 run 投影（环满丢最旧，dropped 计数可见）。锚解析见 resolveRunAnchor。
 func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	wf, source, phases, trans := resolveRunAnchor(rec.Route)
-	// 对象声明表解析首段（v0.27，workflows 规则 16）：object 源且装配层注入了解析面 →
-	// 声明表按对象 spec.transitions 投影（声明→留痕面，顺序保留）。解析在锁外（文档库读
-	// 面文件 IO 不持 r.mu——hub 同步调用路径不因投影阻塞）。投影≠判定：相位仍不投影
-	//（phases 恒空）→ 下方受理首步判定分支与 ResumeSignal/Advance 的「相位不投影=零动作」
-	// 防御面原样生效，object 源行为面零翻转；相位投影与迁移判定接线=下一段。
-	if source == SpecObject && len(trans) == 0 && r.opts.Specs != nil {
-		if rows := r.opts.Specs.ResolveSpec(wf); len(rows) > 0 {
-			trans = rows
+	// 对象 spec 解析接线（v0.27 表投影首段+v0.28 相位投影，workflows 规则 16）：object
+	// 源且装配层注入了解析面 → 对象自声明 spec 一次解析两面投影（相位序列+声明表，声明→
+	// 留痕面，顺序保留）。解析在锁外（文档库读面文件 IO 不持 r.mu——hub 同步调用路径不因
+	// 投影阻塞）。相位投影即点亮判定：phases 非空后，下方受理首步判定分支对 object 源自然
+	// 生效（判定器零改动——stepByTable 纯查表落点通用，推进器已完全表驱动，接表即得全量
+	// 推进语义）；未声明 phases 的对象=零投影（phases 恒空），三条判定路径零动作防御面
+	// 原样生效，既有行为面零翻转。
+	if source == SpecObject && r.opts.Specs != nil {
+		view := r.opts.Specs.ResolveSpec(wf)
+		if len(view.Transitions) > 0 {
+			trans = view.Transitions
+		}
+		if len(view.Phases) > 0 {
+			phases = view.Phases
 		}
 	}
 	r.mu.Lock()
@@ -244,7 +252,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		}
 	}
 	if phases == nil {
-		phases = []string{} // object 源不投影相位：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
+		phases = []string{} // 相位未投影（未声明 phases 的 object 源）：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
 	}
 	if trans == nil {
 		trans = []TransitionRow{} // object 源不投影声明表：载荷形状归一同口径（新键可 len）
@@ -264,7 +272,8 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 // 最大 Run 序号=现势 run）。判定三层：审批提升=相位落闸锚挂起（声明无闸锚=零动作）；
 // 批准=查表命中审批边（闸锚 on=ApprovalGranted）续行（恢复，status 翻回 running）；
 // 驳回=查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，非相邻行）终态。
-// 零动作防御面：非审批信号族/involved 非 Workflow 引用/object 源（相位不投影无从迁移）/终态/
+// 零动作防御面：非审批信号族/involved 非 Workflow 引用/相位未投影（未声明 phases 的
+// object 源无从迁移——v0.28 起声明了 phases 的对象 run 参与审批信号判定）/终态/
 // 非挂起态无可恢复/锚无 run——一律原样保留（事件仍是留痕，迁移判定不命中不冒充动作）。
 // 幂等同拍：审批提升对已挂起 run 重复到达=零动作（已是闸锚挂起态）。
 func (r *RunLog) ResumeSignal(rec TriggerRecord) {
@@ -281,7 +290,7 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 	for i := len(r.ring) - 1; i >= 0; i-- {
 		run := &r.ring[i]
 		if run.Workflow != name || len(run.Phases) == 0 {
-			continue // 锚不符 / object 源相位不投影无从迁移
+			continue // 锚不符 / 相位未投影（未声明 phases 的 object 源）无从迁移
 		}
 		switch action {
 		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作）
@@ -353,7 +362,8 @@ func stepByTable(table []TransitionRow, from, on string) (string, bool) {
 
 // resolveRunAnchor 命中行 route 原文 → run 投影的 workflow 锚（纯映射；引擎主体第三段 v0.15）。
 // 口径见包注释；直接引用按 builtin 注册表解析，未命中=平台对象引用（SpecObject，锚保留、
-// 相位不投影——对象 spec 随文档面，声明表投影由装配层注入的解析面承接，v0.27 首段）。
+// 相位/表皆零投影——对象 spec 随文档面，投影由装配层注入的解析面承接，v0.27 表投影+v0.28
+// 相位投影）。
 func resolveRunAnchor(routeTarget string) (wf, source string, phases []string, trans []TransitionRow) {
 	if name, ok := strings.CutPrefix(routeTarget, "workflows/"); ok && name != "" {
 		if IsBuiltin(name) {

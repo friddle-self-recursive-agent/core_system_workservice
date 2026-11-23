@@ -371,7 +371,8 @@ func TestApprovalSignalGuards(t *testing.T) {
 		runs.ResumeSignal(TriggerRecord{Type: typ, Involved: involved, ReceivedAt: time.Now()})
 	}
 
-	// object 源：相位不投影无从迁移——审批提升零动作（status 恒 triggered）。
+	// object 源（解析面未注入=零投影）：相位不投影无从迁移——审批提升零动作（status 恒
+	// triggered；v0.28 起声明了 phases 且解析面注入的对象 run 参与判定——TestObjectRunJudgmentWired）。
 	objLog := NewRunLog(nil)
 	start(objLog, "workflows/deploy-system-workflow", "deploy-system-workflow")
 	sig(objLog, SignalSuspend, "Workflow/builtin/deploy-system-workflow")

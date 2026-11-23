@@ -151,9 +151,10 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 真实出站已注入（exec 桥 argv=%d 令牌 超时=%s；送达受理后异步出站 status=accepted→sent/failed）\n",
 			len(argv), *outboundTimeout)
 	}
-	// 对象声明表解析首段（v0.27，workflows 规则 16）：文档库挂载即注入对象 spec 解析面
-	//（object 源 run 声明表投影自文档库 spec.transitions，零缓存=apply 落库即生效；投影≠
-	// 判定：相位不投影零迁移，判定接线顺延）。未挂文档库=能力缺席，既有行为面不变。
+	// 对象 spec 解析接线（v0.27 表投影首段+v0.28 相位投影与迁移判定接线，workflows 规则
+	// 16）：文档库挂载即注入对象 spec 解析面（object 源 run 相位序列/声明表按文档库 spec
+	// 投影，零缓存=apply 落库即生效；相位投影即点亮既有表驱动判定——判定器零改动）。未挂
+	// 文档库=能力缺席，既有行为面不变。
 	runOpts := &workflow.RunOptions{}
 	objSpecState := "off（未挂文档库——object 源表不投影）"
 	if repo != nil {
@@ -205,7 +206,7 @@ func run() error {
 		go advancer.Run(advCtx)
 	}
 	fmt.Fprintf(os.Stderr, "cored: run 推进器=%s（--advance-interval；on=每拍单步查表推进——落闸锚挂起/落终点锚终态/序列尾零动作停；off=关断缺省不改行为面，受理首步同步推进不受影响）\n", advanceState)
-	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 声明表解析首段 v0.27——object 源 run transitions 按文档库 spec.transitions 投影，声明行集顺序保留；投影≠判定：相位不投影零迁移，判定接线顺延）\n", objSpecState)
+	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 解析 v0.27 表投影+v0.28 相位投影与迁移判定接线——object 源 run 相位/声明表按文档库 spec 投影，声明了 phases 的对象参与既有表驱动判定；未声明 phases=零投影既有行为面不变）\n", objSpecState)
 	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
 	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
 	// 缺省纯内存语义不变（重启即清，草稿可重放）。
