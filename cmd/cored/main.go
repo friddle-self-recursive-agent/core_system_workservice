@@ -24,6 +24,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/patrol"
@@ -68,6 +69,11 @@ func run() error {
 		"connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12；缺省 false=关断零事件不改行为面。"+
 			"开启时装配层枚举注册表内 Watch 契约驱动，把驱动侧外部变化通道桥接进总线——source 服务侧判定恒 connector，"+
 			"watch 事件落 run 同拍即拍（workflow.md 规则 15 v0.30 段，零新开关）")
+	metricsSource := flag.Bool("metrics-source", false,
+		"metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13；缺省 false=关断零事件不改行为面。"+
+			"开启时装配层桥接数据面指标样本通道并按装配阈值声明做服务侧判定，越限自产 MetricThreshold 进总线——"+
+			"source 服务侧判定恒 metrics，metrics 事件落 run 同拍即拍（workflow.md 规则 15，零新开关）；"+
+			"数据面（MetricsInfo 投影）declared-deferred——现装配零样本源=no-source 缺口可见）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -247,6 +253,31 @@ func run() error {
 		}
 	}
 	fmt.Fprintf(os.Stderr, "cored: watch 源=%s（--watch-source；on=装配层 watch 桥驱动 Watch 契约通道自产 ExternalChanged source=connector dedupKey=驱动侧因由——event.md 规则 12；no-driver=已开启但注册表无 Watch 契约驱动；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", watchState)
+	// metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13）：装配层桥接数据面指标
+	// 样本通道，越限样本服务侧判定自产 MetricThreshold 进总线（source 服务侧判定恒 metrics；
+	// 类型注册闸门前置；level=注册表缺省投影 warn；dedupKey=<metric>:<window> 因由口径）。
+	// 旗标关断（缺省）=零样本源零事件，缺省不改行为面；metrics 事件落 run 同拍即拍
+	// （workflow.md 规则 15——拍面驱动源集合扩展，零新开关）。数据面（MetricsInfo 投影）
+	// declared-deferred——现装配零样本源=no-source（缺口可见不静默）；真实样本生产者随
+	// 数据面落地顺延接入本契约（装配层绑定声明，契约不变）。
+	metricsState := "off"
+	if *metricsSource {
+		if _, err := sch.LookupEventType(metricsrc.EventType); err != nil {
+			metricsState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
+		} else {
+			// 装配层样本源绑定（数据面落地前=零源；真实 MetricsInfo 投影接入点在下方扩源）。
+			var metricsSrcs []metricsrc.Source
+			if len(metricsSrcs) == 0 {
+				metricsState = "no-source" // 已开启∧类型已注册∧装配零样本源（缺口可见）
+			} else {
+				metricsState = fmt.Sprintf("on(%d)", len(metricsSrcs))
+				metricsCtx, cancelMetricsSrc := context.WithCancel(context.Background())
+				defer cancelMetricsSrc()
+				go metricsrc.New(bus, sch, metricsSrcs).Run(metricsCtx)
+			}
+		}
+	}
+	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>——event.md 规则 13；no-source=已开启∧类型已注册∧装配零样本源——数据面 declared-deferred 缺口可见；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
 	// run 相位异步推进器（v0.26）：构建已提前（事件拍挂接须先于订阅主干），此处只做
 	// 定时拍启动与 stderr 装配锚报告。事件拍（v0.29）已随总闸在挂接点生效。
 	advanceState := "off"

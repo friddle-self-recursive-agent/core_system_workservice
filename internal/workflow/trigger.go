@@ -152,13 +152,20 @@ const SourceEngineInternal = "core"
 // event.md 规则 12）。
 const SourceConnectorWatch = "connector"
 
+// SourceMetricsThreshold metrics 阈值桥接源事件的 source 审计值（event.md 规则 13 服务
+// 侧判定口径——数据面到信号面的桥，来源标注是审计事实；与 metricsrc.EventSource 同字面，
+// 声明面=event.md 规则 13）。
+const SourceMetricsThreshold = "metrics"
+
 // beatSources 事件拍驱动源集合（引擎装配的内部源——workflow.md 规则 15：v0.29 core=
-// 定时巡检 ReconcileTick，v0.30 connector=watch 桥接源 ExternalChanged；metrics 阈值等
-// 随各自声明面扩展顺延一行即入）。注入通道（source 服务侧判定恒 human）与权限自产
-// （permission）不在拍面——来源维度分立（v0.29 判别器措辞收窄：注入通道本就恒 human）。
+// 定时巡检 ReconcileTick，v0.30 connector=watch 桥接源 ExternalChanged，v0.31 metrics=
+// 阈值桥接源 MetricThreshold；其余引擎内部源随各自声明面扩展顺延一行即入）。注入通道
+// （source 服务侧判定恒 human）与权限自产（permission）不在拍面——来源维度分立
+// （v0.29 判别器措辞收窄：注入通道本就恒 human）。
 var beatSources = map[string]bool{
-	SourceEngineInternal: true,
-	SourceConnectorWatch: true,
+	SourceEngineInternal:   true,
+	SourceConnectorWatch:   true,
+	SourceMetricsThreshold: true,
 }
 
 // NewTriggerHub 构建触发骨架。

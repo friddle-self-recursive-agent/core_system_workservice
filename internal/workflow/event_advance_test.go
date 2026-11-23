@@ -1,7 +1,7 @@
 // event_advance_test.go —— 事件驱动推进源首段验收（v0.29——巡检拍与推进拍合一，
-// workflow.md 规则 15 v0.29 段；v0.30 connector watch 桥接源入拍面）：引擎装配内部源
-// 事件（source ∈ beatSources：core 巡检+connector watch 桥）落 run 的同拍全量推进拍
-//（与定时拍同一查表落点——判定器零改动）/ 事件拍三重闸（落了 run ∧ source ∈ 拍面集合
+// workflow.md 规则 15 v0.29 段；v0.30 connector watch 桥接源入拍面；v0.31 metrics 阈值
+// 桥接源入拍面）：引擎装配内部源事件（source ∈ beatSources：core 巡检+connector watch 桥）落 run 的同拍全量推进拍
+// （与定时拍同一查表落点——判定器零改动）/ 事件拍三重闸（落了 run ∧ source ∈ 拍面集合
 // ∧ 装配层挂接）/ 人注与权限自产事件不拍（source 维度分立——注入通道恒 human）/ 总闸
 // 关断事件拍缺席（不旁路总闸——关断语义组合声明面先定）/ 多拍确定性（新落 run 参与本拍：
 // 受理首步+事件拍两拍步）。
@@ -41,6 +41,7 @@ func tickHub(t *testing.T, bindTick bool) (*eventbus.Bus, *TriggerHub, *RunLog) 
 		{On: "ReconcileTick", For: "any", Dispatch: "workflows/core-workflow"},
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "ExternalChanged", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "MetricThreshold", For: "owner:*", Dispatch: "owner-workflow"},
 	})
 	t.Cleanup(cancel) // 退订作用域=整个测试（helper 内 defer 会在返回时提前退订）
 	return b, h, runs
@@ -126,6 +127,26 @@ func TestEventAdvanceConnectorWatchTick(t *testing.T) {
 	}
 	if rs.Advances != 1 {
 		t.Fatalf("watch 事件拍推进应计入 advances，得 %d", rs.Advances)
+	}
+}
+
+// TestEventAdvanceMetricsTick metrics 阈值桥接源入拍面（v0.31 驱动源集合扩展，
+// event.md 规则 13）：source=metrics（服务侧判定口径）落 run 的同拍全量推进——受理首步+
+// 事件拍两拍步（与 core 巡检/connector watch 同拍面；零新开关——拍面随源扩展，总闸口径不变）。
+func TestEventAdvanceMetricsTick(t *testing.T) {
+	b, h, runs := tickHub(t, true)
+	pubSrc(t, b, "MetricThreshold", SourceMetricsThreshold, "WorkService/metrics")
+	waitReceived(t, h, 1)
+	rs := runs.State()
+	if len(rs.Runs) != 1 {
+		t.Fatalf("metrics 阈值事件应落 1 条 run: %+v", rs)
+	}
+	r := rs.Runs[0]
+	if r.Phase != string(Planning) || r.Status != RunRunning {
+		t.Fatalf("metrics 事件拍同拍应两拍步（受理首步 Analyzing+事件拍 Planning）: {phase=%s, status=%s}", r.Phase, r.Status)
+	}
+	if rs.Advances != 1 {
+		t.Fatalf("metrics 事件拍推进应计入 advances，得 %d", rs.Advances)
 	}
 }
 
