@@ -94,6 +94,12 @@ type EventLogFace interface {
 	GroupEvents(q opslog.EventQuery) ([]opslog.EventGroup, int64, bool, error)
 }
 
+// ApplyLogFace 应用史查询口面（v0.38 console 读面第三段——文档编辑器历史 tab 的权威数据源；
+// opslog.SQLiteStore 满足。具体方法不占冻结 Store 签名，EventLogFace 同款口面约定）。
+type ApplyLogFace interface {
+	QueryApplies(obj string, limit int) ([]opslog.ApplyLog, error)
+}
+
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
 // store/queries 投影读面：指标清单与窗口聚合投影。可选能力：未注入=数据面未装配，
 // /v1/metrics 返回空投影——关断口径缺省可见，与 405 代际判别器分立）。
@@ -120,6 +126,7 @@ type options struct {
 	metrics  MetricsFace
 	secrets  SecretFace
 	eventLog EventLogFace
+	applyLog ApplyLogFace
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -137,6 +144,11 @@ func WithEventLog(f EventLogFace) Option {
 	return func(o *options) { o.eventLog = f }
 }
 
+// WithApplyLog 注入应用史查询口面（v0.38 console 读面第三段 `GET /v1/history/{kind}/{name}`）。
+func WithApplyLog(f ApplyLogFace) Option {
+	return func(o *options) { o.applyLog = f }
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
@@ -151,6 +163,7 @@ var (
 	_ MetricsFace   = (*metricsinfo.Store)(nil)
 	_ SecretFace    = (*secretstore.Store)(nil)
 	_ EventLogFace  = (*opslog.SQLiteStore)(nil)
+	_ ApplyLogFace  = (*opslog.SQLiteStore)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -163,6 +176,8 @@ var (
 //	GET /v1/objects/{kind}/{name}?scope=s 单个文档对象（get；对象键=(kind,scope,name)）
 //	GET /v1/events                       事件归档查询面（v0.36 console 读面首段：event_log
 //	                                     最新优先投影；limit/type/level/involved/since）
+//	GET /v1/history/{kind}/{name}?scope=s 对象应用史投影（v0.38 console 读面第三段：apply_log
+//	                                     rv 降序；limit）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
 //	GET /v1/drafts/{kind}/{name}?scope=s 单条草稿（含正文；无稿 → 404）
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
@@ -190,6 +205,7 @@ var (
 // publisher 为 nil（写面关断）时 POST /v1/events 返回 405（与 apply 写面同门控同口径）。
 // eventLog 为 nil（事件归档查询口面未接线）时 GET /v1/events 返回 503（面注册但能力缺席；
 // 装配层随 ops DB 恒注入，此为防御面——旧代判别器仍是 405 兜底）。
+// applyLog 为 nil（应用史查询口面未接线）时 GET /v1/history/* 返回 503（同上口径）。
 // metrics 未注入（数据面未装配）时 /v1/metrics 返回空投影（关断口径缺省可见——与 405
 // 代际判别器分立：本面恒注册，装配与否只见投影丰瘠）。
 func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace, opts ...Option) http.Handler {
@@ -200,6 +216,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	metrics := o.metrics
 	secrets := o.secrets
 	eventLog := o.eventLog
+	applyLog := o.applyLog
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -765,6 +782,35 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"scanned": scanned, "scanCapped": capped, // 计数=有界窗如实标注（不冒充全量承诺）
 			"workflows": items,
 		})
+	})
+	// 对象应用史投影面（v0.38 console 读面第三段，E4——cored-bridge.md §2 `GET /v1/history/{kind}/{name}`）：
+	// 数据源=ops DB apply_log（ops-log.md §2 一次 Apply 判定的流水；repository 双写 ok/noop/conflict
+	// 行+引擎 denied 行）——rev 流水的权威=审计账（git 权威在正文，不在此考古）。obj=kind/scope/name
+	// 精确过滤+rv 降序+limit 收敛（≤500 防拖库同口径）。只读 GET；face 缺席=503（防御面，装配层
+	// 随 ops DB 恒注入）；旧构建（路由未注册）经兜底 handler 405=代际判别器。
+	mux.HandleFunc("GET /v1/history/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if applyLog == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "应用史查询面未接线（装配缺 ops DB 口面）"})
+			return
+		}
+		kind, name := r.PathValue("kind"), r.PathValue("name")
+		scope := r.URL.Query().Get("scope")
+		obj := fmt.Sprintf("%s/%s/%s", kind, scope, name)
+		limit := atoiDefault(r.URL.Query().Get("limit"), 0)
+		rows, err := applyLog.QueryApplies(obj, limit)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, a := range rows {
+			items = append(items, map[string]any{
+				"ts": a.Ts.UTC().Format(time.RFC3339Nano), "rv": a.ResourceVersion,
+				"result": a.Result, "fieldManager": a.FieldManager, "subject": a.Subject,
+				"reasonRef": a.ReasonRef,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "obj": obj, "entries": items})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

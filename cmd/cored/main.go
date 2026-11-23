@@ -648,5 +648,10 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	if store != nil {
 		opts = append(opts, apiserver.WithEventLog(store))
 	}
+	// 应用史查询面（v0.38 console 读面第三段 GET /v1/history）：ops DB 恒装配（同上口径），
+	// 恒注入不缺位。
+	if store != nil {
+		opts = append(opts, apiserver.WithApplyLog(store))
+	}
 	return opts
 }

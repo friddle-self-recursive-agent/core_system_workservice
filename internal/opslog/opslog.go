@@ -383,6 +383,12 @@ const MaxEventLimit = 500
 // DefaultEventLimit Limit 非正值时的缺省行数。
 const DefaultEventLimit = 50
 
+// apply_log 查询行数边界（v0.38）：与事件归档同值同口径（防拖库一表一策，不另设数）。
+const (
+	MaxApplyLimit     = MaxEventLimit
+	DefaultApplyLimit = DefaultEventLimit
+)
+
 // QueryEvents event_log 归档行查询（最新优先：ts 降序，同刻按 rowid 降序——机械对账可复现）。
 // 不属于冻结 Store 接口，扩展走新方法（ops-log.md §2：具体实现方法不占冻结签名）。
 func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
@@ -429,6 +435,54 @@ func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
 	// 最新优先（时间降序；同刻按归档序 rowid 降序——all 保持扫描序即 rowid 升序，
 	// 稳定排序后末尾先出）。
 	sort.SliceStable(all, func(i, j int) bool { return all[i].Ts.After(all[j].Ts) })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// QueryApplies apply_log 行查询（v0.38 console 读面第三段：文档编辑器历史 tab 的权威数据源
+// ——rev 流水=审计账不是 git 考古，ops-log.md §2 一次 Apply 判定的流水；不属于冻结 Store
+// 接口，扩展走新方法）。obj="kind/scope/name" 精确匹配（空=全表——调用方不传即全量，
+// 查询面恒带键，此为防御面）；排序=rv 降序、同 rv 按时刻降序（落库版本最新优先，机械
+// 对账可复现：ok 行 rv=落库后版本）；limit≤0=缺省 50，>MaxApplyLimit 收敛=读面防拖库同口径。
+func (s *SQLiteStore) QueryApplies(obj string, limit int) ([]ApplyLog, error) {
+	const q0 = `SELECT ts, field_manager, subject, obj, resource_version, result, policy_decisions, reason_ref FROM apply_log`
+	rows, err := s.db.Query(q0)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 apply_log: %w", err)
+	}
+	defer rows.Close()
+	if limit <= 0 {
+		limit = DefaultApplyLimit
+	}
+	if limit > MaxApplyLimit {
+		limit = MaxApplyLimit
+	}
+	var all []ApplyLog
+	for rows.Next() {
+		var l ApplyLog
+		var ts string
+		if err := rows.Scan(&ts, &l.FieldManager, &l.Subject, &l.Obj, &l.ResourceVersion, &l.Result, &l.PolicyDecisions, &l.ReasonRef); err != nil {
+			return nil, fmt.Errorf("opslog: 读 apply_log 行: %w", err)
+		}
+		if l.Ts, err = time.Parse(time.RFC3339Nano, ts); err != nil {
+			return nil, fmt.Errorf("opslog: apply_log.ts 解析 %q: %w", ts, err)
+		}
+		if obj != "" && l.Obj != obj {
+			continue
+		}
+		all = append(all, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("opslog: 遍历 apply_log: %w", err)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].ResourceVersion != all[j].ResourceVersion {
+			return all[i].ResourceVersion > all[j].ResourceVersion
+		}
+		return all[i].Ts.After(all[j].Ts)
+	})
 	if len(all) > limit {
 		all = all[:limit]
 	}

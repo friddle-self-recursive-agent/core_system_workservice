@@ -62,3 +62,42 @@ func TestGroupEventsFiltersAndCounts(t *testing.T) {
 		t.Errorf("精确过滤不符: %+v", one)
 	}
 }
+
+// QueryApplies（v0.38 console 读面第三段）：obj 精确过滤+rv 降序+limit 收敛+空 obj=全表（防御面）。
+func TestQueryAppliesObjFilterRVRDescAndLimit(t *testing.T) {
+	store, err := OpenSQLite("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	base := time.Now().UTC().Add(-time.Hour)
+	rows := []ApplyLog{
+		{Ts: base, FieldManager: "a", Obj: "Rule/s1/x", ResourceVersion: 1, Result: "ok"},
+		{Ts: base.Add(time.Minute), FieldManager: "b", Obj: "Rule/s1/x", ResourceVersion: 3, Result: "ok"},
+		{Ts: base.Add(2 * time.Minute), FieldManager: "c", Obj: "Rule/s1/y", ResourceVersion: 1, Result: "ok"},
+		{Ts: base.Add(3 * time.Minute), FieldManager: "d", Obj: "Rule/s1/x", ResourceVersion: 2, Result: "conflict"},
+	}
+	for _, r := range rows {
+		if err := store.AppendApply(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.QueryApplies("Rule/s1/x", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("obj 过滤后=%d 行，要 3", len(got))
+	}
+	if got[0].ResourceVersion != 3 || got[1].ResourceVersion != 2 || got[2].ResourceVersion != 1 {
+		t.Errorf("rv 降序不符: %d,%d,%d", got[0].ResourceVersion, got[1].ResourceVersion, got[2].ResourceVersion)
+	}
+	lim, err := store.QueryApplies("Rule/s1/x", 2)
+	if err != nil || len(lim) != 2 {
+		t.Fatalf("limit=2 应截 2 行: %v %v", lim, err)
+	}
+	all, err := store.QueryApplies("", 0)
+	if err != nil || len(all) != 4 {
+		t.Fatalf("空 obj=全表（防御面）: %v %v", all, err)
+	}
+}
