@@ -53,3 +53,29 @@ func WorkserviceThresholds(raw []byte) []Threshold {
 	}
 	return out
 }
+
+// WorkserviceInvolved 对象 involvedRef 投影（v0.45 装配段：involvedRef kind/scope/name
+// 三段同构惯例——event.md 规则 11 首段同款；两段式不可被 owner/scope 谓词解析，console
+// 事件详情对象链同口径死链）。scope 空=对象身份不完整，返回空串（绑定面拒绝，缺口可见
+// ——不冒充两段式旧形态）。
+func WorkserviceInvolved(scope, name string) string {
+	if scope == "" || name == "" {
+		return ""
+	}
+	return "WorkService/" + scope + "/" + name
+}
+
+// BindWorkservice 单对象阈值桥绑定（装配层枚举→源绑定的完整投影，v0.45 装配段收编）：
+// 阈值解析（WorkserviceThresholds）+involved 三段同构（WorkserviceInvolved）一步到位。
+// 零阈值声明/空 scope/空名=ok=false（零绑定缺口可见——不冒充空判定面不即兴身份）。
+func BindWorkservice(scope, name string, raw []byte) (Source, bool) {
+	ths := WorkserviceThresholds(raw)
+	if len(ths) == 0 {
+		return Source{}, false
+	}
+	inv := WorkserviceInvolved(scope, name)
+	if inv == "" {
+		return Source{}, false
+	}
+	return Source{Name: name, Involved: inv, Thresholds: ths}, true
+}

@@ -263,7 +263,9 @@ func (s *SQLiteStore) CountEvent(eventType string) (int, error) {
 // EventCountsSince 窗口内 event_log 按类型行数（v0.33 MetricsInfo 数据面首段真实生产者的
 // 查询投影落点——事件流水窗口计数即样本；不属于冻结 Store 接口，扩展走新方法）。
 // 时间过滤在 Go 侧逐行解析（RFC3339Nano 去尾零致字面序≠时序，SQL 字符串比较有边界伪差
-// ——量级与可重建口径下全量扫描过滤足够；since 零值=全量）。查询失败=调用方本拍零样本。
+// ——量级与可重建口径下全量扫描过滤足够；since 零值=全量）。窗口=半开 (since, now]
+// （v0.45 对齐 E7 半开窗纪律：端点瞬刻归上一窗——相邻窗零重叠，首拍全量口径不变）。
+// 查询失败=调用方本拍零样本。
 func (s *SQLiteStore) EventCountsSince(since time.Time) (map[string]int, error) {
 	rows, err := s.db.Query(`SELECT ts, type FROM event_log`)
 	if err != nil {
@@ -280,8 +282,8 @@ func (s *SQLiteStore) EventCountsSince(since time.Time) (map[string]int, error) 
 		if err != nil {
 			return nil, fmt.Errorf("opslog: event_log.ts 解析 %q: %w", ts, err)
 		}
-		if !since.IsZero() && t.Before(since) {
-			continue
+		if !since.IsZero() && !t.After(since) {
+			continue // 半开窗 (since, now]：端点瞬刻归上一窗——相邻窗零重叠（E7 纪律同口径）
 		}
 		out[typ]++
 	}
@@ -370,13 +372,13 @@ func (s *SQLiteStore) GroupEvents(q EventQuery) (groups []EventGroup, scanned in
 // cored-bridge.md §2 `GET /v1/events` 的底层读取）。过滤字段全部精确匹配、空=不过滤；
 // 时间过滤在 Go 侧逐行解析（同 EventCountsSince：RFC3339Nano 去尾零致字面序≠时序）。
 type EventQuery struct {
-	Type     string // 精确匹配（空=不过滤）
-	Level    string // 精确匹配（空=不过滤）
-	Involved string // 精确匹配（空=不过滤）
+	Type     string    // 精确匹配（空=不过滤）
+	Level    string    // 精确匹配（空=不过滤）
+	Involved string    // 精确匹配（空=不过滤）
 	Since    time.Time // 时间下界含端点（零值=不限）
 	Until    time.Time // 时间上界严格不含（零值=不限）——v0.39 E7：向后分页游标（上一页最旧行 ts，
-	                   //  取 strictly-earlier 行实现翻页；与 Since 组合=半开窗 [since, until)）
-	Limit    int       // ≤0=缺省 50；>MaxEventLimit 收敛（读面防拖库——归档全量走重建/导出面）
+	//  取 strictly-earlier 行实现翻页；与 Since 组合=半开窗 [since, until)）
+	Limit int // ≤0=缺省 50；>MaxEventLimit 收敛（读面防拖库——归档全量走重建/导出面）
 }
 
 // MaxEventLimit 读面单次返回行数上限（防拖库；归档全量不属于查询面职责）。

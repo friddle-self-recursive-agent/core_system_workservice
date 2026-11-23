@@ -33,8 +33,8 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
-	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 )
 
 func main() {
@@ -371,9 +371,11 @@ func run() error {
 		if _, err := sch.LookupEventType(metricsrc.EventType); err != nil {
 			metricsState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
 		} else {
-			// 阈值声明面绑定（v0.33 首段）：文档库 WorkService 对象 observation.metrics 告警面
-			// → 桥阈值绑定；逐对象 involved=WorkService/<name>（源级绑定锚——每源独立扇出通道，
-			// 多对象互不争抢样本）。零声明=零源（no-source 缺口可见——数据面照常产样本，判定静默）。
+			// 阈值声明面绑定（v0.33 首段；v0.45 装配段收编 BindWorkservice 一步投影）：文档库
+			// WorkService 对象 observation.metrics 告警面 → 桥阈值绑定；逐对象 involved=
+			// WorkService/<scope>/<name>（involvedRef kind/scope/name 三段同构——owner/scope
+			// 谓词与 console 事件详情对象链可解析）。零声明/身份不完整=零绑定（no-source
+			// 缺口可见——数据面照常产样本，判定静默）。
 			var metricsSrcs []metricsrc.Source
 			if repo != nil {
 				wss, err := repo.List(ctx, "WorkService", "")
@@ -381,14 +383,12 @@ func run() error {
 					return fmt.Errorf("枚举 WorkService 阈值声明面: %w", err)
 				}
 				for _, o := range wss {
-					ths := metricsrc.WorkserviceThresholds(o.Content)
-					if len(ths) == 0 {
-						continue // 零告警面声明的对象零绑定（缺口可见口径：判定静默）
+					src, ok := metricsrc.BindWorkservice(o.Scope, o.Name, o.Content)
+					if !ok {
+						continue // 零告警面声明/身份不完整的对象零绑定（缺口可见口径：判定静默）
 					}
-					metricsSrcs = append(metricsSrcs, metricsrc.Source{
-						Name: o.Name, Involved: "WorkService/" + o.Name,
-						Samples: metricsSamplePump(metricsStore.Subscribe()), Thresholds: ths,
-					})
+					src.Samples = metricsSamplePump(metricsStore.Subscribe())
+					metricsSrcs = append(metricsSrcs, src)
 				}
 			}
 			if len(metricsSrcs) == 0 {
