@@ -1,11 +1,14 @@
-// trigger.go —— 触发骨架（dispatch 接线：第一段 v0.11 → 第二段 v0.12 订阅面动态化）：
-// 订阅总线事件流，收到即落**进程内可查状态**（收到留痕：事件 id/dedupKey/type/at/receivedAt）。
-// 「apply→事件→订阅」是 core 主干第一段；第二段把订阅集合从固定 [DocApplied] 泛化为
-// scheme.dispatch 表驱动（on: 类型集合/通配 *，Attach 去重/总退订幂等）+ for 谓词首段过滤
-// （any/owner:*/scope:<root>/*；owner 字面量解析随引擎主体）+ 死信兜底路由可见
-// （全表未命中 → 留痕 route=dead-letter，event.md rule 4）。
-// 触发引擎主体（owner 解析→相位态机→派发→刹车→冷却）declared-deferred（cored-bridge.md §2.3）——
-// route 字段只做命中行投影留痕，不执行派发。
+// trigger.go —— 触发骨架（dispatch 接线：第一段 v0.11 订阅留痕 → 第二段 v0.12 订阅面动态化
+// → 第三段 v0.13 引擎主体第一段：owner 解析激活 + 派发决策可查询）：
+// 订阅总线事件流，收到即落**进程内可查状态**（收到留痕：事件 id/dedupKey/type/at/receivedAt
+// + 命中行投影 route/for/owner/cc）。订阅集合由 scheme.dispatch 表推导（on: 值表序去重、
+// 通配 * 坍缩全类型一条）+ for 谓词口径（any/owner:*/scope:<root>/*/**owner:<字面量>**）：
+// owner 解析模型=involved scope 根 `systems/<s>`→`<s>`、global/builtin 同名（event.md 规则 6）。
+// 死信兜底路由可见（全表未命中 → 留痕 route=dead-letter，event.md rule 4）。
+// **派发决策面可查询**（Resolve / GET /v1/triggers/resolve）：对当前表快照回答「这一事件
+// 若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），命中行投影 route/cc/for/owner/row。
+// 触发引擎主体剩余面（相位态机→派发执行→刹车→冷却）declared-deferred（cored-bridge.md §2.3）——
+// 决策面只回答「路由到哪」，不执行派发。
 package workflow
 
 import (
@@ -25,6 +28,22 @@ const Wildcard = "*"
 // 与 eventbus event_log routed_to="dead-letter" 同一词汇表）。
 const DeadLetterRoute = "dead-letter"
 
+// NoRow 派发决策未命中任何表行时的行号标注（决策不可归因到表行：全表未命中=合成死信、
+// 未挂表=无决策；row≥0 恒可回指 scheme.yaml 具体行）。
+const NoRow = -1
+
+// DispatchDecision 一次派发决策（表序命中行解析结果）。Resolve 查询面与 record 留痕
+// 共用同一解析口径（resolveDecisionLocked）——决策=数据，消费面（留痕/查询/未来派发执行）
+// 各取投影，这是引擎主体可分步落地的解耦点。
+type DispatchDecision struct {
+	Matched bool   // 表内命中（含显式 deadletter 兜底行）；false=全表未命中（合成死信）或未挂表
+	Route   string // 命中行 dispatch 投影（全表未命中=DeadLetterRoute 合成值；未挂表=空）
+	CC      string // 命中行 cc 投影（旁路目标；执行随派发 deferred）
+	For     string // 命中行 for 谓词原文
+	Owner   string // owner 解析值（谓词匹配依据；与具体行无关恒可解析）
+	Row     int    // 命中表行号（0 起，可回指 scheme.yaml）；未命中=NoRow
+}
+
 // TriggerRecord 一条收到留痕（订阅方视角；事件本体语义见 concepts/event.md——
 // 事件只触发不修改、可丢可重可乱序，留痕同样只是观测面）。
 type TriggerRecord struct {
@@ -37,9 +56,12 @@ type TriggerRecord struct {
 	Level      string    // debug/info/warn/error/fatal（A42）
 	At         time.Time // 事件时间（发布方时钟）
 	ReceivedAt time.Time // 收到时刻（订阅方时钟；与 At 差值=总线+调度延迟观测点）
-	Route      string    // 命中 dispatch 行的 route 投影（只留痕不派发，引擎主体 deferred）；
+	Route      string    // 命中 dispatch 行的 route 投影（留痕=过去的决策投影，不执行派发）；
 	//             全表未命中=dead-letter；未挂 dispatch 表（裸 Attach）=空
-	For string // 命中行的 for 谓词原文（与 Route 同一行；便于机械对账表行↔留痕）
+	CC    string // 命中行的 cc 投影（旁路目标，与 Route 同一行；执行随派发 deferred）
+	For   string // 命中行的 for 谓词原文（与 Route 同一行；便于机械对账表行↔留痕）
+	Owner string // owner 解析值（命中谓词的匹配依据：involved scope 根 systems/<s>→<s>，
+	//         global/builtin 同名=scope 根本身；决策依据可查——v0.13）
 }
 
 // TriggerOptions 触发骨架可调项（零值可用）。
@@ -159,8 +181,8 @@ func (h *TriggerHub) drain(ch <-chan eventbus.Event) {
 }
 
 // record 收到留痕（环满丢最旧，dropped 计数可见——观测面非账本）。
-// 挂有 dispatch 表时按表序解析命中行：route/for 投影留痕（不派发）；
-// 全表未命中 → route=dead-letter（死信兜底可见）；未挂表（裸 Attach）→ 留空。
+// 挂有 dispatch 表时解析命中行：route/cc/for/owner 投影留痕（决策投影，不执行派发）；
+// 全表未命中 → route=dead-letter（死信兜底可见）；未挂表（裸 Attach）→ 路由字段留空。
 func (h *TriggerHub) record(e eventbus.Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -170,26 +192,37 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		h.ring = h.ring[excess:]
 		h.dropped += int64(excess)
 	}
-	route, forSel := h.resolveLocked(e.Type, e.Involved)
+	d := h.resolveDecisionLocked(e.Type, e.Involved)
 	h.ring = append(h.ring, TriggerRecord{
 		Seq: h.seq, EventID: e.ID, Type: e.Type, DedupKey: e.DedupKey,
 		Source: e.Source, Involved: e.Involved, Level: e.Level,
 		At: e.At, ReceivedAt: time.Now(),
-		Route: route, For: forSel,
+		Route: d.Route, CC: d.CC, For: d.For, Owner: d.Owner,
 	})
 }
 
-// resolveLocked 按 dispatch 表快照解析命中行（表序首行胜出；typeMatch ∧ forMatch）。
-func (h *TriggerHub) resolveLocked(typ, involved string) (route, forSel string) {
+// Resolve 派发决策查询（引擎主体第一段 v0.13：命中行→owner 解析→派发目标投影）。
+// 纯决策面：不注入事件、不落留痕、不执行派发——对当前表快照回答「这一事件若到达会
+// 路由到哪」。与留痕同一解析口径（resolveDecisionLocked），HTTP 投影见 /v1/triggers/resolve。
+func (h *TriggerHub) Resolve(typ, involved string) DispatchDecision {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.resolveDecisionLocked(typ, involved)
+}
+
+// resolveDecisionLocked 按 dispatch 表快照解析命中行（表序首行胜出；typeMatch ∧ forMatch）。
+// owner 解析恒先行（与行无关的决策依据）；owner:<字面量> 谓词随解析激活（v0.13）。
+func (h *TriggerHub) resolveDecisionLocked(typ, involved string) DispatchDecision {
+	owner := ownerOf(involved)
 	if len(h.rules) == 0 {
-		return "", ""
+		return DispatchDecision{Matched: false, Owner: owner, Row: NoRow} // 未挂表=无决策
 	}
-	for _, r := range h.rules {
+	for i, r := range h.rules {
 		if typeMatch(r.On, typ) && forMatch(r.For, involved) {
-			return r.Dispatch, r.For
+			return DispatchDecision{Matched: true, Route: r.Dispatch, CC: r.CC, For: r.For, Owner: owner, Row: i}
 		}
 	}
-	return DeadLetterRoute, ""
+	return DispatchDecision{Matched: false, Route: DeadLetterRoute, Owner: owner, Row: NoRow}
 }
 
 // typeMatch 行 on 与事件类型：通配恒命中，其余等值。
@@ -197,11 +230,12 @@ func typeMatch(on, typ string) bool {
 	return on == Wildcard || on == typ
 }
 
-// forMatch for 谓词首段口径（v0.12，event.md 设计规则；谓词=any|<selector>:<pattern>）：
+// forMatch for 谓词口径（event.md 设计规则 6；谓词=any|<selector>:<pattern>）：
 //
 //	any            → 恒命中；
-//	owner:*        → 恒命中（任意 owner）；owner:<字面量> → 首段不含 owner 字面量解析
-//	                 （随引擎主体 owner 解析接入）→ 不命中，事件顺延后行（死信兜底行可见）；
+//	owner:*        → 恒命中（任意 owner）；owner:<字面量> → owner 解析激活（v0.13）：
+//	                 解析值=字面量即命中（解析模型=involved scope 根 systems/<s>→<s>，
+//	                 global/builtin 同名=scope 根本身）；解析不等 → 不命中，事件顺延后行；
 //	scope:<root>/* → involved scope 为 <root> 或其子路径（builtin/* 命中 builtin）；
 //	                 scope:<root>（无 /*）→ 等值；
 //	其他/畸形      → 不命中（顺延）。
@@ -221,7 +255,7 @@ func forMatch(pred, involved string) bool {
 	}
 	switch sel {
 	case "owner":
-		return false // owner 字面量解析=引擎主体（declared-deferred），首段只放行 owner:*
+		return ownerOf(involved) == pat // owner 字面量解析（引擎主体第一段 v0.13）
 	case "scope":
 		scope := involvedScope(involved)
 		if root, hasGlob := strings.CutSuffix(pat, "/*"); hasGlob {
@@ -230,6 +264,17 @@ func forMatch(pred, involved string) bool {
 		return scope == pat
 	}
 	return false
+}
+
+// ownerOf owner 解析（event.md 规则 6）：involved scope 根 `systems/<s>` → `<s>`；
+// global/builtin 同名（owner=scope 根本身）。involved 投影=kind/scope/name，
+// 段数不足（无 scope 段）时解析为空串（不命中任何 owner 字面量谓词）。
+func ownerOf(involved string) string {
+	scope := involvedScope(involved)
+	if s, ok := strings.CutPrefix(scope, "systems/"); ok {
+		return s
+	}
+	return scope
 }
 
 // involvedScope 从 involved 投影重组 scope（kind 后首段；systems/<s> 层级并段）。

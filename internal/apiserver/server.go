@@ -44,9 +44,11 @@ type DraftStaging interface {
 }
 
 // TriggerFace 触发骨架查询口面（workflow.TriggerHub 满足；接口化便于测试注入假面）。
-// dispatch 接线第一段（cored-bridge.md §2.3）：apply 落面→DocApplied 事件→订阅收到留痕。
+// dispatch 接线第一段（cored-bridge.md §2.3）：apply 落面→DocApplied 事件→订阅收到留痕；
+// v0.13 增 Resolve 派发决策查询（引擎主体第一段：命中行→owner 解析→派发目标投影）。
 type TriggerFace interface {
 	State() workflow.TriggerState
+	Resolve(typ, involved string) workflow.DispatchDecision
 }
 
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
@@ -70,13 +72,14 @@ var (
 //	GET /v1/drafts/{kind}/{name}?scope=s 单条草稿（含正文；无稿 → 404）
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
-//	GET /v1/triggers                    触发骨架查询面（dispatch 接线第二段：表驱动订阅；恒开，§2.3）
+//	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
+//	GET /v1/triggers/resolve            派发决策查询面（v0.13：命中行→owner 解析→目标投影；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
 // applier 为 nil（未开启 --allow-apply）时 POST /v1/apply 与草稿写操作返回 405（缺省只读面不变；
 // 草稿 GET 属查询面恒开）。drafts 为 nil（缓存未接线）时 /v1/drafts* 返回 503。
-// triggers 为 nil（触发骨架未接线）时 /v1/triggers 返回 503。
+// triggers 为 nil（触发骨架未接线）时 /v1/triggers 与 /v1/triggers/resolve 返回 503。
 func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -283,9 +286,10 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"resource": fmt.Sprintf("%s/%s/%s", kind, scope, name), "action": "discarded",
 		})
 	})
-	// 触发骨架面（cored-bridge.md §2.3；dispatch 接线第二段 v0.12 订阅面动态化）：GET 恒开——
+	// 触发骨架面（cored-bridge.md §2.3；dispatch 接线：第二段 v0.12 订阅面动态化 →
+	// 第三段 v0.13 引擎主体第一段 owner 解析激活）：GET 恒开——
 	// 「apply 落面→事件→订阅收到留痕」主干第一段的机械可验查询面；
-	// types=dispatch 表推导订阅集合（"*"=通配），records 携命中行投影 route/for
+	// types=dispatch 表推导订阅集合（"*"=通配），records 携命中行投影 route/cc/for/owner
 	// （全表未命中=dead-letter，死信兜底可见）。留痕是进程内观测面（账本=event_log 归档）；
 	// 写面关断不影响本端点（received=0 照常 200）。
 	mux.HandleFunc("GET /v1/triggers", func(w http.ResponseWriter, _ *http.Request) {
@@ -299,7 +303,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			records = append(records, map[string]any{
 				"seq": r.Seq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "source": r.Source, "involved": r.Involved,
-				"level": r.Level, "route": r.Route, "for": r.For,
+				"level": r.Level, "route": r.Route, "cc": r.CC, "for": r.For, "owner": r.Owner,
 				"at":         r.At.UTC().Format(time.RFC3339Nano),
 				"receivedAt": r.ReceivedAt.UTC().Format(time.RFC3339Nano),
 			})
@@ -307,6 +311,28 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(records), "received": st.Received, "dropped": st.Dropped,
 			"types": st.Types, "records": records,
+		})
+	})
+	// 派发决策查询面（§2.3 v0.13 引擎主体第一段）：对当前 dispatch 表快照回答
+	// 「这一事件若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），
+	// 投影 {type, involved, matched, route, cc, for, owner, row}；row=命中表行号（0 起），
+	// 全表未命中 row=-1 且 route=dead-letter（合成死信）。owner:<字面量> 谓词的 live
+	// 机械探针落点（无事件注入面也能验证 owner 解析命中）。
+	mux.HandleFunc("GET /v1/triggers/resolve", func(w http.ResponseWriter, r *http.Request) {
+		if triggers == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "触发骨架未接线"})
+			return
+		}
+		typ := r.URL.Query().Get("type")
+		if typ == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "缺 type 查询参数（决策必须有事件类型）"})
+			return
+		}
+		involved := r.URL.Query().Get("involved") // 可缺省（解析为空 owner，决策照常给出）
+		d := triggers.Resolve(typ, involved)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"type": typ, "involved": involved, "matched": d.Matched,
+			"route": d.Route, "cc": d.CC, "for": d.For, "owner": d.Owner, "row": d.Row,
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。

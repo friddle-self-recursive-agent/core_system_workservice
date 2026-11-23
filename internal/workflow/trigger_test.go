@@ -300,19 +300,19 @@ func TestAttachDispatchWildcardCollapse(t *testing.T) {
 
 // TestAttachDispatchRowResolution 行解析投影：表序首行胜出，route/for 落留痕（只留痕不派发）；
 // scope:builtin/* 命中 builtin scope；未命中任何行 → route=dead-letter 兜底可见；
-// owner 字面量行首段不命中（顺延后行）。
+// owner 字面量行按 owner 解析（v0.13）：global 侧 HeartbeatLost 不命中 agent 行 → 顺延兜底行。
 func TestAttachDispatchRowResolution(t *testing.T) {
 	b := eventbus.NewBus(nil)
 	h := NewTriggerHub(nil)
 	defer h.AttachDispatch(b, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
-		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent"}, // owner 字面量=引擎主体，首段不命中
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent"}, // owner 解析=global≠agent → 顺延
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
 		{On: "*", For: "any", Dispatch: "deadletter"},
 	})()
 
 	pub(t, b, "DocApplied", "Agent/global/probe")                               // 行1
-	pub(t, b, "HeartbeatLost", "Agent/global/a1")                               // 行2 不命中 → 行3 scope global 不命中 → 行4
+	pub(t, b, "HeartbeatLost", "Agent/global/a1")                               // 行2 owner 解析不等 → 行3 scope global 不命中 → 行4
 	pub(t, b, "SessionClosed", "Scheme/builtin/scheme")                         // 行3 scope:builtin/* 命中
 	pub(t, b, "MetricThreshold", "ServiceInstance/systems/developer-system/ci") // 行4 兜底
 	st := waitReceived(t, h, 4)
@@ -385,7 +385,8 @@ func TestAttachDispatchUnsubscribeDrain(t *testing.T) {
 	}
 }
 
-// TestForMatchPredicate 谓词首段口径单测：any/owner:*/scope 前缀式/等值/畸形/未知选择器。
+// TestForMatchPredicate 谓词口径单测：any/owner:*、owner 字面量（v0.13 按 owner 解析）、
+// scope 前缀式/等值/畸形/未知选择器。
 func TestForMatchPredicate(t *testing.T) {
 	cases := []struct {
 		pred, involved string
@@ -393,7 +394,8 @@ func TestForMatchPredicate(t *testing.T) {
 	}{
 		{"any", "Agent/global/a", true},
 		{"owner:*", "Agent/global/a", true},
-		{"owner:agent", "Agent/global/a", false}, // owner 字面量=引擎主体
+		{"owner:agent", "Agent/global/a", false}, // owner 解析=global ≠ agent
+		{"owner:global", "Agent/global/a", true}, // owner 解析=global（同名=scope 根）
 		{"scope:builtin/*", "Scheme/builtin/scheme", true},
 		{"scope:builtin/*", "Workflow/builtin/x/y", true}, // 子路径命中
 		{"scope:builtin/*", "Agent/global/a", false},      // global 不命中 builtin
@@ -404,10 +406,139 @@ func TestForMatchPredicate(t *testing.T) {
 		{"kind:Agent", "Agent/global/a", false},    // 未知选择器
 		{"any", "", true},
 		{"scope:builtin/*", "Scheme", false}, // involved 无 scope 段 → 空 scope 不命中
+		{"owner:agent", "Agent", false},      // 无 scope 段 → owner 解析为空，不命中任何字面量
 	}
 	for _, c := range cases {
 		if got := forMatch(c.pred, c.involved); got != c.want {
 			t.Errorf("forMatch(%q,%q)=%v want %v", c.pred, c.involved, got, c.want)
 		}
+	}
+}
+
+// ═══════════ 引擎主体第一段（v0.13：owner 解析激活 + 派发决策可查询投影） ═══════════
+
+// TestOwnerOf owner 解析口径（event.md 规则 6）：involved scope 根 systems/<s>→<s>；
+// global/builtin 同名（owner=scope 根本身）；无 scope 段=空串。
+func TestOwnerOf(t *testing.T) {
+	cases := []struct{ involved, want string }{
+		{"ServiceInstance/systems/agent/ci", "agent"},
+		{"Agent/systems/agent/x", "agent"},
+		{"Agent/global/a", "global"},
+		{"Scheme/builtin/scheme", "builtin"},
+		{"Workflow/builtin/x/y", "builtin"},
+		{"ServiceInstance/systems/developer-system/ci", "developer-system"},
+		{"Agent", ""}, // 无 scope 段
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := ownerOf(c.involved); got != c.want {
+			t.Errorf("ownerOf(%q)=%q want %q", c.involved, got, c.want)
+		}
+	}
+}
+
+// TestForMatchOwnerLiteral owner 字面量谓词激活（v0.13 判别器：owner:agent 行从
+// 「恒不命中顺延」（v0.12 首段）变「按 owner 解析命中」）。
+func TestForMatchOwnerLiteral(t *testing.T) {
+	cases := []struct {
+		pred, involved string
+		want           bool
+	}{
+		{"owner:agent", "ServiceInstance/systems/agent/ci", true}, // systems/agent → agent 命中
+		{"owner:agent", "Agent/systems/agent/x", true},            // 同上（kind 无关）
+		{"owner:agent", "Agent/global/a1", false},                 // global ≠ agent
+		{"owner:agent", "Scheme/builtin/scheme", false},           // builtin ≠ agent
+		{"owner:global", "Agent/global/a", true},                  // 同名=scope 根
+		{"owner:builtin", "Workflow/builtin/x/y", true},           // 同名（子路径仍解析到根）
+		{"owner:instance", "SessionInstance/systems/instance/web", true},
+		{"owner:agent", "ServiceInstance/systems/developer-system/ci", false}, // 他系统不命中
+		{"owner:agent", "", false},                                            // 空 involved 解析为空
+		{"owner:*", "Scheme/builtin/scheme", true},                            // 通配恒命中（不变量保持）
+	}
+	for _, c := range cases {
+		if got := forMatch(c.pred, c.involved); got != c.want {
+			t.Errorf("forMatch(%q,%q)=%v want %v", c.pred, c.involved, got, c.want)
+		}
+	}
+}
+
+// TestAttachDispatchOwnerLiteralRowHits 表驱动判别器（loop-12 增量）：owner:agent 行按 owner
+// 解析命中——HeartbeatLost involved 在 systems/agent 下 → 命中 parent-agent 行（cc 同行投影）；
+// 同类型 involved 在 global 下 → 不命中顺延兜底行；owner:instance 行同理。
+// （API 无事件注入面——本 fixture 即引擎主体第一段的机械判据，live 侧由 resolve 决策面承载。）
+func TestAttachDispatchOwnerLiteralRowHits(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "ExternalChanged", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
+		{On: "SessionClosed", For: "owner:instance", Dispatch: "instance-docs"},
+		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})()
+
+	pub(t, b, "HeartbeatLost", "ServiceInstance/systems/agent/ci")     // owner=agent → 行1 命中
+	pub(t, b, "HeartbeatLost", "Agent/global/a1")                      // owner=global → 顺延兜底行
+	pub(t, b, "SessionClosed", "SessionInstance/systems/instance/web") // owner=instance → 行2 命中
+	st := waitReceived(t, h, 3)
+	want := []struct{ typ, route, cc, forSel, owner string }{
+		{"HeartbeatLost", "parent-agent", "notification/*", "owner:agent", "agent"},
+		{"HeartbeatLost", "deadletter", "", "any", "global"},
+		{"SessionClosed", "instance-docs", "", "owner:instance", "instance"},
+	}
+	for i, w := range want {
+		r := st.Records[i]
+		if r.Type != w.typ || r.Route != w.route || r.CC != w.cc || r.For != w.forSel || r.Owner != w.owner {
+			t.Fatalf("留痕[%d] 行解析不符：want %+v 得 {type:%s route:%s cc:%s for:%s owner:%s}",
+				i, w, r.Type, r.Route, r.CC, r.For, r.Owner)
+		}
+	}
+}
+
+// TestResolveDecisionFace 派发决策查询面：纯决策（不注入事件不落留痕不派发）；
+// 命中行投影 route/cc/for/owner/row（row 可回指表行）；全表未命中=合成死信 row=NoRow；
+// 未挂表=无决策 route 空；决策面零副作用（received 不动）。
+func TestResolveDecisionFace(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	stop := h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
+		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})
+	defer stop()
+
+	d := h.Resolve("HeartbeatLost", "ServiceInstance/systems/agent/ci")
+	if !d.Matched || d.Route != "parent-agent" || d.CC != "notification/*" ||
+		d.For != "owner:agent" || d.Owner != "agent" || d.Row != 1 {
+		t.Fatalf("owner 命中决策不符: %+v", d)
+	}
+	d = h.Resolve("MetricThreshold", "ServiceInstance/systems/dev/ci") // 无具体行 → 通配兜底行
+	if !d.Matched || d.Route != "deadletter" || d.Row != 3 || d.Owner != "dev" {
+		t.Fatalf("兜底行决策不符: %+v", d)
+	}
+	d = h.Resolve("UnknownType", "Doc/builtin/core") // 未枚举类型 → scope:builtin/* 通配行
+	if !d.Matched || d.Route != "workflows/builtin-root" || d.Row != 2 || d.Owner != "builtin" {
+		t.Fatalf("builtin 通配决策不符: %+v", d)
+	}
+	d = h.Resolve("DocApplied", "Agent/global/probe")
+	if !d.Matched || d.Route != "owner-workflow" || d.Row != 0 || d.Owner != "global" {
+		t.Fatalf("owner:* 决策不符: %+v", d)
+	}
+	// 决策面零副作用：多次 resolve 后 received/records 不动。
+	if st := h.State(); st.Received != 0 || len(st.Records) != 0 {
+		t.Fatalf("决策面不得产生留痕：received=%d records=%d", st.Received, len(st.Records))
+	}
+	// 全表未命中（畸形谓词行只行）→ 合成死信、不可归因表行。
+	h2 := NewTriggerHub(nil)
+	defer h2.AttachDispatch(b, []scheme.DispatchRule{{On: "X", For: "bad-pred", Dispatch: "nowhere"}})()
+	if d := h2.Resolve("X", "Agent/global/a"); d.Matched || d.Route != DeadLetterRoute || d.Row != NoRow {
+		t.Fatalf("全表未命中应合成死信 row=NoRow: %+v", d)
+	}
+	// 未挂表 → 无决策（route 空；owner 解析照常给出）。
+	h3 := NewTriggerHub(nil)
+	if d := h3.Resolve("DocApplied", "Agent/global/a"); d.Matched || d.Route != "" || d.Row != NoRow || d.Owner != "global" {
+		t.Fatalf("未挂表应无决策: %+v", d)
 	}
 }

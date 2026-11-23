@@ -35,6 +35,15 @@ func TestTriggersFaceNilReturnsUnavailable(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("未接线应 503，得 %d", resp.StatusCode)
 	}
+	// 决策查询面同口径：未接线 → 503。
+	resp2, err := http.Get(ts.URL + "/v1/triggers/resolve?type=DocApplied&involved=Agent/global/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("resolve 未接线应 503，得 %d", resp2.StatusCode)
+	}
 }
 
 func TestTriggersFaceRecordsTrace(t *testing.T) {
@@ -174,5 +183,87 @@ func TestTriggersFaceTableDrivenWiring(t *testing.T) {
 	r := got.Records[0]
 	if r["route"] != "owner-workflow" || r["for"] != "owner:*" {
 		t.Fatalf("留痕应携命中行投影 route=owner-workflow for=owner:*，得 %v", r)
+	}
+	// v0.13 决策依据可查：owner 解析值随留痕投影（involved scope 根 global → owner=global）；
+	// cc 空串=命中行无旁路目标。
+	if r["owner"] != "global" || r["cc"] != "" {
+		t.Fatalf("留痕应携 owner 解析值与 cc 投影，得 %v", r)
+	}
+}
+
+// TestTriggersResolveFace 派发决策查询面（cored-bridge.md §2.3 v0.13 引擎主体第一段）：
+// 200 决策投影 {type,involved,matched,route,cc,for,owner,row}；缺 type → 400；
+// 纯决策零副作用（resolve 后 /v1/triggers received 不动）。
+func TestTriggersResolveFace(t *testing.T) {
+	sch := testScheme(t)
+	bus := eventbus.NewBus(nil)
+	hub := workflow.NewTriggerHub(nil)
+	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
+		{On: "*", For: "any", Dispatch: "deadletter"},
+	})()
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	defer ts.Close()
+
+	var d struct {
+		Type, Involved string
+		Matched        bool
+		Route, CC      string
+		For, Owner     string
+		Row            int
+	}
+	get := func(url string) int {
+		t.Helper()
+		resp, err := http.Get(ts.URL + url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode
+	}
+
+	if c := get("/v1/triggers/resolve?type=HeartbeatLost&involved=ServiceInstance/systems/agent/ci"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if !d.Matched || d.Route != "parent-agent" || d.CC != "notification/*" ||
+		d.For != "owner:agent" || d.Owner != "agent" || d.Row != 1 || d.Type != "HeartbeatLost" {
+		t.Fatalf("owner 命中决策投影不符: %+v", d)
+	}
+	if c := get("/v1/triggers/resolve?type=HeartbeatLost&involved=Agent/global/a1"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if !d.Matched || d.Route != "deadletter" || d.Row != 2 || d.Owner != "global" {
+		t.Fatalf("owner 不命中应顺延兜底行: %+v", d)
+	}
+	if c := get("/v1/triggers/resolve?type=DocApplied"); c != 200 {
+		t.Fatalf("involved 缺省应照常决策，得 %d", c)
+	}
+	if !d.Matched || d.Route != "owner-workflow" || d.Owner != "" || d.Row != 0 {
+		t.Fatalf("空 involved 决策不符（owner 解析为空）: %+v", d)
+	}
+	if c := get("/v1/triggers/resolve"); c != http.StatusBadRequest {
+		t.Fatalf("缺 type 应 400，得 %d", c)
+	}
+	// 纯决策面零副作用：上述 resolve 不产生任何留痕。
+	resp, err := http.Get(ts.URL + "/v1/triggers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st struct {
+		Received int64            `json:"received"`
+		Records  []map[string]any `json:"records"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if st.Received != 0 || len(st.Records) != 0 {
+		t.Fatalf("决策面不得产生留痕：received=%d records=%d", st.Received, len(st.Records))
 	}
 }
