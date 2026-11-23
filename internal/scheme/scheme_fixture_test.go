@@ -91,7 +91,7 @@ spec:
 
     - kind: WorkService              # 六面体
       builtin: true
-      storage: workservices/<name>/workservice.yaml
+      storage: global/workservices/<name>/workservice.yaml
       spec:
         category: "developer|storage|tool|business|…"   # tool 型=本机工具（dsh/http）
         connector:                                  # 连接面（原 ConnectorProvider 并入）

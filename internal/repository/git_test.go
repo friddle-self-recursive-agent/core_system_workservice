@@ -35,6 +35,7 @@ spec:
     - {kind: Ref, builtin: true, storage: "global/refs/<name>.yaml | systems/<s>/refs/<name>.yaml"}
     - {kind: Skill, builtin: true, storage: systems/<s>/instances/<i>/skills/<name>.yaml}
     - {kind: Provider, builtin: true, storage: global/providers/<name>.yaml}
+    - {kind: WorkService, builtin: true, storage: global/workservices/<name>/workservice.yaml}
 `
 
 func mustScheme(t *testing.T) *scheme.Scheme {
@@ -99,7 +100,10 @@ func TestStoragePathResolution(t *testing.T) {
 		{"ConnectorOps", "developer-system/ci", "git", "systems/developer-system/instances/ci/connector-ops/git.yaml", nil},
 		{"Skill", "developer-system/ci", "pr-open", "systems/developer-system/instances/ci/skills/pr-open.yaml", nil},
 		{"Ref", "global", "main-nas", "global/refs/main-nas.yaml", nil},
+		// WorkService global 桶（v0.44 收口：作用域=Global 物化——旧根级无 scope 段模板不可寻址）
+		{"WorkService", "global", "notify", "global/workservices/notify/workservice.yaml", nil},
 		// 错误分支
+		{"WorkService", "notify", "x", "", ErrScope}, // 模板仅 global 分支——系统 scope 无可寻址分支
 		{"Workflow", "builtin", "w", "", ErrScope},      // 模板无 builtin 分支
 		{"ServiceInstance", "", "ci", "", ErrScope},     // 具体寻址必须带 scope
 		{"Agent", "global", "../escape", "", ErrScope},  // 名越界
@@ -445,6 +449,45 @@ func TestListAcrossScopes(t *testing.T) {
 	got, err := r.List(ctx, "Agent", "global")
 	if err != nil || len(got) != 1 {
 		t.Fatalf("Agent 清单: %+v err=%v", got, err)
+	}
+}
+
+// TestWorkServiceGlobalBucket WorkService 单对象读面收口（v0.44 对账选点，adoption §1.15
+// L44-01 的 Go 侧锚）：global 桶模板写入→Get 可寻址→枚举行 scope=global；系统 scope 无分支
+// （旧根级无 scope 段模板的缺口形态=写读双向 400 不回归）。
+func TestWorkServiceGlobalBucket(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	ws := &Object{Kind: "WorkService", Name: "notify", Scope: "global", Content: []byte(`apiVersion: core/v1
+kind: WorkService
+metadata:
+  name: notify
+  scope: global
+spec:
+  category: tool
+  connector:
+    types: [notify-email]
+    impl: {kind: tool, ref: "ref://notify"}
+    download: "tool://local"
+    scheme: {ops: [notify], params: {}}
+    llmPrompt: 发送通知邮件
+`)}
+	if _, _, err := r.Write(ctx, ws, "probe", ""); err != nil {
+		t.Fatalf("Write WorkService: %v", err)
+	}
+	o, err := r.Get(ctx, "WorkService", "global", "notify")
+	if err != nil {
+		t.Fatalf("单对象 Get（global 桶）: %v", err)
+	}
+	if o.Name != "notify" || o.Scope != "global" {
+		t.Fatalf("身份不符: %+v", o)
+	}
+	rows, err := r.List(ctx, "WorkService", "")
+	if err != nil || len(rows) != 1 || rows[0].Scope != "global" {
+		t.Fatalf("跨 scope 枚举: %+v err=%v", rows, err)
+	}
+	if _, err := r.Get(ctx, "WorkService", "notify", "notify"); !errors.Is(err, ErrScope) {
+		t.Fatalf("系统 scope 应无可寻址分支, 得 %v", err)
 	}
 }
 
