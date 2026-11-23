@@ -7,6 +7,7 @@ package connectors
 
 import (
 	"context"
+	"sort"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workservice"
 )
@@ -70,4 +71,15 @@ func RegisterProvider(p ProviderImpl) { providerRegistry[p.Type()] = p }
 func LookupProvider(typeName string) (ProviderImpl, bool) {
 	p, ok := providerRegistry[typeName]
 	return p, ok
+}
+
+// Providers 已注册类型层实现快照（按 Type 排序——装配枚举确定性：watch 桥的 stderr
+// 装配锚与源顺序不随 map 迭代抖动；watchsrc 桥接源枚举面，event.md 规则 12 v0.30）。
+func Providers() []ProviderImpl {
+	ps := make([]ProviderImpl, 0, len(providerRegistry))
+	for _, p := range providerRegistry {
+		ps = append(ps, p)
+	}
+	sort.Slice(ps, func(i, j int) bool { return ps[i].Type() < ps[j].Type() })
+	return ps
 }

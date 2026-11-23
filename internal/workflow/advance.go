@@ -57,8 +57,9 @@ func (r *RunLog) Advance() int {
 // 驱动源）。hub 按能力断言转发（类型断言失败=不转发——能力增量不破既有 sink 契约，
 // ResumeSink 同款范式）；**挂接时机由装配层控制**（推进总闸 `--advance-interval` 开启才
 // 挂接——事件驱动源不旁路总闸，关断语义组合声明面先定）；转发前提=该事件**落了 run** ∧
-// `source=core`（引擎内部源审计事实，event.md 规则 10 服务侧判定口径——首段生产者=
-// ReconcileTick；connector watch/metrics 阈值等其余引擎内部源随各自声明面顺延自动纳入）。
+// `source ∈ beatSources`（引擎装配的内部源审计事实——event.md 规则 10/规则 12 服务侧
+// 判定口径：v0.29 首段生产者=ReconcileTick source=core，v0.30 connector watch 桥接源
+// ExternalChanged source=connector；metrics 阈值等其余引擎内部源随各自声明面顺延自动纳入）。
 type EventAdvanceSink interface {
 	Advance() int
 }

@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
@@ -29,6 +30,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 )
 
@@ -62,6 +64,10 @@ func run() error {
 	advanceInterval := flag.Duration("advance-interval", 0,
 		"run 相位异步推进间隔（v0.26 相位推进器异步推进首段，workflow.md 规则 15；0=关断，缺省不改行为面——"+
 			"受理首步同步推进不受影响。每拍对每现势 run 单步查表推进（stepByTable 复用）：落闸锚挂起、落终点锚终态、序列尾零动作停）")
+	watchSource := flag.Bool("watch-source", false,
+		"connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12；缺省 false=关断零事件不改行为面。"+
+			"开启时装配层枚举注册表内 Watch 契约驱动，把驱动侧外部变化通道桥接进总线——source 服务侧判定恒 connector，"+
+			"watch 事件落 run 同拍即拍（workflow.md 规则 15 v0.30 段，零新开关）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -207,6 +213,40 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
+	// connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12）：装配层枚举注册表
+	// 内 Watch 契约驱动（connectors.Providers——依赖方向不反转：驱动住连接器仓经契约层注册，
+	// cored 只消费契约通道），把驱动侧外部变化通道桥接进总线（source 服务侧判定恒 connector；
+	// 类型注册闸门前置；level=注册表缺省投影；dedupKey=驱动侧因由声明）。旗标关断（缺省）
+	// =零驱动零事件，缺省不改行为面；watch 事件落 run 同拍即拍（workflow.md 规则 15 v0.30
+	// 段——拍面驱动源集合扩展，零新开关）。
+	watchState := "off"
+	if *watchSource {
+		if _, err := sch.LookupEventType(watchsrc.EventType); err != nil {
+			watchState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
+		} else {
+			watchCtx, cancelWatchSrc := context.WithCancel(context.Background())
+			defer cancelWatchSrc()
+			var watchSrcs []watchsrc.Source
+			for _, p := range connectors.Providers() { // Type 排序快照——装配顺序确定性
+				if !p.Contract().Watch {
+					continue
+				}
+				ch, err := p.Watch(watchCtx)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "cored: watch 驱动 %s 订阅失败（跳过该源）: %v\n", p.Type(), err)
+					continue
+				}
+				watchSrcs = append(watchSrcs, watchsrc.Source{Name: p.Type(), Involved: "WorkService/" + p.Type(), Events: ch})
+			}
+			if len(watchSrcs) == 0 {
+				watchState = "no-driver" // 已开启∧类型已注册∧注册表无 Watch 契约驱动（缺口可见）
+			} else {
+				watchState = fmt.Sprintf("on(%d)", len(watchSrcs))
+				go watchsrc.New(bus, sch, watchSrcs).Run(watchCtx)
+			}
+		}
+	}
+	fmt.Fprintf(os.Stderr, "cored: watch 源=%s（--watch-source；on=装配层 watch 桥驱动 Watch 契约通道自产 ExternalChanged source=connector dedupKey=驱动侧因由——event.md 规则 12；no-driver=已开启但注册表无 Watch 契约驱动；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", watchState)
 	// run 相位异步推进器（v0.26）：构建已提前（事件拍挂接须先于订阅主干），此处只做
 	// 定时拍启动与 stderr 装配锚报告。事件拍（v0.29）已随总闸在挂接点生效。
 	advanceState := "off"

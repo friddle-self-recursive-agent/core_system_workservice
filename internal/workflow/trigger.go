@@ -147,6 +147,20 @@ type TriggerHub struct {
 // 引擎自身产生的心跳/巡检类来源标注；与 patrol.EventSource 同字面，声明面=event.md 规则 10）。
 const SourceEngineInternal = "core"
 
+// SourceConnectorWatch connector watch 桥接源事件的 source 审计值（event.md 规则 12 服务
+// 侧判定口径——外部变化来源标注是审计事实；与 watchsrc.EventSource 同字面，声明面=
+// event.md 规则 12）。
+const SourceConnectorWatch = "connector"
+
+// beatSources 事件拍驱动源集合（引擎装配的内部源——workflow.md 规则 15：v0.29 core=
+// 定时巡检 ReconcileTick，v0.30 connector=watch 桥接源 ExternalChanged；metrics 阈值等
+// 随各自声明面扩展顺延一行即入）。注入通道（source 服务侧判定恒 human）与权限自产
+// （permission）不在拍面——来源维度分立（v0.29 判别器措辞收窄：注入通道本就恒 human）。
+var beatSources = map[string]bool{
+	SourceEngineInternal: true,
+	SourceConnectorWatch: true,
+}
+
 // NewTriggerHub 构建触发骨架。
 func NewTriggerHub(opts *TriggerOptions) *TriggerHub {
 	h := &TriggerHub{}
@@ -267,11 +281,12 @@ func (h *TriggerHub) record(e eventbus.Event) {
 	// 事件驱动推进源首段（v0.29——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：引擎
 	// 内部源事件落 run 的同拍对该拍现势 run 全量执行一次单步推进（与定时拍同一查表落点——
 	// 判定器零改动，只加驱动源；本拍新落 run 参与本拍——全量口径不含特判，受理首步与事件拍
-	// 是两条独立口径的拍步）。拍的三重闸：①落了 run（未落 run 的事件不拍）；②source=core
-	//（引擎内部源审计事实——人注/connector 注入/权限自产事件不拍，source 维度分立）；③装配
+	// 是两条独立口径的拍步）。拍的三重闸：①落了 run（未落 run 的事件不拍）；②source ∈ 拍面
+	// 驱动源集合 beatSources（引擎装配的内部源审计事实——v0.29=core 巡检、v0.30+connector
+	// watch 桥；注入通道恒 human 与权限自产 permission 不拍，source 维度分立）；③装配
 	// 层已挂接（BindEventAdvance 只在推进总闸开启时调用——事件驱动源不旁路总闸，关断语义
 	// 组合声明面先定）。锁内同步调用：与留痕/run 同序（确定性——新落 run 同拍即得第二拍步）。
-	if landed && rec.Source == SourceEngineInternal && h.advance != nil {
+	if landed && beatSources[rec.Source] && h.advance != nil {
 		h.advance.Advance()
 	}
 	// 真实拉起第二子段（v0.16）：notification 送达面已接线（WireExecutor 登记 +
@@ -362,7 +377,8 @@ func (h *TriggerHub) BindAgents(sink WakeSink) {
 // v0.29 段）。**挂接时机=装配层推进总闸开启时**（--advance-interval>0）——总闸关断=
 // 不挂接=事件拍缺席（事件驱动源不旁路总闸：推进=一个行为面一个总闸，关断语义单一可预期；
 // 巡检-only 部署行为面零翻转）。事件拍的三重闸另两者在 hub.record 内（落了 run ∧
-// source=core）。幂等；nil=解除挂接。须在 AttachDispatch 前调用（同 Bind* 口径——事件
+// source ∈ beatSources 拍面驱动源集合——v0.29 core 巡检、v0.30 connector watch 桥）。幂等；
+// nil=解除挂接。须在 AttachDispatch 前调用（同 Bind* 口径——事件
 // 开始流入后无接线窗口）。sink 契约见 EventAdvanceSink（非阻塞、不回调 hub）。
 func (h *TriggerHub) BindEventAdvance(sink EventAdvanceSink) {
 	h.mu.Lock()
