@@ -614,7 +614,11 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "accepted": st.Accepted, "sent": st.Sent, "failed": st.Failed,
-			"dropped": st.Dropped, "deliveries": items,
+			"dropped": st.Dropped,
+			// v0.35 通知门链三计数（KI-001——新载荷键=代际判别器，键恒在口径）：
+			// gated=阶段门拦阻（非相位终态事实）；filtered=minLevel 等级过滤；deduped=窗口去重聚合。
+			"gated": st.Gated, "filtered": st.Filtered, "deduped": st.Deduped,
+			"deliveries": items,
 		})
 	})
 	// 唤醒投影面（§2.3 v0.18 引擎主体第五段——真实拉起第三子段：agent 触发面接线）：

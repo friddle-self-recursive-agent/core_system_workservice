@@ -96,6 +96,13 @@ func run() error {
 			"跨 involved 不互踩——防震荡语义粒度=同一对象）+推进拍变更上限（每拍每锚 run 相位变更数受生效刹车值约束，"+
 			"capped 计数可见；超限本拍零动作下拍续推）。刹车值=spec.brakes 声明收紧（宽松方向钳回强制默认——"+
 			"可收紧不可关闭）；文档库未挂载=全锚强制默认）")
+	notifyDedupWindow := flag.Duration("notify-dedup-window", 10*time.Minute,
+		"通知去重窗口（v0.35 KI-001 通知段——dedup.window 落地；缺省 10m=notification.md 声明面缺省。"+
+			"窗口内同 dedupKey 至多一封送达受理，其余 deduped 计数可查询不投影（同因聚合防轰炸）；"+
+			"<=0=不去重。判别器：同 dedupKey 窗口内 N 次注入 → 实发 1、deduped=N-1）")
+	notifyMinLevel := flag.String("notify-min-level", "",
+		"通知等级下限（v0.35 KI-001 通知段——minLevel 落地；缺省空=不过滤。debug|info|warn|error|fatal，"+
+			"低于下限的事件零受理零投影 filtered 计数可查询；声明面=Notification on.levels/severity 过滤）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -241,6 +248,14 @@ func run() error {
 		brakesResolverState = "docs"
 	}
 	runs := workflow.NewRunLog(runOpts)
+	// 通知门链接线（v0.35 KI-001 通知段——阶段门+dedup/minLevel 落地）：判定器
+	// NotifyPhaseGate（人注意终态族放行 ∧ 其余事件须 involved owner 现势 run 相位终态背书
+	// ——Report 序列尾/终点锚；无 run 面=fail-closed 拦）注入送达面；dedup 窗口缺省 10m
+	// （notification.md 声明面缺省——同因聚合防轰炸）；minLevel 缺省不过滤。
+	// apply 写入（DocApplied 等进度事实）不再触发用户通知——通知只由相位终态事实触发。
+	dlOpts.PhaseGate = workflow.NotifyPhaseGate(runs)
+	dlOpts.DedupWindow = *notifyDedupWindow
+	dlOpts.MinLevel = *notifyMinLevel
 	deliveries := workflow.NewDeliveryLog(dlOpts)
 	wakes := workflow.NewWakeLog(nil)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
@@ -286,6 +301,14 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
+	// 通知门链装配锚（v0.35 KI-001 通知段——探针机读判别器）：门恒挂接（修复非选项——
+	// apply 写入不触发用户通知）；dedup/minLevel 部署侧可调（<=0/空=关断词形）。
+	minLevelWord := *notifyMinLevel
+	if minLevelWord == "" {
+		minLevelWord = "off"
+	}
+	fmt.Fprintf(os.Stderr, "cored: 通知门链=on（阶段门=相位终态——人注意终态族 ApprovalNeeded|Escalate|HeartbeatLost 恒放行∧其余事件须 involved owner 现势 run 相位终态背书；apply 写入不触发用户通知；dedup 窗口=%s minLevel=%s；gated|filtered|deduped 三计数=/v1/notifications/deliveries 可查询）\n",
+		*notifyDedupWindow, minLevelWord)
 	// connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12）：装配层枚举注册表
 	// 内 Watch 契约驱动（connectors.Providers——依赖方向不反转：驱动住连接器仓经契约层注册，
 	// cored 只消费契约通道），把驱动侧外部变化通道桥接进总线（source 服务侧判定恒 connector；

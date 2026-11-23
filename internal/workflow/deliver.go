@@ -17,6 +17,11 @@
 // notification 送达为旁路；ApprovalNeeded 则以通知为主路），主/旁维度由 Origin 字段留痕，
 // 单一 sink 双路收编（不再为旁路单开 sink 面）。非 notification 执行面（workflow/agent/none）
 // 不产生送达投影。
+//
+// 通知门链（v0.35 KI-001 通知段修复）：受理前三闸=minLevel 等级过滤→PhaseGate 阶段门
+// （通知只由相位终态事实触发——apply 写入不触发用户通知）→dedup.window 聚合（窗口内同
+// dedupKey 至多一封，其余 deduped 计数可查询）；gated/filtered/deduped 三计数随载荷新键
+// 出现=代际判别器。判定器见 notifygate.go；nil 选项=既有行为面零翻转（零值可用口径）。
 package workflow
 
 import (
@@ -74,6 +79,9 @@ type DeliveryState struct {
 	Sent       int64            // 累计出站成功（v0.17）
 	Failed     int64            // 累计出站失败（v0.17）
 	Dropped    int64            // 环溢出丢弃计数（可观测）
+	Gated      int64            // 累计阶段门拦阻（v0.35 KI-001——非相位终态事实不进通知面；新载荷键=代际判别器）
+	Filtered   int64            // 累计等级过滤（v0.35 minLevel——低于声明的下限不进通知面；新载荷键=代际判别器）
+	Deduped    int64            // 累计去重聚合（v0.35 dedup.window——窗口内同 dedupKey 至多一封，其余计此可查询；新载荷键=代际判别器）
 	Deliveries []DeliveryRecord // 环内送达投影（旧→新）
 }
 
@@ -95,7 +103,7 @@ type DeliverySink interface {
 	Deliver(rec TriggerRecord, b ExecutorBinding, origin string)
 }
 
-// DeliveryOptions 送达投影环可调项（零值可用=无出站，v0.16 语义）。
+// DeliveryOptions 送达投影环可调项（零值可用=无出站、无门，v0.16 语义）。
 type DeliveryOptions struct {
 	// RingSize 送达环容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	RingSize int
@@ -108,6 +116,18 @@ type DeliveryOptions struct {
 	OutboundQueue int
 	// OutboundWorkers 出站协程数（<=0 → DefaultOutboundWorkers；1=串行保序）。
 	OutboundWorkers int
+	// PhaseGate 通知阶段门（v0.35 KI-001——nil=不过门=既有行为面零翻转；装配层经
+	// NotifyPhaseGate 接线运行时判定器）。false=非相位终态事实不进通知面：零受理零投影，
+	// gated 计数可见；事件本体照常留痕/归档/推进 run（门只作用于用户通知面）。
+	PhaseGate NotifyGate
+	// MinLevel 事件等级下限（v0.35 minLevel 落地——""=不过滤；低于下限零受理零投影，
+	// filtered 计数可见。声明面=Notification on.levels/severity 过滤，notification.md §3）。
+	MinLevel string
+	// DedupWindow 同 dedupKey 聚合窗口（v0.35 dedup.window 落地——窗口内同 dedupKey 至多
+	// 一封，其余 deduped 计数可见不投影；<=0=不去重。声明面缺省 10m，notification.md §3
+	// 「同因聚合防轰炸」；空 dedupKey 永不聚合（与总线无键=永不聚合同口径）。
+	// 判别器：同 dedupKey 窗口内 N 次注入 → 实发 1、deduped=N-1（KI-001 §6）。
+	DedupWindow time.Duration
 }
 
 // DeliveryLog 送达投影的进程内落点（DeliverySink 缺省实现；并发安全；与 RunLog 同构）。
@@ -124,6 +144,10 @@ type DeliveryLog struct {
 	sent     int64
 	failed   int64
 	dropped  int64
+	gated    int64                // 阶段门拦阻计数（v0.35）
+	filtered int64                // 等级过滤计数（v0.35）
+	deduped  int64                // 去重聚合计数（v0.35）
+	lastDup  map[string]time.Time // dedupKey → 窗口内最近放行受理时刻（DedupWindow>0 时维护）
 
 	outCtx   context.Context     // 出站协程生存期（Close 取消；per-Send 超时独立派生不受其影响）
 	cancelFn context.CancelFunc  // outCtx 配对 cancel（Close 触发——协程退出闸）
@@ -140,6 +164,9 @@ func NewDeliveryLog(opts *DeliveryOptions) *DeliveryLog {
 	}
 	if d.opts.RingSize <= 0 {
 		d.opts.RingSize = 256
+	}
+	if d.opts.DedupWindow > 0 {
+		d.lastDup = map[string]time.Time{}
 	}
 	if d.opts.Outbound != nil {
 		if d.opts.OutboundTimeout <= 0 {
@@ -166,8 +193,38 @@ func NewDeliveryLog(opts *DeliveryOptions) *DeliveryLog {
 // 已注入出站时受理即入队（非阻塞：hub 在订阅路径上锁内同步调用本方法）；队列满=立即判
 // failed（错误=出站队列满），受理路径永不阻塞。hub 锁内调用本方法：只取 d.mu、无出站
 // 同步等待——出站全部异步。
+//
+// 通知门链（v0.35 KI-001，顺序=声明面过滤语义从订阅面到聚合面）：
+//  1. minLevel 等级过滤（on.levels 声明面）——低于下限零受理零投影，filtered 计数可见；
+//  2. PhaseGate 阶段门——非相位终态事实零受理零投影，gated 计数可见；
+//  3. dedup.window 聚合——窗口内同 dedupKey 至多一封，其余 deduped 计数可见不投影。
+//
+// 三闸都只作用于用户通知面：事件本体照常留痕/归档/推进 run（触发主干零旁路）；
+// 同一事件 route+cc 双路同窗聚合为一封（同因同窗至多一封口径——key=dedupKey）。
 func (d *DeliveryLog) Deliver(rec TriggerRecord, b ExecutorBinding, origin string) {
 	d.mu.Lock()
+	// 闸一：等级下限（未知等级词形不冒充达标——LevelAtLeast 词外零放行）。
+	if !LevelAtLeast(rec.Level, d.opts.MinLevel) {
+		d.filtered++
+		d.mu.Unlock()
+		return
+	}
+	// 闸二：阶段门（nil=不过门=既有行为面零翻转）。
+	if d.opts.PhaseGate != nil && !d.opts.PhaseGate(rec) {
+		d.gated++
+		d.mu.Unlock()
+		return
+	}
+	// 闸三：dedup 窗口（DedupWindow<=0=不去重；空 dedupKey=永不聚合）。
+	if d.opts.DedupWindow > 0 && rec.DedupKey != "" {
+		now := time.Now()
+		if last, ok := d.lastDup[rec.DedupKey]; ok && now.Sub(last) < d.opts.DedupWindow {
+			d.deduped++
+			d.mu.Unlock()
+			return
+		}
+		d.lastDup[rec.DedupKey] = now
+	}
 	d.seq++
 	d.accepted++
 	if excess := len(d.ring) + 1 - d.opts.RingSize; excess > 0 {
@@ -262,7 +319,8 @@ func (d *DeliveryLog) State() DeliveryState {
 	dl := make([]DeliveryRecord, len(d.ring))
 	copy(dl, d.ring)
 	return DeliveryState{Accepted: d.accepted, Sent: d.sent, Failed: d.failed,
-		Dropped: d.dropped, Deliveries: dl}
+		Dropped: d.dropped, Gated: d.gated, Filtered: d.filtered, Deduped: d.deduped,
+		Deliveries: dl}
 }
 
 // Close 停机（幂等）：取消出站协程生存期并等在途任务完成（受 per-Send 超时约束——
