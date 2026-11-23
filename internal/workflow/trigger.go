@@ -11,7 +11,9 @@
 // accepted→sent/failed，deliver.go）
 // → 第七段 v0.18 引擎主体第五段（真实拉起第三子段）：agent 唤醒面接线——
 // 执行面=agent 的绑定（route 主路与 cc 旁路，origin 维度留痕）且装配层已登记
-// （WireExecutor+BindAgents）时，留痕推进为一条唤醒投影（wake.go；查询面 /v1/agents/wakes））：
+// （WireExecutor+BindAgents）时，留痕推进为一条唤醒投影（wake.go；查询面 /v1/agents/wakes）
+// → 第八段 v0.24 挂起-恢复首段：审批信号族 run 域迁移——审批信号按可选能力接口 ResumeSink
+// 转发给 runs sink（不是新对账触发，不另起 run；run.go ResumeSignal 三层迁移判定）：
 // 订阅总线事件流，收到即落**进程内可查状态**（收到留痕：事件 id/dedupKey/type/at/receivedAt
 // + 命中行投影 route/for/owner/cc + 执行绑定投影 executor/target/wired）。
 // 订阅集合由 scheme.dispatch 表推导（on: 值表序去重、通配 * 坍缩全类型一条）+ for 谓词口径
@@ -276,6 +278,17 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		}
 		if d.CCExec.Executor == ExecAgent {
 			h.wakes.Wake(rec, d.CCExec, OriginCC)
+		}
+	}
+	// 挂起-恢复首段（v0.24）：审批信号族（ApprovalNeeded/ApprovalGranted/ApprovalRejected，
+	// event.md 规则 11/workflows 规则 13）——run 域迁移事件，**不是新对账触发**（不另起
+	// run）：hub 按可选能力接口 ResumeSink 转发给 runs sink（类型断言失败=未声明能力不转发，
+	// 能力增量不破既有 sink 契约），involved=Workflow 引用寻径与三层迁移判定在 sink 侧
+	//（run.go ResumeSignal）。与 dispatch 派发分立（审批信号族 dispatch 行=dead-letter 标注
+	// 「派发面无目标」），同一订阅主干零旁路（同留痕/同去重/同归档）；锁内转发与留痕/run 同序。
+	if h.runs != nil {
+		if rs, ok := h.runs.(ResumeSink); ok && isApprovalSignalType(rec.Type) {
+			rs.ResumeSignal(rec)
 		}
 	}
 }

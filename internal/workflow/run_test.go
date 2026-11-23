@@ -202,3 +202,115 @@ func TestAdvancePhase(t *testing.T) {
 		t.Fatalf("空序列不应前进")
 	}
 }
+
+// TestApprovalSignalLifecycle 挂起-恢复首段全周期（v0.24，workflows 规则 13）：
+// 受理即启动（v0.23 口径不变）→ 审批提升落闸锚挂起 → 批准沿声明序列续行（恢复）
+// → 再挂起 → 驳回终态。全程**不另起新 run**（审批信号是相位机迁移事件，非对账触发）。
+func TestApprovalSignalLifecycle(t *testing.T) {
+	runs := NewRunLog(nil)
+	runs.StartRun(TriggerRecord{
+		Seq: 1, EventID: "ev1", Type: "DocApplied", DedupKey: "apply:x:1",
+		ReceivedAt: time.Now(), Route: "workflows/dev-delivery", Owner: "global",
+	}, ExecutorBinding{Executor: ExecWorkflow, Target: "dev-delivery"})
+	sig := func(typ string) {
+		runs.ResumeSignal(TriggerRecord{Seq: 100, Type: typ, Involved: "Workflow/builtin/dev-delivery", ReceivedAt: time.Now()})
+	}
+	want := func(phase, status string, when string) {
+		t.Helper()
+		r := runs.State().Runs[0]
+		if r.Phase != phase || r.Status != status {
+			t.Fatalf("%s 后应 {phase=%s, status=%s}: {phase=%s, status=%s}", when, phase, status, r.Phase, r.Status)
+		}
+	}
+	want(string(Analyzing), RunRunning, "受理") // v0.23 基线：受理即启动
+	sig(SignalSuspend)
+	want(string(AwaitingApproval), RunSuspended, "审批提升") // 闸锚挂起
+	sig(SignalResume)
+	want(string(Planning), RunRunning, "批准恢复") // dev-delivery 闸锚序位 2 → 续行 Planning
+	sig(SignalSuspend)
+	want(string(AwaitingApproval), RunSuspended, "再挂起")
+	sig(SignalReject)
+	want(string(Failed), RunFailed, "驳回终态") // 终点锚
+	// 全程不另起新 run：run 环条数不变（审批信号是迁移事件非对账触发）。
+	if n := len(runs.State().Runs); n != 1 {
+		t.Fatalf("审批信号不应另起新 run，环内应恒 1 条: %d", n)
+	}
+}
+
+// TestApprovalSignalGuards 挂起-恢复零动作防御面（v0.24）：object 源无从迁移、非 Workflow
+// involved 不命中、无闸锚序列无挂起面、非挂起态无可恢复/驳回、未知锚零作用、非审批信号族
+// 零作用、重复提升幂等。
+func TestApprovalSignalGuards(t *testing.T) {
+	start := func(runs *RunLog, route, target string) {
+		runs.StartRun(TriggerRecord{
+			Seq: 1, EventID: "ev1", Type: "DocApplied", DedupKey: "apply:x:1",
+			ReceivedAt: time.Now(), Route: route, Owner: "global",
+		}, ExecutorBinding{Executor: ExecWorkflow, Target: target})
+	}
+	sig := func(runs *RunLog, typ, involved string) {
+		runs.ResumeSignal(TriggerRecord{Type: typ, Involved: involved, ReceivedAt: time.Now()})
+	}
+
+	// object 源：相位不投影无从迁移——审批提升零动作（status 恒 triggered）。
+	objLog := NewRunLog(nil)
+	start(objLog, "workflows/deploy-system-workflow", "deploy-system-workflow")
+	sig(objLog, SignalSuspend, "Workflow/builtin/deploy-system-workflow")
+	if r := objLog.State().Runs[0]; r.Status != RunTriggered || r.Phase != "" {
+		t.Fatalf("object 源 run 审批提升应零动作: %+v", r)
+	}
+
+	// 非 Workflow involved（既有 ApprovalNeeded 权限拒绝产源 involved=Role/Group）：不命中 run 域。
+	runningLog := NewRunLog(nil)
+	start(runningLog, "workflows/dev-delivery", "dev-delivery")
+	sig(runningLog, SignalSuspend, "Role/global/reviewer")
+	if r := runningLog.State().Runs[0]; r.Status != RunRunning {
+		t.Fatalf("非 Workflow involved 审批提升应零动作: %+v", r)
+	}
+
+	// 无闸锚序列（watch-only）：声明无闸锚=无挂起面（零动作）。
+	noGateLog := NewRunLog(nil)
+	start(noGateLog, "workflows/watch-only", "watch-only")
+	sig(noGateLog, SignalSuspend, "Workflow/builtin/watch-only")
+	if r := noGateLog.State().Runs[0]; r.Status != RunRunning || r.Phase != string(Analyzing) {
+		t.Fatalf("无闸锚序列审批提升应零动作: %+v", r)
+	}
+
+	// 非挂起态：批准/驳回零动作；未知锚/非审批信号族零作用；重复提升幂等。
+	gateLog := NewRunLog(nil)
+	start(gateLog, "workflows/dev-delivery", "dev-delivery")
+	sig(gateLog, SignalResume, "Workflow/builtin/dev-delivery")
+	sig(gateLog, SignalReject, "Workflow/builtin/dev-delivery")
+	if r := gateLog.State().Runs[0]; r.Status != RunRunning || r.Phase != string(Analyzing) {
+		t.Fatalf("非挂起态批准/驳回应零动作: %+v", r)
+	}
+	sig(gateLog, SignalSuspend, "Workflow/builtin/dev-delivery")
+	sig(gateLog, SignalSuspend, "Workflow/builtin/dev-delivery") // 幂等：已挂起再提升=零动作
+	if r := gateLog.State().Runs[0]; r.Status != RunSuspended || r.Phase != string(AwaitingApproval) {
+		t.Fatalf("重复审批提升应幂等零动作: %+v", r)
+	}
+	sig(gateLog, "DocApplied", "Workflow/builtin/dev-delivery") // 非审批信号族零作用
+	sig(gateLog, SignalResume, "Workflow/builtin/nowhere")      // 未知锚零作用
+	if r := gateLog.State().Runs[0]; r.Status != RunSuspended || r.Phase != string(AwaitingApproval) {
+		t.Fatalf("非审批信号族/未知锚应零作用: %+v", r)
+	}
+}
+
+// TestApprovalResumeFromGateSequence 恢复续行的序列同源锚（v0.24）：core-workflow 闸锚
+// 序位 3，批准续行落 Executing（闸锚的声明序列后继）；序列尾防御：闸锚居尾（构造序列）
+// 批准零动作。
+func TestApprovalResumeFromGateSequence(t *testing.T) {
+	runs := NewRunLog(nil)
+	runs.StartRun(TriggerRecord{Seq: 1, Type: "DocApplied", ReceivedAt: time.Now(),
+		Route: "owner-workflow"}, ExecutorBinding{Executor: ExecWorkflow, Target: "owner"})
+	sig := func(typ string) {
+		runs.ResumeSignal(TriggerRecord{Type: typ, Involved: "Workflow/builtin/core-workflow", ReceivedAt: time.Now()})
+	}
+	sig(SignalSuspend)
+	if r := runs.State().Runs[0]; r.Phase != string(AwaitingApproval) || r.Status != RunSuspended {
+		t.Fatalf("core-workflow 审批提升应落闸锚: %+v", runs.State().Runs[0])
+	}
+	sig(SignalResume)
+	if r := runs.State().Runs[0]; r.Phase != string(Executing) || r.Status != RunRunning {
+		t.Fatalf("core-workflow 批准应沿序列续行到 Executing: %+v", runs.State().Runs[0])
+	}
+}

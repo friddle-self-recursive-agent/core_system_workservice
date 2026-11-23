@@ -749,3 +749,90 @@ func (h *TriggerHub) runsSink() RunSink { return h.runs }
 
 // agentsSink 测试取面（hub.wakes 私有；测试经同包访问）。
 func (h *TriggerHub) agentsSink() WakeSink { return h.wakes }
+
+// noResumeSink 只实现 RunSink 的假 sink（能力断言反证面：未声明 ResumeSink 能力=审批
+// 信号不转发，能力增量不破既有 sink 契约）。
+type noResumeSink struct{ started int }
+
+func (s *noResumeSink) StartRun(rec TriggerRecord, b ExecutorBinding) { s.started++ }
+
+// TestHubApprovalSignalForwarding 挂起-恢复首段 hub 转发面（v0.24）：审批信号族事件经
+// 同一订阅主干到达 → 按可选能力接口转发 runs sink → run 域迁移判定生效；**不另起 run**
+// （审批信号是相位机迁移事件，dispatch 行=dead-letter 标注派发面无目标）；无能力 sink 不转发。
+func TestHubApprovalSignalForwarding(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	runs := NewRunLog(nil)
+	h := NewTriggerHub(nil)
+	h.BindRuns(runs)
+	h.WireExecutor(ExecWorkflow)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "workflows/dev-delivery"},
+		{On: "ApprovalNeeded", For: "any", Dispatch: "notification/*"}, // 既有行：主路送达不变
+		{On: "ApprovalGranted", For: "any", Dispatch: "dead-letter"},   // 审批信号族：dispatch 面无目标
+		{On: "ApprovalRejected", For: "any", Dispatch: "dead-letter"},
+	})()
+
+	applyEvent(t, b, "Agent/global/probe", 1)
+	waitState(t, h, 1)
+	r0 := runs.State().Runs[0]
+	if r0.Workflow != "dev-delivery" || r0.Status != RunRunning || r0.Phase != string(Analyzing) {
+		t.Fatalf("对账 run 受理基线（v0.23 口径）应 {dev-delivery,running,Analyzing}: %+v", r0)
+	}
+
+	// 审批提升：ApprovalNeeded involved=Workflow 引用 → 挂起（不另起 run；dispatch 面=notification 主路不变）。
+	if err := b.Publish(&eventbus.Event{Type: "ApprovalNeeded", Source: "permission",
+		Involved: "Workflow/builtin/dev-delivery", DedupKey: "permission:Workflow/builtin/dev-delivery", Level: "warn"}); err != nil {
+		t.Fatalf("发布 ApprovalNeeded: %v", err)
+	}
+	waitState(t, h, 2)
+	r0 = runs.State().Runs[0]
+	if r0.Phase != string(AwaitingApproval) || r0.Status != RunSuspended {
+		t.Fatalf("审批提升应落闸锚挂起: %+v", r0)
+	}
+	if n := len(runs.State().Runs); n != 1 {
+		t.Fatalf("审批信号不应另起 run: %d", n)
+	}
+	// 既有行为面不变：ApprovalNeeded（involved=Role/Group 产源形态）留痕照落、通知主路照走。
+	last := h.State().Records[len(h.State().Records)-1]
+	if last.Route != "notification/*" {
+		t.Fatalf("ApprovalNeeded 留痕 route 应沿既有 dispatch 行: %+v", last)
+	}
+
+	// 批准恢复：闸锚沿声明序列续行。
+	if err := b.Publish(&eventbus.Event{Type: "ApprovalGranted", Source: "human",
+		Involved: "Workflow/builtin/dev-delivery", DedupKey: "approval:Workflow/builtin/dev-delivery", Level: "info"}); err != nil {
+		t.Fatalf("发布 ApprovalGranted: %v", err)
+	}
+	waitState(t, h, 3)
+	r0 = runs.State().Runs[0]
+	if r0.Phase != string(Planning) || r0.Status != RunRunning {
+		t.Fatalf("批准应沿声明序列续行到 Planning: %+v", r0)
+	}
+	last = h.State().Records[len(h.State().Records)-1]
+	if last.Route != DeadLetterRoute {
+		t.Fatalf("ApprovalGranted dispatch 面应无目标（dead-letter 标注）: %+v", last)
+	}
+
+	// 无能力 sink：类型断言失败不转发（契约不破）。
+	fake := &noResumeSink{}
+	h2 := NewTriggerHub(nil)
+	h2.BindRuns(fake)
+	h2.WireExecutor(ExecWorkflow)
+	defer h2.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "ApprovalGranted", For: "any", Dispatch: "dead-letter"}, // 审批信号到达 h2：验证无能力 sink 不转发
+	})()
+	applyEvent(t, b, "Agent/global/probe2", 2)
+	waitState(t, h2, 1)
+	if fake.started != 1 {
+		t.Fatalf("无能力 sink 应只收 StartRun: %d", fake.started)
+	}
+	if err := b.Publish(&eventbus.Event{Type: "ApprovalGranted", Source: "human",
+		Involved: "Workflow/builtin/dev-delivery", DedupKey: "approval: Workflow/builtin/dev-delivery", Level: "info"}); err != nil {
+		t.Fatalf("发布 ApprovalGranted: %v", err)
+	}
+	waitState(t, h2, 2)
+	if fake.started != 1 {
+		t.Fatalf("无能力 sink 审批信号不应转发/不应起 run: %d", fake.started)
+	}
+}

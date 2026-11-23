@@ -8,14 +8,27 @@
 // 信号——引擎在受理路径上执行**单步迁移判定**：builtin run 从声明首相位沿声明相位序列单调
 // 前进一步（Idle→Analyzing），status 词形翻转 triggered→running（触发已受理→首步进行中）。
 // 迁移判定为纯函数 advancePhase（序列即声明：builtin 相位序列为线性声明，concepts/workflow.md
-// 「相位机=标准 FSM，序即声明」——显式 Transition 表/挂起-恢复/异步推进属推进器后续段，
+// 「相位机=标准 FSM，序即声明」——显式 Transition 表/异步推进属推进器更后续段，
 // 换实现不动本查询面词汇）；object 源 run 相位不投影=无从迁移，status 恒 triggered；
 // 已居序列尾（Failed 等终点）不再前进。受理与首步推进同拍完成（同步路径——真实异步派发
 // deferred，投影面只见推进后形态）。
 //
+// 挂起-恢复首段（v0.24——闸锚挂起判定+审批信号迁移，workflows 规则 13/event.md 规则 11）：
+// 闸锚=声明相位序列中的 AwaitingApproval 锚（人批闸；闸锚必须在声明序列内，无闸锚的序列
+// 无挂起面）。三层判定：(1) 闸锚挂起——run 迁移判定落点=闸锚 → status 翻 suspended（相位机
+// 等待外部审批信号，非终态非执行完毕）；(2) 审批提升——ApprovalNeeded（involved=Workflow
+// 对象引用）到达 → 该锚最新 run 相位落闸锚挂起（「AwaitingApproval 相位插入」的机读落点）；
+// (3) 批准恢复/驳回终态——ApprovalGranted → 闸锚沿声明序列续行（status 翻回 running——
+// 恢复=序列续行，原相位不回跳；细粒度断点续跑靠 SessionLog，载体未落地挂账）；
+// ApprovalRejected → 终态（相位=声明终点锚 Failed，status=failed）。审批信号按 involved
+// 的 workflow 锚寻径、作用于该锚最新 run，**是相位机的迁移事件不是新对账触发**——不另起
+// run（hub 侧经可选 ResumeSink 能力接口转发，非 dispatch 派发路径；同一条总线订阅主干零
+// 旁路）。零动作防御面：object 源无从迁移、终态不迁移、非挂起态无可恢复、锚无 run/无闸锚
+// 无可作用、既有 ApprovalNeeded 权限拒绝产源（involved=Role/Group）不命中 run 域。
+//
 // 诚实投影边界不变：run 出现 ≠ 对账执行完毕——status=running 只证明引擎已把 run 推进到
 // 声明序列第二相位（Analyzing 进行中），后续相位推进/刹车/冷却/minLevel 仍属引擎主体余量
-//（cored-bridge.md §2.3）。
+// （cored-bridge.md §2.3）。
 //
 // 锚解析（resolveRunAnchor，纯映射，与 execFor 家族收编同构）：
 //   - 以 workflows 为前缀的直接引用 → 按名解析：builtin 注册表命中=内置 spec（相位序列可投影）；
@@ -32,11 +45,53 @@ import (
 	"time"
 )
 
-// run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running）。
+// run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running；v0.24 挂起-恢复
+// 首段扩枚举 suspended/failed——闸锚挂起与终态迁移的 status 词形）。
 const (
 	RunTriggered = "triggered" // 触发已受理（object 源 run 的终点态——相位不投影无从迁移）
 	RunRunning   = "running"   // 引擎已把 run 从声明首相位沿序列推进一步（首步进行中；非执行完毕）
+	RunSuspended = "suspended" // 闸锚挂起（相位机等待外部审批信号——非终态非执行完毕）
+	RunFailed    = "failed"    // 驳回终态（相位=声明终点锚；迁移终点，非引擎失败语义）
 )
+
+// 审批信号族（v0.24 挂起-恢复首段，event.md 规则 11/workflows 规则 13）：类型注册表
+// 闸门前置（未注册类型进不了总线主干——发布面 404 语义），此处词汇=注册表已声明三型的
+// run 域作用语义。信号按 involved=Workflow 对象引用寻径（kind/scope/name 首段 kind=Workflow）。
+const (
+	SignalSuspend = "ApprovalNeeded"   // 审批提升：相位落闸锚挂起（既有产源 involved=Role/Group 不命中 run 域）
+	SignalResume  = "ApprovalGranted"  // 批准：闸锚沿声明序列续行（恢复）
+	SignalReject  = "ApprovalRejected" // 驳回：闸锚→声明终点锚（终态迁移）
+)
+
+// approvalSignal 事件类型 → run 域信号语义（非审批信号族=零作用）。
+func approvalSignal(typ string) (string, bool) {
+	switch typ {
+	case SignalSuspend:
+		return "suspend", true
+	case SignalResume:
+		return "resume", true
+	case SignalReject:
+		return "reject", true
+	}
+	return "", false
+}
+
+// isApprovalSignalType 事件类型是否审批信号族（hub 转发闸——廉价前置判定，信号语义
+// 细分与 involved 寻径在 ResumeSignal）。
+func isApprovalSignalType(typ string) bool {
+	_, ok := approvalSignal(typ)
+	return ok
+}
+
+// workflowRefOf involved 投影 → workflow 锚名（involved=Workflow 对象引用即锚：
+// kind/scope/name 三段首段 kind=Workflow 且 name 非空；其余=非锚，零作用）。
+func workflowRefOf(involved string) (string, bool) {
+	segs := strings.Split(involved, "/")
+	if len(segs) >= 3 && segs[0] == "Workflow" && segs[2] != "" {
+		return segs[2], true
+	}
+	return "", false
+}
 
 // spec 来源词汇（run 锚解析的声明来源投影）。
 const (
@@ -56,8 +111,8 @@ type RunRecord struct {
 	Workflow   string    // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
 	SpecSource string    // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
 	Phases     []string  // 声明相位序列（builtin 命中才投影；object 引用 spec 不在本进程=空）
-	Phase      string    // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空）
-	Status     string    // run 状态（builtin=RunRunning 引擎已推进首步；object=RunTriggered 受理态）
+	Phase      string    // 当前相位投影（v0.23 迁移判定首段：builtin run 受理即沿声明序列前进一步=第二相位；object 源恒空；v0.24 审批提升落闸锚/批准续行/驳回落终点锚）
+	Status     string    // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；object 源恒 triggered）
 	TriggerSeq int64     // 来源触发留痕 seq（可回指 GET /v1/triggers records）
 	EventID    string    // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
 	Type       string    // 事件类型
@@ -81,6 +136,15 @@ type RunState struct {
 // 订阅路径上同步调用）且**不得回调 hub**（进程内投影面；真实异步派发落地时由实现自行解耦）。
 type RunSink interface {
 	StartRun(rec TriggerRecord, b ExecutorBinding)
+}
+
+// ResumeSink 审批信号面（挂起-恢复首段 v0.24）——RunSink 的**可选能力接口**：实现侧
+// 声明自己承接审批信号的 run 域迁移判定（workflows 规则 13），hub 按能力断言转发（类型
+// 断言失败=不转发，未声明能力的 sink 不受审批信号作用——解耦：能力增量不破既有 sink 契约）。
+// 转发时机=hub.record 锁内（与留痕/run 同序）；转发前提=事件类型∈审批信号族（类型注册
+// 闸门在总线/发布面前置——未注册类型进不了主干），involved 寻径由实现侧判定。
+type ResumeSink interface {
+	ResumeSignal(rec TriggerRecord)
 }
 
 // RunOptions run 投影环可调项（零值可用）。
@@ -132,6 +196,12 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		if next, ok := advancePhase(phases, phase); ok {
 			phase, status = next, RunRunning
 		}
+		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
+		// workflows 规则 13 第一层判定；builtin 序列受理首步不落闸锚=防御性通用规则，
+		// 单测以闸锚邻位序列覆盖）。
+		if status == RunRunning && Phase(phase) == AwaitingApproval {
+			status = RunSuspended
+		}
 	}
 	if phases == nil {
 		phases = []string{} // object 源不投影相位：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
@@ -142,6 +212,69 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, StartedAt: rec.ReceivedAt,
 	})
+}
+
+// ResumeSignal 审批信号的 run 域迁移判定（挂起-恢复首段 v0.24，workflows 规则 13）：
+// 审批信号族事件按 involved=Workflow 对象引用寻径，作用于该锚**最新 run**（环内该锚
+// 最大 Run 序号=现势 run）。判定三层：审批提升=相位落闸锚挂起（声明无闸锚=零动作）；
+// 批准=闸锚沿声明序列续行（恢复，status 翻回 running）；驳回=终态（相位=声明终点锚）。
+// 零动作防御面：非审批信号族/involved 非 Workflow 引用/object 源（相位不投影无从迁移）/终态/
+// 非挂起态无可恢复/锚无 run——一律原样保留（事件仍是留痕，迁移判定不命中不冒充动作）。
+// 幂等同拍：审批提升对已挂起 run 重复到达=零动作（已是闸锚挂起态）。
+func (r *RunLog) ResumeSignal(rec TriggerRecord) {
+	action, ok := approvalSignal(rec.Type)
+	if !ok {
+		return
+	}
+	name, ok := workflowRefOf(rec.Involved)
+	if !ok {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.ring) - 1; i >= 0; i-- {
+		run := &r.ring[i]
+		if run.Workflow != name || len(run.Phases) == 0 {
+			continue // 锚不符 / object 源相位不投影无从迁移
+		}
+		switch action {
+		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作）
+			if run.Status == RunFailed || run.Status == RunSuspended ||
+				!containsPhase(run.Phases, string(AwaitingApproval)) {
+				return
+			}
+			run.Phase, run.Status = string(AwaitingApproval), RunSuspended
+		case "resume": // 批准：闸锚沿声明序列续行（非闸锚挂起态=零动作；序列尾=零动作防御）
+			if run.Status != RunSuspended || Phase(run.Phase) != AwaitingApproval {
+				return
+			}
+			next, ok := advancePhase(run.Phases, run.Phase)
+			if !ok {
+				return
+			}
+			run.Phase = next
+			run.Status = RunRunning // 闸锚续行落点非闸锚（序列无连续闸锚防御：若落闸锚再挂起）
+			if Phase(next) == AwaitingApproval {
+				run.Status = RunSuspended
+			}
+		case "reject": // 驳回：闸锚→声明终点锚终态（非挂起态/声明无终点锚=零动作）
+			if run.Status != RunSuspended || !containsPhase(run.Phases, string(Failed)) {
+				return
+			}
+			run.Phase, run.Status = string(Failed), RunFailed
+		}
+		return // 只作用现势 run（最新命中即返回）
+	}
+}
+
+// containsPhase 序列内判定（纯函数）。
+func containsPhase(phases []string, p string) bool {
+	for _, x := range phases {
+		if x == p {
+			return true
+		}
+	}
+	return false
 }
 
 // State 查询快照（拷贝返回，调用方可安全持有；runs 旧→新）。
@@ -155,8 +288,9 @@ func (r *RunLog) State() RunState {
 
 // advancePhase 相位迁移判定首段（v0.23 纯函数）：沿声明相位序列从当前相位单调前进一步。
 // 迁移规则=序列前进（builtin 相位序列为线性声明，concepts/workflow.md「相位机=标准 FSM，
-// 序即声明」——触发受理即启动信号；显式 Transition 表/挂起-恢复属推进器后续段，落此扩展）。
-// 已居序列尾（终点相位）、当前相位不在序列内、序列为空 → 不前进（ok=false，受理态保留）。
+// 序即声明」——触发受理即启动信号；显式 Transition 表/异步推进属推进器更后续段，落此扩展；
+// 挂起-恢复首段 v0.24 已落：闸锚挂起判定在受理与审批信号两路径上共用本判定）。已居序列尾
+// （终点相位）、当前相位不在序列内、序列为空 → 不前进（ok=false，受理态保留）。
 func advancePhase(phases []string, cur string) (string, bool) {
 	for i, p := range phases {
 		if p == cur && i+1 < len(phases) {
@@ -193,5 +327,8 @@ func phaseNames(ps []Phase) []string {
 	return out
 }
 
-// 编译期断言：RunLog 满足 RunSink。
-var _ RunSink = (*RunLog)(nil)
+// 编译期断言：RunLog 满足 RunSink 与 ResumeSink（审批信号能力，v0.24）。
+var (
+	_ RunSink    = (*RunLog)(nil)
+	_ ResumeSink = (*RunLog)(nil)
+)
