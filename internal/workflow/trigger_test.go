@@ -257,7 +257,7 @@ func TestAttachDispatchTableSet(t *testing.T) {
 	defer h.AttachDispatch(b, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "ExternalChanged", For: "owner:*", Dispatch: "owner-workflow"},
-		{On: "DocApplied", For: "any", Dispatch: "deadletter"}, // 重复类型去重
+		{On: "DocApplied", For: "any", Dispatch: "dead-letter"}, // 重复类型去重
 	})()
 
 	if got := h.State().Types; len(got) != 2 || got[0] != "DocApplied" || got[1] != "ExternalChanged" {
@@ -284,7 +284,7 @@ func TestAttachDispatchWildcardCollapse(t *testing.T) {
 	defer h.AttachDispatch(b, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
 	if got := h.State().Types; len(got) != 1 || got[0] != "*" {
@@ -308,7 +308,7 @@ func TestAttachDispatchRowResolution(t *testing.T) {
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent"}, // owner 解析=global≠agent → 顺延
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
 	pub(t, b, "DocApplied", "Agent/global/probe")                               // 行1
@@ -318,9 +318,9 @@ func TestAttachDispatchRowResolution(t *testing.T) {
 	st := waitReceived(t, h, 4)
 	want := []struct{ typ, route, forSel string }{
 		{"DocApplied", "owner-workflow", "owner:*"},
-		{"HeartbeatLost", "deadletter", "any"},
+		{"HeartbeatLost", "dead-letter", "any"},
 		{"SessionClosed", "workflows/builtin-root", "scope:builtin/*"},
-		{"MetricThreshold", "deadletter", "any"},
+		{"MetricThreshold", "dead-letter", "any"},
 	}
 	for i, w := range want {
 		r := st.Records[i]
@@ -474,7 +474,7 @@ func TestAttachDispatchOwnerLiteralRowHits(t *testing.T) {
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
 		{On: "SessionClosed", For: "owner:instance", Dispatch: "instance-docs"},
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
 	pub(t, b, "HeartbeatLost", "ServiceInstance/systems/agent/ci")     // owner=agent → 行1 命中
@@ -483,7 +483,7 @@ func TestAttachDispatchOwnerLiteralRowHits(t *testing.T) {
 	st := waitReceived(t, h, 3)
 	want := []struct{ typ, route, cc, forSel, owner string }{
 		{"HeartbeatLost", "parent-agent", "notification/*", "owner:agent", "agent"},
-		{"HeartbeatLost", "deadletter", "", "any", "global"},
+		{"HeartbeatLost", "dead-letter", "", "any", "global"},
 		{"SessionClosed", "instance-docs", "", "owner:instance", "instance"},
 	}
 	for i, w := range want {
@@ -505,7 +505,7 @@ func TestResolveDecisionFace(t *testing.T) {
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})
 	defer stop()
 
@@ -515,7 +515,7 @@ func TestResolveDecisionFace(t *testing.T) {
 		t.Fatalf("owner 命中决策不符: %+v", d)
 	}
 	d = h.Resolve("MetricThreshold", "ServiceInstance/systems/dev/ci") // 无具体行 → 通配兜底行
-	if !d.Matched || d.Route != "deadletter" || d.Row != 3 || d.Owner != "dev" {
+	if !d.Matched || d.Route != "dead-letter" || d.Row != 3 || d.Owner != "dev" {
 		t.Fatalf("兜底行决策不符: %+v", d)
 	}
 	d = h.Resolve("UnknownType", "Doc/builtin/core") // 未枚举类型 → scope:builtin/* 通配行
@@ -540,5 +540,121 @@ func TestResolveDecisionFace(t *testing.T) {
 	h3 := NewTriggerHub(nil)
 	if d := h3.Resolve("DocApplied", "Agent/global/a"); d.Matched || d.Route != "" || d.Row != NoRow || d.Owner != "global" {
 		t.Fatalf("未挂表应无决策: %+v", d)
+	}
+}
+
+// ═══════════ 引擎主体第二段（v0.14：派发执行投影——route/cc 目标→执行面绑定可查询） ═══════════
+
+// TestExecForMapping 执行面映射表单测（家族收编 + 未知目标 unbound 缺口可见 + 退化输入不收编）。
+func TestExecForMapping(t *testing.T) {
+	cases := []struct {
+		target string
+		exec   string
+		tgt    string
+	}{
+		{"", "", ""},                                      // 空 cc=零值绑定
+		{"dead-letter", ExecNone, ""},                     // 死信=none（观测兜底出口）
+		{"notification/*", ExecNotification, "*"},         // 通配通道
+		{"notification/email", ExecNotification, "email"}, // 具名通道
+		{"workflows/builtin-root", ExecWorkflow, "builtin-root"},
+		{"workflows/deploy-system-workflow", ExecWorkflow, "deploy-system-workflow"},
+		{"parent-agent", ExecAgent, "parent"},
+		{"root-agent", ExecAgent, "root"},
+		{"owner-agent", ExecAgent, "owner"},                         // 新 agent 前缀同族自动收编（扩展性）
+		{"owner-workflow", ExecWorkflow, "owner"},                   // owner 对账 workflow
+		{"owner-instance-workflow", ExecWorkflow, "owner-instance"}, // scheme.md 同族词汇
+		{"observation-bus", ExecUnbound, "observation-bus"},         // 未设计执行面的目标族=缺口可见
+		{"instance-docs", ExecUnbound, "instance-docs"},
+		{"mystery-face", ExecUnbound, "mystery-face"},   // 未知目标原样投影（不静默吞并）
+		{"notification/", ExecUnbound, "notification/"}, // 空通道名不收编
+		{"workflows/", ExecUnbound, "workflows/"},       // 空 workflow 名不收编
+		{"-agent", ExecUnbound, "-agent"},               // 空前缀不收编
+		{"-workflow", ExecUnbound, "-workflow"},
+	}
+	for _, c := range cases {
+		b := execFor(c.target)
+		if b.Executor != c.exec || b.Target != c.tgt {
+			t.Errorf("execFor(%q)={%s,%s} want {%s,%s}", c.target, b.Executor, b.Target, c.exec, c.tgt)
+		}
+		if b.Wired {
+			t.Errorf("execFor 纯映射不得自带接线态（wired 由 hub 覆写）: %q", c.target)
+		}
+	}
+}
+
+// TestWireExecutorFlip 接线态投影：缺省恒 false（诚实投影——执行计划可查 ≠ 执行面已在位）；
+// WireExecutor 登记后仅该执行面翻 true（机械判别器：真实拉起落地轮的翻转锚点）；留痕同投影。
+func TestWireExecutorFlip(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "Escalate", For: "any", Dispatch: "root-agent", CC: "notification/*"},
+	})()
+
+	d := h.Resolve("Escalate", "Agent/global/a")
+	if d.Exec.Executor != ExecAgent || d.Exec.Target != "root" || d.Exec.Wired ||
+		d.CCExec.Executor != ExecNotification || d.CCExec.Target != "*" || d.CCExec.Wired {
+		t.Fatalf("未登记执行面应投影 wired=false: %+v", d)
+	}
+	h.WireExecutor(ExecAgent)
+	h.WireExecutor(ExecAgent, ExecAgent) // 幂等重复登记
+	d = h.Resolve("Escalate", "Agent/global/a")
+	if !d.Exec.Wired || d.CCExec.Wired {
+		t.Fatalf("登记 agent 后应仅 agent 面翻 wired=true: %+v", d)
+	}
+	// 留痕同投影：收到事件携当时的执行计划快照。
+	pub(t, b, "Escalate", "Agent/global/a")
+	st := waitReceived(t, h, 1)
+	r := st.Records[0]
+	if r.Route != "root-agent" || r.Exec.Executor != ExecAgent || r.Exec.Target != "root" || !r.Exec.Wired ||
+		r.CCExec.Executor != ExecNotification || r.CCExec.Target != "*" {
+		t.Fatalf("留痕应携执行绑定投影: %+v", r)
+	}
+	// 合成死信（全表未命中）= none 绑定；登记 none 前 wired=false。
+	h2 := NewTriggerHub(nil)
+	defer h2.AttachDispatch(b, []scheme.DispatchRule{{On: "X", For: "bad-pred", Dispatch: "nowhere"}})()
+	if d := h2.Resolve("X", "Agent/global/a"); d.Exec.Executor != ExecNone || d.CCExec.Executor != "" {
+		t.Fatalf("合成死信应 none 绑定+零值 cc 绑定: %+v", d)
+	}
+	h2.WireExecutor(ExecNone)
+	if d := h2.Resolve("X", "Agent/global/a"); !d.Exec.Wired {
+		t.Fatalf("登记 none 后死信投影应 wired=true（观测兜底面在位口径）: %+v", d)
+	}
+}
+
+// TestResolveDecisionExecProjection 决策面执行投影（权威表同构 fixture）：
+// owner-workflow→workflow/owner、notification/*→通道、agent 前缀→agent、
+// dead-letter 兜底→none、未挂表=零值绑定（无决策即无执行计划）。
+func TestResolveDecisionExecProjection(t *testing.T) {
+	b := eventbus.NewBus(nil)
+	h := NewTriggerHub(nil)
+	defer h.AttachDispatch(b, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "ApprovalNeeded", For: "any", Dispatch: "notification/*"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
+	})()
+
+	d := h.Resolve("HeartbeatLost", "ServiceInstance/systems/agent/ci")
+	if d.Exec.Executor != ExecAgent || d.Exec.Target != "parent" || d.CCExec.Executor != ExecNotification || d.CCExec.Target != "*" {
+		t.Fatalf("parent-agent+cc 投影不符: %+v", d)
+	}
+	d = h.Resolve("DocApplied", "Agent/global/x")
+	if d.Exec.Executor != ExecWorkflow || d.Exec.Target != "owner" || d.CCExec.Executor != "" {
+		t.Fatalf("owner-workflow 投影不符（无 cc=零值绑定）: %+v", d)
+	}
+	d = h.Resolve("ApprovalNeeded", "Role/global/r")
+	if d.Exec.Executor != ExecNotification || d.Exec.Target != "*" {
+		t.Fatalf("notification 通道投影不符: %+v", d)
+	}
+	d = h.Resolve("UnknownType", "Agent/global/a")
+	if d.Route != "dead-letter" || d.Exec.Executor != ExecNone {
+		t.Fatalf("显式 dead-letter 行应 none 绑定: %+v", d)
+	}
+	h3 := NewTriggerHub(nil)
+	defer h3.AttachDispatch(b, nil)()
+	if d := h3.Resolve("DocApplied", "Agent/global/a"); d.Exec.Executor != "" || d.CCExec.Executor != "" {
+		t.Fatalf("未挂表应无执行计划（零值绑定）: %+v", d)
 	}
 }

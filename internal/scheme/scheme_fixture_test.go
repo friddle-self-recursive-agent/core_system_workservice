@@ -284,7 +284,7 @@ spec:
     - {on: TemplateFound,    for: "any",            dispatch: workflows/deploy-system-workflow}
     - {on: SessionClosed,    for: "owner:instance", dispatch: instance-docs}
     - {on: "*",              for: "scope:builtin/*", dispatch: workflows/builtin-root}
-    - {on: "*",              for: "any",            dispatch: deadletter}    # 死信必须可见
+    - {on: "*",              for: "any",            dispatch: dead-letter}    # 死信必须可见
 
   # ============================================================
   # 五、运行时

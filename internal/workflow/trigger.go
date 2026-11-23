@@ -1,14 +1,18 @@
 // trigger.go —— 触发骨架（dispatch 接线：第一段 v0.11 订阅留痕 → 第二段 v0.12 订阅面动态化
-// → 第三段 v0.13 引擎主体第一段：owner 解析激活 + 派发决策可查询）：
+// → 第三段 v0.13 引擎主体第一段：owner 解析激活 + 派发决策可查询
+// → 第四段 v0.14 引擎主体第二段：派发执行投影——route/cc 目标 → 执行面绑定可查询）：
 // 订阅总线事件流，收到即落**进程内可查状态**（收到留痕：事件 id/dedupKey/type/at/receivedAt
-// + 命中行投影 route/for/owner/cc）。订阅集合由 scheme.dispatch 表推导（on: 值表序去重、
-// 通配 * 坍缩全类型一条）+ for 谓词口径（any/owner:*/scope:<root>/*/**owner:<字面量>**）：
-// owner 解析模型=involved scope 根 `systems/<s>`→`<s>`、global/builtin 同名（event.md 规则 6）。
+// + 命中行投影 route/for/owner/cc + 执行绑定投影 executor/target/wired）。
+// 订阅集合由 scheme.dispatch 表推导（on: 值表序去重、通配 * 坍缩全类型一条）+ for 谓词口径
+// （any/owner:*/scope:<root>/*/**owner:<字面量>**）：owner 解析模型=involved scope 根
+// `systems/<s>`→`<s>`、global/builtin 同名（event.md 规则 6）。
 // 死信兜底路由可见（全表未命中 → 留痕 route=dead-letter，event.md rule 4）。
 // **派发决策面可查询**（Resolve / GET /v1/triggers/resolve）：对当前表快照回答「这一事件
-// 若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），命中行投影 route/cc/for/owner/row。
-// 触发引擎主体剩余面（相位态机→派发执行→刹车→冷却）declared-deferred（cored-bridge.md §2.3）——
-// 决策面只回答「路由到哪」，不执行派发。
+// 若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），命中行投影 route/cc/for/owner/row
+// + execution 投影（route/cc 目标的执行面绑定：映射表 execFor 家族收编，未知目标=unbound
+// 缺口可见不静默吞并；wired=执行面接线态，装配层登记前恒 false——诚实投影）。
+// 触发引擎主体剩余面（真实拉起=派发执行落地、相位态机→刹车→冷却→minLevel）declared-deferred
+// （cored-bridge.md §2.3）——决策面回答「路由到哪 + 谁来执行」，不执行派发。
 package workflow
 
 import (
@@ -32,16 +36,37 @@ const DeadLetterRoute = "dead-letter"
 // 未挂表=无决策；row≥0 恒可回指 scheme.yaml 具体行）。
 const NoRow = -1
 
+// 执行面种类（ExecutorBinding.Executor 词汇；映射表 execFor 家族收编）。
+const (
+	ExecWorkflow     = "workflow"     // workflow 触发面（owner 对账 workflow / 直接 workflows/<n> 引用）
+	ExecNotification = "notification" // notification 送达面（通道投影，*=全部已绑通道）
+	ExecAgent        = "agent"        // agent 唤醒面（parent、root 等前缀）
+	ExecNone         = "none"         // 无执行（死信=观测兜底出口，event.md rule 4）
+	ExecUnbound      = "unbound"      // 未知目标族（映射表未收编——缺口可见，不静默吞并）
+)
+
+// ExecutorBinding route/cc 目标的执行面绑定投影（引擎主体第二段 v0.14——纯映射不执行）。
+// 决策面回答「路由到哪」之后的下一问「谁来执行」：绑定=执行面种类+锚点+接线态，
+// 真实拉起（workflow 触发/notification 送达/agent 唤醒）仍属引擎主体余量。
+type ExecutorBinding struct {
+	Executor string `json:"executor"` // 执行面种类（Exec* 之一；空串=无目标，如空 cc）
+	Target   string `json:"target"`   // 执行面锚点投影（通道名/workflow 名/agent 前缀；none/unbound 按映射行语义）
+	Wired    bool   `json:"wired"`    // 执行面是否已接线（装配层登记前恒 false；落地轮翻转=机械判别器）
+}
+
 // DispatchDecision 一次派发决策（表序命中行解析结果）。Resolve 查询面与 record 留痕
 // 共用同一解析口径（resolveDecisionLocked）——决策=数据，消费面（留痕/查询/未来派发执行）
 // 各取投影，这是引擎主体可分步落地的解耦点。
 type DispatchDecision struct {
-	Matched bool   // 表内命中（含显式 deadletter 兜底行）；false=全表未命中（合成死信）或未挂表
+	Matched bool   // 表内命中（含显式 dead-letter 兜底行）；false=全表未命中（合成死信）或未挂表
 	Route   string // 命中行 dispatch 投影（全表未命中=DeadLetterRoute 合成值；未挂表=空）
 	CC      string // 命中行 cc 投影（旁路目标；执行随派发 deferred）
 	For     string // 命中行 for 谓词原文
 	Owner   string // owner 解析值（谓词匹配依据；与具体行无关恒可解析）
 	Row     int    // 命中表行号（0 起，可回指 scheme.yaml）；未命中=NoRow
+
+	Exec   ExecutorBinding // route 目标执行绑定投影（execFor 映射；合成死信=none）
+	CCExec ExecutorBinding // cc 目标执行绑定投影（空 cc=零值绑定 executor=""）
 }
 
 // TriggerRecord 一条收到留痕（订阅方视角；事件本体语义见 concepts/event.md——
@@ -62,6 +87,9 @@ type TriggerRecord struct {
 	For   string // 命中行的 for 谓词原文（与 Route 同一行；便于机械对账表行↔留痕）
 	Owner string // owner 解析值（命中谓词的匹配依据：involved scope 根 systems/<s>→<s>，
 	//         global/builtin 同名=scope 根本身；决策依据可查——v0.13）
+
+	Exec   ExecutorBinding // route 目标执行绑定投影（收到时刻的执行计划快照——v0.14）
+	CCExec ExecutorBinding // cc 目标执行绑定投影（空 cc=零值绑定）
 }
 
 // TriggerOptions 触发骨架可调项（零值可用）。
@@ -92,6 +120,7 @@ type TriggerHub struct {
 	types    []string
 	cancels  []func()
 	rules    []scheme.DispatchRule // dispatch 表快照（AttachDispatch 挂接；裸 Attach 为空=留痕不标 route）
+	wired    map[string]bool       // 执行面接线态（WireExecutor 登记；缺省全 false=真实拉起 deferred）
 }
 
 // NewTriggerHub 构建触发骨架。
@@ -181,7 +210,7 @@ func (h *TriggerHub) drain(ch <-chan eventbus.Event) {
 }
 
 // record 收到留痕（环满丢最旧，dropped 计数可见——观测面非账本）。
-// 挂有 dispatch 表时解析命中行：route/cc/for/owner 投影留痕（决策投影，不执行派发）；
+// 挂有 dispatch 表时解析命中行：route/cc/for/owner + 执行绑定投影留痕（决策投影，不执行派发）；
 // 全表未命中 → route=dead-letter（死信兜底可见）；未挂表（裸 Attach）→ 路由字段留空。
 func (h *TriggerHub) record(e eventbus.Event) {
 	h.mu.Lock()
@@ -198,12 +227,37 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		Source: e.Source, Involved: e.Involved, Level: e.Level,
 		At: e.At, ReceivedAt: time.Now(),
 		Route: d.Route, CC: d.CC, For: d.For, Owner: d.Owner,
+		Exec: d.Exec, CCExec: d.CCExec,
 	})
 }
 
-// Resolve 派发决策查询（引擎主体第一段 v0.13：命中行→owner 解析→派发目标投影）。
+// WireExecutor 登记执行面接线态（引擎主体第二段 v0.14）。真实拉起落地轮由装配层登记
+// （如 workflow 触发面接线 → WireExecutor(ExecWorkflow)），登记前投影 wired 恒 false——
+// 诚实投影：执行计划可查 ≠ 执行面已在位。幂等；登记即生效（下次决策投影照读）。
+func (h *TriggerHub) WireExecutor(kinds ...string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.wired == nil {
+		h.wired = map[string]bool{}
+	}
+	for _, k := range kinds {
+		h.wired[k] = true
+	}
+}
+
+// execBindingLocked 目标 → 执行面绑定（纯映射 execFor + hub 接线态覆写）。
+func (h *TriggerHub) execBindingLocked(target string) ExecutorBinding {
+	b := execFor(target)
+	if b.Executor != "" && h.wired[b.Executor] {
+		b.Wired = true
+	}
+	return b
+}
+
+// Resolve 派发决策查询（引擎主体第一段 v0.13 命中行解析 → 第二段 v0.14 增执行绑定投影）。
 // 纯决策面：不注入事件、不落留痕、不执行派发——对当前表快照回答「这一事件若到达会
-// 路由到哪」。与留痕同一解析口径（resolveDecisionLocked），HTTP 投影见 /v1/triggers/resolve。
+// 路由到哪、由谁执行」。与留痕同一解析口径（resolveDecisionLocked），HTTP 投影见
+// /v1/triggers/resolve（execution 区）。
 func (h *TriggerHub) Resolve(typ, involved string) DispatchDecision {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -211,7 +265,8 @@ func (h *TriggerHub) Resolve(typ, involved string) DispatchDecision {
 }
 
 // resolveDecisionLocked 按 dispatch 表快照解析命中行（表序首行胜出；typeMatch ∧ forMatch）。
-// owner 解析恒先行（与行无关的决策依据）；owner:<字面量> 谓词随解析激活（v0.13）。
+// owner 解析恒先行（与行无关的决策依据）；owner:<字面量> 谓词随解析激活（v0.13）；
+// route/cc 目标随行投影执行绑定（v0.14）。
 func (h *TriggerHub) resolveDecisionLocked(typ, involved string) DispatchDecision {
 	owner := ownerOf(involved)
 	if len(h.rules) == 0 {
@@ -219,10 +274,44 @@ func (h *TriggerHub) resolveDecisionLocked(typ, involved string) DispatchDecisio
 	}
 	for i, r := range h.rules {
 		if typeMatch(r.On, typ) && forMatch(r.For, involved) {
-			return DispatchDecision{Matched: true, Route: r.Dispatch, CC: r.CC, For: r.For, Owner: owner, Row: i}
+			return DispatchDecision{Matched: true, Route: r.Dispatch, CC: r.CC, For: r.For, Owner: owner, Row: i,
+				Exec: h.execBindingLocked(r.Dispatch), CCExec: h.execBindingLocked(r.CC)}
 		}
 	}
-	return DispatchDecision{Matched: false, Route: DeadLetterRoute, Owner: owner, Row: NoRow}
+	return DispatchDecision{Matched: false, Route: DeadLetterRoute, Owner: owner, Row: NoRow,
+		Exec: h.execBindingLocked(DeadLetterRoute)} // 合成死信=none 绑定；无 cc=零值绑定
+}
+
+// execFor route/cc 目标 → 执行面绑定（映射表，引擎主体第二段 v0.14；纯函数——接线态由 hub 覆写）。
+// 词汇表按**家族**收编（通用性：新目标落已知家族即自动映射；扩展性：新家族在此登记一行；
+// 解耦：映射只投影不执行，真实拉起=引擎主体余量）：
+//
+//	dead-letter             → none         死信无执行，观测兜底可见（event.md rule 4）
+//	notification/<channel>  → notification 通道投影（*=全部已绑通道）
+//	workflows/<name>        → workflow     直接 workflow 引用（deploy-system-workflow 等）
+//	<p>-agent（p≠空）        → agent        agent 唤醒面（parent、root 等）
+//	<p>-workflow（p≠空）     → workflow     owner 对账 workflow（p=owner 锚语义，如 owner-instance）
+//	其余（含 observation-bus/instance-docs 等未设计执行面的目标族）→ unbound 原样投影（缺口可见）
+func execFor(target string) ExecutorBinding {
+	switch {
+	case target == "":
+		return ExecutorBinding{} // 无目标（空 cc）=零值绑定
+	case target == DeadLetterRoute:
+		return ExecutorBinding{Executor: ExecNone}
+	}
+	if ch, ok := strings.CutPrefix(target, "notification/"); ok && ch != "" {
+		return ExecutorBinding{Executor: ExecNotification, Target: ch}
+	}
+	if name, ok := strings.CutPrefix(target, "workflows/"); ok && name != "" {
+		return ExecutorBinding{Executor: ExecWorkflow, Target: name}
+	}
+	if p, ok := strings.CutSuffix(target, "-agent"); ok && p != "" {
+		return ExecutorBinding{Executor: ExecAgent, Target: p}
+	}
+	if p, ok := strings.CutSuffix(target, "-workflow"); ok && p != "" {
+		return ExecutorBinding{Executor: ExecWorkflow, Target: p}
+	}
+	return ExecutorBinding{Executor: ExecUnbound, Target: target}
 }
 
 // typeMatch 行 on 与事件类型：通配恒命中，其余等值。

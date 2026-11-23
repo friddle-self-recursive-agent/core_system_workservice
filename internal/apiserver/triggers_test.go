@@ -140,7 +140,7 @@ func TestTriggersFaceTableDrivenWiring(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "*", For: "scope:builtin/*", Dispatch: "workflows/builtin-root"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 
 	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
@@ -201,7 +201,7 @@ func TestTriggersResolveFace(t *testing.T) {
 	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
 		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
 		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
-		{On: "*", For: "any", Dispatch: "deadletter"},
+		{On: "*", For: "any", Dispatch: "dead-letter"},
 	})()
 	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
 	defer ts.Close()
@@ -238,7 +238,7 @@ func TestTriggersResolveFace(t *testing.T) {
 	if c := get("/v1/triggers/resolve?type=HeartbeatLost&involved=Agent/global/a1"); c != 200 {
 		t.Fatalf("resolve 应 200，得 %d", c)
 	}
-	if !d.Matched || d.Route != "deadletter" || d.Row != 2 || d.Owner != "global" {
+	if !d.Matched || d.Route != "dead-letter" || d.Row != 2 || d.Owner != "global" {
 		t.Fatalf("owner 不命中应顺延兜底行: %+v", d)
 	}
 	if c := get("/v1/triggers/resolve?type=DocApplied"); c != 200 {
@@ -265,5 +265,135 @@ func TestTriggersResolveFace(t *testing.T) {
 	resp.Body.Close()
 	if st.Received != 0 || len(st.Records) != 0 {
 		t.Fatalf("决策面不得产生留痕：received=%d records=%d", st.Received, len(st.Records))
+	}
+}
+
+// binding 投影读取辅助：execution 区 {route:{executor,target,wired}, cc:{…}}。
+func binding(m map[string]any, k, field string) any {
+	b, _ := m["execution"].(map[string]any)[k].(map[string]any)
+	return b[field]
+}
+
+// TestTriggersExecutionProjection 派发执行投影面（cored-bridge.md §2.3 v0.14 引擎主体第二段）：
+// resolve 增 execution={route:{executor,target,wired}, cc:{…}}——owner-workflow→workflow/owner、
+// parent-agent+cc→agent/parent+notification/*、兜底行 dead-letter→none；装配层未登记执行面
+// → wired=false（诚实投影），WireExecutor 登记后端点翻转（真实拉起落地轮的机械判别器）；
+// 未知目标=unbound 缺口可见；留痕携执行计划快照。
+func TestTriggersExecutionProjection(t *testing.T) {
+	sch := testScheme(t)
+	bus := eventbus.NewBus(nil)
+	hub := workflow.NewTriggerHub(nil)
+	defer hub.AttachDispatch(bus, []scheme.DispatchRule{
+		{On: "DocApplied", For: "owner:*", Dispatch: "owner-workflow"},
+		{On: "HeartbeatLost", For: "owner:agent", Dispatch: "parent-agent", CC: "notification/*"},
+		{On: "Escalate", For: "any", Dispatch: "mystery-face"}, // 未知目标族=unbound 可见
+		{On: "*", For: "any", Dispatch: "dead-letter"},
+	})()
+	ts := httptest.NewServer(New(sch, nil, nil, nil, hub))
+	defer ts.Close()
+
+	get := func(url string) (int, map[string]any) {
+		t.Helper()
+		resp, err := http.Get(ts.URL + url)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		if resp.StatusCode == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode, m
+	}
+
+	// owner-workflow 行：workflow/owner 绑定，无 cc=零值绑定；装配层未登记 → wired=false。
+	c, m := get("/v1/triggers/resolve?type=DocApplied&involved=Agent/global/a")
+	if c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if binding(m, "route", "executor") != "workflow" || binding(m, "route", "target") != "owner" {
+		t.Fatalf("execution.route 应=workflow/owner: %v", m["execution"])
+	}
+	if binding(m, "route", "wired") != false {
+		t.Fatalf("装配层未登记执行面应 wired=false: %v", m["execution"])
+	}
+	if binding(m, "cc", "executor") != "" {
+		t.Fatalf("无 cc 应零值绑定: %v", m["execution"])
+	}
+
+	// parent-agent 行 + cc：agent/parent + notification/* 双绑定。
+	if c, m = get("/v1/triggers/resolve?type=HeartbeatLost&involved=ServiceInstance/systems/agent/ci"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if binding(m, "route", "executor") != "agent" || binding(m, "route", "target") != "parent" ||
+		binding(m, "cc", "executor") != "notification" || binding(m, "cc", "target") != "*" {
+		t.Fatalf("双绑定投影不符: %v", m["execution"])
+	}
+
+	// 未知目标族：unbound 原样投影（缺口可见，不静默吞并）。
+	if c, m = get("/v1/triggers/resolve?type=Escalate&involved=Agent/global/a"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if binding(m, "route", "executor") != "unbound" || binding(m, "route", "target") != "mystery-face" {
+		t.Fatalf("未知目标应 unbound 原样投影: %v", m["execution"])
+	}
+
+	// 兜底行 dead-letter → none 绑定。
+	if c, m = get("/v1/triggers/resolve?type=UnknownType&involved=Agent/global/a"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if binding(m, "route", "executor") != "none" {
+		t.Fatalf("dead-letter 行应 none 绑定: %v", m["execution"])
+	}
+
+	// 接线态翻转经端点可见（真实拉起落地轮的机械判别器）：登记 workflow 面后同查询 wired=true。
+	hub.WireExecutor(workflow.ExecWorkflow)
+	if c, m = get("/v1/triggers/resolve?type=DocApplied&involved=Agent/global/a"); c != 200 {
+		t.Fatalf("resolve 应 200，得 %d", c)
+	}
+	if binding(m, "route", "wired") != true {
+		t.Fatalf("WireExecutor 登记后端点应投影 wired=true: %v", m["execution"])
+	}
+
+	// 留痕携执行计划快照（收到时刻的绑定投影随 records 可查）。
+	e := eventbus.Event{
+		Type: "DocApplied", Source: "apply", Involved: "Agent/global/probe",
+		DedupKey: "apply:Agent/global/probe:1", Level: "info",
+	}
+	if err := bus.Publish(&e); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(time.Second)
+	var recs []map[string]any
+	for {
+		resp, err := http.Get(ts.URL + "/v1/triggers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var st struct {
+			Received int64            `json:"received"`
+			Records  []map[string]any `json:"records"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&st)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Received >= 1 {
+			recs = st.Records
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("留痕未在时限内可查")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	ex, _ := recs[0]["execution"].(map[string]any)
+	route, _ := ex["route"].(map[string]any)
+	if route["executor"] != "workflow" || route["target"] != "owner" || route["wired"] != true {
+		t.Fatalf("留痕应携执行计划快照 workflow/owner/wired=true: %v", recs[0]["execution"])
 	}
 }

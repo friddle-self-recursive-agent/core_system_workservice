@@ -45,7 +45,8 @@ type DraftStaging interface {
 
 // TriggerFace 触发骨架查询口面（workflow.TriggerHub 满足；接口化便于测试注入假面）。
 // dispatch 接线第一段（cored-bridge.md §2.3）：apply 落面→DocApplied 事件→订阅收到留痕；
-// v0.13 增 Resolve 派发决策查询（引擎主体第一段：命中行→owner 解析→派发目标投影）。
+// v0.13 增 Resolve 派发决策查询（引擎主体第一段：命中行→owner 解析→派发目标投影）；
+// v0.14 决策增执行绑定投影（引擎主体第二段：route/cc 目标→执行面 executor/target/wired）。
 type TriggerFace interface {
 	State() workflow.TriggerState
 	Resolve(typ, involved string) workflow.DispatchDecision
@@ -73,7 +74,7 @@ var (
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
 //	DELETE /v1/drafts/{kind}/{name}?scope=s 弃稿（写面开关门控）
 //	GET /v1/triggers                    触发骨架查询面（dispatch 接线：表驱动订阅+留痕；恒开，§2.3）
-//	GET /v1/triggers/resolve            派发决策查询面（v0.13：命中行→owner 解析→目标投影；恒开，§2.3）
+//	GET /v1/triggers/resolve            派发决策查询面（v0.13 决策投影+v0.14 执行绑定投影；恒开，§2.3）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
@@ -304,6 +305,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"seq": r.Seq, "eventId": r.EventID, "type": r.Type,
 				"dedupKey": r.DedupKey, "source": r.Source, "involved": r.Involved,
 				"level": r.Level, "route": r.Route, "cc": r.CC, "for": r.For, "owner": r.Owner,
+				"execution":  map[string]any{"route": r.Exec, "cc": r.CCExec},
 				"at":         r.At.UTC().Format(time.RFC3339Nano),
 				"receivedAt": r.ReceivedAt.UTC().Format(time.RFC3339Nano),
 			})
@@ -313,11 +315,13 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"types": st.Types, "records": records,
 		})
 	})
-	// 派发决策查询面（§2.3 v0.13 引擎主体第一段）：对当前 dispatch 表快照回答
-	// 「这一事件若到达会路由到哪」——纯决策（零事件注入、零留痕、零派发），
-	// 投影 {type, involved, matched, route, cc, for, owner, row}；row=命中表行号（0 起），
-	// 全表未命中 row=-1 且 route=dead-letter（合成死信）。owner:<字面量> 谓词的 live
-	// 机械探针落点（无事件注入面也能验证 owner 解析命中）。
+	// 派发决策查询面（§2.3 v0.13 引擎主体第一段 → v0.14 第二段增执行投影）：对当前 dispatch
+	// 表快照回答「这一事件若到达会路由到哪、由谁执行」——纯决策（零事件注入、零留痕、零派发），
+	// 投影 {type, involved, matched, route, cc, for, owner, row, execution}；row=命中表行号（0 起），
+	// 全表未命中 row=-1 且 route=dead-letter（合成死信，execution.route.executor=none）。
+	// owner:<字面量> 谓词的 live 机械探针落点（无事件注入面也能验证 owner 解析命中）；
+	// execution={route:{executor,target,wired}, cc:{…}}=route/cc 目标执行面绑定投影
+	// （映射表家族收编，未知目标=unbound 缺口可见；wired=执行面接线态，装配层登记前恒 false）。
 	mux.HandleFunc("GET /v1/triggers/resolve", func(w http.ResponseWriter, r *http.Request) {
 		if triggers == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "触发骨架未接线"})
@@ -333,6 +337,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		writeJSON(w, http.StatusOK, map[string]any{
 			"type": typ, "involved": involved, "matched": d.Matched,
 			"route": d.Route, "cc": d.CC, "for": d.For, "owner": d.Owner, "row": d.Row,
+			"execution": map[string]any{"route": d.Exec, "cc": d.CCExec},
 		})
 	})
 	// 其余路径与方法一律 404/405，保持查询面最小。

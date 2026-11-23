@@ -45,7 +45,7 @@ spec:
     - {type: HeartbeatLost, source: core, defaultLevel: error, dedup: "<agent>", route: parent-agent}
   dispatch:
     - {on: DocApplied, for: "owner:*", dispatch: owner-workflow}
-    - {on: "*", for: "any", dispatch: deadletter}    # 死信必须可见
+    - {on: "*", for: "any", dispatch: dead-letter}    # 死信必须可见
 `
 
 func mustLoad(t *testing.T, data string) *Scheme {
