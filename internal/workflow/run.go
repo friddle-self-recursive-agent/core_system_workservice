@@ -117,6 +117,9 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	if len(phases) > 0 {
 		phase = string(phases[0]) // 声明起点=首相位（相位推进器余量，起点后不推进——诚实投影口径不变）
 	}
+	if phases == nil {
+		phases = []string{} // object 源不投影相位：载荷形状归一为空数组（null=缺席语义，[]=声明为空——消费方可 len）
+	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases,
 		Phase: phase, Status: RunTriggered,

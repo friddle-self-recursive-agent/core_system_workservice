@@ -154,3 +154,20 @@ func TestRunStartProjection(t *testing.T) {
 		t.Fatalf("相位序列应携声明全序列（尾=Failed）: %v", r.Phases)
 	}
 }
+
+// TestObjectRunPhasesEmptyArray object 源 run 的相位载荷形状：锚保留、相位不投影，
+// 载荷=空数组（非 null——消费方可 len，null=缺席语义两分）。
+func TestObjectRunPhasesEmptyArray(t *testing.T) {
+	runs := NewRunLog(nil)
+	runs.StartRun(TriggerRecord{
+		Seq: 3, EventID: "ev9", Type: "DocApplied", DedupKey: "apply:x:9",
+		ReceivedAt: time.Now(), Route: "workflows/deploy-system-workflow", Owner: "builtin",
+	}, ExecutorBinding{Executor: ExecWorkflow, Target: "deploy-system-workflow"})
+	r := runs.State().Runs[0]
+	if r.Phases == nil || len(r.Phases) != 0 {
+		t.Fatalf("object 源 run 相位应为空数组（非 nil）: %#v", r.Phases)
+	}
+	if r.SpecSource != SpecObject || r.Phase != "" {
+		t.Fatalf("object 源 run 口径 {object, 空相位起点}: %+v", r)
+	}
+}
