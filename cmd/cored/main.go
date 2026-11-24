@@ -653,5 +653,10 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	if store != nil {
 		opts = append(opts, apiserver.WithApplyLog(store))
 	}
+	// 审批判定账面（v0.46 审批独立账：批准/驳回写钩子 + GET /v1/approvals 读面）：ops DB
+	// 恒装配（同上口径），恒注入不缺位。
+	if store != nil {
+		opts = append(opts, apiserver.WithApprovalLog(store))
+	}
 	return opts
 }

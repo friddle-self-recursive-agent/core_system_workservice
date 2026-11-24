@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -100,6 +101,14 @@ type ApplyLogFace interface {
 	QueryApplies(obj string, limit int) ([]opslog.ApplyLog, error)
 }
 
+// ApprovalLogFace 审批判定账面口面（v0.46 审批独立账——ops-log.md §2 v0.46 注记；
+// opslog.SQLiteStore 满足。写半边=批准/驳回判定落账（apiserver 写钩子），读半边=
+// GET /v1/approvals 查询投影；账面非权威，写路径结果不因落账失败翻转）。
+type ApprovalLogFace interface {
+	AppendApproval(l opslog.ApprovalLog) error
+	QueryApprovals(q opslog.ApprovalQuery) ([]opslog.ApprovalLog, error)
+}
+
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
 // store/queries 投影读面：指标清单与窗口聚合投影。可选能力：未注入=数据面未装配，
 // /v1/metrics 返回空投影——关断口径缺省可见，与 405 代际判别器分立）。
@@ -127,6 +136,7 @@ type options struct {
 	secrets  SecretFace
 	eventLog EventLogFace
 	applyLog ApplyLogFace
+	approval ApprovalLogFace
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -149,21 +159,28 @@ func WithApplyLog(f ApplyLogFace) Option {
 	return func(o *options) { o.applyLog = f }
 }
 
+// WithApprovalLog 注入审批判定账面口面（v0.46 审批独立账——写钩子 granted/rejected +
+// `GET /v1/approvals` 读面；ops-log.md §2 v0.46 注记）。
+func WithApprovalLog(f ApprovalLogFace) Option {
+	return func(o *options) { o.approval = f }
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
-	_ ObjectSource  = (*repository.GitRepo)(nil)
-	_ Applier       = (*apply.Engine)(nil)
-	_ DraftStaging  = (*draft.Store)(nil)
-	_ TriggerFace   = (*workflow.TriggerHub)(nil)
-	_ RunFace       = (*workflow.RunLog)(nil)
-	_ DeliveryFace  = (*workflow.DeliveryLog)(nil)
-	_ WakeFace      = (*workflow.WakeLog)(nil)
-	_ PublisherFace = (*eventpub.Publisher)(nil)
-	_ MetricsFace   = (*metricsinfo.Store)(nil)
-	_ SecretFace    = (*secretstore.Store)(nil)
-	_ EventLogFace  = (*opslog.SQLiteStore)(nil)
-	_ ApplyLogFace  = (*opslog.SQLiteStore)(nil)
+	_ ObjectSource    = (*repository.GitRepo)(nil)
+	_ Applier         = (*apply.Engine)(nil)
+	_ DraftStaging    = (*draft.Store)(nil)
+	_ TriggerFace     = (*workflow.TriggerHub)(nil)
+	_ RunFace         = (*workflow.RunLog)(nil)
+	_ DeliveryFace    = (*workflow.DeliveryLog)(nil)
+	_ WakeFace        = (*workflow.WakeLog)(nil)
+	_ PublisherFace   = (*eventpub.Publisher)(nil)
+	_ MetricsFace     = (*metricsinfo.Store)(nil)
+	_ SecretFace      = (*secretstore.Store)(nil)
+	_ EventLogFace    = (*opslog.SQLiteStore)(nil)
+	_ ApplyLogFace    = (*opslog.SQLiteStore)(nil)
+	_ ApprovalLogFace = (*opslog.SQLiteStore)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -178,6 +195,8 @@ var (
 //	                                     最新优先投影；limit/type/level/involved/since）
 //	GET /v1/history/{kind}/{name}?scope=s 对象应用史投影（v0.38 console 读面第三段：apply_log
 //	                                     rv 降序；limit）
+//	GET /v1/approvals                    审批判定账面查询面（v0.46 审批独立账：approval_log
+//	                                     rv 降序；decision/obj/limit）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
 //	GET /v1/drafts/{kind}/{name}?scope=s 单条草稿（含正文；无稿 → 404）
 //	POST /v1/drafts                     落稿（upsert；写面开关门控）
@@ -206,6 +225,8 @@ var (
 // eventLog 为 nil（事件归档查询口面未接线）时 GET /v1/events 返回 503（面注册但能力缺席；
 // 装配层随 ops DB 恒注入，此为防御面——旧代判别器仍是 405 兜底）。
 // applyLog 为 nil（应用史查询口面未接线）时 GET /v1/history/* 返回 503（同上口径）。
+// approval 为 nil（审批判定账面口面未接线）时 GET /v1/approvals 返回 503 且批准/驳回写钩子
+// 零落账（账面缺席=无判定行，写路径语义不变——账面非权威，可重建）。
 // metrics 未注入（数据面未装配）时 /v1/metrics 返回空投影（关断口径缺省可见——与 405
 // 代际判别器分立：本面恒注册，装配与否只见投影丰瘠）。
 func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts DraftStaging, triggers TriggerFace, runs RunFace, deliveries DeliveryFace, wakes WakeFace, publisher PublisherFace, opts ...Option) http.Handler {
@@ -217,6 +238,16 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	secrets := o.secrets
 	eventLog := o.eventLog
 	applyLog := o.applyLog
+	approval := o.approval
+	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
+	logApproval := func(l opslog.ApprovalLog) {
+		if approval == nil {
+			return
+		}
+		if err := approval.AppendApproval(l); err != nil {
+			log.Printf("apiserver: approval_log 落账失败（非权威，写路径不受影响）: %v", err)
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -334,6 +365,21 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		resp := map[string]any{
 			"resource": fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
 			"rv":       res.RV, "action": res.Action, "dryRun": req.DryRun,
+		}
+		// 审批判定落账（v0.46 审批独立账，ops-log.md §2）：console:approve 批准判定——
+		// fromDraft ∧ 非 dry-run ∧ 判定成功即落 granted 行（dry-run=预检非判定；非 fromDraft=
+		// 直接落库非审批屏动作；noop 幂等重入照落，rv=面上现值——判定发生了，零变更可落）。
+		if approval != nil && req.FromDraft && !req.DryRun && req.FieldManager == ApproveFieldManager {
+			judged := "anonymous"
+			if opt.Subject != nil {
+				judged = opt.Subject.ID()
+			}
+			logApproval(opslog.ApprovalLog{
+				Ts: time.Now(), ApprovalID: "draft:" + fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
+				Obj: fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name), Decision: opslog.DecisionGranted,
+				JudgedBy: judged, FieldManager: req.FieldManager,
+				ResourceVersion: res.RV, ReasonRef: req.ReasonRef,
+			})
 		}
 		if res.Event != nil {
 			resp["event"] = map[string]any{"id": res.Event.ID, "type": res.Event.Type, "dedupKey": res.Event.DedupKey}
@@ -525,6 +571,17 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		if err := drafts.Delete(kind, scope, name); err != nil {
 			writeDraftErr(w, err)
 			return
+		}
+		// 审批判定落账（v0.46 审批独立账）：驳回=弃稿（零文档面动作）——判定发生了，账面落行
+		// 才可审计（弃稿动作此前在 ops DB 零留痕）。judged_by=请求主体头（DELETE 无 body）；
+		// 幂等 404（本就无稿）不落账——无判定发生。
+		if approval != nil {
+			logApproval(opslog.ApprovalLog{
+				Ts: time.Now(), ApprovalID: "draft:" + fmt.Sprintf("%s/%s/%s", kind, scope, name),
+				Obj: fmt.Sprintf("%s/%s/%s", kind, scope, name), Decision: opslog.DecisionRejected,
+				JudgedBy: subjectFrom(r, nil).ID(), FieldManager: "draft:delete",
+				ReasonRef: "draft-delete",
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"resource": fmt.Sprintf("%s/%s/%s", kind, scope, name), "action": "discarded",
@@ -821,6 +878,36 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "obj": obj, "entries": items})
 	})
+	// 审批判定账面查询面（v0.46 审批独立账，ops-log.md §2 v0.46 注记——`GET /v1/approvals`）：
+	// 数据源=ops DB approval_log（审批判定独立账：批准 granted/驳回 rejected——apply_log 承
+	// 落库流水，本账承"谁在何时对哪条提案做了什么判定"；驳回=弃稿零文档面动作也落行）。
+	// decision/obj 精确过滤+rv 降序+limit 收敛（≤500 防拖库同口径）。只读 GET；face 缺席=503
+	// （防御面，装配层随 ops DB 恒注入）；旧构建（路由未注册）经兜底 handler 405=代际判别器。
+	mux.HandleFunc("GET /v1/approvals", func(w http.ResponseWriter, r *http.Request) {
+		if approval == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "审批判定账面查询面未接线（装配缺 ops DB 口面）"})
+			return
+		}
+		qs := opslog.ApprovalQuery{
+			Decision: r.URL.Query().Get("decision"),
+			Obj:      r.URL.Query().Get("obj"),
+			Limit:    atoiDefault(r.URL.Query().Get("limit"), 0),
+		}
+		rows, err := approval.QueryApprovals(qs)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, a := range rows {
+			items = append(items, map[string]any{
+				"ts": a.Ts.UTC().Format(time.RFC3339Nano), "approvalId": a.ApprovalID,
+				"obj": a.Obj, "decision": a.Decision, "judgedBy": a.JudgedBy,
+				"fieldManager": a.FieldManager, "rv": a.ResourceVersion, "reasonRef": a.ReasonRef,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "approvals": items})
+	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
@@ -885,6 +972,11 @@ type subjectRequest struct {
 
 // SubjectHeader 主体头名（与请求体 subject 字段同形 JSON；桥接方不便改体时用头）。
 const SubjectHeader = "X-Core-Subject"
+
+// ApproveFieldManager 批准判定的 fieldManager 约定串（E6 审批屏批准=Apply 全流程复用；
+// v0.46 审批独立账判定识别键——console 客户端与 cored 判定面共用此约定，双账并存：
+// apply_log 承落库流水，approval_log 承审批判定）。
+const ApproveFieldManager = "console:approve"
 
 // subjectFrom 请求级主体解析（apply/events 写面共用）：subject 字段优先，缺席回退
 // X-Core-Subject 头；两者皆缺 → 匿名主体（非 nil 指针=强制请求级判定，进程级本地信任

@@ -1,6 +1,7 @@
 // Package opslog ops 历史操作日志（SQLite WAL 单文件；表见 instance 仓 runtime/ops-log.md §2）。
 // git=文档内容版本（权威）；DB=操作流水（可丢弃可重建）。DB 非权威——这是它敢用 SQLite 的原因。
-// v1 最小实现：apply_log / event_log 两表先行；control/approval/escalate 随各自概念落地后建表。
+// v1 最小实现：apply_log / event_log / draft 先行；v0.46 approval_log 审批判定账面落地
+// （instance 仓 runtime/ops-log.md §2 v0.46 注记）；control/escalate 随各自概念落地后建表。
 package opslog
 
 import (
@@ -39,6 +40,33 @@ type EventLog struct {
 	DedupKey string
 	Severity string // event.md：log 式等级（debug/info/warn/error/fatal）
 	RoutedTo string // 命中的订阅方（空=死信）
+}
+
+// 审批判定闭合集（ops-log.md §2 v0.46：decision 扩展走迁移行不重写语义）。
+const (
+	DecisionGranted  = "granted"
+	DecisionRejected = "rejected"
+)
+
+// ApprovalLog approval_log 表（ops-log.md §2 v0.46）：一次审批判定的独立账行。
+// 批准/驳回判定与 apply 落库流水（apply_log）双账并存不互斥：apply_log 回答"落了什么版本"，
+// approval_log 回答"谁在何时对哪条提案做了什么判定"——驳回（弃稿零文档面动作）只有这里有行。
+type ApprovalLog struct {
+	Ts              time.Time
+	ApprovalID      string // 判定流水键：现口径 "draft:<kind>/<scope>/<name>"（同键覆盖=最新判定）
+	Obj             string // "kind/scope/name"（与 apply_log.obj 同构）
+	Decision        string // granted | rejected（闭合集）
+	JudgedBy        string // 判定主体（permission.md §3 请求级主体 ID；全空=anonymous）
+	FieldManager    string // 判定来源面（console:approve / draft:delete；A44 落地后承判定方）
+	ResourceVersion int64  // granted=落库后 rv（noop 幂等重入=面上现值）；rejected=0（零文档面动作）
+	ReasonRef       string // 判定理由引用（console:approve / draft-delete）
+}
+
+// ApprovalQuery approval_log 查询参数（QueryApprovals 用；语义同 ApplyLogFace 读面口径）。
+type ApprovalQuery struct {
+	Decision string // 精确匹配（空=不过滤）
+	Obj      string // "kind/scope/name" 精确匹配（空=不过滤）
+	Limit    int    // ≤0=缺省 DefaultApplyLimit；>MaxApplyLimit 收敛（读面防拖库同口径）
 }
 
 // DraftRow draft 表一行（ops-log.md §2）：草稿缓存的持久化面（--ops-db 持久化部署）。
@@ -135,6 +163,18 @@ CREATE TABLE IF NOT EXISTS event_log (
 	routed_to TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS event_log_type ON event_log(type);
+CREATE TABLE IF NOT EXISTS approval_log (
+	ts               TEXT NOT NULL,
+	approval_id      TEXT NOT NULL,
+	obj              TEXT NOT NULL,
+	decision         TEXT NOT NULL,
+	judged_by        TEXT NOT NULL DEFAULT '',
+	field_manager    TEXT NOT NULL DEFAULT '',
+	resource_version INTEGER NOT NULL DEFAULT 0,
+	reason_ref       TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS approval_log_decision ON approval_log(decision);
+CREATE INDEX IF NOT EXISTS approval_log_obj      ON approval_log(obj);
 CREATE TABLE IF NOT EXISTS draft (
 	kind          TEXT NOT NULL,
 	scope         TEXT NOT NULL,
@@ -560,6 +600,100 @@ func (s *SQLiteStore) CountDraft() (int, error) {
 	var n int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM draft`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("opslog: 统计 draft: %w", err)
+	}
+	return n, nil
+}
+
+// AppendApproval 落一条审批判定（v0.46 审批独立账：apiserver 批准/驳回写钩子共用）。
+// decision 闭合集校验（granted|rejected）；approval_id/obj 必填。账面非权威——调用方
+// （apiserver 写钩子）落账失败不翻转写路径结果，stderr 注记即可（DB 可重建）。
+func (s *SQLiteStore) AppendApproval(l ApprovalLog) error {
+	const q = `INSERT INTO approval_log (ts, approval_id, obj, decision, judged_by, field_manager, resource_version, reason_ref)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	if l.Decision != DecisionGranted && l.Decision != DecisionRejected {
+		return fmt.Errorf("opslog: approval_log.decision 闭合集外 %q（granted|rejected）", l.Decision)
+	}
+	if l.ApprovalID == "" {
+		return errors.New("opslog: approval_log.approval_id 必填（判定流水键）")
+	}
+	if l.Obj == "" {
+		return errors.New("opslog: approval_log.obj 必填（kind/scope/name）")
+	}
+	_, err := s.db.Exec(q, stamp(l.Ts), l.ApprovalID, l.Obj, l.Decision, l.JudgedBy, l.FieldManager, l.ResourceVersion, l.ReasonRef)
+	if err != nil {
+		return fmt.Errorf("opslog: 落 approval_log: %w", err)
+	}
+	return nil
+}
+
+// QueryApprovals approval_log 行查询（v0.46 读面 GET /v1/approvals 底层；不属于冻结 Store
+// 接口，扩展走新方法）。decision/obj 精确匹配（空=不过滤）；排序=rv 降序、同 rv 按时刻降序
+// （granted 行 rv=落库后版本最新优先，机械对账可复现；rejected 行 rv=0 沉底但时刻仍可比）；
+// limit 同口径收敛（≤0=缺省，>MaxApplyLimit 收敛=读面防拖库）。
+func (s *SQLiteStore) QueryApprovals(q ApprovalQuery) ([]ApprovalLog, error) {
+	if q.Decision != "" && q.Decision != DecisionGranted && q.Decision != DecisionRejected {
+		return nil, fmt.Errorf("opslog: approval_log.decision 闭合集外 %q（granted|rejected）", q.Decision)
+	}
+	const q0 = `SELECT ts, approval_id, obj, decision, judged_by, field_manager, resource_version, reason_ref FROM approval_log`
+	rows, err := s.db.Query(q0)
+	if err != nil {
+		return nil, fmt.Errorf("opslog: 查询 approval_log: %w", err)
+	}
+	defer rows.Close()
+	limit := q.Limit
+	if limit <= 0 {
+		limit = DefaultApplyLimit
+	}
+	if limit > MaxApplyLimit {
+		limit = MaxApplyLimit
+	}
+	var all []ApprovalLog
+	for rows.Next() {
+		var l ApprovalLog
+		var ts string
+		if err := rows.Scan(&ts, &l.ApprovalID, &l.Obj, &l.Decision, &l.JudgedBy, &l.FieldManager, &l.ResourceVersion, &l.ReasonRef); err != nil {
+			return nil, fmt.Errorf("opslog: 读 approval_log 行: %w", err)
+		}
+		if l.Ts, err = time.Parse(time.RFC3339Nano, ts); err != nil {
+			return nil, fmt.Errorf("opslog: approval_log.ts 解析 %q: %w", ts, err)
+		}
+		if q.Decision != "" && l.Decision != q.Decision {
+			continue
+		}
+		if q.Obj != "" && l.Obj != q.Obj {
+			continue
+		}
+		all = append(all, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("opslog: 遍历 approval_log: %w", err)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].ResourceVersion != all[j].ResourceVersion {
+			return all[i].ResourceVersion > all[j].ResourceVersion
+		}
+		return all[i].Ts.After(all[j].Ts)
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// CountApprovals 按判定统计 approval_log 行数（诊断与验收探针「查询代替日志」机械取证用）。
+func (s *SQLiteStore) CountApprovals(decision string) (int, error) {
+	if decision != "" && decision != DecisionGranted && decision != DecisionRejected {
+		return 0, fmt.Errorf("opslog: approval_log.decision 闭合集外 %q（granted|rejected）", decision)
+	}
+	var n int
+	q := `SELECT COUNT(*) FROM approval_log`
+	var arg any
+	if decision != "" {
+		q += ` WHERE decision = ?`
+		arg = decision
+	}
+	if err := s.db.QueryRow(q, arg).Scan(&n); err != nil {
+		return 0, fmt.Errorf("opslog: 统计 approval_log(%s): %w", decision, err)
 	}
 	return n, nil
 }
