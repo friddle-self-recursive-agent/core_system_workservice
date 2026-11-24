@@ -15,6 +15,14 @@
 // 缺省关断（装配旗标关断=零样本源零事件）：缺省不改既有行为面（规则 10 保险丝同款）。
 // 事件拍组合：metrics 事件落 run 同拍即拍（workflow.md 规则 15——拍面驱动源集合扩展，
 // 零新开关；v0.31 段 core+connector+metrics）。
+// 热重绑（v0.47，event.md 规则 13 注记；console-adoption.md §1.18 R-4）：**绑定表与样本流
+// 解耦**——样本流是桥级单通道（装配层一条订阅经泵适配直投，进程生命周期常驻），绑定表是
+// 可整体替换的纯声明（Source 无通道字段）。per-source 通道形态下重绑=通道级联重建（订阅
+// 泄漏/泵 goroutine 阻塞弃收），单流+绑定表=Rebind 只换声明不碰流、O(1) 零通道抖动；事件
+// 产出语义面零变化（同判定谓词/同 dedupKey/同 involved/同主干——多绑定同键越限由总线窗口
+// 聚合，与原多源各自发布同态）。**零绑定=合法等待态**：桥挂流即运行，装配期零声明不再是
+// 不启动的终态（no-source 退场为 on(0)），apply 落库（DocApplied×WorkService）驱动
+// StartRebind 全量重枚举热激活——阈值声明面 apply 落库即生效免重启。
 package metricsrc
 
 import (
@@ -49,76 +57,90 @@ type Threshold struct {
 	Limit  float64 // 阈值
 }
 
-// Source 一路阈值桥接源（装配层绑定声明：数据侧通道+该源阈值清单）。
+// Source 一路阈值绑定声明（v0.47 热重绑后的纯声明形态：无数据通道字段——样本流是桥级
+// 单通道，绑定表可整体替换。装配层绑定声明：该绑定的观测溯源锚+involvedRef 投影+阈值清单）。
 type Source struct {
-	Name       string        // 源名（观测溯源锚；v0.31 首段=数据面投影名）
-	Involved   string        // involvedRef 投影（路由 owner 解析锚；v0.31 首段=装配绑定锚 WorkService/metrics——逐对象 involved 声明面随 MetricsInfo 数据面落地顺延）
-	Samples    <-chan Sample // 数据侧样本通道
-	Thresholds []Threshold   // 阈值声明（服务侧判定依据）
+	Name       string      // 绑定名（观测溯源锚；现装配=WorkService 对象名）
+	Involved   string      // involvedRef 投影（路由 owner 解析锚；逐对象=WorkService/<scope>/<name> 三段同构）
+	Thresholds []Threshold // 阈值声明（服务侧判定依据）
 }
 
-// Bridge metrics 阈值事件桥（cored 装配层持有；零值不可用，经 New 构建）。
+// Bridge metrics 阈值事件桥（cored 装配层持有；零值不可用，经 New 构建）。绑定表与样本流
+// 解耦（v0.47）：样本流单通道常驻，绑定表经 Rebind 整体替换（并发安全——判定与换表锁互斥）。
 type Bridge struct {
-	bus  *eventbus.Bus
-	sch  *scheme.Scheme
+	bus     *eventbus.Bus
+	sch     *scheme.Scheme
+	samples <-chan Sample // 桥级单通道（装配层泵适配直投；关频道=桥退场——可重启语义由装配层决定）
+
+	mu   sync.Mutex
 	srcs []Source
 }
 
-// New 构建 metrics 阈值桥。srcs 为装配层绑定声明（数据侧样本通道已在装配侧取得；
-// 真实数据面落地前装配层可零源绑定——no-source 缺口可见）。
-func New(bus *eventbus.Bus, sch *scheme.Scheme, srcs []Source) *Bridge {
-	return &Bridge{bus: bus, sch: sch, srcs: srcs}
+// New 构建 metrics 阈值桥。samples 为装配层接线的桥级样本通道（装配层持数据面与信号面经
+// 此适配——两包零互依）；srcs 为初始绑定表（可为空——v0.47 起零绑定=合法等待态，热重绑激活）。
+func New(bus *eventbus.Bus, sch *scheme.Scheme, samples <-chan Sample, srcs []Source) *Bridge {
+	return &Bridge{bus: bus, sch: sch, samples: samples, srcs: srcs}
 }
 
-// Enabled 桥是否开启：有源 ∧ 类型已注册（注册表闸门前置——未注册即不启动，声明先行的
-// 机械落点）。调用方据 stderr 报告开启/未开启因由。
+// Enabled 桥是否开启：样本流已挂 ∧ 类型已注册（注册表闸门前置——未注册即不启动，声明先行的
+// 机械落点）。绑定表可空（等待态不算关断——热重绑可激活，v0.47）。调用方据 stderr 报告开启/未开启因由。
 func (b *Bridge) Enabled() bool {
-	if b == nil || b.bus == nil || b.sch == nil || len(b.srcs) == 0 {
+	if b == nil || b.bus == nil || b.sch == nil || b.samples == nil {
 		return false
 	}
 	_, err := b.sch.LookupEventType(EventType)
 	return err == nil
 }
 
-// Sources 桥接源数（stderr 装配锚报告用）。
+// Sources 当前绑定表深度（stderr 装配锚报告用；Rebind 随行变化——装配报告是初值快照）。
 func (b *Bridge) Sources() int {
 	if b == nil {
 		return 0
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return len(b.srcs)
 }
 
-// Run 桥主循环：每源一条 goroutine 排干数据侧通道（ctx 取消即退场，幂等可重启；数据侧
-// 关频道=该源退场，其余源不受影响）。未开启（Enabled=false）即返——关断=零事件
+// Rebind 热重绑：绑定表整体替换（v0.47——权限热装载同范式：声明面变更→快照整体替换，
+// 不半装载）。样本流不动（数据面通道与判定面解耦的机械落点）；零绑定=合法（等待后续
+// apply 热激活）。并发安全：与 Run 的判定路径锁互斥。
+func (b *Bridge) Rebind(srcs []Source) {
+	b.mu.Lock()
+	b.srcs = srcs
+	b.mu.Unlock()
+}
+
+// Run 桥主循环：桥级单通道排干，逐样本对**当前绑定表**全量判定（每绑定独立判定独立发布
+// ——同键越限多绑定由总线窗口聚合，与多源各自发布同态；ctx 取消即退场，幂等可重启；数据侧
+// 关频道=桥退场，可重启语义由装配层决定）。未开启（Enabled=false）即返——关断=零事件
 // （机械判别器的关断面）。
 func (b *Bridge) Run(ctx context.Context) {
 	if !b.Enabled() {
 		return
 	}
-	var wg sync.WaitGroup
-	for _, s := range b.srcs {
-		wg.Add(1)
-		go func(s Source) {
-			defer wg.Done()
-			b.drain(ctx, s)
-		}(s)
-	}
-	wg.Wait()
-}
-
-// drain 单源排干：数据侧样本逐条服务侧阈值判定（发布失败不中断排干——可丢语义，
-// event.md §1：事件可丢、可重、可乱序，系统正确性不依赖它；下一拍同因 dedupKey 聚合兜底）。
-func (b *Bridge) drain(ctx context.Context, s Source) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case smp, ok := <-s.Samples:
+		case smp, ok := <-b.samples:
 			if !ok {
 				return
 			}
-			_ = b.publish(s, smp)
+			b.judgeAll(smp)
 		}
+	}
+}
+
+// judgeAll 单样本对当前绑定表全量判定（锁内快照——Rebind 换表与判定互斥不撕读；发布失败
+// 不中断判定——可丢语义，event.md §1：事件可丢、可重、可乱序，系统正确性不依赖它；下一拍
+// 同因 dedupKey 聚合兜底）。
+func (b *Bridge) judgeAll(smp Sample) {
+	b.mu.Lock()
+	srcs := b.srcs
+	b.mu.Unlock()
+	for _, s := range srcs {
+		_ = b.publish(s, smp)
 	}
 }
 

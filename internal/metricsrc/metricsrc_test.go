@@ -1,8 +1,9 @@
 // metrics 阈值桥单测（v0.31 引擎内部源第四段）：类型注册闸门前置/关断零事件/source 服务
 // 侧判定恒 metrics/level 注册表缺省投影（warn）/dedupKey=<metric>:<window> 因由口径/
-// 谓词判定服务侧（声明序首个同键阈值）/声明面外谓词不即兴语义/多源独立排干。设计依据：
+// 谓词判定服务侧（声明序首个同键阈值）/声明面外谓词不即兴语义。设计依据：
 // concepts/event.md §5 + 规则 13（MetricsInfo 阈值判断后发 MetricThreshold——数据面到
-// 信号面的桥；数据面 declared-deferred，契约先行）。
+// 信号面的桥）。v0.47：桥级单样本流+可替换绑定表（Rebind 热重绑——多源独立排干测试随
+// per-source 通道契约退场，重绑语义测试见 rebind_test.go）。
 package metricsrc
 
 import (
@@ -63,17 +64,17 @@ func metricsTestBus(t *testing.T, fixture string) (*eventbus.Bus, *scheme.Scheme
 func TestBridgePublishSemantics(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample, 1)
-	b := New(bus, sch, []Source{{
+	b := New(bus, sch, smp, []Source{{
 		Name: "metrics-projection", Involved: "WorkService/metrics",
-		Samples: smp, Thresholds: []Threshold{{Metric: "apply.failure_rate", Op: ">", Limit: 0.1}},
+		Thresholds: []Threshold{{Metric: "apply.failure_rate", Op: ">", Limit: 0.1}},
 	}})
 	if !b.Enabled() || b.Sources() != 1 {
-		t.Fatalf("已注册类型+有源应 Enabled: %v", b.Enabled())
+		t.Fatalf("已注册类型+样本流已挂应 Enabled: %v", b.Enabled())
 	}
-	smp <- Sample{Metric: "apply.failure_rate", Value: 0.42, Window: "5m"}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go b.Run(ctx)
+	smp <- Sample{Metric: "apply.failure_rate", Value: 0.42, Window: "5m"}
 	select {
 	case ev := <-ch:
 		if ev.Type != EventType || ev.Source != EventSource {
@@ -98,8 +99,8 @@ func TestBridgePublishSemantics(t *testing.T) {
 func TestBridgeNoBreachNoEvent(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample, 2)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{{Metric: "m", Op: ">", Limit: 1}},
 	}})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,8 +120,8 @@ func TestBridgeNoBreachNoEvent(t *testing.T) {
 func TestBridgeDedupAggregation(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample, 2)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{{Metric: "m", Op: ">=", Limit: 1}},
 	}})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -149,8 +150,8 @@ func TestBridgeDedupAggregation(t *testing.T) {
 func TestBridgeUnregisteredGate(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixtureNoType)
 	smp := make(chan Sample, 1)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{{Metric: "m", Op: ">", Limit: 0}},
 	}})
 	if b.Enabled() {
@@ -171,18 +172,42 @@ func TestBridgeUnregisteredGate(t *testing.T) {
 	}
 }
 
-// TestBridgeNoSources 关断=零源零事件（装配旗标关断的机械判别器关断面）。
-func TestBridgeNoSources(t *testing.T) {
+// TestBridgeNoStream 样本流未挂=关断（Enabled=false——桥无流即无事件源；装配旗标关断的
+// 机械判别器关断面）。
+func TestBridgeNoStream(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
-	b := New(bus, sch, nil)
+	b := New(bus, sch, nil, nil)
 	if b.Enabled() || b.Sources() != 0 {
-		t.Fatal("零源应 Enabled=false（关断=零事件）")
+		t.Fatal("样本流未挂应 Enabled=false（关断=零事件）")
 	}
 	b.Run(context.Background()) // 即返
 	select {
 	case ev := <-ch:
-		t.Fatalf("零源不应有事件，得 %s", ev.ID)
+		t.Fatalf("无流不应有事件，得 %s", ev.ID)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// TestBridgeZeroBindingsWaitingState 零绑定=合法等待态（v0.47 热重绑——装配期零声明不再
+// 是不启动的终态）：桥挂流运行、样本静默消费零事件；Sources()=0。
+func TestBridgeZeroBindingsWaitingState(t *testing.T) {
+	bus, sch, ch := metricsTestBus(t, metricsFixture)
+	smp := make(chan Sample, 1)
+	b := New(bus, sch, smp, nil)
+	if !b.Enabled() {
+		t.Fatal("零绑定但流已挂+类型已注册 → 应 Enabled=true（等待态非关断——v0.47）")
+	}
+	if b.Sources() != 0 {
+		t.Fatalf("零绑定 Sources()=0，得 %d", b.Sources())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go b.Run(ctx)
+	smp <- Sample{Metric: "m", Value: 1, Window: "5m"} // 零绑定=样本静默消费
+	select {
+	case ev := <-ch:
+		t.Fatalf("零绑定不应发布事件，得 %s", ev.ID)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
@@ -191,8 +216,8 @@ func TestBridgeNoSources(t *testing.T) {
 func TestBridgeFirstThresholdWins(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample, 1)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{
 			{Metric: "m", Op: ">", Limit: 10},  // 首个：0.5 不越限——静默
 			{Metric: "m", Op: ">", Limit: 0.1}, // 次个：不参与判定
@@ -214,8 +239,8 @@ func TestBridgeFirstThresholdWins(t *testing.T) {
 func TestBridgeUnknownOpNoPublish(t *testing.T) {
 	bus, sch, ch := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample, 1)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{{Metric: "m", Op: "==", Limit: 1}},
 	}})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -229,39 +254,12 @@ func TestBridgeUnknownOpNoPublish(t *testing.T) {
 	}
 }
 
-// TestBridgeMultiSourceIndependence 多源独立：两源各自排干互不阻塞；数据侧关频道=该源
-// 退场，其余源继续（可重启语义由装配层决定——桥不代管重连）。
-func TestBridgeMultiSourceIndependence(t *testing.T) {
-	bus, sch, ch := metricsTestBus(t, metricsFixture)
-	a := make(chan Sample)
-	c := make(chan Sample, 1)
-	b := New(bus, sch, []Source{
-		{Name: "gone", Involved: "WorkService/gone", Samples: a,
-			Thresholds: []Threshold{{Metric: "m", Op: ">", Limit: 0}}},
-		{Name: "live", Involved: "WorkService/live", Samples: c,
-			Thresholds: []Threshold{{Metric: "m", Op: ">", Limit: 0}}},
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go b.Run(ctx)
-	close(a) // 第一源退场
-	c <- Sample{Metric: "m", Value: 1, Window: "5m"}
-	select {
-	case ev := <-ch:
-		if ev.Involved != "WorkService/live" {
-			t.Fatalf("存活源应继续判定桥接，得 involved=%q", ev.Involved)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("一源退场不应殃及他源（存活源事件未到）")
-	}
-}
-
 // TestBridgeCtxCancelExit ctx 取消即退场（幂等可重启——与 patrol/watchsrc.Run 同口径）。
 func TestBridgeCtxCancelExit(t *testing.T) {
 	bus, sch, _ := metricsTestBus(t, metricsFixture)
 	smp := make(chan Sample)
-	b := New(bus, sch, []Source{{
-		Name: "s", Involved: "WorkService/metrics", Samples: smp,
+	b := New(bus, sch, smp, []Source{{
+		Name: "s", Involved: "WorkService/metrics",
 		Thresholds: []Threshold{{Metric: "m", Op: ">", Limit: 0}},
 	}})
 	ctx, cancel := context.WithCancel(context.Background())

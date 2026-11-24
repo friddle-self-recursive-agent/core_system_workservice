@@ -86,7 +86,7 @@ func run() error {
 		"metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13；缺省 false=关断零事件不改行为面。"+
 			"开启时装配层桥接数据面指标样本通道并按声明面阈值绑定做服务侧判定，越限自产 MetricThreshold 进总线——"+
 			"source 服务侧判定恒 metrics，metrics 事件落 run 同拍即拍（workflow.md 规则 15，零新开关）；"+
-			"阈值声明面=文档库 WorkService.observation.metrics（v0.33 数据面首段随行件）——零声明=no-source 缺口可见）")
+			"阈值声明面=文档库 WorkService.observation.metrics（v0.33 数据面首段随行件；v0.47 起 apply 事件驱动热重绑——声明面落库即生效免重启，零声明=on(0) 等待态 apply 后热激活）")
 	metricsWindow := flag.Duration("metrics-window", 30*time.Second,
 		"MetricsInfo 数据面采样窗口（v0.33 数据面首段；随 --metrics-source 生效。装配层自观测采样器"+
 			"每窗口查询 ops DB event_log 流水做窗口计数入样本库——查询投影即样本；<=0=数据面关断零样本）")
@@ -371,37 +371,50 @@ func run() error {
 		if _, err := sch.LookupEventType(metricsrc.EventType); err != nil {
 			metricsState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
 		} else {
-			// 阈值声明面绑定（v0.33 首段；v0.45 装配段收编 BindWorkservice 一步投影）：文档库
+			// 阈值声明面绑定（v0.33 首段；v0.45 装配段收编 BindWorkservice 一步投影；v0.47 起
+			// 装配期枚举只是初值——apply 事件驱动热重绑，声明面落库即生效免重启）：文档库
 			// WorkService 对象 observation.metrics 告警面 → 桥阈值绑定；逐对象 involved=
 			// WorkService/<scope>/<name>（involvedRef kind/scope/name 三段同构——owner/scope
-			// 谓词与 console 事件详情对象链可解析）。零声明/身份不完整=零绑定（no-source
-			// 缺口可见——数据面照常产样本，判定静默）。
-			var metricsSrcs []metricsrc.Source
-			if repo != nil {
-				wss, err := repo.List(ctx, "WorkService", "")
+			// 谓词与 console 事件详情对象链可解析）。零声明/身份不完整=零绑定初值（合法等待
+			// 态——apply 热激活，no-source 终态退场）。
+			enumMetrics := func() ([]metricsrc.Source, error) {
+				if repo == nil {
+					return nil, nil
+				}
+				wss, err := repo.List(context.Background(), "WorkService", "")
 				if err != nil {
-					return fmt.Errorf("枚举 WorkService 阈值声明面: %w", err)
+					return nil, err
 				}
+				var srcs []metricsrc.Source
 				for _, o := range wss {
-					src, ok := metricsrc.BindWorkservice(o.Scope, o.Name, o.Content)
-					if !ok {
-						continue // 零告警面声明/身份不完整的对象零绑定（缺口可见口径：判定静默）
+					if src, ok := metricsrc.BindWorkservice(o.Scope, o.Name, o.Content); ok {
+						srcs = append(srcs, src)
 					}
-					src.Samples = metricsSamplePump(metricsStore.Subscribe())
-					metricsSrcs = append(metricsSrcs, src)
 				}
+				return srcs, nil // 零告警面声明对象零绑定（等待态口径：判定静默，apply 热激活）
 			}
-			if len(metricsSrcs) == 0 {
-				metricsState = "no-source" // 已开启∧类型已注册∧文档面零告警声明（缺口可见）
-			} else {
-				metricsState = fmt.Sprintf("on(%d)", len(metricsSrcs))
-				metricsCtx, cancelMetricsSrc := context.WithCancel(context.Background())
-				defer cancelMetricsSrc()
-				go metricsrc.New(bus, sch, metricsSrcs).Run(metricsCtx)
+			metricsSrcs, err := enumMetrics()
+			if err != nil {
+				return fmt.Errorf("枚举 WorkService 阈值声明面: %w", err)
 			}
+			metricsState = fmt.Sprintf("on(%d)", len(metricsSrcs))
+			metricsCtx, cancelMetricsSrc := context.WithCancel(context.Background())
+			defer cancelMetricsSrc()
+			// 桥级单样本流（v0.47：绑定表与样本流解耦——重绑只换声明不碰流，零通道抖动）；
+			// 零绑定初值也照常挂流运行（等待态可热激活）。
+			metricsBridge := metricsrc.New(bus, sch, metricsSamplePump(metricsStore.Subscribe()), metricsSrcs)
+			go metricsBridge.Run(metricsCtx)
+			metricsrc.StartRebind(metricsCtx, bus, metricsBridge, enumMetrics, metricsrc.RebindHooks{
+				Applied: func(n int) {
+					fmt.Fprintf(os.Stderr, "cored: metrics 阈值热重绑 n=%d（DocApplied×WorkService→绑定表替换——v0.47 声明面落库即生效免重启）\n", n)
+				},
+				Failed: func(err error) {
+					fmt.Fprintf(os.Stderr, "cored: metrics 阈值热重绑失败（保旧表+下次 apply 重试自愈）: %v\n", err)
+				},
+			})
 		}
 	}
-	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>——event.md 规则 13；no-source=已开启∧类型已注册∧文档面零告警声明——判定静默缺口可见，数据面照常产样本 /v1/metrics 可查；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
+	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on(n)=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>，n=绑定数——event.md 规则 13；on(0)=装配期零绑定合法等待态（v0.47 热重绑——apply 落库即激活，no-source 终态退场）；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
 	fmt.Fprintf(os.Stderr, "cored: metrics 数据面=%s（--metrics-window；on=MetricsInfo store/queries 投影+自观测采样器 event_log 窗口计数——查询投影即样本 /v1/metrics 可查，解耦口径=数据面零信号面依赖；off=关断零样本缺省不改行为面）\n", metricsPlaneState)
 	// run 相位异步推进器（v0.26）：构建已提前（事件拍挂接须先于订阅主干），此处只做
 	// 定时拍启动与 stderr 装配锚报告。事件拍（v0.29）已随总闸在挂接点生效。
