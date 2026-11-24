@@ -29,6 +29,7 @@ spec:
   kinds:
     - {kind: Scheme, builtin: true, storage: core/scheme.yaml}
     - {kind: Workflow, builtin: true, storage: "global/workflows/<name>.yaml | systems/<s>/workflows/<name>.yaml"}
+    - {kind: ConnectorOps, builtin: true, storage: "global/connector-ops/<name>.yaml | systems/<s>/connector-ops/<name>.yaml"}
   eventTypes:
     - {type: DocApplied, source: core, defaultLevel: info, route: owner-workflow}
 `
@@ -314,5 +315,92 @@ spec:
 	bad := parseWfObject([]byte("\t\t不可解析 \x00{{"), 1, "s1")
 	if bad.Scope != "s1" || bad.Phases == nil || bad.Enabled != nil {
 		t.Fatalf("坏文档投影口径不符: %+v", bad)
+	}
+}
+
+// TestWorkflowsExecutionProjection —— v0.49 R-7 执行模型绑定面（workflow-runtime.md §11.1）：
+// 行集 execution 键=代际判别器；bound（对象在册）/unbound（绑定名解析成功而对象缺席——缺口
+// 可见）/skeleton（origin=workflow-bind=物化器骨架，实现代码未落）；scope 优先级=workflow 本
+// scope → global → 其余 scope 首个。
+func TestWorkflowsExecutionProjection(t *testing.T) {
+	ts, repo := wfFaceServer(t)
+	defer ts.Close()
+	ctx := context.Background()
+	seed := []repository.Object{
+		// dev-delivery 生效 override 在 s1 → 绑定对象 s1/dev-delivery（物化器骨架标注）→ bound+skeleton。
+		{Kind: "ConnectorOps", Name: "dev-delivery", Scope: "s1", Content: []byte(`apiVersion: core/v1
+kind: ConnectorOps
+metadata:
+  name: dev-delivery
+  scope: s1
+  labels: {core/origin: workflow-bind}
+spec:
+  workservice: workflow-engine
+  workflow: dev-delivery
+  ops: [flow]
+  flow:
+    nodes:
+      - {name: analyze, unit: session}
+`)},
+		// self-only 无绑定对象 → unbound（缺口可见）。
+		// human-flow：global 对象、无 workflow-bind 标注（人写实现）→ bound+skeleton=false。
+		{Kind: "Workflow", Name: "human-flow", Scope: "global",
+			Content: []byte(wfObjectYaml("human-flow", "global", nil, []string{"analyze"}, ""))},
+		{Kind: "ConnectorOps", Name: "human-flow", Scope: "global", Content: []byte(`apiVersion: core/v1
+kind: ConnectorOps
+metadata: {name: human-flow, scope: global}
+spec: {workservice: workflow-engine, workflow: human-flow, ops: [flow]}
+`)},
+		// 覆写锚：spec.connector 指向 human-flow → bound 且 connector=human-flow。
+		{Kind: "Workflow", Name: "ovr-wf", Scope: "global", Content: []byte(`apiVersion: core/v1
+kind: Workflow
+metadata: {name: ovr-wf, scope: global}
+spec:
+  connector: connector-ops/human-flow
+  phases: [analyze]
+`)},
+	}
+	for i := range seed {
+		o := seed[i]
+		if _, _, err := repo.Write(ctx, &o, "seed", ""); err != nil {
+			t.Fatalf("seed %s/%s: %v", o.Scope, o.Name, err)
+		}
+	}
+	code, body := wfGet(t, ts.URL+"/v1/workflows")
+	if code != http.StatusOK {
+		t.Fatalf("应 200，得 %d", code)
+	}
+	// bound+skeleton（物化器骨架标注在册）。
+	row := wfRowNamed(t, body, "dev-delivery")
+	ex, ok := row["execution"].(map[string]any)
+	if !ok {
+		t.Fatalf("dev-delivery 行缺 execution 键（v0.49 代际判别器）: %v", row)
+	}
+	if ex["state"] != "bound" || ex["connector"] != "dev-delivery" || ex["connectorScope"] != "s1" || ex["skeleton"] != true {
+		t.Fatalf("dev-delivery execution 不符: %v", ex)
+	}
+	// unbound（绑定名解析成功而对象缺席——缺口不静默）。
+	row = wfRowNamed(t, body, "self-only")
+	ex = row["execution"].(map[string]any)
+	if ex["state"] != "unbound" || ex["connector"] != "self-only" || ex["connectorScope"] != "" {
+		t.Fatalf("self-only execution 不符: %v", ex)
+	}
+	// builtin 无文档锚 → 同名兜底 → unbound。
+	row = wfRowNamed(t, body, "core-workflow")
+	ex = row["execution"].(map[string]any)
+	if ex["state"] != "unbound" {
+		t.Fatalf("core-workflow execution 应 unbound: %v", ex)
+	}
+	// bound（人写对象无骨架标注 → skeleton=false）。
+	row = wfRowNamed(t, body, "human-flow")
+	ex = row["execution"].(map[string]any)
+	if ex["state"] != "bound" || ex["skeleton"] != false || ex["connectorScope"] != "global" {
+		t.Fatalf("human-flow execution 不符: %v", ex)
+	}
+	// spec.connector 覆写进投影。
+	row = wfRowNamed(t, body, "ovr-wf")
+	ex = row["execution"].(map[string]any)
+	if ex["state"] != "bound" || ex["connector"] != "human-flow" {
+		t.Fatalf("ovr-wf execution 不符: %v", ex)
 	}
 }

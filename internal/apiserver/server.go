@@ -841,6 +841,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"name": row.Name, "specSource": row.SpecSource, "phases": row.Phases,
 				"objects": workflowObjectsJSON(row.Objects), "effective": row.Effective,
 				"latest": row.Latest, "runsTotal": row.RunsTotal, "runs24h": row.Runs24h,
+				"execution": row.Execution, // v0.49 R-7 执行模型绑定面（新载荷键=代际判别器）
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{

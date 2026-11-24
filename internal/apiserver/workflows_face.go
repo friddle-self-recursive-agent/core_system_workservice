@@ -1,15 +1,17 @@
 // workflows_face.go —— workflow 运行管理聚合查询面（v0.37 console 读面第二段，E3 增量——
 // cored-bridge.md §2 `GET /v1/workflows`）。console-ui.md 屏幕 5 的数据面：workflow 列表
 // 聚合投影（运行次数 总/24h、当前相位、涉及对象、生效 enabled），三源同投：
-//   ① 声明源=builtin 注册表 + 文档库 Workflow 对象（跨 scope 枚举——builtin 本体与
-//      override 同名并存；override 语义见 concepts/workflow.md §1：builtin 本体不动，
-//      系统层同名覆盖 origin 标注 override-of-builtin）；
-//   ② 现势源=run 投影环（每锚最新 run 的 phase/status——「当前相位」；无 run=null 诚实空态）；
-//   ③ 计数源=event_log 归档分组 × dispatch 决议（每 (type,involved) 组解析一次，
-//      workflow.RunAnchor 与 run 投影同一锚解析函数——聚合无双源）。计数口径=归档行经
-//      派发决议路由到该锚的触发量（含冷却窗内被拦阻的触发——braked 不落 run 环，诚实口径
-//      入桥文档；「run 出现≠执行完毕」投影语义不变；扫描有界上限=opslog.MaxGroupScanRows，
-//      capped 如实标注）。
+//
+//	① 声明源=builtin 注册表 + 文档库 Workflow 对象（跨 scope 枚举——builtin 本体与
+//	   override 同名并存；override 语义见 concepts/workflow.md §1：builtin 本体不动，
+//	   系统层同名覆盖 origin 标注 override-of-builtin）；
+//	② 现势源=run 投影环（每锚最新 run 的 phase/status——「当前相位」；无 run=null 诚实空态）；
+//	③ 计数源=event_log 归档分组 × dispatch 决议（每 (type,involved) 组解析一次，
+//	   workflow.RunAnchor 与 run 投影同一锚解析函数——聚合无双源）。计数口径=归档行经
+//	   派发决议路由到该锚的触发量（含冷却窗内被拦阻的触发——braked 不落 run 环，诚实口径
+//	   入桥文档；「run 出现≠执行完毕」投影语义不变；扫描有界上限=opslog.MaxGroupScanRows，
+//	   capped 如实标注）。
+//
 // 旧构建（路由未注册）经兜底 handler 405=代际判别器。
 package apiserver
 
@@ -18,6 +20,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"gopkg.in/yaml.v3"
@@ -34,8 +37,9 @@ type wfObjDecl struct {
 		Labels map[string]string `yaml:"labels"`
 	} `yaml:"metadata"`
 	Spec struct {
-		Enabled *bool `yaml:"enabled"`
-		Services struct {
+		Enabled   *bool  `yaml:"enabled"`
+		Connector string `yaml:"connector"`
+		Services  struct {
 			Involved []string `yaml:"involved"`
 			Mode     string   `yaml:"mode"`
 		} `yaml:"services"`
@@ -98,6 +102,8 @@ type wfObjectRow struct {
 	DataflowInputs  []wfDfIO  `json:"dataflowInputs"`
 	DataflowOutputs []wfDfOut `json:"dataflowOutputs"`
 	Phases          []string  `json:"phases"`
+
+	raw []byte // 声明原文（execution 绑定解析用——不投影不出口）
 }
 
 // wfDfIO / wfDfOut 数据流声明投影（screen 5 数据流 tab 拼图的节点数据源，节点全可点）。
@@ -123,7 +129,12 @@ type wfRow struct {
 	Latest     *wfLatest     `json:"latest"`     // 现势 run（环内最新；无 run=null）
 	RunsTotal  int64         `json:"runsTotal"`
 	Runs24h    int64         `json:"runs24h"`
+	Execution  *wfExecution  `json:"execution"` // 执行模型绑定面（v0.49 R-7——workflow-runtime.md §11.1；cored-bridge.md §2 execution 键=代际判别器）
 }
+
+// wfExecution 决策面 execution 投影（connector.md 规则 6：未绑定=缺口可见不静默）。
+// flowbind.Execution 的聚合面别名（包间零依赖——本面只消费形状，解析逻辑住 flowbind）。
+type wfExecution = flowbind.Execution
 
 type wfEffective struct {
 	Scope   string `json:"scope"`
@@ -138,7 +149,7 @@ type wfLatest struct {
 }
 
 // originOf 对象 origin 投影：labels.core/origin 优先（override 惯例），无标注按 scope 推导
-//（global=builtin 本体文档；系统层=custom——推导值仅展示用，真实标注在 labels）。
+// （global=builtin 本体文档；系统层=custom——推导值仅展示用，真实标注在 labels）。
 func originOf(labels map[string]string, scope string) string {
 	if o := labels["core/origin"]; o != "" {
 		return o
@@ -154,7 +165,7 @@ func originOf(labels map[string]string, scope string) string {
 func parseWfObject(raw []byte, rv int64, scope string) wfObjectRow {
 	var d wfObjDecl
 	row := wfObjectRow{Scope: scope, ResourceVersion: rv, Involved: []string{},
-		DataflowInputs: []wfDfIO{}, DataflowOutputs: []wfDfOut{}, Phases: []string{}}
+		DataflowInputs: []wfDfIO{}, DataflowOutputs: []wfDfOut{}, Phases: []string{}, raw: raw}
 	_ = yaml.Unmarshal(raw, &d) // 错误=局部字段缺席（宽松投影），不致命
 	if d.Metadata.Scope != "" {
 		row.Scope = d.Metadata.Scope // 正文声明的 scope 与目录前缀一致（存储写路径已校验）
@@ -245,6 +256,14 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 		total, recent = map[string]int64{}, map[string]int64{}
 	}
 	scanned, capped = scTotal+sc24, capTotal || cap24
+	// ④ 执行模型绑定面（v0.49 R-7）：ConnectorOps 跨 scope 枚举一次 → 按名索引 →
+	//    逐锚 execution 投影（对象缺席=unbound 缺口可见——connector.md 规则 6）。
+	connIdx := flowbind.IndexRows(nil)
+	if objects != nil {
+		if cobjs, err := objects.List(ctx, "ConnectorOps", ""); err == nil {
+			connIdx = flowbind.IndexRows(cobjs)
+		} // 枚举失败=execution 缺面（行集照出，不冒充 unbound）
+	}
 	// 行集=声明对象名 ∪ builtin 注册表 ∪ 现势 run 锚（三源并集——缺任何一源都不吞行）。
 	names := map[string]bool{}
 	for _, n := range workflow.BuiltinNames() {
@@ -269,6 +288,15 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 		}
 		if eff := effectiveObject(name, objs); eff != nil {
 			row.Effective = &wfEffective{Scope: eff.Scope, Enabled: eff.Enabled}
+		}
+		// execution 投影（v0.49 R-7）：生效对象声明解析（缺= builtin 锚同名兜底——
+		// 无文档 builtin 的绑定=same-name ConnectorOps，缺席照实 unbound）。
+		if eff := effectiveObject(name, objs); eff != nil {
+			row.Execution = flowbind.ExecutionOf(eff.Scope, name, eff.raw, connIdx)
+		} else if len(objs) > 0 {
+			row.Execution = flowbind.ExecutionOf(objs[0].Scope, name, objs[0].raw, connIdx)
+		} else {
+			row.Execution = flowbind.ExecutionOf("global", name, nil, connIdx)
 		}
 		if lr, ok := latest[name]; ok {
 			row.Latest = &wfLatest{Run: lr.Run, Phase: lr.Phase, Status: lr.Status,

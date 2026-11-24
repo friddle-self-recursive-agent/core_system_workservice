@@ -380,3 +380,60 @@ func TestValidateDocAuthoritativeScheme(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateDocConnectorOpsFlow —— v0.49 R-7 随行件（R-TYPE 有规则即有 checker）：权威声明
+// ConnectorOps spec.flow（节点流转骨架）出现即校验形状——unit 枚举越界拦、节点行非映射拦、
+// 合法骨架（session|agent + op/connector/provider 接线字段）放行。
+func TestValidateDocConnectorOpsFlow(t *testing.T) {
+	s := mustRealScheme(t)
+	good := `apiVersion: core/v1
+kind: ConnectorOps
+metadata: {name: wf-x, scope: global}
+spec:
+  workservice: workflow-engine
+  workflow: wf-x
+  ops: [flow]
+  flow:
+    nodes:
+      - {name: analyze, title: Analyze, unit: session}
+      - {name: dispatch, unit: agent, op: notify/send-email, connector: notify-send-email, provider: provider/email-notify}
+`
+	if err := ValidateDoc(kindOf(t, s, "ConnectorOps"), []byte(good)); err != nil {
+		t.Fatalf("合法 flow 骨架应放行: %v", err)
+	}
+	badUnit := `apiVersion: core/v1
+kind: ConnectorOps
+metadata: {name: wf-x, scope: global}
+spec:
+  workservice: workflow-engine
+  flow:
+    nodes:
+      - {name: analyze, unit: coroutine}
+`
+	if err := ValidateDoc(kindOf(t, s, "ConnectorOps"), []byte(badUnit)); err == nil {
+		t.Fatal("unit 枚举越界（session|agent 外）应拦")
+	}
+	badNode := `apiVersion: core/v1
+kind: ConnectorOps
+metadata: {name: wf-x, scope: global}
+spec:
+  workservice: workflow-engine
+  flow:
+    nodes: [3]
+`
+	if err := ValidateDoc(kindOf(t, s, "ConnectorOps"), []byte(badNode)); err == nil {
+		t.Fatal("nodes 行非映射应拦")
+	}
+	missingName := `apiVersion: core/v1
+kind: ConnectorOps
+metadata: {name: wf-x, scope: global}
+spec:
+  workservice: workflow-engine
+  flow:
+    nodes:
+      - {title: NoName}
+`
+	if err := ValidateDoc(kindOf(t, s, "ConnectorOps"), []byte(missingName)); err == nil {
+		t.Fatal("nodes 行缺必填 name 应拦")
+	}
+}

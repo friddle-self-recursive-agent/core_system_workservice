@@ -24,6 +24,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
@@ -510,6 +511,28 @@ func run() error {
 			Subject: permission.Subject{User: "cored:local", Roles: []string{permission.DefaultAdmin}},
 		}
 		applier = engine
+		// workflow 执行模型绑定面（v0.49 R-7，workflow-runtime.md §11.1——apply 即实现骨架）：
+		// 写面开启时装配（绑定物化=一次普通 apply，同闸门同审计零旁路）。存量枚举=初值
+		// （metrics 阈值桥 v0.47 同款范式）+ DocApplied×Workflow 订阅热路径（积压合并一次
+		// 枚举装到最新面；失败=保旧面+stderr 告警+下次 apply 重试自愈）。所有面=只写
+		// origin=workflow-bind 标注对象，人/agent 实现零盲写。
+		flowMat := &flowbind.Materializer{Repo: repo, Apply: engine}
+		fbCtx, cancelFlowBind := context.WithCancel(context.Background())
+		defer cancelFlowBind()
+		n0, fails0 := flowMat.EnsureAll(ctx)
+		for _, f := range fails0 {
+			fmt.Fprintf(os.Stderr, "cored: workflow 绑定存量物化失败 %s/%s（保旧面）: %v\n", f.Scope, f.Name, f.Err)
+		}
+		fmt.Fprintf(os.Stderr, "cored: workflow 绑定=on(%d)（--allow-apply；apply 即实现骨架物化——同名/spec.connector 覆写 ConnectorOps+flow.nodes 节点接线，origin=workflow-bind 所有面；实现代码=apply-workflow agent 余量；存量初值=%d 热路径=DocApplied×Workflow 订阅）\n", n0, n0)
+		go flowMat.Start(fbCtx, bus,
+			func(n int) {
+				fmt.Fprintf(os.Stderr, "cored: workflow 绑定热路径 n=%d（DocApplied×Workflow→骨架物化/更新——apply 即实现 §11.1）\n", n)
+			},
+			func(fails []flowbind.Fail) {
+				for _, f := range fails {
+					fmt.Fprintf(os.Stderr, "cored: workflow 绑定热路径失败 %s/%s（保旧面+下次 apply 重试自愈）: %v\n", f.Scope, f.Name, f.Err)
+				}
+			})
 		// 事件注入面（v0.20 发布面首段，event.md 规则 8）：与 apply 写面同门控（--allow-apply），
 		// 发布权限域与 apply 写权限域分立（publish × events 资源域）；注入走与引擎内部事件
 		// 同一条总线主干（去重/订阅派发/event_log 归档零旁路）；source 服务侧判定恒 human。
