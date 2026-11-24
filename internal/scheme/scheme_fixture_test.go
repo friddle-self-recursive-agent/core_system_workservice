@@ -157,7 +157,7 @@ spec:
         channel: "{kind: im|email|webhook, provider: ref}"
         on: "{events: []string, levels: []string}"
         route: "{to: role-holders, dedup: {window}}"   
-        template: "?ref"
+        template: "?{ref}"                       # 文案模板=引用包装对象（{ref: <ref>}——notification.md §3 例与存量对象同形态；v0.48 净入 lint 对账修正）
       status: {delivered: "{last24h, failed}"}
 
     - kind: User                     # 用户系统 builtin
