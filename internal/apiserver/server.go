@@ -20,6 +20,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
@@ -76,6 +77,13 @@ type DeliveryFace interface {
 // 第三子段：agent 触发面接线，wake=`<p>-agent` 族绑定→agent 域的受理投影）。
 type WakeFace interface {
 	State() workflow.WakeState
+}
+
+// DispatchFace 派单受理投影查询口面（flowbind.DispatchLog 满足；v0.50 R-8——workflow-runtime
+// §11.2 拉起形态首段：骨架物化即派单，dispatch=骨架→apply-workflow agent 派单接口面的受理
+// 投影；受理≠拉起——真实拉起 declared-deferred）。
+type DispatchFace interface {
+	State() flowbind.DispatchState
 }
 
 // PublisherFace 事件发布面口面（eventpub.Publisher 满足；v0.20 多类型事件注入面首段：
@@ -137,6 +145,7 @@ type options struct {
 	eventLog EventLogFace
 	applyLog ApplyLogFace
 	approval ApprovalLogFace
+	dispatch DispatchFace
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -163,6 +172,12 @@ func WithApplyLog(f ApplyLogFace) Option {
 // `GET /v1/approvals` 读面；ops-log.md §2 v0.46 注记）。
 func WithApprovalLog(f ApprovalLogFace) Option {
 	return func(o *options) { o.approval = f }
+}
+
+// WithDispatchFace 注入派单受理投影口面（v0.50 R-8——`GET /v1/agents/dispatches` 读面；
+// workflow-runtime.md §11.2 拉起形态首段）。
+func WithDispatchFace(f DispatchFace) Option {
+	return func(o *options) { o.dispatch = f }
 }
 
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
@@ -206,6 +221,7 @@ var (
 //	GET /v1/workflows/runs              对账 run 投影面（v0.15 真实拉起第一子段：workflow 触发面接线；恒开，§2.3）
 //	GET /v1/notifications/deliveries    送达投影面（v0.16 送达面接线；v0.17 出站状态机 sent/failed；恒开，§2.3）
 //	GET /v1/agents/wakes                唤醒投影面（v0.18 引擎主体第五段：agent 触发面接线；恒开，§2.3）
+//	GET /v1/agents/dispatches           派单受理投影面（v0.50 R-8：骨架物化即派单——workflow-runtime §11.2；恒开）
 //	GET /v1/metrics                     数据面指标清单投影（v0.33 MetricsInfo 数据面首段；空投影=关断口径可见）
 //	GET /v1/metrics/query               数据面查询投影（窗口聚合最小集；未命中=404 不冒充零值）
 //	GET /v1/secrets                     秘密元数据清单（v0.34；只出名称/更新时刻，值永不回显——脱敏红线）
@@ -221,6 +237,7 @@ var (
 // runs 为 nil（run 投影面未接线）时 /v1/workflows/runs 返回 503。
 // deliveries 为 nil（送达投影面未接线）时 /v1/notifications/deliveries 返回 503。
 // wakes 为 nil（唤醒投影面未接线）时 /v1/agents/wakes 返回 503。
+// dispatch 为 nil（派单受理投影面未接线——headless 载体/旧装配）时 /v1/agents/dispatches 返回 503。
 // publisher 为 nil（写面关断）时 POST /v1/events 返回 405（与 apply 写面同门控同口径）。
 // eventLog 为 nil（事件归档查询口面未接线）时 GET /v1/events 返回 503（面注册但能力缺席；
 // 装配层随 ops DB 恒注入，此为防御面——旧代判别器仍是 405 兜底）。
@@ -239,6 +256,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	eventLog := o.eventLog
 	applyLog := o.applyLog
 	approval := o.approval
+	dispatch := o.dispatch
 	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
 	logApproval := func(l opslog.ApprovalLog) {
 		if approval == nil {
@@ -745,6 +763,34 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "wakes": items,
+		})
+	})
+	// 派单受理投影面（v0.50 R-8——workflow-runtime.md §11.2 拉起形态首段）：骨架物化动作
+	// （created|updated——「该版本实现未落」的机械签名）→ apply-workflow 锚派单受理投影；
+	// noop/skipped 不派单（无新实现可做）。载荷 {count, accepted, dropped, dispatches}，行含
+	// agent/status/autoLevel/action/workflow/scope/connector/rv/eventId——实现侧 diff 基线与
+	// 来源链可回指。**派单受理 ≠ agent 会话已拉起**（诚实投影与 wake 面同口径：真实拉起=
+	// dsh 会话挂载/agent-session 域，declared-deferred）；进程内环（观测面非账本——持久态=
+	// 骨架对象 execution.skeleton=true+apply_log 审计，重启归零=幂等重入不重复派单）。
+	// face 缺席=503（防御面，装配层 --allow-apply 随 flowbind 注入）；旧构建（路由未注册）
+	// 经兜底 handler 405=代际判别器。
+	mux.HandleFunc("GET /v1/agents/dispatches", func(w http.ResponseWriter, _ *http.Request) {
+		if dispatch == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "派单受理投影面未接线（装配缺 flowbind 派单 sink）"})
+			return
+		}
+		st := dispatch.State()
+		items := make([]map[string]any, 0, len(st.Records))
+		for _, d := range st.Records {
+			items = append(items, map[string]any{
+				"seq": d.Seq, "agent": d.Agent, "status": d.Status, "autoLevel": d.AutoLevel,
+				"action": d.Action, "workflow": d.Workflow, "scope": d.Scope,
+				"connector": d.Connector, "rv": d.RV, "eventId": d.EventID,
+				"at": d.At.UTC().Format(time.RFC3339Nano),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "dispatches": items,
 		})
 	})
 	// 数据面查询面（v0.33 MetricsInfo 数据面首段——store/queries 投影读面）：指标清单

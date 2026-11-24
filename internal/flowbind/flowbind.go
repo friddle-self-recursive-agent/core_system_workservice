@@ -4,7 +4,7 @@
 // 未绑定=决策面 execution=unbound 缺口可见）+ instance 仓 runtime/workflow-runtime.md §11.1
 // （落地形态二分：骨架+节点接线=cored 确定性机械面；实现代码=apply-workflow agent 面）。
 //
-// 三件：
+// 四件：
 //   - Resolve：workflow 对象 → 绑定解析（spec.connector 归一化/缺省同名）+ 生效相位 →
 //     flow.nodes 节点骨架投影（name/title/unit/op/connector/provider——unit 声明缺省 session，
 //     跨服务=agent 调 agent 由节点声明 unit: agent 表达；声明面外不即兴）。
@@ -15,6 +15,9 @@
 //     幂等=canonical 比对 noop 零提交；spec 变更 → rv+1 diff 可查（apply_log/ history 面）；
 //     **所有面**：只写 origin=workflow-bind 标注的对象（自己物化的骨架），人/agent 已写的
 //     ConnectorOps 实现零盲写；单对象失败=stderr 告警继续其余（保旧面，不打死写路径）。
+//   - Dispatch（dispatch.go）：派单受理投影（v0.50 R-8）——一次真实物化动作（created|updated）
+//     即一条对 apply-workflow 锚的派单受理投影（workflow-runtime.md §11.2 拉起形态首段：
+//     受理≠拉起，真实拉起 declared-deferred）。
 //
 // 解耦口径：本包只依赖 apply/repository 既有面，零新写路径零旁路——绑定物化=一次普通
 // apply（引擎准入+rv 乐观锁+DocApplied+审计账全量继承）。
@@ -25,6 +28,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
@@ -207,9 +211,13 @@ func Skeleton(b Binding) []byte {
 }
 
 // Materializer 绑定物化器（装配层持有；DocApplied×Workflow 热路径 + Ensure 存量枚举复用）。
+// Dispatch=派单投影落点（v0.50 R-8，装配层注入；nil=静默零派单）——一次真实物化动作
+// （created|updated）即一条对 apply-workflow 锚的派单受理投影（§11.2 拉起形态首段；
+// noop/skipped 不派单——无新实现可做）。
 type Materializer struct {
-	Repo  repository.Repository
-	Apply *apply.Engine
+	Repo     repository.Repository
+	Apply    *apply.Engine
+	Dispatch DispatchSink
 }
 
 // involvedRef 三段同构拆解（kind/scope/name——event.md 规则 11 involvedRef 惯例）。
@@ -233,6 +241,9 @@ func originOf(content []byte) string {
 // Ensure 单锚物化（幂等）：绑定解析 → 对象缺席=创建 / 在册且 origin=workflow-bind=canonical
 // 比对（异=rv 乐观锁更新、同=noop）/ 在册非本物化器所有=零盲写跳过。
 // 返回 (action, error)：action ∈ created|updated|noop|skipped。
+// created/updated 成功即派单（v0.50 R-8 §11.2）：骨架物化=「该版本实现未落」的机械签名 →
+// apply-workflow 锚派单受理投影（rv=落库后版本、eventId=DocApplied 回执——实现侧 diff 基线
+// 与来源链可回指）；noop（幂等重入）/skipped（非本物化器所有面）不派单。
 func (m *Materializer) Ensure(ctx context.Context, scope, name string, wfContent []byte) (string, error) {
 	b, ok := Resolve(scope, name, wfContent)
 	if !ok {
@@ -255,18 +266,38 @@ func (m *Materializer) Ensure(ctx context.Context, scope, name string, wfContent
 		if res.Action == "noop" {
 			return "noop", nil
 		}
+		m.dispatch(res, "updated", b)
 		return "updated", nil
 	case errors.Is(err, repository.ErrNotFound):
 		doc := &repository.Object{Kind: "ConnectorOps", Name: b.Connecto, Scope: b.Scope,
 			ResourceVersion: 0, Content: Skeleton(b)}
-		if _, err := m.Apply.Apply(ctx, doc, apply.Options{FieldManager: fieldManager,
-			ReasonRef: "workflow-bind:" + b.Workflow}); err != nil {
+		res, err := m.Apply.Apply(ctx, doc, apply.Options{FieldManager: fieldManager,
+			ReasonRef: "workflow-bind:" + b.Workflow})
+		if err != nil {
 			return "", err
 		}
+		m.dispatch(res, "created", b)
 		return "created", nil
 	default:
 		return "", err
 	}
+}
+
+// dispatch 记一条派单受理投影（物化成功后调用；sink 缺席=静默）。eventID 取 DocApplied
+// 回执（create/update 非 nil；防御式零值容忍——回执缺席不阻派单）。
+func (m *Materializer) dispatch(res *apply.Result, action string, b Binding) {
+	if m.Dispatch == nil || res == nil {
+		return
+	}
+	var eventID string
+	if res.Event != nil {
+		eventID = res.Event.ID
+	}
+	m.Dispatch.Dispatch(DispatchRecord{
+		Agent: DispatchAgent, Status: DispatchAccepted, AutoLevel: DispatchAutoLevel,
+		Action: action, Workflow: b.Workflow, Scope: b.Scope, Connector: b.Connecto,
+		RV: res.RV, EventID: eventID, At: time.Now(),
+	})
 }
 
 // Fail 单锚物化失败（stderr 归装配层——包零日志依赖，metricsrc 钩子同款解耦）。

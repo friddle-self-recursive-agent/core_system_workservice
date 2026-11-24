@@ -450,6 +450,7 @@ func run() error {
 	}
 	var applier apiserver.Applier
 	var publisher apiserver.PublisherFace
+	var dispLog *flowbind.DispatchLog // 派单受理投影（v0.50 R-8；--allow-apply 装配，nil=面缺席 503）
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
 		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
@@ -516,7 +517,10 @@ func run() error {
 		// （metrics 阈值桥 v0.47 同款范式）+ DocApplied×Workflow 订阅热路径（积压合并一次
 		// 枚举装到最新面；失败=保旧面+stderr 告警+下次 apply 重试自愈）。所有面=只写
 		// origin=workflow-bind 标注对象，人/agent 实现零盲写。
-		flowMat := &flowbind.Materializer{Repo: repo, Apply: engine}
+		// 派单受理投影（v0.50 R-8，§11.2 拉起形态首段）：一次真实物化动作（created|updated）
+		// 即一条 apply-workflow 锚派单受理（autoLevel=ask 数据面在册；noop/skipped 不派单）。
+		dispLog = flowbind.NewDispatchLog(nil)
+		flowMat := &flowbind.Materializer{Repo: repo, Apply: engine, Dispatch: dispLog}
 		fbCtx, cancelFlowBind := context.WithCancel(context.Background())
 		defer cancelFlowBind()
 		n0, fails0 := flowMat.EnsureAll(ctx)
@@ -524,6 +528,7 @@ func run() error {
 			fmt.Fprintf(os.Stderr, "cored: workflow 绑定存量物化失败 %s/%s（保旧面）: %v\n", f.Scope, f.Name, f.Err)
 		}
 		fmt.Fprintf(os.Stderr, "cored: workflow 绑定=on(%d)（--allow-apply；apply 即实现骨架物化——同名/spec.connector 覆写 ConnectorOps+flow.nodes 节点接线，origin=workflow-bind 所有面；实现代码=apply-workflow agent 余量；存量初值=%d 热路径=DocApplied×Workflow 订阅）\n", n0, n0)
+		fmt.Fprintf(os.Stderr, "cored: workflow 派单=on（agent=apply-workflow autoLevel=ask——骨架物化即派单受理投影 GET /v1/agents/dispatches；受理≠拉起，真实拉起 deferred——workflow-runtime.md §11.2）\n")
 		go flowMat.Start(fbCtx, bus,
 			func(n int) {
 				fmt.Fprintf(os.Stderr, "cored: workflow 绑定热路径 n=%d（DocApplied×Workflow→骨架物化/更新——apply 即实现 §11.1）\n", n)
@@ -545,7 +550,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store)...), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store, dispLog)...), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -671,7 +676,7 @@ func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
 }
 
 // apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
-func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore) []apiserver.Option {
+func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog) []apiserver.Option {
 	var opts []apiserver.Option
 	if metricsFace != nil {
 		opts = append(opts, apiserver.WithMetrics(metricsFace))
@@ -693,6 +698,11 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	// 恒装配（同上口径），恒注入不缺位。
 	if store != nil {
 		opts = append(opts, apiserver.WithApprovalLog(store))
+	}
+	// 派单受理投影面（v0.50 R-8，GET /v1/agents/dispatches 读面）：随 flowbind 写面装配
+	// （--allow-apply；headless 载体=零物化零派单，face 缺席 503 防御面）。
+	if dispatch != nil {
+		opts = append(opts, apiserver.WithDispatchFace(dispatch))
 	}
 	return opts
 }
