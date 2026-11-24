@@ -22,6 +22,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/docrepo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
@@ -111,6 +112,11 @@ func run() error {
 			"priority 逗号清单如 low——命中清单的提案提交即自动批准（引擎自写 fieldManager=proposal:auto，"+
 			"approval_log granted 行 judgedBy=引擎主体）+派单照常；未命中=人审（提交自产 ApprovalNeeded——"+
 			"event.md 规则 15 source=core）。批准只产派单受理投影，不 enable 任何 workflow 不自动执行代码）")
+	var designRepos repoSpecs
+	flag.Var(&designRepos, "design-repo",
+		"设计文档白名单仓（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit；"+
+			"形 name=<仓工作树根>，可重复。注册仓的 *.md 进读面（权威=git HEAD）与写面（白名单→R-PUB-1 lint→"+
+			"乐观锁 baseSha 三检查 + 权限准入 + git commit 本地落盘不 push）。缺省不注册=设计文档面 503（面缺席）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -458,6 +464,20 @@ func run() error {
 	var applier apiserver.Applier
 	var publisher apiserver.PublisherFace
 	var dispLog *flowbind.DispatchLog // 派单受理投影（v0.50 R-8；--allow-apply 装配，nil=面缺席 503）
+
+	// 设计文档面（v0.52 能力 A——cored-bridge.md §2.4）：--design-repo 注册白名单仓（读面=
+	// git HEAD 权威），写面引擎随 --allow-apply 装配（白名单→R-PUB-1 lint→乐观锁 baseSha 三检查
+	// +权限准入 + git commit 本地落盘不 push）。缺省不注册=面缺席 503（读/写同口径）。
+	var designDocs *docrepo.Set
+	if len(designRepos) > 0 {
+		designDocs, err = docrepo.NewSet(designRepos...)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "cored: 设计文档面=on(%d:%s)（--design-repo；读面权威=git HEAD 零缓存，写面=%s——白名单 .md→R-PUB-1 lint→乐观锁 baseSha 三检查+权限准入 core/design-docs+git commit 本地落盘不 push；草稿=与对象草稿同一缓存 kind=DesignDoc——能力 A，cored-bridge.md §2.4）\n",
+			len(designDocs.Names()), strings.Join(designDocs.Names(), ","),
+			map[bool]string{true: "on（引擎随 --allow-apply 装配）", false: "off（写路由 405——引擎未装配）"}[*allowApply])
+	}
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
 		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
@@ -578,6 +598,9 @@ func run() error {
 		// 发布权限域与 apply 写权限域分立（publish × events 资源域）；注入走与引擎内部事件
 		// 同一条总线主干（去重/订阅派发/event_log 归档零旁路）；source 服务侧判定恒 human。
 		publisher = &eventpub.Publisher{Sch: sch, Bus: bus, Perm: perm}
+		// 设计文档写面引擎（v0.52 能力 A）：写设计文档=permission.md 机读判定（core/design-docs
+		// 资源域——scheme.yaml Role 声明词汇 core/*），审计=apply_log 行+DocApplied 事件。
+		designDocs.BindEngine(&docrepo.Engine{Bus: bus, Ops: store, Perm: perm, Domain: "core/design-docs"})
 		fmt.Fprintf(os.Stderr, "cored: apply 写面已开启（POST /v1/apply；请求级主体判定，匿名拒绝；本地信任仅作引擎 fallback）\n")
 		fmt.Fprintf(os.Stderr, "cored: 事件注入面已开启（POST /v1/events；动作=publish × 域=events 与 apply 写面分立；注入通道 source=human——v0.20）\n")
 	}
@@ -586,7 +609,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store, dispLog)...), ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store, dispLog, designDocs)...), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -711,8 +734,14 @@ func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
 	return out, nil
 }
 
+// repoSpecs 可重复旗标收集（--design-repo name=<仓根>）。
+type repoSpecs []string
+
+func (r *repoSpecs) String() string     { return strings.Join(*r, ",") }
+func (r *repoSpecs) Set(v string) error { *r = append(*r, v); return nil }
+
 // apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
-func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog) []apiserver.Option {
+func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog, designDocs *docrepo.Set) []apiserver.Option {
 	var opts []apiserver.Option
 	if metricsFace != nil {
 		opts = append(opts, apiserver.WithMetrics(metricsFace))
@@ -739,6 +768,11 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	// （--allow-apply；headless 载体=零物化零派单，face 缺席 503 防御面）。
 	if dispatch != nil {
 		opts = append(opts, apiserver.WithDispatchFace(dispatch))
+	}
+	// 设计文档面（v0.52 能力 A，/v1/design-docs* 读/史/草稿/apply）：随 --design-repo 装配
+	// （写面随 --allow-apply；未注册=面缺席 503）。
+	if designDocs != nil {
+		opts = append(opts, apiserver.WithDesignDocs(designDocs))
 	}
 	return opts
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/docrepo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
@@ -140,12 +141,13 @@ type SecretFace interface {
 type Option func(*options)
 
 type options struct {
-	metrics  MetricsFace
-	secrets  SecretFace
-	eventLog EventLogFace
-	applyLog ApplyLogFace
-	approval ApprovalLogFace
-	dispatch DispatchFace
+	metrics    MetricsFace
+	secrets    SecretFace
+	eventLog   EventLogFace
+	applyLog   ApplyLogFace
+	approval   ApprovalLogFace
+	dispatch   DispatchFace
+	designDocs DesignDocs
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -180,6 +182,12 @@ func WithDispatchFace(f DispatchFace) Option {
 	return func(o *options) { o.dispatch = f }
 }
 
+// WithDesignDocs 注入设计文档面（v0.52 能力 A——`/v1/design-docs*` 读/史/草稿/apply 面；
+// docrepo.Set 满足。装配=--design-repo；写面随 --allow-apply 同开关）。
+func WithDesignDocs(d DesignDocs) Option {
+	return func(o *options) { o.designDocs = d }
+}
+
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
@@ -196,6 +204,7 @@ var (
 	_ EventLogFace    = (*opslog.SQLiteStore)(nil)
 	_ ApplyLogFace    = (*opslog.SQLiteStore)(nil)
 	_ ApprovalLogFace = (*opslog.SQLiteStore)(nil)
+	_ DesignDocs      = (*docrepo.Set)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -257,6 +266,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	applyLog := o.applyLog
 	approval := o.approval
 	dispatch := o.dispatch
+	designDocs := o.designDocs
 	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
 	logApproval := func(l opslog.ApprovalLog) {
 		if approval == nil {
@@ -1064,6 +1074,10 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, proposalDetail(pick))
 	})
+	// 设计文档面（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit）：
+	// 读/史/草稿/apply 路由注册（handler 体见 design_docs.go）。面未装配=503；写面随
+	// --allow-apply；白名单外 403 / lint 未过 400 携违规 / 基线 sha 不符 409——任务书判据三件。
+	registerDesignDocRoutes(mux, designDocs, drafts, applyLog)
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {

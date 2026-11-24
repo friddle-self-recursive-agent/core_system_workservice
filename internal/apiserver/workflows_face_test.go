@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
-	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"gopkg.in/yaml.v3"
 )
@@ -123,7 +123,6 @@ func wfFaceServer(t *testing.T) (*httptest.Server, *repository.GitRepo) {
 		})))
 	return ts, repo
 }
-
 
 // runLogWithRun 现势源：一条 dev-delivery run（受理首步=第二相位 running）。
 func runLogWithRun(t *testing.T) *workflow.RunLog {
