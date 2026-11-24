@@ -35,21 +35,36 @@ const (
 	DispatchAutoLevel = "ask"
 )
 
-// DispatchRecord 一条派单受理投影（apply-workflow 锚——骨架物化→agent 派单接口面的受理留痕；
-// 观测面非账本，账本=apply_log 归档+骨架对象本体）。
+// DispatchRecord 一条派单受理投影（apply-workflow 锚——v0.50=骨架物化→agent 派单接口面的
+// 受理留痕；v0.51 扩展=第二触发源 Proposal 批准派单（kind=proposal，载荷带提案名/目标/验收）。
+// 观测面非账本，账本=apply_log 归档+骨架对象本体+Proposal 对象状态机）。
 type DispatchRecord struct {
 	Seq       int64     // 派单序号（本 sink 进程内单调递增，1 起）
 	Agent     string    // 派单目标锚（apply-workflow）
 	Status    string    // 受理状态（v0.50 恒 DispatchAccepted）
 	AutoLevel string    // 派单 autoLevel（ask 默认——agent-session.md §2 级别数据面）
-	Action    string    // 触发动作（created|updated——物化器 Ensure 动作；noop/skipped 不派单）
-	Workflow  string    // workflow 锚名（实现对象）
-	Scope     string    // workflow 对象 scope
-	Connector string    // 骨架对象名（绑定 ConnectorOps——实现落点）
-	RV        int64     // 骨架对象落库后 resourceVersion（实现侧 diff 基线）
-	EventID   string    // 关联 DocApplied 回执 id（workflow apply 来源链——可回指 event_log）
-	At        time.Time // 受理时刻
+	Action    string    // 触发动作（created|updated=骨架物化；approved=Proposal 批准——noop/skipped 不派单）
+	Kind      string    // 触发源种类（v0.51：workflow|proposal——恒投影，空值视为 workflow 兼容旧形）
+	Workflow  string    // workflow 锚名（kind=workflow：实现对象）
+	Scope     string    // 对象 scope
+	Connector string    // 骨架对象名（绑定 ConnectorOps——实现落点；kind=proposal 空）
+	// v0.51 Proposal 派单载荷（kind=proposal：执行体输入随行——agent 面消费余量）。
+	Proposal   string   // proposal 锚名
+	Title      string   // 提案标题（spec.title）
+	Summary    string   // 目标（spec.summary）
+	Acceptance []string // 验收标准（spec.acceptance——Goal.acceptance 同词汇）
+	Priority   string   // 优先级（spec.priority）
+	Proposer   string   // 提出人（spec.proposer）
+	RV         int64    // 落库后 resourceVersion（实现侧 diff 基线）
+	EventID    string   // 关联 DocApplied 回执 id（apply 来源链——可回指 event_log）
+	At         time.Time // 受理时刻
 }
+
+// 派单源种类词（Kind 字段取值；v0.50 形记录投影补 workflow——新载荷键=代际判别器）。
+const (
+	DispatchKindWorkflow = "workflow"
+	DispatchKindProposal = "proposal"
+)
 
 // DispatchSink 派单投影落点（装配层注入；实现须**非阻塞**且不得回调物化器——进程内投影面，
 // WakeSink 同款约束）。nil=静默零派单。

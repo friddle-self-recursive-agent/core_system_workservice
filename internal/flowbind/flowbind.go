@@ -295,8 +295,8 @@ func (m *Materializer) dispatch(res *apply.Result, action string, b Binding) {
 	}
 	m.Dispatch.Dispatch(DispatchRecord{
 		Agent: DispatchAgent, Status: DispatchAccepted, AutoLevel: DispatchAutoLevel,
-		Action: action, Workflow: b.Workflow, Scope: b.Scope, Connector: b.Connecto,
-		RV: res.RV, EventID: eventID, At: time.Now(),
+		Action: action, Kind: DispatchKindWorkflow, Workflow: b.Workflow, Scope: b.Scope,
+		Connector: b.Connecto, RV: res.RV, EventID: eventID, At: time.Now(),
 	})
 }
 

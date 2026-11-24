@@ -384,20 +384,45 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"resource": fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
 			"rv":       res.RV, "action": res.Action, "dryRun": req.DryRun,
 		}
-		// 审批判定落账（v0.46 审批独立账，ops-log.md §2）：console:approve 批准判定——
-		// fromDraft ∧ 非 dry-run ∧ 判定成功即落 granted 行（dry-run=预检非判定；非 fromDraft=
-		// 直接落库非审批屏动作；noop 幂等重入照落，rv=面上现值——判定发生了，零变更可落）。
-		if approval != nil && req.FromDraft && !req.DryRun && req.FieldManager == ApproveFieldManager {
+		// 审批判定落账（v0.46 审批独立账，ops-log.md §2；v0.51 对称扩展）：console:approve 批准 /
+		// console:reject 驳回判定——fromDraft ∧ 非 dry-run ∧ 判定成功即落对应行（dry-run=预检非判定；
+		// 非 fromDraft=直接落库非审批屏动作；noop 幂等重入照落，rv=面上现值——判定发生了，零变更可落）。
+		decision := ""
+		switch req.FieldManager {
+		case ApproveFieldManager:
+			decision = opslog.DecisionGranted
+		case RejectFieldManager:
+			decision = opslog.DecisionRejected
+		}
+		if approval != nil && req.FromDraft && !req.DryRun && decision != "" {
 			judged := "anonymous"
 			if opt.Subject != nil {
 				judged = opt.Subject.ID()
 			}
+			objKey := fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name)
 			logApproval(opslog.ApprovalLog{
-				Ts: time.Now(), ApprovalID: "draft:" + fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
-				Obj: fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name), Decision: opslog.DecisionGranted,
+				Ts: time.Now(), ApprovalID: "draft:" + objKey,
+				Obj: objKey, Decision: decision,
 				JudgedBy: judged, FieldManager: req.FieldManager,
 				ResourceVersion: res.RV, ReasonRef: req.ReasonRef,
 			})
+			// 审批信号族事件随行（v0.51，event.md 规则 11/15——判定是人经 console 做出的，
+			// 经发布面同管线 source=human；involved=判定对象——非 Workflow 引用不命中 run 域迁移，
+			// dispatch 派发面对审批族无目标=dead-letter 行，零副作用；发布失败不翻转 apply 结果——
+			// 事件是通知，判定权威=approval_log 行）。
+			if publisher != nil && req.Kind == "Proposal" && opt.Subject != nil {
+				typ := "ApprovalGranted"
+				if decision == opslog.DecisionRejected {
+					typ = "ApprovalRejected"
+				}
+				if et, err := sch.LookupEventType(typ); err == nil { // 注册表闸门前置
+					if _, err := publisher.Publish(eventpub.Request{
+						Type: typ, Involved: objKey, DedupKey: "approval:" + objKey, Level: et.DefaultLevel,
+					}, opt.Subject); err != nil {
+						log.Printf("apiserver: %s 事件发布未遂（非权威，判定不受影响）: %v", typ, err)
+					}
+				}
+			}
 		}
 		if res.Event != nil {
 			resp["event"] = map[string]any{"id": res.Event.ID, "type": res.Event.Type, "dedupKey": res.Event.DedupKey}
@@ -765,14 +790,16 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "wakes": items,
 		})
 	})
-	// 派单受理投影面（v0.50 R-8——workflow-runtime.md §11.2 拉起形态首段）：骨架物化动作
-	// （created|updated——「该版本实现未落」的机械签名）→ apply-workflow 锚派单受理投影；
-	// noop/skipped 不派单（无新实现可做）。载荷 {count, accepted, dropped, dispatches}，行含
-	// agent/status/autoLevel/action/workflow/scope/connector/rv/eventId——实现侧 diff 基线与
-	// 来源链可回指。**派单受理 ≠ agent 会话已拉起**（诚实投影与 wake 面同口径：真实拉起=
-	// dsh 会话挂载/agent-session 域，declared-deferred）；进程内环（观测面非账本——持久态=
-	// 骨架对象 execution.skeleton=true+apply_log 审计，重启归零=幂等重入不重复派单）。
-	// face 缺席=503（防御面，装配层 --allow-apply 随 flowbind 注入）；旧构建（路由未注册）
+	// 派单受理投影面（v0.50 R-8——workflow-runtime.md §11.2 拉起形态首段；v0.51 扩展=第二触发源
+	// Proposal 批准派单）：骨架物化动作（created|updated——「该版本实现未落」的机械签名，kind=workflow）
+	// 与 Proposal 批准落库（action=approved，kind=proposal——concepts/proposal.md 规则 2）→
+	// apply-workflow 锚派单受理投影；noop/skipped 不派单（无新实现可做）。载荷 {count, accepted,
+	// dropped, dispatches}，行含 kind/agent/status/autoLevel/action/锚/rv/eventId（kind=workflow 行含
+	// workflow/connector；kind=proposal 行含 proposal/title/summary/acceptance/priority/proposer——
+	// 键恒在投影，空值=不适用）。**派单受理 ≠ agent 会话已拉起**（诚实投影与 wake 面同口径：真实拉起=
+	// dsh 会话挂载/agent-session 域，declared-deferred）；进程内环（观测面非账本——持久态=骨架对象
+	// execution.skeleton=true+apply_log 审计+Proposal 状态机，重启归零=幂等重入不重复派单）。
+	// face 缺席=503（防御面，装配层 --allow-apply 随 flowbind/proposal 注入）；旧构建（路由未注册）
 	// 经兜底 handler 405=代际判别器。
 	mux.HandleFunc("GET /v1/agents/dispatches", func(w http.ResponseWriter, _ *http.Request) {
 		if dispatch == nil {
@@ -782,10 +809,18 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		st := dispatch.State()
 		items := make([]map[string]any, 0, len(st.Records))
 		for _, d := range st.Records {
+			kind := d.Kind
+			if kind == "" {
+				kind = flowbind.DispatchKindWorkflow // v0.50 形记录投影补 kind（旧 sink 兼容）
+			}
 			items = append(items, map[string]any{
 				"seq": d.Seq, "agent": d.Agent, "status": d.Status, "autoLevel": d.AutoLevel,
-				"action": d.Action, "workflow": d.Workflow, "scope": d.Scope,
-				"connector": d.Connector, "rv": d.RV, "eventId": d.EventID,
+				"action": d.Action, "kind": kind,
+				"workflow": d.Workflow, "scope": d.Scope, "connector": d.Connector,
+				// v0.51 proposal 派单载荷（键恒在=代际判别器；kind=workflow 行空值=不适用）。
+				"proposal": d.Proposal, "title": d.Title, "summary": d.Summary,
+				"acceptance": d.Acceptance, "priority": d.Priority, "proposer": d.Proposer,
+				"rv": d.RV, "eventId": d.EventID,
 				"at": d.At.UTC().Format(time.RFC3339Nano),
 			})
 		}
@@ -955,6 +990,80 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "approvals": items})
 	})
+	// 需求提案读面（v0.51 能力 B——cored-bridge.md §2 `GET /v1/proposals`；concepts/proposal.md）：
+	// 数据源=文档库 Proposal 对象（零缓存现读）；列表=瘦身投影（?status= 闭合集过滤+?scope=
+	// 枚举收窄，rv 降序确定性投影）；详情=全 spec 投影+content 原文（scope 缺省=global 优先→其余
+	// 首个）。只读 GET 恒开（objects 缺席=503；kind 未注册=404——scheme 闸门语义）；旧构建（路由
+	// 未注册）经兜底 handler 405=代际判别器。写路径零新端点（Proposal 走 apply 管线——proposal.md 规则 1）。
+	mux.HandleFunc("GET /v1/proposals", func(w http.ResponseWriter, r *http.Request) {
+		if objects == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "对象存储未配置（cored 缺 --docs）"})
+			return
+		}
+		if _, err := sch.Lookup(proposalKind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		statusFilter, scopeQ := r.URL.Query().Get("status"), r.URL.Query().Get("scope")
+		objs, err := objects.List(r.Context(), proposalKind, scopeQ)
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		rows := make([]proposalRow, 0, len(objs))
+		for _, o := range objs {
+			row := proposalRowOf(o.Name, o.Scope, o.ResourceVersion, o.Content)
+			if statusFilter != "" && row.Status != statusFilter {
+				continue // 状态过滤（闭合集词形——词外值=恒空结果不冒充全量）
+			}
+			rows = append(rows, row)
+		}
+		sortProposals(rows)
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(rows), "proposals": rows})
+	})
+	mux.HandleFunc("GET /v1/proposals/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if objects == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "对象存储未配置（cored 缺 --docs）"})
+			return
+		}
+		name, scopeQ := r.PathValue("name"), r.URL.Query().Get("scope")
+		if _, err := sch.Lookup(proposalKind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		if scopeQ != "" { // 键全给定=直取（404 语义与 objects 面同口径）
+			o, err := objects.Get(r.Context(), proposalKind, scopeQ, name)
+			if err != nil {
+				writeObjErr(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, proposalDetail(o))
+			return
+		}
+		objs, err := objects.List(r.Context(), proposalKind, "")
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		var pick *repository.Object
+		for _, o := range objs {
+			if o.Name != name {
+				continue
+			}
+			if o.Scope == "global" {
+				pick = o
+				break // global 同名优先（确定性投影）
+			}
+			if pick == nil {
+				pick = o
+			}
+		}
+		if pick == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "proposal 未在册（对象键=(kind,scope,name)）"})
+			return
+		}
+		writeJSON(w, http.StatusOK, proposalDetail(pick))
+	})
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
@@ -1024,6 +1133,11 @@ const SubjectHeader = "X-Core-Subject"
 // v0.46 审批独立账判定识别键——console 客户端与 cored 判定面共用此约定，双账并存：
 // apply_log 承落库流水，approval_log 承审批判定）。
 const ApproveFieldManager = "console:approve"
+
+// RejectFieldManager 驳回判定的 fieldManager 约定串（v0.51 能力 B 对称扩展——Proposal 屏
+// 驳回=对象态写 rejected 的判定动作（rv=落库后版本，approval_log rejected 行+ApprovalRejected
+// 事件）；与弃稿 DELETE（rv=0 零文档面动作）两分——两种「不采纳」的判定都在账）。
+const RejectFieldManager = "console:reject"
 
 // subjectFrom 请求级主体解析（apply/events 写面共用）：subject 字段优先，缺席回退
 // X-Core-Subject 头；两者皆缺 → 匿名主体（非 nil 指针=强制请求级判定，进程级本地信任

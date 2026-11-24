@@ -1,5 +1,5 @@
 // scheme_fixture_test.go —— 权威声明逐字快照（生成自 core_design/core/scheme.yaml v0.13，
-// 含 loop-10 Role 子字段必填锐化）。改动权威声明须同步再生成此夹具；
+// 含 loop-10 Role 子字段必填锐化 + loop-52 kind:Proposal 注册）。改动权威声明须同步再生成此夹具；
 // 真仓对账由 validate_test.go TestValidateDocAuthoritativeScheme 直读相对路径兜底漂移。
 package scheme
 
@@ -19,7 +19,7 @@ spec:
   version: core/v1
 
   # ============================================================
-  # 一、对象类型（kinds，17 项；已采纳的墓碑概念不注册，见文末不注册清单）
+  # 一、对象类型（kinds，18 项；已采纳的墓碑概念不注册，见文末不注册清单）
   # storage=纯路径模板：占位符 <name>=对象名、<s>=系统段、<i>=实例段；
   # 交替分支以 | 分隔；分支须含 <name> 或为固定单例路径，否则机器不可寻址。
   # ============================================================
@@ -143,6 +143,19 @@ spec:
         brakes: "{cooldown, maxMutationsPerTick, avoidRepeatFix}"    # 强制默认（可收紧不可关闭；v0.32 刹车首段：cooldown 强制默认 2m ∧ 变更上限强制默认 10——宽松方向声明一律钳回默认=不可关闭机读落点；冷却门键=锚+involved 防震荡语义粒度=同一对象；变更上限=推进拍锚级只计实际迁移；cooldown 锚首段=run 受理时刻；avoidRepeatFix 随 DriftReport 回归声明面顺延）
         regression: "{statusWriteback: bool, reports: [DriftReport, SessionLog]}"
       builtinSet: [core-workflow, default-task, simple-shot, watch-only, dev-delivery, apply-workflow]   # 改 builtin 项=高敏权限项；六项相位词汇映射见 concepts/workflow.md §1（运行时注册表同源）；预算/成本归 metrics 域（暂不做）
+
+    - kind: Proposal                 # 需求提案（concepts/proposal.md——console 提需求→审批→派工的一等对象；能力 B，2026-11-24 用户裁决）
+      builtin: true
+      storage: "global/proposals/<name>.yaml | systems/<s>/proposals/<name>.yaml"
+      spec:
+        title: "!string"                     # 标题
+        summary: "!string"                   # 目标（做什么/为什么——批准后随派单载荷交给执行体）
+        acceptance: "[]string"               # 验收标准（可验证条目——Goal.acceptance 同词汇）
+        impact: "?string"                    # 影响面（涉及系统/对象/风险说明）
+        priority: "low|normal|high|critical" # 优先级（低危/高危审批分流判定输入——分流配置=部署侧 --proposal-auto-approve）
+        proposer: "!string"                  # 提出人（主体标识——审计回链 apply_log.subject）
+        status: "!draft|submitted|approved|rejected|landed"  # 状态闭合集（迁移纪律=写面主体：draft=本地草稿未入册→submitted=提交待审→approved|rejected=判定→landed=产物落盘回写；checker=枚举闭合集，迁移序=主体纪律）
+        landing: "?{target: doc|task, ref: ?string}"  # 产物指针（批准后执行体落点声明：doc=docsRoot 对象草稿 / task=部署侧任务文件；产物真实落盘=apply-workflow agent 真实拉起段，declared-deferred）
 
     - kind: Provider                 # 账号包
       builtin: true
@@ -271,7 +284,7 @@ spec:
     - {type: MetricThreshold,  source: metrics,   defaultLevel: warn,  dedup: "<metric>:<window>",   route: owner-workflow}
     - {type: DocApplied,       source: core,      defaultLevel: info,  dedup: "apply 落库必发；engine 自写豁免",     route: owner-workflow}
     - {type: DriftFixed,       source: engine,    defaultLevel: info,  dedup: "<workflow>:<tick>",       route: observation-bus}
-    - {type: ApprovalNeeded,   source: permission,defaultLevel: warn,  dedup: "<rule>:<obj>",        route: notification/*}
+    - {type: ApprovalNeeded,   source: "permission|core",defaultLevel: warn,  dedup: "<rule>:<obj>",        route: notification/*}   # 双产源：permission=人审档拒绝路径（v0.21）；core=Proposal 提交高危分流自产（v0.51，dedup=proposal:<obj>——concepts/proposal.md 规则 5）
     - {type: ApprovalGranted,  source: human,     defaultLevel: info,  dedup: "approval:<obj>",      route: dead-letter}   # 审批信号族（workflow.md 规则 13/event.md 规则 11）：run 域迁移事件——involved=Workflow 引用即锚；dispatch 派发面无目标
     - {type: ApprovalRejected, source: human,     defaultLevel: warn,  dedup: "approval:<obj>",      route: dead-letter}   # 同上：驳回=闸锚终态迁移
     - {type: Escalate,         source: engine,    defaultLevel: error, dedup: "<workflow>:<reason>",     route: owner-workflow+root+notification/*}   # owner-workflow 收到后按其 onEscalate 策略决定暂停

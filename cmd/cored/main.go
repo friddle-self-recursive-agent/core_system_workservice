@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/patrol"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/proposal"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
@@ -104,6 +106,11 @@ func run() error {
 	notifyMinLevel := flag.String("notify-min-level", "",
 		"通知等级下限（v0.35 KI-001 通知段——minLevel 落地；缺省空=不过滤。debug|info|warn|error|fatal，"+
 			"低于下限的事件零受理零投影 filtered 计数可查询；声明面=Notification on.levels/severity 过滤）")
+	proposalAutoApprove := flag.String("proposal-auto-approve", "",
+		"Proposal 低危自动批准分流（v0.51 能力 B，concepts/proposal.md 规则 3；缺省空=全人审宁慢勿越。"+
+			"priority 逗号清单如 low——命中清单的提案提交即自动批准（引擎自写 fieldManager=proposal:auto，"+
+			"approval_log granted 行 judgedBy=引擎主体）+派单照常；未命中=人审（提交自产 ApprovalNeeded——"+
+			"event.md 规则 15 source=core）。批准只产派单受理投影，不 enable 任何 workflow 不自动执行代码）")
 	flag.Parse()
 
 	if *schemePath == "" {
@@ -529,6 +536,35 @@ func run() error {
 		}
 		fmt.Fprintf(os.Stderr, "cored: workflow 绑定=on(%d)（--allow-apply；apply 即实现骨架物化——同名/spec.connector 覆写 ConnectorOps+flow.nodes 节点接线，origin=workflow-bind 所有面；实现代码=apply-workflow agent 余量；存量初值=%d 热路径=DocApplied×Workflow 订阅）\n", n0, n0)
 		fmt.Fprintf(os.Stderr, "cored: workflow 派单=on（agent=apply-workflow autoLevel=ask——骨架物化即派单受理投影 GET /v1/agents/dispatches；受理≠拉起，真实拉起 deferred——workflow-runtime.md §11.2）\n")
+		// 需求提案分流/派单 watcher（v0.51 能力 B，concepts/proposal.md——派单面第二触发源）：
+		// DocApplied×Proposal 订阅——submitted∧高危=ApprovalNeeded 自产（source=core，event.md 规则 15）；
+		// submitted∧低危命中 --proposal-auto-approve 清单=引擎自写批准（proposal:auto，granted 行随行）；
+		// approved=apply-workflow 派单受理（kind=proposal 行——载荷带提案名/目标/验收，eventId 同源）；
+		// rejected 不派单。全部写动作走 apply 引擎同一闸门；批准只产受理投影不拉起（红线）。
+		autoList := []string{}
+		for _, p := range strings.Split(*proposalAutoApprove, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				autoList = append(autoList, p)
+			}
+		}
+		propWatcher := &proposal.Watcher{
+			Repo: repo, Apply: engine, Bus: bus, Sch: sch, Dispatch: dispLog,
+			Approvals: store, AutoApprove: autoList,
+		}
+		propCtx, cancelProp := context.WithCancel(context.Background())
+		defer cancelProp()
+		go propWatcher.Start(propCtx, bus,
+			func(action string) {
+				fmt.Fprintf(os.Stderr, "cored: proposal 分流动作=%s（DocApplied×Proposal→审批分流/派单受理——concepts/proposal.md）\n", action)
+			},
+			func(err error) {
+				fmt.Fprintf(os.Stderr, "cored: proposal 分流失败（保对象面，下次 apply 重试自愈）: %v\n", err)
+			})
+		triageState := "off（全人审）"
+		if len(autoList) > 0 {
+			triageState = "on(" + strings.Join(autoList, ",") + ")"
+		}
+		fmt.Fprintf(os.Stderr, "cored: proposal 分流=%s 派单=on（--proposal-auto-approve；高危提交 ApprovalNeeded 自产 source=core，批准即 apply-workflow 派单受理 kind=proposal——受理≠拉起）\n", triageState)
 		go flowMat.Start(fbCtx, bus,
 			func(n int) {
 				fmt.Fprintf(os.Stderr, "cored: workflow 绑定热路径 n=%d（DocApplied×Workflow→骨架物化/更新——apply 即实现 §11.1）\n", n)
