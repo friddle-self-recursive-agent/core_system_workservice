@@ -399,17 +399,19 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			var err error
 			res, err = applier.ApplyDraft(r.Context(), req.Kind, req.Scope, req.Name, opt)
 			if err != nil {
+				syncDeniedJudgmentRow(req, opt, err, o.inbox) // v0.57：denied 判定行随行同步（观测投影零旁路——账本照落）
 				writeApplyErr(w, err)
 				return
 			}
 		} else {
-			o := &repository.Object{
+			obj := &repository.Object{
 				Kind: req.Kind, Name: req.Name, Scope: req.Scope,
 				ResourceVersion: req.ResourceVersion, Content: []byte(req.Content),
 			}
 			var err error
-			res, err = applier.Apply(r.Context(), o, opt)
+			res, err = applier.Apply(r.Context(), obj, opt)
 			if err != nil {
+				syncDeniedJudgmentRow(req, opt, err, o.inbox) // v0.57：denied 判定行随行同步（观测投影零旁路——账本照落）
 				writeApplyErr(w, err)
 				return
 			}
@@ -1491,7 +1493,7 @@ func approvalsPayload(rs []flowbind.ApprovalRecord) []map[string]any {
 			"connector": r.Connector, "proposal": r.Proposal, "state": r.State,
 			"autoLevel": r.AutoLevel, "rv": r.RV, "eventId": r.EventID,
 			"approvalId": r.ApprovalID, "judgedBy": r.JudgedBy,
-			"judgedAt":  nilIfZero(r.JudgedAt), "at": r.At.UTC().Format(time.RFC3339Nano),
+			"judgedAt": nilIfZero(r.JudgedAt), "at": r.At.UTC().Format(time.RFC3339Nano),
 		})
 	}
 	return out
@@ -1509,6 +1511,34 @@ func nilIfZero(t time.Time) any {
 // flowbind.DispatchRecord → matchingKeyOf 同源；空 connector/proposal 行=零值键不匹配任何投影）。
 func matchingKeyOfRecord(d flowbind.DispatchRecord) string {
 	return flowbind.ApprovalKeyOf(d)
+}
+
+// syncDeniedJudgmentRow denied 判定行随行同步（v0.57——批准投影翻转判定的 denied 词形补口：
+// apply_log 审计=判定权威（引擎 denied 行照落——apply.go audit），观测投影此前只喂 ok/noop
+// 行=denied 判定缺席的投影缺口（判定行重扫词形与账本行集分叉）。本函数只投影账本既有事实，
+// 零新写路径零旁路（Sync 匹配判定零翻转——denied 不判定，TestSyncApprovalsFlipByApplyRows
+// 锚定）；applyLog face 缺席/非判定串=静默零投影）。
+func syncDeniedJudgmentRow(req applyRequest, opt apply.Options, err error, face InboxFace) {
+	if face == nil {
+		return
+	}
+	switch req.FieldManager {
+	case ApproveFieldManager, flowbind.ApprovalManager, RejectFieldManager, flowbind.ApprovalRejecter:
+	default:
+		return // 非判定溯源串=零投影（普通 apply 拒绝不参与批准判定面）
+	}
+	if !errors.Is(err, apply.ErrDenied) && !errors.Is(err, apply.ErrNotRegistered) {
+		return // 非 deny 族错误（conflict/传输层）不投——判定行词形=denied 族
+	}
+	sub := "anonymous"
+	if opt.Subject != nil {
+		sub = opt.Subject.ID()
+	}
+	face.Sync([]opslog.ApplyLog{{
+		Ts: time.Now(), FieldManager: req.FieldManager, Subject: sub,
+		Obj:    fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
+		Result: "denied", PolicyDecisions: err.Error(),
+	}})
 }
 
 // spawnPayload spawn 接线声明 → 载荷行（/v1/agents/dispatches spawn 键——键恒在=代际判别器；

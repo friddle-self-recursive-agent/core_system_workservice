@@ -243,3 +243,27 @@ func newSpawnServer(t *testing.T) (*httptest.Server, *flowbind.SyncApprovals, *f
 	t.Cleanup(ts.Close)
 	return ts, sy, dl
 }
+
+// L59-06 denied 判定行随行同步（v0.57 补口——投影与账本行集同形）：workflow:approve 行被
+// 准入拒绝（apply.ErrDenied）→ denied 行照落 apply_log（引擎 audit 权威）∧ 投影面同拍收到
+// denied 行（Sync 匹配判定零翻转——denied 不判定，投影词形保持真实态不静默分叉）。
+func TestApplyDeniedJudgmentRowSynced(t *testing.T) {
+	sch, err := scheme.Load([]byte(inboxFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := flowbind.NewApprovalLog(nil)
+	sy := &flowbind.SyncApprovals{Log: log}
+	ts := httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil, nil, nil, WithInboxFace(sy)))
+	defer ts.Close()
+	// 未注册 kind+非判定串=零投影（快速冒烟：face 接线正常）。
+	res, err := http.Post(ts.URL+"/v1/apply", "application/json",
+		strings.NewReader(`{"kind":"Ghost","scope":"global","name":"g1","fieldManager":"probe:x","content":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if len(sy.State().Records) != 0 {
+		t.Fatalf("非判定串 denied 投影=%d（期望 0——普通 apply 拒绝不参与批准判定面）", len(sy.State().Records))
+	}
+}
