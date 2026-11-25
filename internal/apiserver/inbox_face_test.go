@@ -267,3 +267,100 @@ func TestApplyDeniedJudgmentRowSynced(t *testing.T) {
 		t.Fatalf("非判定串 denied 投影=%d（期望 0——普通 apply 拒绝不参与批准判定面）", len(sy.State().Records))
 	}
 }
+
+// L59-UI-02 挂起行进行集（幽灵计数缺口收口）：派单 ask 批准投影挂起 → /v1/inbox items 出现
+// class=ApprovalNeeded ∧ kind=dispatch 行（digest=派单待批（<锚> · autoLevel=ask））∧
+// classes.ApprovalNeeded 计数=归档行+挂起行（计数=行数同源不翻倍）∧ link=wf 详情深链。
+func TestInboxPendingRowsInItems(t *testing.T) {
+	ts, sy, _ := newInboxServer(t)
+	dl := flowbind.NewDispatchLog(nil)
+	dl.Approvals = sy
+	dl.Dispatch(flowbind.DispatchRecord{Kind: flowbind.DispatchKindWorkflow, Workflow: "wf-a",
+		Scope: "global", Connector: "wf-a", RV: 1, AutoLevel: flowbind.DispatchAutoLevel, At: time.Now()})
+	res, err := http.Get(ts.URL + "/v1/inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body struct {
+		Count   int `json:"count"`
+		Classes map[string]int
+		Items   []struct {
+			Class  string `json:"class"`
+			Kind   string `json:"kind"`
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
+			Link   string `json:"link"`
+		} `json:"items"`
+		Watchdog struct {
+			Pending     int  `json:"pending"`
+			ApproveIdle bool `json:"approveIdle"`
+		} `json:"watchdog"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	var pendRow *struct {
+		Class  string `json:"class"`
+		Kind   string `json:"kind"`
+		Name   string `json:"name"`
+		Digest string `json:"digest"`
+		Link   string `json:"link"`
+	}
+	for i := range body.Items {
+		it := &body.Items[i]
+		if it.Class == "ApprovalNeeded" && it.Kind == "dispatch" {
+			pendRow = it
+		}
+	}
+	if pendRow == nil {
+		t.Fatalf("挂起行未进行集（items=%d——幽灵计数缺口未收口）", len(body.Items))
+	}
+	if pendRow.Name != "wf-a" || pendRow.Digest == "" || pendRow.Link != "#/wf/wf-a" {
+		t.Fatalf("挂起行投影=%+v（期望 name=wf-a link=#/wf/wf-a digest 派单待批词形）", pendRow)
+	}
+	// 计数=行数（同源不翻倍）。
+	anCount := 0
+	for _, it := range body.Items {
+		if it.Class == "ApprovalNeeded" {
+			anCount++
+		}
+	}
+	if body.Classes["ApprovalNeeded"] != anCount {
+		t.Fatalf("classes.ApprovalNeeded=%d 行数=%d（期望相等——加法投影摘除）", body.Classes["ApprovalNeeded"], anCount)
+	}
+	if body.Count != len(body.Items) {
+		t.Fatalf("count=%d 行数=%d（期望相等）", body.Count, len(body.Items))
+	}
+	if body.Watchdog.Pending != 1 || body.Watchdog.ApproveIdle {
+		t.Fatalf("watchdog=%+v（期望 pending=1 非空闲）", body.Watchdog)
+	}
+	// 人批=Apply 判定 → 挂起行消失（回链闭环——下一次装载反映操作结果）。
+	sy.Sync([]opslog.ApplyLog{{Ts: time.Now(), FieldManager: flowbind.ApprovalManager,
+		Subject: "console-operator", Obj: "ConnectorOps/global/wf-a", ResourceVersion: 2, Result: "ok"}})
+	res2, err := http.Get(ts.URL + "/v1/inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res2.Body.Close()
+	var body2 struct {
+		Count    int `json:"count"`
+		Classes  map[string]int
+		Items    []struct{ Class, Kind string } `json:"items"`
+		Watchdog struct {
+			Pending     int  `json:"pending"`
+			ApproveIdle bool `json:"approveIdle"`
+		} `json:"watchdog"`
+	}
+	if err := json.NewDecoder(res2.Body).Decode(&body2); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range body2.Items {
+		if it.Class == "ApprovalNeeded" && it.Kind == "dispatch" {
+			t.Fatal("批准后挂起行仍在集（回链闭环缺口——挂起行应随翻转消失）")
+		}
+	}
+	if !body2.Watchdog.ApproveIdle || body2.Watchdog.Pending != 0 {
+		t.Fatalf("watchdog=%+v（期望 approveIdle=true 挂起归零——真实词形）", body2.Watchdog)
+	}
+}

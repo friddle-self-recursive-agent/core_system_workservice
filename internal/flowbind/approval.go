@@ -312,13 +312,17 @@ type Inbox struct {
 	Watchdog map[string]any `json:"watchdog,omitempty"`
 }
 
-// inbox 词汇常量（四类判定分类——console 判别词同源）。
+// inbox 词汇常量（四类判定分类——console 判别词同源；导出形=装配层挂起行投影消费）。
 const (
 	inboxNeedsHuman     = "NeedsHuman"
 	inboxApprovalNeeded = "ApprovalNeeded"
 	inboxProposal       = "Proposal"
 	inboxDocReview      = "DocReview"
 )
+
+// InboxClassApprovalNeeded ApprovalNeeded 类导出常量（/v1/inbox 装配层挂起行投影消费——
+// 同一判定词零硬编码）。
+const InboxClassApprovalNeeded = inboxApprovalNeeded
 
 // BuildInbox 收件箱投影组装（纯函数——装配层喂行集+watchdog 投影；读面缺席类=零行，
 // 缺口=空态显式不冒充）。行序：NeedsHuman→ApprovalNeeded→Proposal→DocReview（人注意优先），
@@ -351,16 +355,7 @@ func BuildInbox(events []opslog.EventLog, drafts []InboxDraftRow, proposals []In
 			Digest: "提案待批（" + p.Title + "）", At: p.UpdatedAt, Link: "#/proposal/" + p.Scope + "/" + p.Name})
 	}
 	// 稳定排序：类序→At 降序（同刻按 Digest 字典序收尾——投影确定性）。
-	classRank := map[string]int{inboxNeedsHuman: 0, inboxApprovalNeeded: 1, inboxProposal: 2, inboxDocReview: 3}
-	sort.SliceStable(rows, func(i, j int) bool {
-		if classRank[rows[i].Class] != classRank[rows[j].Class] {
-			return classRank[rows[i].Class] < classRank[rows[j].Class]
-		}
-		if rows[i].At != rows[j].At {
-			return rows[i].At > rows[j].At
-		}
-		return rows[i].Digest < rows[j].Digest
-	})
+	SortInboxRows(rows)
 	classes := map[string]int{}
 	for _, r := range rows {
 		classes[r.Class]++
@@ -406,6 +401,21 @@ func inboxDocLinkOf(kind, scope, name string) string {
 		return "#/designdoc/" + scope + "/" + name
 	}
 	return "#/doc/" + kind + "/" + scope + "/" + name
+}
+
+// SortInboxRows 收件箱行稳定排序（导出形——BuildInbox 内序与装配层挂起行合并后复排同一
+// 投影：类序→At 降序（同刻按 Digest 字典序收尾）——行集与计数同源零硬编码）。
+func SortInboxRows(rows []InboxRow) {
+	classRank := map[string]int{inboxNeedsHuman: 0, inboxApprovalNeeded: 1, inboxProposal: 2, inboxDocReview: 3}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if classRank[rows[i].Class] != classRank[rows[j].Class] {
+			return classRank[rows[i].Class] < classRank[rows[j].Class]
+		}
+		if rows[i].At != rows[j].At {
+			return rows[i].At > rows[j].At
+		}
+		return rows[i].Digest < rows[j].Digest
+	})
 }
 
 // InboxDraftRow / InboxProposalRow 收件箱组装输入行（装配层从读面行集投影——宽松键，零宿主依赖）。

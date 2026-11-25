@@ -952,19 +952,40 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		st := o.inbox.State()
 		pending := 0
+		var pendRows []flowbind.InboxRow
 		for _, r := range st.Records {
 			if r.State == flowbind.ApprovalPending {
 				pending++
+				// v0.57 挂起行进行集（console-adoption.md §1.32 L59-UI-02——幽灵计数缺口收口）：
+				// ask 批准投影挂起行=ApprovalNeeded 类条目行（行集与计数同源不翻倍——加法投影
+				// 摘除，计数=行数）。落点=派单投影所在 wf 详情配置 tab（#/wf/<锚>——批准动作=
+				// Apply workflow:approve 判定链路）。
+				name := r.Connector
+				anchor := r.Workflow
+				if r.Kind == flowbind.DispatchKindProposal || r.Proposal != "" {
+					name = r.Proposal
+					anchor = r.Proposal
+				}
+				pendRows = append(pendRows, flowbind.InboxRow{
+					Class: flowbind.InboxClassApprovalNeeded, Kind: "dispatch", Name: name, Scope: r.Scope,
+					Digest:  "派单待批（" + anchor + " · autoLevel=" + r.AutoLevel + "）",
+					EventID: r.EventID, At: r.At.UTC().Format(time.RFC3339Nano),
+					Link: "#/wf/" + anchor,
+				})
 			}
 		}
-		cls := map[string]int{}
 		box := flowbind.BuildInbox(evs, draftRows, propRows, nil)
-		for k, v := range box.Classes {
-			cls[k] = v
+		if len(pendRows) > 0 {
+			box.Items = append(box.Items, pendRows...) // 人注意优先类序由 BuildInbox 排序——挂起行同类合并后重排
+			flowbind.SortInboxRows(box.Items)
+			box.Count = len(box.Items)
+			if box.Classes == nil {
+				box.Classes = map[string]int{}
+			}
+			box.Classes[flowbind.InboxClassApprovalNeeded] += len(pendRows)
 		}
-		cls["ApprovalNeeded"] = cls["ApprovalNeeded"] + pending
 		writeJSON(w, http.StatusOK, map[string]any{
-			"count": box.Count + pending, "classes": cls, "items": box.Items,
+			"count": box.Count, "classes": box.Classes, "items": box.Items,
 			"approvals": map[string]any{"count": len(st.Records), "pending": pending,
 				"records": approvalsPayload(st.Records)},
 			"watchdog": map[string]any{"approvals": len(st.Records), "pending": pending,
