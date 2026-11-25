@@ -146,6 +146,13 @@ func (r *GitRepo) ensureGitRepo() error {
 
 // git 在文档库执行 git 子命令（统一注入提交身份，不依赖宿主全局配置）。
 func (r *GitRepo) git(ctx context.Context, args ...string) (string, error) {
+	_, out, err := r.gitRaw(ctx, args...)
+	return out, err
+}
+
+// gitRaw 同 git 但返回未修剪 stdout（rev-content 快照读面用——blob 原字节含文末换行，
+// TrimSpace 会削掉文末换行破坏逐字节恒等判据）；第二返回值=修剪词形（既有调用点零迁移）。
+func (r *GitRepo) gitRaw(ctx context.Context, args ...string) (string, string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.root
 	env := append(os.Environ(),
@@ -156,9 +163,9 @@ func (r *GitRepo) git(ctx context.Context, args ...string) (string, error) {
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
-		return out.String(), fmt.Errorf("git %s: %w（%s）", strings.Join(args, " "), err, strings.TrimSpace(errOut.String()))
+		return out.String(), out.String(), fmt.Errorf("git %s: %w（%s）", strings.Join(args, " "), err, strings.TrimSpace(errOut.String()))
 	}
-	return strings.TrimSpace(out.String()), nil
+	return out.String(), strings.TrimSpace(out.String()), nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,6 +561,79 @@ func (r *GitRepo) Get(_ context.Context, kind, scope, name string) (*Object, err
 // 不可解析/损坏的文件跳过不致命（只读面宽松；写路径才强校验）。
 func (r *GitRepo) List(_ context.Context, kind, scope string) ([]*Object, error) {
 	return globObjects(r.root, r.sch, kind, scope)
+}
+
+// ErrRevNotFound 历史 rv 快照缺席（apiserver RevContentFace 404 分立判定源——与对象缺席
+// ErrNotFound 分立：对象在册但该 rv 无对应落库提交=快照缺席，不冒充对象缺失）。
+var ErrRevNotFound = errors.New("repository: 历史 rv 快照缺席")
+
+// RevContent 历史版本正文读面（v0.63 rev-content diff 面，console-adoption.md §1.40——
+// 历史 tab「点行 diff 上一版」余量收口的读半边）。git 后端=内容版本权威
+// （concepts/revision.md §3）：每次 ok apply=一次 commit（applyWrite git 留痕段）、blob 即含
+// `resourceVersion: <rv>` 反写行——rv→commit 机械可寻址（**rv 流水权威在 ops DB apply_log，
+// 本读面不承判定流水**）。快照语义=该对象「最新携带该 rv 反写行的提交」时点正文（git log --
+// 文件限定=对象自身历史∪手编 docsRoot 通道提交；手编保 rv 修改属于该 rv 状态）。读面零副作用
+// 零写路径；读走 git 裸库（不走写队列——历史快照不可变）。ErrRevNotFound → HTTP 404（与对象
+// 缺席分立）；noop 行不产提交、篡改文档不产 rv → 快照缺席恒可达=诚实词形。
+func (r *GitRepo) RevContent(ctx context.Context, kind, scope, name string, rv int64) (string, error) {
+	k, err := r.sch.Lookup(kind)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrNotRegistered, err)
+	}
+	path, err := r.concretePath(k, scope, name)
+	if err != nil {
+		return "", err
+	}
+	rel := relToRoot(r.root, path)
+	key := fmt.Sprintf("%s/%s/%s", kind, scope, name)
+	// 全史按时刻降序扫（git log 缺省最新在前；有界防拖库同口径，-- <rel> 限定单对象文件=
+	// 候选=该对象自身历史∪手编 docsRoot 通道提交）。rv 语义=「该 rv 快照=最新携带该 rv
+	// 反写行的提交时点正文」——手编保 rv 修改属于该 rv 状态（HEAD 读面=文件现值同口径，
+	// diff 对现读面才真实）；最新在前=首个 blob 命中即定。blob 校验=rv 从快照自身元数据读
+	// （提交消息不含 rv——防消息词形漂移后错配）。
+	out, err := r.git(ctx, "log", "--format=%H", "--max-count=1000", "--", rel)
+	if err != nil {
+		return "", fmt.Errorf("repository: 历史 log %s: %w", key, err)
+	}
+	sha := ""
+	for _, line := range strings.Split(out, "\n") {
+		sha = strings.TrimSpace(line)
+		if sha == "" {
+			continue
+		}
+		// blob 校验：该提交时点正文含 resourceVersion: <rv> 反写行=此提交即该 rv 快照。
+		blob, _, err := r.gitRaw(ctx, "show", sha+":"+rel)
+		if err != nil {
+			continue // 历史树读失败跳过（保旧面语义——只读面不致命）
+		}
+		if blobRV(blob) == rv {
+			break // 最新在前=首个命中即该 rv 最新提交
+		}
+		sha = ""
+	}
+	if sha == "" {
+		return "", fmt.Errorf("%w: %s r%d（无含该 rv 反写行的落库提交）", ErrRevNotFound, key, rv)
+	}
+	blob, _, err := r.gitRaw(ctx, "show", sha+":"+rel)
+	if err != nil {
+		return "", fmt.Errorf("repository: 历史 show %s@%s: %w", key, sha[:8], err)
+	}
+	return blob, nil
+}
+
+// blobRV 从快照正文中读 resourceVersion 反写行（经元数据容器解析，与写路径 metaOf 同口径；
+// 不可解析=0——不匹配任何请求 rv）。
+func blobRV(raw string) int64 {
+	doc, container, _, _, err := splitDoc([]byte(raw))
+	if err != nil {
+		return 0
+	}
+	_ = doc
+	m, err := metaOf(container)
+	if err != nil {
+		return 0
+	}
+	return m.RV
 }
 
 // globObjects git 布局的读半边：按 storage 模板通配枚举 (kind, scope) 下全部对象文件

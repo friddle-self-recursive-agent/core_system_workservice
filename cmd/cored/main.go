@@ -211,8 +211,7 @@ func run() error {
 		repo = gr
 		defer repo.Close()
 		store2 = repo
-		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())
-	}
+		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())	}
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
@@ -683,6 +682,11 @@ func run() error {
 		opts := apiserverOpts(metricsFace, secrets, store, dispLog, approvalSync, designDocs)
 		if sessionState != "off" && sessionState != "unregistered" {
 			opts = append(opts, apiserver.WithSessionLiveness(liveness))
+		}
+		// 历史 rv 正文读面（v0.63 rev-content diff 面，§1.40——历史 tab 点行 diff 上一版读半边）：
+		// git 后端恒装配（git=内容版本权威）；sqlite 后端缺席=面 503 诚实降级（防御面词形）。
+		if gr, ok := store2.(*repository.GitRepo); ok {
+			opts = append(opts, apiserver.WithRevContent(gr))
 		}
 		return opts
 	}

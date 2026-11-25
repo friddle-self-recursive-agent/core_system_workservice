@@ -121,6 +121,23 @@ type ApprovalLogFace interface {
 	QueryApprovals(q opslog.ApprovalQuery) ([]opslog.ApprovalLog, error)
 }
 
+// RevContentFace 历史 rv 正文读面口面（v0.63 rev-content diff 面——历史 tab「点行 diff 上一版」
+// 余量收口的读半边；git 后端实现=repository.GitRepo）。语义=按对象键与目标 rv 取**该提交时点**
+// 的权威正文快照（git 后端权威=仓库文件历史，ops DB 只记 rv 流水——concepts/revision.md §3
+// 「git=内容版本权威」）；face 缺席=503 防御面（旧代兜底 405=代际判别器恒成立）。具体方法
+// 不占冻结 Repository 签名（QueryApplies 口面同款约定，compile 期断言在 New 尾注记）。
+type RevContentFace interface {
+	// RevContent 取对象键 (kind, scope, name) 在 rv 提交时点的正文快照。找不到该 rv
+	// 的落库提交 → ErrRevNotFound（HTTP 404，与对象缺席分立）；读面零副作用。
+	RevContent(ctx context.Context, kind, scope, name string, rv int64) (string, error)
+}
+
+// WithRevContent 注入历史 rv 正文读面（v0.63 rev-content diff 面——历史 tab 点行 diff 上一版
+// 读半边；git 后端恒装配；sqlite 后端=面缺席 503 诚实降级）。
+func WithRevContent(f RevContentFace) Option {
+	return func(o *options) { o.revContent = f }
+}
+
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
 // store/queries 投影读面：指标清单与窗口聚合投影。可选能力：未注入=数据面未装配，
 // /v1/metrics 返回空投影——关断口径缺省可见，与 405 代际判别器分立）。
@@ -149,6 +166,7 @@ type options struct {
 	eventLog        EventLogFace
 	applyLog        ApplyLogFace
 	approval        ApprovalLogFace
+	revContent      RevContentFace
 	dispatch        DispatchFace
 	inbox           InboxFace
 	designDocs      DesignDocs
@@ -227,6 +245,7 @@ var (
 	_ EventLogFace        = (*opslog.SQLiteStore)(nil)
 	_ ApplyLogFace        = (*opslog.SQLiteStore)(nil)
 	_ ApprovalLogFace     = (*opslog.SQLiteStore)(nil)
+	_ RevContentFace      = (*repository.GitRepo)(nil)
 	_ DesignDocs          = (*docrepo.Set)(nil)
 	_ SessionLivenessFace = (*sessionliveness.Watchdog)(nil)
 )
@@ -243,6 +262,8 @@ var (
 //	                                     最新优先投影；limit/type/level/involved/since）
 //	GET /v1/history/{kind}/{name}?scope=s 对象应用史投影（v0.38 console 读面第三段：apply_log
 //	                                     rv 降序；limit）
+//	GET /v1/rev-content/{kind}/{name}?scope=s&rv=N 历史 rv 正文投影（v0.63 rev-content diff 面
+//	                                     §1.40：git 权威正文快照读半边；face 缺席 503）
 //	GET /v1/approvals                    审批判定账面查询面（v0.46 审批独立账：approval_log
 //	                                     rv 降序；decision/obj/limit）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
@@ -289,6 +310,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	eventLog := o.eventLog
 	applyLog := o.applyLog
 	approval := o.approval
+	revContent := o.revContent
 	dispatch := o.dispatch
 	designDocs := o.designDocs
 	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
@@ -1196,6 +1218,45 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "obj": obj, "entries": items})
+	})
+	// 历史 rv 正文投影面（v0.63 rev-content diff 面，§1.40——历史 tab「点行 diff 上一版」余量
+	// 收口的读半边）：`GET /v1/rev-content/{kind}/{name}?scope=s&rv=N` 按对象键+目标 rv 取该
+	// 提交时点权威正文快照（数据源=git 后端权威正文——concepts/revision.md §3 git=内容版本权威，
+	// ops DB 只记 rv 流水；快照定位=提交消息键段+blob rv 反写行双段对账）。只读 GET 零副作用；
+	// face 缺席=503 防御面（sqlite 后端/旧装配——诚实降级非 200 假面）；旧构建 405=代际判别器；
+	// 对象键不可解析/缺席 → 400/404 分立；rv 缺席或不可解析 → 400；该 rv 无落库提交 → 404
+	// ErrRevNotFound 分立词形（与对象缺席分立——审计不冒充）。
+	mux.HandleFunc("GET /v1/rev-content/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if revContent == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "历史 rv 正文读面未接线（face 缺席——sqlite 后端/旧装配诚实降级）"})
+			return
+		}
+		kind, name := r.PathValue("kind"), r.PathValue("name")
+		scope := r.URL.Query().Get("scope")
+		rawRV := r.URL.Query().Get("rv")
+		rv, err := strconv.ParseInt(rawRV, 10, 64)
+		if err != nil || rv <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("rv 必须为正整数（乐观锁词形），得 %q", rawRV)})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer cancel()
+		content, err := revContent.RevContent(ctx, kind, scope, name, rv)
+		switch {
+		case err == nil:
+			writeJSON(w, http.StatusOK, map[string]any{
+				"kind": kind, "scope": scope, "name": name, "rv": rv, "content": content,
+				"source": "git-backend",
+			})
+		case errors.Is(err, repository.ErrRevNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error(), "obj": fmt.Sprintf("%s/%s/%s", kind, scope, name), "rv": rv})
+		case errors.Is(err, repository.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+		case errors.Is(err, repository.ErrScope):
+			writeJSON(w, http.StatusBadRequest, map[string]error{"error": err})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		}
 	})
 	// 审批判定账面查询面（v0.46 审批独立账，ops-log.md §2 v0.46 注记——`GET /v1/approvals`）：
 	// 数据源=ops DB approval_log（审批判定独立账：批准 granted/驳回 rejected——apply_log 承
