@@ -765,8 +765,12 @@ ON CONFLICT(session_id) DO UPDATE SET
 	task_name=excluded.task_name, long_task=excluded.long_task,
 	heal_attempts=excluded.heal_attempts, healed_at=excluded.healed_at,
 	state=excluded.state, updated_at=excluded.updated_at`
+	healedCol := "" // 可选时间字段：零值=空串（stamp 的零值回退 now 语义不适用——未恢复过≠恢复于 now）
+	if !h.HealedAt.IsZero() {
+		healedCol = stamp(h.HealedAt)
+	}
 	_, err := s.db.Exec(q, h.SessionID, stamp(h.Ts), h.Phase, h.LastAction, h.TaskName,
-		boolInt(h.LongTask), h.HealAttempts, stamp(h.HealedAt), h.State, stamp(h.UpdatedAt))
+		boolInt(h.LongTask), h.HealAttempts, healedCol, h.State, stamp(h.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("opslog: 落 session_heartbeat(%s): %w", h.SessionID, err)
 	}
