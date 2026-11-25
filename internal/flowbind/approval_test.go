@@ -4,6 +4,7 @@
 package flowbind
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -132,6 +133,54 @@ func TestBuildInboxClasses(t *testing.T) {
 	empty := BuildInbox(nil, nil, nil, nil)
 	if empty.Count != 0 || len(empty.Items) != 0 || empty.Classes[inboxNeedsHuman] != 0 {
 		t.Fatalf("空输入投影=%+v（期望零行空态显式）", empty)
+	}
+}
+
+// L61-01 needsHuman 类 Escalate 行 digest 尾随空串收口（loop-61 队列 1——§1.25 收件箱
+// 展示面余量）：involved 缺席（空/纯空白）→ 降级词形 `<Type> · （involved 缺席）`——无尾随
+// 分隔符悬空；involved 在册 → 既有词形 `<Type> · <Involved>` 不变；EventID 深链照旧
+// （机读判据不变——纯展示面零判定语义）。ApprovalNeeded 行同款拼装随行（单点 helper）。
+func TestBuildInboxDigestWithoutInvolved(t *testing.T) {
+	now := time.Date(2026, 11, 27, 10, 0, 0, 0, time.UTC)
+	events := []opslog.EventLog{
+		{Ts: now, EventID: "e-empty", Type: "Escalate", Involved: ""},
+		{Ts: now, EventID: "e-blank", Type: "NeedsHuman", Involved: "   "},
+		{Ts: now, EventID: "e-ok", Type: "Escalate", Involved: "Session/cored/s1"},
+		{Ts: now, EventID: "e-ap", Type: "ApprovalNeeded", Involved: ""},
+	}
+	box := BuildInbox(events, nil, nil, nil)
+	got := map[string]string{}
+	for _, it := range box.Items {
+		got[it.EventID] = it.Digest
+	}
+	if d := got["e-empty"]; d != "Escalate · （involved 缺席）" {
+		t.Fatalf("Escalate involved 缺席 digest=%q（期望降级词形——尾随分隔符不得悬空）", d)
+	}
+	if d := got["e-blank"]; d != "NeedsHuman · （involved 缺席）" {
+		t.Fatalf("NeedsHuman involved 纯空白 digest=%q（期望降级词形）", d)
+	}
+	if d := got["e-ok"]; d != "Escalate · Session/cored/s1" {
+		t.Fatalf("Escalate involved 在册 digest=%q（期望既有词形不变）", d)
+	}
+	if d := got["e-ap"]; d != "ApprovalNeeded · （involved 缺席）" {
+		t.Fatalf("ApprovalNeeded involved 缺席 digest=%q（期望同款降级词形）", d)
+	}
+	// 机读判据不变：EventID 深链照旧（事件详情兜底路由）。
+	for _, it := range box.Items {
+		if it.Link != "#/event/"+it.EventID {
+			t.Fatalf("行 %s 深链=%s（期望 #/event/<eventId> 不变）", it.EventID, it.Link)
+		}
+		if strings.HasSuffix(it.Digest, " · ") {
+			t.Fatalf("行 %s digest 尾随分隔符悬空: %q", it.EventID, it.Digest)
+		}
+	}
+	// 类归属不变：缺席 involved 不改 NeedsHuman/ApprovalNeeded 分类。
+	classes := map[string]int{}
+	for _, it := range box.Items {
+		classes[it.Class]++
+	}
+	if classes[inboxNeedsHuman] != 3 || classes[inboxApprovalNeeded] != 1 {
+		t.Fatalf("分类计数=%v（期望 NeedsHuman=3 ApprovalNeeded=1——纯展示面零判定语义）", classes)
 	}
 }
 

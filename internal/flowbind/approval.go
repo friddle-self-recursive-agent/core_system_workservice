@@ -19,6 +19,7 @@ package flowbind
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -395,6 +396,17 @@ const (
 // 同一判定词零硬编码）。
 const InboxClassApprovalNeeded = inboxApprovalNeeded
 
+// inboxDigestOf 事件行 digest 单点拼装（loop-61 队列 1——needsHuman 类 Escalate 行 digest
+// 尾随空串收口）：词形=`<Type> · <Involved>`；involved 缺席（空/纯空白）=降级词形
+// `<Type> · （involved 缺席）`——尾随分隔符不再悬空，页面展示可读性收口。纯展示面：
+// EventID 深链与判定分类零变更（机读判据不变）。
+func inboxDigestOf(eventType, involved string) string {
+	if strings.TrimSpace(involved) == "" {
+		return eventType + " · （involved 缺席）"
+	}
+	return eventType + " · " + involved
+}
+
 // BuildInbox 收件箱投影组装（纯函数——装配层喂行集+watchdog 投影；读面缺席类=零行，
 // 缺口=空态显式不冒充）。行序：NeedsHuman→ApprovalNeeded→Proposal→DocReview（人注意优先），
 // 同类内按 At 降序。
@@ -403,13 +415,13 @@ func BuildInbox(events []opslog.EventLog, drafts []InboxDraftRow, proposals []In
 	for _, e := range events {
 		switch e.Type {
 		case "NeedsHuman", "Escalate":
-			rows = append(rows, InboxRow{Class: inboxNeedsHuman, Digest: e.Type + " · " + e.Involved,
+			rows = append(rows, InboxRow{Class: inboxNeedsHuman, Digest: inboxDigestOf(e.Type, e.Involved),
 				EventID: e.EventID, At: e.Ts.UTC().Format(time.RFC3339Nano),
 				Link: "#/event/" + e.EventID})
 		case "ApprovalNeeded":
 			rows = append(rows, InboxRow{Class: inboxApprovalNeeded, Kind: involvedKind(e.Involved),
 				Name: involvedName(e.Involved), Scope: involvedScope(e.Involved),
-				Digest: e.Type + " · " + e.Involved, EventID: e.EventID,
+				Digest: inboxDigestOf(e.Type, e.Involved), EventID: e.EventID,
 				At: e.Ts.UTC().Format(time.RFC3339Nano), Link: inboxLinkOf(e.Involved, e.EventID)})
 		}
 	}
