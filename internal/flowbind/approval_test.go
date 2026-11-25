@@ -52,9 +52,9 @@ func TestSyncApprovalsFlipByApplyRows(t *testing.T) {
 	flips := syncA.Sync([]opslog.ApplyLog{
 		{Ts: ts, FieldManager: ApprovalManager, Subject: "console-operator", Obj: "ConnectorOps/global/wf-a", ResourceVersion: 2, Result: "ok"},
 		{Ts: ts, FieldManager: ApprovalRejecter, Subject: "console-operator", Obj: "ConnectorOps/global/wf-b", ResourceVersion: 2, Result: "ok"},
-		{Ts: ts, FieldManager: "console:approve", Obj: "ConnectorOps/global/wf-a", Result: "ok"},                        // 非 ask 判定串=零翻转
 		{Ts: ts, FieldManager: ApprovalManager, Obj: "ConnectorOps/global/wf-x", Result: "ok"},                          // 无挂起投影=零发明
 		{Ts: ts, FieldManager: ApprovalManager, Obj: "ConnectorOps/global/ghost", ResourceVersion: 1, Result: "denied"}, // denied 不判定
+		{Ts: ts, FieldManager: "unknown:approve", Obj: "ConnectorOps/global/wf-a", Result: "ok"},                        // 非判定族串=零翻转（v0.58a 族外）
 	})
 	if flips != 2 {
 		t.Fatalf("翻转行数=%d（期望 2——approve/reject 各一，无关行零翻转）", flips)
@@ -213,8 +213,14 @@ func TestDecisionActionInputs(t *testing.T) {
 	if !ok {
 		t.Fatal("reject 动作应产输入")
 	}
-	if inR.Kind != "Proposal" || inR.Name != "p1" || inR.FieldManager != ApprovalRejecter {
-		t.Fatalf("proposal 驳回对象=%+v（期望 Proposal/global/p1 × workflow:reject）", inR)
+	// v0.58a 判定主体分族：proposal 派单行动作=提案判定通路（console:reject——fromDraft 翻转稿
+	// 判定串；活体实证 GAP-Q60-2 收口——判定串与 console 动作面同串=判定行可被族表命中）。
+	if inR.Kind != "Proposal" || inR.Name != "p1" || inR.FieldManager != ProposalApprovalRejecter {
+		t.Fatalf("proposal 驳回对象=%+v（期望 Proposal/global/p1 × console:reject——提案判定通路同串）", inR)
+	}
+	inP, ok := DecisionAction(pr, DecisionApprove)
+	if !ok || inP.FieldManager != ProposalApprovalManager {
+		t.Fatalf("proposal 批准判定串=%+v（期望 console:approve——提案判定通路同串）", inP)
 	}
 	if _, ok := DecisionAction(wf, "spawn"); ok {
 		t.Fatal("非判定动作（spawn）不得产输入——动作面零发明写词形（零拉起执行器红线 a）")
@@ -244,5 +250,36 @@ func TestDecisionActionFeedsSync(t *testing.T) {
 	r := log.State().Records[0]
 	if r.State != ApprovalApproved || !ApprovalSpawnDeclaration(r).Declared {
 		t.Fatalf("动作后投影态=%s（期望 approved+声明在册）", r.State)
+	}
+}
+
+// L60-06（v0.58a 判定源族收口——GAP-Q60-2 回归锚）：proposal 派单行挂起 × console:approve
+// 判定行（提案判定通路，fromDraft 翻转稿同串）→ 投影 approved ∧ spawn 声明随行（declared=true
+// ∧ wired 恒 false）。收口前该词形=恒 pending 恒零值（活体实证）——本测漂移即红。
+func TestProposalDispatchConsoleFamilySync(t *testing.T) {
+	log := NewApprovalLog(nil)
+	syncA := &SyncApprovals{Log: log}
+	d := NewDispatchLog(nil)
+	d.Approvals = syncA
+	d.Dispatch(DispatchRecord{Kind: DispatchKindProposal, Scope: "global",
+		Proposal: "p-fam", RV: 2, AutoLevel: DispatchAutoLevel, At: time.Now()})
+	in, ok := DecisionAction(syncA.Log.State().Records[0], DecisionApprove)
+	if !ok || in.Kind != "Proposal" || in.FieldManager != ProposalApprovalManager {
+		t.Fatalf("DecisionAction proposal 分族=%+v ok=%v（期望 Proposal × console:approve）", in, ok)
+	}
+	n := syncA.Sync([]opslog.ApplyLog{{
+		Ts: time.Now(), FieldManager: in.FieldManager, Obj: "Proposal/global/p-fam",
+		ResourceVersion: in.ResourceVersion, Result: "ok",
+	}})
+	if n != 1 {
+		t.Fatalf("族表命中翻转行数=%d（期望 1——console:approve ∈ 判定源族）", n)
+	}
+	r := syncA.Log.State().Records[0]
+	if r.State != ApprovalApproved {
+		t.Fatalf("proposal 派单行判定态=%s（期望 approved——判定串分叉收口）", r.State)
+	}
+	sp := ApprovalSpawnDeclaration(r)
+	if !sp.Declared || sp.Wired || sp.Target != DispatchAgent {
+		t.Fatalf("spawn 声明=%+v（期望 declared=true wired=false target=apply-workflow——红线 a 机械锚）", sp)
 	}
 }

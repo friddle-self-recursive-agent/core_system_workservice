@@ -43,6 +43,29 @@ const (
 	DecisionReject  = "reject"  // 驳回动作→ Apply fieldManager=workflow:reject
 )
 
+// v0.58a 判定主体分族（console-adoption.md §1.33 缺口收口——活体实证 GAP-Q60-2）：
+// kind=proposal 派单行的动作=提案判定通路（console:approve|console:reject——proposalFlip 既有
+// fromDraft 判定串，字段归属对象=Proposal），kind=workflow 派单行=骨架对象族（workflow:* 判定串
+// ——骨架 ConnectorOps 对象）。两族同一判定词汇（approve|reject），判定源族收口见
+// DecisionJudgmentFamilies。字面量散用=漂移温床（DecisionApprove/DecisionReject 同款原则）。
+const (
+	ProposalApprovalManager  = "console:approve" // 提案批准判定串（E6 审批屏同款——apiserver ApproveFieldManager 同值）
+	ProposalApprovalRejecter = "console:reject"  // 提案驳回判定串（对称扩展——apiserver RejectFieldManager 同值）
+)
+
+// DecisionJudgmentFamilies 判定溯源串族（v0.58a 判定源族收口——批准投影 Sync 匹配词形的
+// 单点声明；返回批准态词形：approved|rejected，非判定串=零值不判定）。两族=两类判定主体
+// 的动作词汇（wf 派单动作=骨架对象族 workflow:*；proposal 派单动作=提案判定通路 console:*），
+// 判定词汇同一（approve|reject）零新词形——族=溯源串前缀域，非新增判定面。
+func DecisionJudgmentFamilies() map[string]string {
+	return map[string]string{
+		ApprovalManager:          ApprovalApproved, // workflow:approve → approved
+		ApprovalRejecter:         ApprovalRejected, // workflow:reject → rejected
+		ProposalApprovalManager:  ApprovalApproved, // console:approve → approved（v0.58a 收口）
+		ProposalApprovalRejecter: ApprovalRejected, // console:reject → rejected（v0.58a 收口）
+	}
+}
+
 // DecisionAction 派单批准判定动作的 Apply 输入面（红线 1 机械落点——批准/驳回=Apply 判定，
 // 本函数只拼既有写路径的载荷字段：对象键=matchingKeyOf（kind=workflow 派单→骨架 ConnectorOps
 // 对象、kind=proposal 派单→Proposal 对象；与 apply_log 判定行 Obj 同键=Sync 精确匹配零模糊），
@@ -60,11 +83,18 @@ func DecisionAction(r ApprovalRecord, decision string) (ApplyActionInput, bool) 
 	}
 	kind, name := "ConnectorOps", r.Connector // kind=workflow 派单→骨架 ConnectorOps 对象（matchingKeyOf 同键）
 	if r.Kind == DispatchKindProposal || r.Proposal != "" {
+		// v0.58a 判定主体分族：kind=proposal 派单行动作=提案判定通路（console:approve|reject
+		// ——fromDraft 翻转稿判定串；判定主体=console，判定词汇同一 approve|reject）。
 		kind, name = "Proposal", r.Proposal // kind=proposal 派单→Proposal 对象
+		if decision == DecisionApprove {
+			fm = ProposalApprovalManager
+		} else {
+			fm = ProposalApprovalRejecter
+		}
 	}
 	return ApplyActionInput{
 		Kind: kind, Scope: r.Scope, Name: name,
-		FieldManager: fm, ReasonRef: "workflow:" + decision + ":" + r.ApprovalID,
+		FieldManager: fm, ReasonRef: fm + ":" + r.ApprovalID,
 		ResourceVersion: r.RV,
 	}, true
 }
@@ -223,15 +253,11 @@ func (s *SyncApprovals) Sync(rows []opslog.ApplyLog) int {
 		}
 	}
 	n := 0
+	judgments := DecisionJudgmentFamilies() // v0.58a 判定源族收口（workflow:*+console:* 两族单点表——字面量散用摘除）
 	for _, row := range rows {
-		state := ""
-		switch row.FieldManager {
-		case ApprovalManager:
-			state = ApprovalApproved
-		case ApprovalRejecter:
-			state = ApprovalRejected
-		default:
-			continue // 仅批准/驳回溯源串行参与判定（零旁路——普通 apply 不翻转投影）
+		state, isJudgment := judgments[row.FieldManager]
+		if !isJudgment {
+			continue // 非判定族行零翻转（观测面不发明判定——普通 apply 不参与批准判定面）
 		}
 		if row.Result != "ok" && row.Result != "noop" {
 			continue // denied/conflict 行不判定（红线 1：批准=Apply 成功事实）
