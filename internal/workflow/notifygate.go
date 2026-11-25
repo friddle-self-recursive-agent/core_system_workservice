@@ -25,12 +25,13 @@ package workflow
 // 同步调用）且**不得回调 hub/delivery sink**（纯判定）。
 type NotifyGate = func(rec TriggerRecord) bool
 
-// notifyTerminalTypes 人注意终态族（事件轴白名单——builtin dispatch 表通知族三型，
+// notifyTerminalTypes 人注意终态族（事件轴白名单——builtin dispatch 表通知族权威行，
 // 判定依据见包注释）。词汇与 scheme.yaml eventTypes/dispatch 权威行同源。
 var notifyTerminalTypes = map[string]bool{
 	"ApprovalNeeded": true, // 审批提升：相位机停在闸锚等人（run 域挂起面同源词汇）
 	"Escalate":       true, // 升级：处置权移交（onEscalate 策略面同源词汇）
 	"HeartbeatLost":  true, // 心跳丢失：agent 现势终态故障（error 级人注意事实）
+	"SessionStalled": true, // 会话停滞（KI-003，v0.54 收编）：人注意活性终态事实——notification.md 规则 5 声明面同源（恒放行，cc 旁路 bind 通知受理）
 }
 
 // NotifyTerminalType 事件类型是否人注意终态族（判定器事件轴的机读投影）。

@@ -362,7 +362,7 @@ func run() error {
 	if minLevelWord == "" {
 		minLevelWord = "off"
 	}
-	fmt.Fprintf(os.Stderr, "cored: 通知门链=on（阶段门=相位终态——人注意终态族 ApprovalNeeded|Escalate|HeartbeatLost 恒放行∧其余事件须 involved owner 现势 run 相位终态背书；apply 写入不触发用户通知；dedup 窗口=%s minLevel=%s；gated|filtered|deduped 三计数=/v1/notifications/deliveries 可查询）\n",
+	fmt.Fprintf(os.Stderr, "cored: 通知门链=on（阶段门=相位终态——人注意终态族 ApprovalNeeded|Escalate|HeartbeatLost|SessionStalled 恒放行（v0.54 KI-003 收编）∧其余事件须 involved owner 现势 run 相位终态背书；apply 写入不触发用户通知；dedup 窗口=%s minLevel=%s；gated|filtered|deduped 三计数=/v1/notifications/deliveries 可查询）\n",
 		*notifyDedupWindow, minLevelWord)
 	// connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12）：装配层枚举注册表
 	// 内 Watch 契约驱动（connectors.Providers——依赖方向不反转：驱动住连接器仓经契约层注册，

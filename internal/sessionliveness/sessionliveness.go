@@ -89,9 +89,10 @@ type Watchdog struct {
 	Now          func() time.Time                     // 测试时钟注入（缺省 time.Now）
 	onEvent      func(typ, session string, err error) // 装配锚回调（stderr 报告；测试断言）
 	mu           sync.Mutex
-	counts       map[string]int // 进程内心跳计数（session → 累计心跳数）
-	attempts     map[string]int // 注入计数（session → 累计注入次数；行 HealAttempts 快照源）
-	rounds       map[string]int // 人工分诊上报轮次（session → 连续无效轮数；达 HealLimit 升级）
+	counts       map[string]int  // 进程内心跳计数（session → 累计心跳数）
+	attempts     map[string]int  // 注入计数（session → 累计注入次数；行 HealAttempts 快照源）
+	rounds       map[string]int  // 人工分诊上报轮次（session → 连续无效轮数；达 HealLimit 升级）
+	prevStalled  map[string]bool // 曾判停滞集（session → true；无注入面部署的恢复判定锚）
 }
 
 // New 构建 watchdog（threshold<=0=缺省 10m；healLimit<=0=缺省 2）。
@@ -110,6 +111,7 @@ func New(reg Registry, bus *eventbus.Bus, sch *scheme.Scheme, interval, threshol
 		counts:       map[string]int{},
 		attempts:     map[string]int{},
 		rounds:       map[string]int{},
+		prevStalled:  map[string]bool{},
 	}
 }
 
@@ -187,11 +189,23 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		stalled := w.lastStallAt(h.SessionID, now) // 判定瞬刻→本次心跳=停滞时长观测
 		w.mu.Lock()
 		delete(w.attempts, h.SessionID)
+		delete(w.rounds, h.SessionID)
 		w.mu.Unlock()
 		hb.HealedAt = now
 		hb.HealAttempts = 0
 		_ = w.Registry.UpsertSessionHeartbeat(hb) // 行态快照并入恢复戳
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-by-beat")
+	} else if prev, ok := w.prevStalled[h.SessionID]; ok && prev {
+		// 无注入执行面部署的恢复判定：曾判停滞（本进程判定过 SuspectedStall）∧注入前
+		// 恢复（自行续租）——同记 SessionHealed（恢复=活性事实；判别字段=healAttempts=0，
+		// 语义=无自愈动作注入、会话自行恢复——诚实投影不冒充注入恢复）。
+		stalled := w.lastStallAt(h.SessionID, now)
+		w.mu.Lock()
+		delete(w.prevStalled, h.SessionID)
+		w.mu.Unlock()
+		hb.HealedAt = now
+		_ = w.Registry.UpsertSessionHeartbeat(hb)
+		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-self")
 	}
 	return nil
 }
@@ -263,6 +277,9 @@ func (w *Watchdog) handleStale(h opslog.SessionHeartbeat, now time.Time) {
 
 // markStalled 判定停滞：行态→suspected-stall + 合成 SessionStalled（每步留事件）。
 func (w *Watchdog) markStalled(h opslog.SessionHeartbeat, stalledFor time.Duration) {
+	w.mu.Lock()
+	w.prevStalled[h.SessionID] = true
+	w.mu.Unlock()
 	w.updateState(h.SessionID, opslog.SessionStateSuspectedStall, nil)
 	evt := w.buildEvent(TypeSessionStalled, h, stalledFor)
 	w.emit(evt, h.SessionID, "suspected-stall（注入继续前判定）")
@@ -460,6 +477,7 @@ func (w *Watchdog) Heal(sessionID string) error {
 		w.mu.Lock()
 		delete(w.attempts, sessionID) // 成功自愈=连续无效计数清零
 		delete(w.rounds, sessionID)
+		delete(w.prevStalled, sessionID)
 		w.mu.Unlock()
 		return nil
 	}
