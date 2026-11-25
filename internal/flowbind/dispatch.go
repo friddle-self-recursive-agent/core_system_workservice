@@ -94,6 +94,10 @@ type DispatchState struct {
 type DispatchLog struct {
 	opts DispatchOptions
 
+	// Approvals ask 批准动作面伴生投影（v0.56 R-10——workflow-runtime.md §11.4 第一段；
+	// nil=静默零投影——旧装配兼容）。Dispatch 同拍调用 Approvals.Attach（受理即挂批准投影）。
+	Approvals *SyncApprovals
+
 	mu       sync.Mutex
 	seq      int64
 	ring     []DispatchRecord
@@ -113,10 +117,10 @@ func NewDispatchLog(opts *DispatchOptions) *DispatchLog {
 	return d
 }
 
-// Dispatch 记一条派单受理投影（环满丢最旧，dropped 计数可见）。
+// Dispatch 记一条派单受理投影（环满丢最旧，dropped 计数可见）。ask 批准动作面（v0.56
+// R-10）：受理同拍挂一条 pending 批准投影（autoLevel=ask 的派单默认挂批准——approval.go）。
 func (d *DispatchLog) Dispatch(rec DispatchRecord) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.seq++
 	rec.Seq = d.seq
 	d.accepted++
@@ -124,7 +128,12 @@ func (d *DispatchLog) Dispatch(rec DispatchRecord) {
 		d.ring = d.ring[excess:]
 		d.dropped += int64(excess)
 	}
+	approvals := d.Approvals
 	d.ring = append(d.ring, rec)
+	d.mu.Unlock()
+	if approvals != nil {
+		approvals.Attach(rec) // ask 批准投影同拍（受理≠拉起；批准=Apply 判定）
+	}
 }
 
 // State 查询快照（拷贝返回，调用方可安全持有；records 旧→新）。

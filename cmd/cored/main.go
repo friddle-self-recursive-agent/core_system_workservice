@@ -7,10 +7,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -122,6 +125,11 @@ func run() error {
 		"会话停滞判定阈值（KI-003；缺省 10m=event.md 规则 14② 声明缺省。updated_at 早于 now-阈值=停滞候选）")
 	healRetryLimit := flag.Int("heal-retry-limit", sessionliveness.DefaultHealRetryLimit,
 		"同会话连续自愈无效升级阈值（KI-003；缺省 2=event.md 规则 14⑤——达阈值合成 Escalate 停自动处置升级，不静默重试）")
+	// SelfHeal 真实接线（v0.56 R-10——agent-session.md §7 自愈第一动作执行面：dsh 宿主侧
+	// 装配，cored 只持桥口面+注入词声明；旗标=注入词单点声明，桥回填走插件装配段 env 旁路）。
+	selfHealWord := flag.String("self-heal-word", sessionliveness.DefaultHealWord,
+		"自愈第一动作注入词（v0.56；缺省「继续」——agent-session.md §7 固定 prompt 单点声明。"+
+			"真实注入执行=dsh 宿主 plugin 侧 sessionController.prompt 面（桥回填）；nil 桥=纯观测装配词形不变）")
 	var designRepos repoSpecs
 	flag.Var(&designRepos, "design-repo",
 		"设计文档白名单仓（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit；"+
@@ -336,6 +344,16 @@ func run() error {
 		sessionliveness.Registry
 	}{store}
 	liveness := sessionliveness.New(heartbeatStore, bus, sch, *sessionWatchInterval, *stallThreshold, *healRetryLimit)
+	// SelfHeal 真实接线（v0.56 R-10——agent-session.md §7/§8 落点）：桥=dsh 宿主 plugin 侧
+	// sessionController.prompt 面，cored 经 env（CORE_SYSTEM_SELFHEAL_ADDR——宿主 loopback HTTP
+	// 面）回填。桥缺席（env 未设）=纯观测装配词形不变（healed-self 恢复判定照旧）；桥在=
+	// 注入第一动作经宿主会话推进面（sessionController.prompt mode=queue 注入「继续」）。
+	// 注入失败=err 返回照实上报绝不静默（下一拍重试第一动作=重试不是跳步）；会话侧回执心跳
+	// （source=session phase=inject-continue）非续租——恢复判据=会话侧真实推进心跳。
+	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SELFHEAL_ADDR")); addr != "" {
+		liveness.SetSelfHealBridge(newSelfHealHTTPBridge(addr, *selfHealWord))
+		fmt.Fprintf(os.Stderr, "cored: 自愈注入桥=on(%s)（CORE_SYSTEM_SELFHEAL_ADDR——第一动作经 dsh 宿主 sessionController.prompt 注入「%s」，失败上报绝不静默；桥缺席=纯观测装配）\n", addr, *selfHealWord)
+	}
 	liveness.OnEvent(func(typ, session string, err error) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cored: sessionliveness 会话 %s 合成事件 %s 发布失败（继续上报不静默）: %v\n", session, typ, err)
@@ -505,6 +523,7 @@ func run() error {
 	var applier apiserver.Applier
 	var publisher apiserver.PublisherFace
 	var dispLog *flowbind.DispatchLog // 派单受理投影（v0.50 R-8；--allow-apply 装配，nil=面缺席 503）
+	var approvalSync *flowbind.SyncApprovals // ask 批准动作面（v0.56 R-10；--allow-apply 装配，nil=面缺席 503）
 
 	// 设计文档面（v0.52 能力 A——cored-bridge.md §2.4）：--design-repo 注册白名单仓（读面=
 	// git HEAD 权威），写面引擎随 --allow-apply 装配（白名单→R-PUB-1 lint→乐观锁 baseSha 三检查
@@ -589,6 +608,15 @@ func run() error {
 		// 即一条 apply-workflow 锚派单受理（autoLevel=ask 数据面在册；noop/skipped 不派单）。
 		dispLog = flowbind.NewDispatchLog(nil)
 		flowMat := &flowbind.Materializer{Repo: repo, Apply: engine, Dispatch: dispLog}
+		// 派单 ask 批准动作面（v0.56 R-10——workflow-runtime.md §11.4 第一段）：派单受理同拍
+		// 记 pending 批准投影（autoLevel=ask 的派单默认挂批准——ask=Planning 后挂起等批）；
+		// 人批/驳回=Apply 判定（fieldManager=workflow:approve|workflow:reject 的 ok 行）→
+		// 投影翻转 approved|rejected（审批同步器=apply_log 行集匹配——零新写路径零旁路）。
+		// **approved 派单投影 ≠ spawn 已拉起**（红线 a：真实拉起/执行仍 observe）。
+		approvalLog := flowbind.NewApprovalLog(nil)
+		approvalSync = &flowbind.SyncApprovals{Log: approvalLog}
+		dispLog.Approvals = approvalSync
+		fmt.Fprintf(os.Stderr, "cored: 派单批准动作面=on（autoLevel=ask 派单默认挂批准投影——ApprovalNeeded→人批=Apply workflow:approve→approved；spawn 接线=agent-session 域 declared-deferred，真实执行仍 observe）\n")
 		fbCtx, cancelFlowBind := context.WithCancel(context.Background())
 		defer cancelFlowBind()
 		n0, fails0 := flowMat.EnsureAll(ctx)
@@ -651,7 +679,7 @@ func run() error {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
 	apiserverOpts := func() []apiserver.Option {
-		opts := apiserverOpts(metricsFace, secrets, store, dispLog, designDocs)
+		opts := apiserverOpts(metricsFace, secrets, store, dispLog, approvalSync, designDocs)
 		if sessionState != "off" && sessionState != "unregistered" {
 			opts = append(opts, apiserver.WithSessionLiveness(liveness))
 		}
@@ -789,7 +817,7 @@ func (r *repoSpecs) String() string     { return strings.Join(*r, ",") }
 func (r *repoSpecs) Set(v string) error { *r = append(*r, v); return nil }
 
 // apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
-func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog, designDocs *docrepo.Set) []apiserver.Option {
+func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog, approvals *flowbind.SyncApprovals, designDocs *docrepo.Set) []apiserver.Option {
 	var opts []apiserver.Option
 	if metricsFace != nil {
 		opts = append(opts, apiserver.WithMetrics(metricsFace))
@@ -817,6 +845,11 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	if dispatch != nil {
 		opts = append(opts, apiserver.WithDispatchFace(dispatch))
 	}
+	// 通知中心收件箱面（v0.56 R-10，GET /v1/inbox 读面）：随批准投影面装配（--allow-apply；
+	// face 缺席 503 防御面）——四类判定分类自读面现读组装，console 零自建状态。
+	if approvals != nil {
+		opts = append(opts, apiserver.WithInboxFace(approvals))
+	}
 	// 设计文档面（v0.52 能力 A，/v1/design-docs* 读/史/草稿/apply）：随 --design-repo 装配
 	// （写面随 --allow-apply；未注册=面缺席 503）。
 	if designDocs != nil {
@@ -824,3 +857,45 @@ func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store
 	}
 	return opts
 }
+
+// selfHealHTTPBridge 自愈注入桥的 HTTP 形（v0.56 R-10——cored watchdog → dsh 宿主 plugin 侧
+// 会话推进面）。cored 侧零宿主依赖：桥=loopback POST {addr}/selfheal/bounce 载荷
+// {sessionId, word, source:"cored-watchdog"}；宿主 plugin 装配段启 listener（127.0.0.1，
+// env 同址回填 CORE_SYSTEM_SELFHEAL_ADDR）——经 sessionController.prompt(mode=queue) 注入
+// 固定 prompt「继续」（红线：只对已判停滞会话注入固定词，不新增任何自动任务/自动执行面）。
+// 超时=err 返回（watchdog 侧照实上报绝不静默——下一拍重试第一动作）。
+type selfHealHTTPBridge struct {
+	addr string
+	word string
+}
+
+func newSelfHealHTTPBridge(addr, word string) *selfHealHTTPBridge {
+	return &selfHealHTTPBridge{addr: addr, word: word}
+}
+
+func (b *selfHealHTTPBridge) Bounce(sessionID string) error {
+	payload, err := json.Marshal(map[string]any{
+		"sessionId": sessionID, "word": b.word, "source": "cored-watchdog",
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, "http://"+b.addr+"/selfheal/bounce", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("content-type", "application/json")
+	cl := &http.Client{Timeout: 10 * time.Second}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("selfheal bridge HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (b *selfHealHTTPBridge) InjectWord() string { return b.word }

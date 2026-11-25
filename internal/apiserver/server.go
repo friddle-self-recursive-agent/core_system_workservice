@@ -26,6 +26,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/proposal"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
@@ -149,9 +150,13 @@ type options struct {
 	applyLog        ApplyLogFace
 	approval        ApprovalLogFace
 	dispatch        DispatchFace
+	inbox           InboxFace
 	designDocs      DesignDocs
 	sessionLiveness SessionLivenessFace
 }
+
+// ProposalsSource 提案枚举源（v0.56 /v1/inbox 组装输入——读面走 ObjectSource.List 现读 +
+// proposal.Parse 投影，零新查询；本接口型已并入 ObjectSource 判别路径，不再单列）。
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
 func WithMetrics(m MetricsFace) Option {
@@ -183,6 +188,21 @@ func WithApprovalLog(f ApprovalLogFace) Option {
 // workflow-runtime.md §11.2 拉起形态首段）。
 func WithDispatchFace(f DispatchFace) Option {
 	return func(o *options) { o.dispatch = f }
+}
+
+// InboxFace 通知中心收件箱同步口面（v0.56 R-10——`GET /v1/inbox` 读面投影组装输入；
+// flowbind.SyncApprovals 满足。State=批准投影快照；ApproveIdle=批准投影是否无挂起待决
+// （watchdog 投影真实词形——零挂起≠停摆不冒充）；Sync=apply_log 判定行→批准投影翻转
+// （workflow:approve|workflow:reject 行原地翻转 approved|rejected））。
+type InboxFace interface {
+	State() flowbind.ApprovalState
+	ApproveIdle() bool
+	Sync(rows []opslog.ApplyLog) int
+}
+
+// WithInboxFace 注入通知中心收件箱口面（v0.56；nil=面缺席 503 同款防御面）。
+func WithInboxFace(f InboxFace) Option {
+	return func(o *options) { o.inbox = f }
 }
 
 // WithDesignDocs 注入设计文档面（v0.52 能力 A——`/v1/design-docs*` 读/史/草稿/apply 面；
@@ -403,10 +423,31 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		// 非 fromDraft=直接落库非审批屏动作；noop 幂等重入照落，rv=面上现值——判定发生了，零变更可落）。
 		decision := ""
 		switch req.FieldManager {
-		case ApproveFieldManager:
+		case ApproveFieldManager, flowbind.ApprovalManager: // console:approve | workflow:approve（v0.56 派单批准动作面——§11.5）
 			decision = opslog.DecisionGranted
-		case RejectFieldManager:
+		case RejectFieldManager, flowbind.ApprovalRejecter: // console:reject | workflow:reject
 			decision = opslog.DecisionRejected
+		}
+		// 派单 ask 批准动作面（v0.56 R-10——workflow-runtime.md §11.5 批准投影翻转判定源）：
+		// workflow:approve|workflow:reject 溯源串行=派单批准判定（Apply ok/noop 成功事实即翻转
+		// 依据——flowbind.SyncApprovals.Sync 消费 apply_log 行集）。判定权威=apply_log 审计行；
+		// 本翻转面=观测投影同步（失败不翻转写路径结果，下一拍派单查询面重扫自愈）。
+		if o.inbox != nil && decision != "" && !req.DryRun && res != nil {
+			row := opslog.ApplyLog{
+				Ts: time.Now(), FieldManager: req.FieldManager, Subject: func() string {
+					if opt.Subject != nil {
+						return opt.Subject.ID()
+					}
+					return "anonymous"
+				}(), Obj: fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name),
+				ResourceVersion: res.RV, Result: func() string {
+					if res.Action == "noop" {
+						return "noop"
+					}
+					return "ok"
+				}(),
+			}
+			o.inbox.Sync([]opslog.ApplyLog{row}) // 同步翻转（观测投影——失败仅丢本轮，下一拍重扫自愈）
 		}
 		if approval != nil && req.FromDraft && !req.DryRun && decision != "" {
 			judged := "anonymous"
@@ -822,6 +863,14 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		st := dispatch.State()
 		items := make([]map[string]any, 0, len(st.Records))
+		// v0.56 ask 批准动作面（workflow-runtime.md §11.5——拉起投影面第三段）：派单行随行
+		// approval 键（state 词=批准投影翻转词——人批/驳回=Apply 判定；审批投影面缺席=零值不冒充）。
+		approvalIdx := map[string]string{}
+		if o.inbox != nil {
+			for _, r := range o.inbox.State().Records {
+				approvalIdx[r.ApprovalID] = r.State
+			}
+		}
 		for _, d := range st.Records {
 			kind := d.Kind
 			if kind == "" {
@@ -838,11 +887,78 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				// v0.55 节点接线载荷（拉起投影面首件，workflow-runtime.md §11.2 第三段——
 				// apply-workflow 拉起输入=骨架节点清单；kind=proposal 行空值=不适用）。
 				"nodes": d.Nodes,
-				"at":    d.At.UTC().Format(time.RFC3339Nano),
+				// v0.56 ask 批准动作面（拉起投影面第三段，workflow-runtime.md §11.5）：
+				// state=pending|approved|rejected（approved≠spawn 已拉起——真实执行仍 observe）。
+				"approval": map[string]any{"state": approvalIdx[matchingKeyOfRecord(d)], "approvalId": matchingKeyOfRecord(d)},
+				"at":       d.At.UTC().Format(time.RFC3339Nano),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "dispatches": items,
+		})
+	})
+	// 通知中心收件箱投影面（v0.56 R-10——console-adoption.md §1.25「待你处理收件箱」页面兜底
+	// 首段 + notification.md 规则 6「未配置通知通道=仅页面展示」的机读落点）。四类判定分类
+	// （机械判定=读面现读自分类——console 不自建持久状态红线 2）：NeedsHuman（归档 NeedsHuman
+	// ∧Escalate 行——acceptance.md §9 接管链）；ApprovalNeeded（归档行——审批提升人注意终态族）
+	// ∧批准投影挂起行（v0.56 派单 ask 批准动作面——flowbind.SyncApprovals 同一投影）；Proposal
+	// 待批（status=submitted 提案——capability B 状态机词汇）；DocReview（草稿缓存行——代改代审
+	// 的家，apply.md §6）。载荷 {count, classes, items, watchdog}；行含 class/kind/name/scope/
+	// digest/eventId/at/link（link=console 深链路由——规则 6 页面兜底入口恒达操作面）。
+	// face 缺席=503（防御面）；旧构建 405=代际判别器。watchdog 投影={approvals, pending,
+	// approveIdle}——真实词形（approveIdle=true=批准投影无挂起待决，非停摆）。
+	mux.HandleFunc("GET /v1/inbox", func(w http.ResponseWriter, _ *http.Request) {
+		if o.inbox == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "通知中心收件箱面未接线（装配缺 flowbind 批准投影 sink）"})
+			return
+		}
+		var evs []opslog.EventLog
+		if o.eventLog != nil {
+			// 三类人注意事件各拉一窗（type 精确过滤——归档窗 DocApplied 刷屏不挤占人注意行；
+			// 半开窗语义=QueryEvents 既有 limit 口径）。
+			for _, typ := range []string{"NeedsHuman", "Escalate", "ApprovalNeeded"} {
+				if rows, err := o.eventLog.QueryEvents(opslog.EventQuery{Type: typ, Limit: 100}); err == nil {
+					evs = append(evs, rows...)
+				}
+			}
+		}
+		var draftRows []flowbind.InboxDraftRow
+		if drafts != nil {
+			for _, d := range drafts.List() {
+				draftRows = append(draftRows, flowbind.InboxDraftRow{Kind: d.Kind, Scope: d.Scope,
+					Name: d.Name, FieldManager: d.FieldManager, UpdatedAt: d.UpdatedAt.UTC().Format(time.RFC3339Nano)})
+			}
+		}
+		var propRows []flowbind.InboxProposalRow
+		if objects != nil {
+			if props, err := objects.List(context.Background(), proposalKind, ""); err == nil {
+				for _, po := range props {
+					if spec, ok := proposal.Parse(po.Content); ok {
+						propRows = append(propRows, flowbind.InboxProposalRow{Name: po.Name, Scope: po.Scope,
+							Title: spec.Title, Status: spec.Status, UpdatedAt: ""})
+					}
+				}
+			}
+		}
+		st := o.inbox.State()
+		pending := 0
+		for _, r := range st.Records {
+			if r.State == flowbind.ApprovalPending {
+				pending++
+			}
+		}
+		cls := map[string]int{}
+		box := flowbind.BuildInbox(evs, draftRows, propRows, nil)
+		for k, v := range box.Classes {
+			cls[k] = v
+		}
+		cls["ApprovalNeeded"] = cls["ApprovalNeeded"] + pending
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": box.Count + pending, "classes": cls, "items": box.Items,
+			"approvals": map[string]any{"count": len(st.Records), "pending": pending,
+				"records": approvalsPayload(st.Records)},
+			"watchdog": map[string]any{"approvals": len(st.Records), "pending": pending,
+				"approveIdle": o.inbox.ApproveIdle()},
 		})
 	})
 	// 数据面查询面（v0.33 MetricsInfo 数据面首段——store/queries 投影读面）：指标清单
@@ -857,13 +973,21 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "sessionliveness: 会话活性面未装配（--session-watch-interval）"})
 			return
 		}
-		if applier == nil {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "写面关断（--allow-apply 未开启）——心跳注册面随写面门控"})
-			return
-		}
 		var req sessionliveness.Heartbeat
 		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "sessionliveness: 心跳载荷解析失败: " + err.Error()})
+			return
+		}
+		// 心跳防伪（v0.56——agent-session.md §7 心跳面唯一口径）：watchdog 自身动作的续租
+		// （source=watchdog——注入「继续」后的活性观测心跳）不可经本面自报（来源伪冒=自续租
+		// 死循环）；watchdog 侧经 BeatSource 落行，HTTP 面一律拒收（形态校验前置于写面门控）。
+		// 判定/注入动作不续租语义（v0.54 既有：状态迁移不续租）随行不变。
+		if req.Source == "watchdog" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "sessionliveness: 心跳来源=watchdog 不可经注册面上报（判定面自续租禁入——agent-session.md §7 心跳面唯一口径）"})
+			return
+		}
+		if applier == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "写面关断（--allow-apply 未开启）——心跳注册面随写面门控"})
 			return
 		}
 		if err := o.sessionLiveness.Beat(req); err != nil {
@@ -1347,4 +1471,34 @@ type SessionLivenessFace interface {
 // WithSessionLiveness 注入会话活性面（KI-003：--session-watch-interval 装配；nil=面缺席）。
 func WithSessionLiveness(f SessionLivenessFace) Option {
 	return func(o *options) { o.sessionLiveness = f }
+}
+
+// approvalsPayload 收件箱批准投影行（/v1/inbox approvals.records 载荷——pending/approved/
+// rejected 三态词形随行；judgedAt 零值=未判定不投影）。
+func approvalsPayload(rs []flowbind.ApprovalRecord) []map[string]any {
+	out := make([]map[string]any, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, map[string]any{
+			"seq": r.Seq, "kind": r.Kind, "workflow": r.Workflow, "scope": r.Scope,
+			"connector": r.Connector, "proposal": r.Proposal, "state": r.State,
+			"autoLevel": r.AutoLevel, "rv": r.RV, "eventId": r.EventID,
+			"approvalId": r.ApprovalID, "judgedBy": r.JudgedBy,
+			"judgedAt":  nilIfZero(r.JudgedAt), "at": r.At.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return out
+}
+
+// nilIfZero 零值时刻不投影（nil=未判定——与 SessionView HealedAt 同口径）。
+func nilIfZero(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// matchingKeyOfRecord 派单行的批准判定键（/v1/agents/dispatches approval.approvalId——
+// flowbind.DispatchRecord → matchingKeyOf 同源；空 connector/proposal 行=零值键不匹配任何投影）。
+func matchingKeyOfRecord(d flowbind.DispatchRecord) string {
+	return flowbind.ApprovalKeyOf(d)
 }

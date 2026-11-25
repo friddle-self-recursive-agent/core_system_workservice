@@ -42,6 +42,10 @@ const DefaultStallThreshold = 10 * time.Minute
 // DefaultHealRetryLimit 同会话连续自愈无效升级阈值（event.md 规则 14⑤：缺省 2）。
 const DefaultHealRetryLimit = 2
 
+// DefaultHealWord 自愈第一动作注入词（agent-session.md §7 固定 prompt「继续」——保留上下文
+// 不重启；v0.56 单点声明，plugin SelfHealBridge 回填同值）。
+const DefaultHealWord = "继续"
+
 // Heartbeat 一次心跳注册请求（会话推进点上报——相位推进/工具调用完成/产物落盘任一）。
 type Heartbeat struct {
 	SessionID  string // 必填：会话锚
@@ -49,6 +53,12 @@ type Heartbeat struct {
 	LastAction string // 动作摘要（有界脱敏——不携带凭据/内网信息）
 	TaskName   string // 长任务名（空=非长任务声明）
 	LongTask   bool   // 声明为长任务（有进展心跳=不判停滞）
+	// Source 心跳来源（v0.56 自愈接线段——agent-session.md §7 心跳面唯一口径）：空/会话侧
+	// 推进点=常规注册；"watchdog"=watchdog 自身动作（注入「继续」后的活性观测续租）——
+	// 该来源不可经 HTTP 注册面自报（POST /v1/sessions/heartbeat 拒收），只经 BeatSource 落行
+	// （判定面自续租禁入）。会话侧注入回执（source=session——plugin SelfHealBridge 探针回执）
+	// 非续租（不算活性推进），由 Beat 内部 phase=inject-continue 处理，不经本字段。
+	Source string
 }
 
 // SelfHeal 自愈动作执行口（装配层注入——固定顺序第一步的真实执行面）。
@@ -84,10 +94,14 @@ type Watchdog struct {
 	ThresholdV   time.Duration                        // 停滞阈值（--stall-threshold；缺省 DefaultStallThreshold）
 	HealLimitV   int                                  // 连续自愈无效升级阈值（--heal-retry-limit；缺省 2）
 	SelfHeal     SelfHeal                             // 自愈第一动作执行面（nil=只判定不上报处置——纯观测装配）
+	SelfHealV    SelfHealBridge                       // 自愈注入桥（v0.56 真实接线——dsh 宿主 plugin 侧装配；nil=纯观测）
 	Diagnose     Diagnose                             // 诊断面（nil=分诊默认人工上报路）
 	NotifyWindow time.Duration                        // 人工上报去重窗口（缺省=Threshold——同停滞窗至多一封）
 	Now          func() time.Time                     // 测试时钟注入（缺省 time.Now）
 	onEvent      func(typ, session string, err error) // 装配锚回调（stderr 报告；测试断言）
+	// selfHealBridge 注入桥运行态（SetSelfHealBridge 装配；mu 保护——桥可在 watchdog 启动后
+	// 由宿主面就绪回填）。
+	selfHealBridge SelfHealBridge
 	mu           sync.Mutex
 	counts       map[string]int  // 进程内心跳计数（session → 累计心跳数）
 	attempts     map[string]int  // 注入计数（session → 累计注入次数；行 HealAttempts 快照源）
@@ -113,6 +127,45 @@ func New(reg Registry, bus *eventbus.Bus, sch *scheme.Scheme, interval, threshol
 		rounds:       map[string]int{},
 		prevStalled:  map[string]bool{},
 	}
+}
+
+// SetSelfHealBridge 装配自愈注入桥（v0.56 真实接线——宿主面就绪后由装配层回填；桥接管
+// SelfHeal 面成为第一动作执行面：注入经宿主会话推进面 sessionController.prompt）。
+func (w *Watchdog) SetSelfHealBridge(b SelfHealBridge) {
+	if w == nil {
+		return
+	}
+	w.mu.Lock()
+	w.selfHealBridge = b
+	w.mu.Unlock()
+	w.SelfHealV = b
+	if b != nil {
+		w.SelfHeal = w.injectViaBridge // 装配面词形统一：注入一律走桥路由
+	}
+}
+
+// injectViaBridge 桥路由注入（真实接线词形——第一动作=宿主 sessionController.prompt 注入
+// 「继续」；成功=观测续租落行（phase=inject-continue 由 markStalled/retryInject 落）+SessionHealed
+// 判据仍=会话侧真实推进心跳；失败=err 返回照实上报绝不静默）。
+func (w *Watchdog) injectViaBridge(sessionID string) error {
+	w.mu.Lock()
+	b := w.selfHealBridge
+	w.mu.Unlock()
+	if b == nil {
+		return fmt.Errorf("sessionliveness: 会话 %s 自愈桥未装配（纯观测词形不可注入）", sessionID)
+	}
+	word := b.InjectWord()
+	if err := b.Bounce(sessionID); err != nil {
+		_ = word
+		return err
+	}
+	// 注入受理≠恢复——watchdog 侧观测续租落行（不触发 SessionHealed：恢复判据=会话侧
+	// 真实推进心跳，agent-session.md §7 恢复词形）。
+	if err := w.BeatSource(sessionID, "注入固定 prompt「"+word+"」（自愈第一动作·受理）"); err != nil {
+		// 续租落行失败不阻断（注入已受理）——stderr 告警继续（观测面可重建）。
+		log.Printf("sessionliveness: 会话 %s 注入受理续租落行失败: %v", sessionID, err)
+	}
+	return nil
 }
 
 // OnEvent 装配锚回调（每条合成事件发射后调用；err=nil=已入总线）。
@@ -210,6 +263,42 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-self")
 	}
 	return nil
+}
+
+// SelfHealBridge 自愈注入桥口面（v0.56 真实接线段——agent-session.md §7/§8 落点：dsh 宿主
+// plugin 侧装配）。cored watchdog 的自愈第一动作经本桥路由到宿主会话推进面
+// （sessionController.prompt 注入固定 prompt「继续」——mode=queue 保留上下文不重启）；
+// 实现侧回填 Bounce 闭包（宿主面就绪时——未就绪=宿主缺席词形，绝不冒充注入成功）。
+// cored 装配层以本接口为唯一依赖方向（不 import 宿主侧）——测试可注假桥。
+type SelfHealBridge interface {
+	// Bounce 注入固定 prompt「继续」到停滞会话（dsh 宿主 session prompt/queue 面）。
+	Bounce(sessionID string) error
+	// InjectWord 注入词（自愈第一动作的固定 prompt——装配层单点声明，实现侧回填同值）。
+	InjectWord() string
+}
+
+// BeatSource watchdog 侧动作续租（v0.56 自愈接线段——判定/注入后的活性观测心跳：来源恒
+// "watchdog"，不可经 HTTP 注册面自报=判定面自续租禁入；落行 last_action 带 inject 前缀，
+// **不触发 SessionHealed**（恢复判据=会话侧真实推进心跳），Bounce 失败=照实落行不冒充）。
+func (w *Watchdog) BeatSource(sessionID, lastAction string) error {
+	if w == nil || w.Registry == nil {
+		return fmt.Errorf("sessionliveness: 心跳账面未装配")
+	}
+	now := w.now()
+	rows, err := w.Registry.AllSessionHeartbeats(0)
+	if err != nil {
+		return err
+	}
+	for _, h := range rows {
+		if h.SessionID != sessionID {
+			continue
+		}
+		h.LastAction = clip(lastAction, 200)
+		h.UpdatedAt = now
+		h.HealAttempts = w.attempts[sessionID]
+		return w.Registry.UpsertSessionHeartbeat(h)
+	}
+	return fmt.Errorf("sessionliveness: 会话 %s 无心跳行（watchdog 观测续租锚缺席——会话侧未注册过心跳）", sessionID)
 }
 
 // lastStallAt 停滞时长观测（判定瞬刻=行进入停滞前最后一次租约时刻；简化=本次心跳-阈值——

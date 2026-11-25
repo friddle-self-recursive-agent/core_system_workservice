@@ -1,0 +1,362 @@
+// approval.go —— 派单 ask 批准动作面（v0.56，R-10——workflow-runtime.md §11.4 第一段）。
+// 设计依据：instance 仓 runtime/workflow-runtime.md §11.2/§11.3 余量行「ask 批准动作面
+// （ApprovalNeeded→人批→spawn 投影）随 agent-session 域落地轮扩」+ agent-session.md §2
+// （AUTOLEVEL：ask=Planning 完成后挂起→ApprovalNeeded→上级批/驳回）+ agent-session.md §7
+// 自愈链 ApprovalNeeded（引擎内部源：权限分诊路——v0.54 既有注册类型，不新增）。
+//
+// 触发接线：派单受理（v0.50 既有 sink.Dispatch）同拍记一条 pending 批准投影（审批同步器=
+// autoLevel=ask 的派单默认挂批准——受红线 a 约束：不 enable workflow、不自动执行代码，
+// 本面只做「批准动作面投影」，真实拉起/执行仍 observe）。人批/驳回=Apply 判定（红线 1）：
+// fieldManager=workflow:approve|workflow:reject 的 ok 行按 obj 匹配 → 同拍翻转为 approved|rejected。
+//
+// 诚实投影（受理≠拉起同构）：approved 派单投影 ≠ spawn 已拉起——spawn 接线随 agent-session
+// 域真实拉起段落地（declared-deferred）。观测面非账本：进程内投影环，持久态=apply_log
+// 审计（workflow:approve 行）+骨架对象本体+dispatches 受理行。
+//
+// 解耦口径：零新写路径零旁路（apply_log 行集=既有账面；判定=内存匹配）；sink 装配层注入
+// （nil=静默零投影——headless 载体/旧装配零影响）。
+package flowbind
+
+import (
+	"sort"
+	"sync"
+	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
+)
+// 审批词汇（agent-session.md §2 ask 分诊词汇同源；apply_log fieldManager 溯源串）。
+const (
+	ApprovalPending  = "pending"   // 批准投影初态（ask 派单挂起待批）
+	ApprovalApproved = "approved"  // 人批=Apply ok（fieldManager=workflow:approve）
+	ApprovalRejected = "rejected"  // 驳回=Apply ok（fieldManager=workflow:reject）
+	ApprovalManager  = "workflow:approve" // 批准溯源串（approval_log 同款约定串——apply.md rule 2）
+	ApprovalRejecter = "workflow:reject" // 驳回溯源串（对称扩展——proposals_face.go 同款）
+	ApprovalSource   = "dispatch"   // 来源词（批准投影行 source 键——派单 ask 面）
+)
+
+// dispatchApprovalKey 批准投影与派单受理行的同拍关联键（matchingKeyOf 同源）。
+func dispatchApprovalKey(rec DispatchRecord) string {
+	return matchingKeyOf(rec)
+}
+
+// matchingKeyOf 审批判定行匹配键（apply_log Obj="kind/scope/name" 三段同构——批准动作的
+// Apply 落点对象）：kind=workflow 派单→骨架 ConnectorOps 对象；kind=proposal 派单→Proposal
+// 对象。投影行 ApprovalID 与判定行 Obj 同键=精确对上（零模糊匹配）。
+func matchingKeyOf(rec DispatchRecord) string {
+	if rec.Kind == DispatchKindProposal || rec.Proposal != "" {
+		return "Proposal/" + rec.Scope + "/" + rec.Proposal
+	}
+	return "ConnectorOps/" + rec.Scope + "/" + rec.Connector
+}
+
+// ApprovalKeyOf matchingKeyOf 的导出形（/v1/agents/dispatches approval 键消费——同一键源
+// 零硬编码；空行零值键照返，调用方按匹配失败处理）。
+func ApprovalKeyOf(rec DispatchRecord) string { return matchingKeyOf(rec) }
+
+// ApprovalRecord 一条 ask 批准投影（workflow-runtime.md §11.4：ApprovalNeeded→人批→spawn 投影
+// 的动作面数据；审批判定=Apply——apply_log 审计账为准，本投影=观测面）。
+type ApprovalRecord struct {
+	Seq        int64     // 投影序号（本 sink 进程内单调递增，1 起）
+	Kind       string    // 派单源种类（workflow|proposal——DispatchKindWorkflow 同词汇）
+	Workflow   string    // workflow 锚名（kind=proposal 空）
+	Scope      string    // 对象 scope
+	Connector  string    // 骨架对象名（kind=workflow）
+	Proposal   string    // proposal 锚名（kind=proposal）
+	State      string    // pending|approved|rejected（翻转=Apply 判定同拍——apply_log 行集匹配）
+	AutoLevel  string    // 派单 autoLevel（ask——agent-session.md §2 级别数据面）
+	RV         int64     // 派单落库后版本（实现侧 diff 基线——dispatches 行 rv 同源）
+	EventID    string    // DocApplied 回执（来源链可回指）
+	ApprovalID string    // 审批对象键（approval_log approval_id 同词汇：draft:<kind>/<scope>/<name> 形——对象族=kind=ConnectorOps）
+	JudgedBy   string    // 判定主体（apply_log 行 subject；pending=空）
+	JudgedAt   time.Time // 判定时刻（apply_log 行 ts；pending=零值）
+	At         time.Time // 投影记录时刻（派单受理同拍）
+}
+
+// ApprovalSink 批准投影落点（装配层注入；实现须非阻塞。nil=静默零投影）。
+type ApprovalSink interface {
+	Approval(rec ApprovalRecord)
+}
+
+// ApprovalOptions 批准投影环可调项（零值可用）。
+type ApprovalOptions struct {
+	// RingSize 投影环容量（缺省 128）：溢出丢最旧、dropped 计数可见。
+	RingSize int
+}
+
+// ApprovalState 查询快照（ApprovalLog.State() 返回值）。
+type ApprovalState struct {
+	Accepted int64            // 累计投影（含已被环挤出的）
+	Dropped  int64            // 环溢出丢弃计数（可观测）
+	Records  []ApprovalRecord // 环内投影（旧→新）
+}
+
+// ApprovalLog ask 批准投影的进程内落点（ApprovalSink 缺省实现；并发安全；DispatchLog 同构
+// ——无出站机器，投影即终态面；判定翻转在投影内同步完成——apply_log 账本事实的实时投影）。
+type ApprovalLog struct {
+	opts ApprovalOptions
+
+	mu       sync.Mutex
+	seq      int64
+	ring     []ApprovalRecord
+	accepted int64
+	dropped  int64
+}
+
+// NewApprovalLog 构建批准投影落点。
+func NewApprovalLog(opts *ApprovalOptions) *ApprovalLog {
+	a := &ApprovalLog{}
+	if opts != nil {
+		a.opts = *opts
+	}
+	if a.opts.RingSize <= 0 {
+		a.opts.RingSize = 128
+	}
+	return a
+}
+
+// Approval 记一条批准投影（环满丢最旧，dropped 计数可见）。
+func (a *ApprovalLog) Approval(rec ApprovalRecord) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.seq++
+	rec.Seq = a.seq
+	a.accepted++
+	if excess := len(a.ring) + 1 - a.opts.RingSize; excess > 0 {
+		a.ring = a.ring[excess:]
+		a.dropped += int64(excess)
+	}
+	a.ring = append(a.ring, rec)
+}
+
+// State 查询快照（拷贝返回；records 旧→新）。
+func (a *ApprovalLog) State() ApprovalState {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	rs := make([]ApprovalRecord, 0, len(a.ring))
+	rs = append(rs, a.ring...)
+	return ApprovalState{Accepted: a.accepted, Dropped: a.dropped, Records: rs}
+}
+
+// SyncApprovals ask 批准投影同步器（派单面装配的审批同步器——workflow-runtime.md §11.4）。
+// Attach（监听 Dispatch sink 同拍记 pending 投影）+ Sync（apply_log 行集 → 判定翻转投影——
+// 红线 1 机械落点：批准/驳回=Apply 判定，零新写路径）。判定规则：fieldManager=workflow:approve
+// → approved / workflow:reject → rejected；同一对象多行取 ts 最大=最新判定；subject=判定主体、
+// ts=判定时刻投影随行。
+type SyncApprovals struct {
+	Log *ApprovalLog
+	mu  sync.Mutex
+}
+
+// Attach 派单受理同拍记 pending 批准投影（DispatchLog.Dispatch 的同步伴生；autoLevel=ask
+// 的派单默认挂批准——approval 记录=dispatch 记录的投影面分身）。nil 接收器=静默。
+func (s *SyncApprovals) Attach(rec DispatchRecord) {
+	if s == nil || s.Log == nil {
+		return
+	}
+	s.Log.Approval(ApprovalRecord{
+		Kind: rec.Kind, Workflow: rec.Workflow, Scope: rec.Scope, Connector: rec.Connector,
+		Proposal: rec.Proposal, State: ApprovalPending, AutoLevel: rec.AutoLevel,
+		RV: rec.RV, EventID: rec.EventID,
+		ApprovalID: approvalIDOf(rec), At: time.Now(),
+	})
+}
+
+// Sync apply_log 行集 → 判定翻转投影（装配层定时/派单查询面触发；幂等——重复行集零重复
+// 翻转：已终态投影不回 pending，后行覆盖前行按 ts）。
+func (s *SyncApprovals) Sync(rows []opslog.ApplyLog) int {
+	if s == nil || s.Log == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.Log.State()
+	index := make(map[string]int, len(st.Records))
+	for i, r := range st.Records {
+		if r.State == ApprovalPending {
+			index[matchingKeyOf(r2d(r))] = i
+		}
+	}
+	n := 0
+	for _, row := range rows {
+		state := ""
+		switch row.FieldManager {
+		case ApprovalManager:
+			state = ApprovalApproved
+		case ApprovalRejecter:
+			state = ApprovalRejected
+		default:
+			continue // 仅批准/驳回溯源串行参与判定（零旁路——普通 apply 不翻转投影）
+		}
+		if row.Result != "ok" && row.Result != "noop" {
+			continue // denied/conflict 行不判定（红线 1：批准=Apply 成功事实）
+		}
+		i, ok := index[row.Obj]
+		if !ok {
+			continue // 无挂起投影的判定行（对象键未匹配）=零翻转（观测面不发明投影）
+		}
+		r := st.Records[i]
+		if r.State != ApprovalPending && !r.JudgedAt.Before(row.Ts) {
+			continue // 已终态且判定行不新于现投影判定=幂等（重复行集零重复翻转）
+		}
+		// 原地翻转（观测面=apply_log 账本事实的实时投影——判定行替换 pending 行，不双行并存：
+		// pending 与 approved 并存=同一待办双计数的假词形）。
+		r.State = state
+		r.JudgedBy = row.Subject
+		r.JudgedAt = row.Ts
+		s.Log.ring[i] = r
+		n++
+	}
+	return n
+}
+
+// SyncOnce 一次同步（装配层派单查询面/watchdog 拍触发；生产由 main 装配注入 applyLog 行源）。
+// rows=apply_log 行集（obj 精确查询按挂起键逐行拉取由调用方聚合——本方法只做匹配判定）。
+func (s *SyncApprovals) SyncOnce(rows []opslog.ApplyLog) int {
+	return s.Sync(rows)
+}
+
+// ApproveIdle 批准投影是否无挂起待决（真实词形——零挂起≠停摆不冒充；/v1/inbox watchdog
+// 投影用）。nil 接收器=空闲（无投影面即无挂起）。
+func (s *SyncApprovals) ApproveIdle() bool {
+	if s == nil || s.Log == nil {
+		return true
+	}
+	st := s.State()
+	for _, r := range st.Records {
+		if r.State == ApprovalPending {
+			return false
+		}
+	}
+	return true
+}
+
+// State 查询快照透出（/v1/inbox approvals.records 载荷源——apiserver.InboxFace 端面）。
+func (s *SyncApprovals) State() ApprovalState {
+	if s == nil || s.Log == nil {
+		return ApprovalState{}
+	}
+	return s.Log.State()
+}
+
+// r2d 投影行 → 派单行形（matchingKeyOf 键源复用——pending 投影键=派单行键同构）。
+func r2d(r ApprovalRecord) DispatchRecord {
+	return DispatchRecord{Kind: r.Kind, Workflow: r.Workflow, Scope: r.Scope,
+		Connector: r.Connector, Proposal: r.Proposal}
+}
+
+// approvalIDOf 审批对象键（approval_log approval_id 同词汇：draft:<kind>/<scope>/<name>
+// ——对象族待批键；proposal 派单=kind/proposal 键）。与 matchingKeyOf 同源（同键=投影行与
+// apply_log 判定行 obj 精确对上）。
+func approvalIDOf(rec DispatchRecord) string {
+	return matchingKeyOf(rec)
+}
+
+// ───────────────── console 通知中心收件箱（§1.31——console-adoption.md 规则 6 页面兜底） ─────────────────
+
+// InboxRow 通知中心收件箱一行（机读判定分类自 cored 读面现读——console 不自建持久状态，
+// 渲染数据无双源红线 2；四类词=NeedsHuman|ApprovalNeeded|Proposal|DocReview）。
+type InboxRow struct {
+	Class   string `json:"class"`  // inboxNeedsHuman|inboxApprovalNeeded|inboxProposal|inboxDocReview（inboxClass* 词）
+	Kind    string `json:"kind"`   // 深链对象 kind（events 类=空——详情路由按 eventId）
+	Name    string `json:"name"`   // 对象名
+	Scope   string `json:"scope"`  // 对象 scope
+	Digest  string `json:"digest"` // 摘要（标题/事件类型+involved——页面展示词形）
+	EventID string `json:"eventId"` // 事件锚（events 类）
+	At      string `json:"at"`     // 归档/更新时刻（RFC3339，现读面原值）
+	Link    string `json:"link"`   // console 深链路由（#/…——规则 6 页面兜底入口；操作面=编辑器/审批/提案详情）
+}
+
+// Inbox 通知中心收件箱投影（四类汇总+计数+深链；未配置通知通道=仅页面展示，规则 6）。
+type Inbox struct {
+	Count     int         `json:"count"`
+	Classes   map[string]int `json:"classes"`
+	Items     []InboxRow  `json:"items"`
+	Watchdog  map[string]any `json:"watchdog,omitempty"`
+}
+
+// inbox 词汇常量（四类判定分类——console 判别词同源）。
+const (
+	inboxNeedsHuman    = "NeedsHuman"
+	inboxApprovalNeeded = "ApprovalNeeded"
+	inboxProposal      = "Proposal"
+	inboxDocReview     = "DocReview"
+)
+
+// BuildInbox 收件箱投影组装（纯函数——装配层喂行集+watchdog 投影；读面缺席类=零行，
+// 缺口=空态显式不冒充）。行序：NeedsHuman→ApprovalNeeded→Proposal→DocReview（人注意优先），
+// 同类内按 At 降序。
+func BuildInbox(events []opslog.EventLog, drafts []InboxDraftRow, proposals []InboxProposalRow, watchdog map[string]any) *Inbox {
+	rows := make([]InboxRow, 0, len(events)+len(drafts)+len(proposals))
+	for _, e := range events {
+		switch e.Type {
+		case "NeedsHuman", "Escalate":
+			rows = append(rows, InboxRow{Class: inboxNeedsHuman, Digest: e.Type + " · " + e.Involved,
+				EventID: e.EventID, At: e.Ts.UTC().Format(time.RFC3339Nano),
+				Link: "#/event/" + e.EventID})
+		case "ApprovalNeeded":
+			rows = append(rows, InboxRow{Class: inboxApprovalNeeded, Kind: involvedKind(e.Involved),
+				Name: involvedName(e.Involved), Scope: involvedScope(e.Involved),
+				Digest: e.Type + " · " + e.Involved, EventID: e.EventID,
+				At: e.Ts.UTC().Format(time.RFC3339Nano), Link: inboxLinkOf(e.Involved, e.EventID)})
+		}
+	}
+	for _, d := range drafts {
+		rows = append(rows, InboxRow{Class: inboxDocReview, Kind: d.Kind, Name: d.Name, Scope: d.Scope,
+			Digest: d.FieldManager + " 稿待审（" + d.Kind + "/" + d.Name + "）", At: d.UpdatedAt,
+			Link: inboxDocLinkOf(d.Kind, d.Scope, d.Name)})
+	}
+	for _, p := range proposals {
+		if p.Status != "submitted" {
+			continue // 待批提案=status=submitted（approved/rejected/landed 非待办——状态机词汇闭合）
+		}
+		rows = append(rows, InboxRow{Class: inboxProposal, Kind: "Proposal", Name: p.Name, Scope: p.Scope,
+			Digest: "提案待批（" + p.Title + "）", At: p.UpdatedAt, Link: "#/proposal/" + p.Scope + "/" + p.Name})
+	}
+	// 稳定排序：类序→At 降序（同刻按 Digest 字典序收尾——投影确定性）。
+	classRank := map[string]int{inboxNeedsHuman: 0, inboxApprovalNeeded: 1, inboxProposal: 2, inboxDocReview: 3}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if classRank[rows[i].Class] != classRank[rows[j].Class] {
+			return classRank[rows[i].Class] < classRank[rows[j].Class]
+		}
+		if rows[i].At != rows[j].At {
+			return rows[i].At > rows[j].At
+		}
+		return rows[i].Digest < rows[j].Digest
+	})
+	classes := map[string]int{}
+	for _, r := range rows {
+		classes[r.Class]++
+	}
+	return &Inbox{Count: len(rows), Classes: classes, Items: rows, Watchdog: watchdog}
+}
+
+// involvedKind/involvedScope/involvedName involvedRef（kind/scope/name 三段）宽松拆解。
+func involvedKind(involved string) string  { k, _, _, ok := involvedRef(involved); if !ok { return "" }; return k }
+func involvedScope(involved string) string { _, s, _, ok := involvedRef(involved); if !ok { return "" }; return s }
+func involvedName(involved string) string  { _, _, n, ok := involvedRef(involved); if !ok { return "" }; return n }
+
+// inboxLinkOf ApprovalNeeded involved → 操作面深链（对象族=编辑器屏；不可解析=事件详情兜底）。
+func inboxLinkOf(involved, eventID string) string {
+	k, s, n, ok := involvedRef(involved)
+	if !ok || k == "" || n == "" {
+		return "#/event/" + eventID
+	}
+	return "#/doc/" + k + "/" + s + "/" + n
+}
+
+// inboxDocLinkOf 稿对象 → 操作面深链（DesignDoc=设计文档工作台；对象族=编辑器屏）。
+func inboxDocLinkOf(kind, scope, name string) string {
+	if kind == "DesignDoc" {
+		return "#/designdoc/" + scope + "/" + name
+	}
+	return "#/doc/" + kind + "/" + scope + "/" + name
+}
+
+// InboxDraftRow / InboxProposalRow 收件箱组装输入行（装配层从读面行集投影——宽松键，零宿主依赖）。
+type InboxDraftRow struct {
+	Kind, Scope, Name, FieldManager, UpdatedAt string
+}
+
+type InboxProposalRow struct {
+	Name, Scope, Title, Status, UpdatedAt string
+}
