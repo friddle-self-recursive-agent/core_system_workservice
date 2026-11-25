@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -27,6 +28,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 )
@@ -141,13 +143,14 @@ type SecretFace interface {
 type Option func(*options)
 
 type options struct {
-	metrics    MetricsFace
-	secrets    SecretFace
-	eventLog   EventLogFace
-	applyLog   ApplyLogFace
-	approval   ApprovalLogFace
-	dispatch   DispatchFace
-	designDocs DesignDocs
+	metrics         MetricsFace
+	secrets         SecretFace
+	eventLog        EventLogFace
+	applyLog        ApplyLogFace
+	approval        ApprovalLogFace
+	dispatch        DispatchFace
+	designDocs      DesignDocs
+	sessionLiveness SessionLivenessFace
 }
 
 // WithMetrics 注入数据面查询口面（v0.33 MetricsInfo 数据面首段）。
@@ -191,20 +194,21 @@ func WithDesignDocs(d DesignDocs) Option {
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
 // workflow.TriggerHub 满足触发骨架口面，eventpub.Publisher 满足发布面口面。
 var (
-	_ ObjectSource    = (*repository.GitRepo)(nil)
-	_ Applier         = (*apply.Engine)(nil)
-	_ DraftStaging    = (*draft.Store)(nil)
-	_ TriggerFace     = (*workflow.TriggerHub)(nil)
-	_ RunFace         = (*workflow.RunLog)(nil)
-	_ DeliveryFace    = (*workflow.DeliveryLog)(nil)
-	_ WakeFace        = (*workflow.WakeLog)(nil)
-	_ PublisherFace   = (*eventpub.Publisher)(nil)
-	_ MetricsFace     = (*metricsinfo.Store)(nil)
-	_ SecretFace      = (*secretstore.Store)(nil)
-	_ EventLogFace    = (*opslog.SQLiteStore)(nil)
-	_ ApplyLogFace    = (*opslog.SQLiteStore)(nil)
-	_ ApprovalLogFace = (*opslog.SQLiteStore)(nil)
-	_ DesignDocs      = (*docrepo.Set)(nil)
+	_ ObjectSource        = (*repository.GitRepo)(nil)
+	_ Applier             = (*apply.Engine)(nil)
+	_ DraftStaging        = (*draft.Store)(nil)
+	_ TriggerFace         = (*workflow.TriggerHub)(nil)
+	_ RunFace             = (*workflow.RunLog)(nil)
+	_ DeliveryFace        = (*workflow.DeliveryLog)(nil)
+	_ WakeFace            = (*workflow.WakeLog)(nil)
+	_ PublisherFace       = (*eventpub.Publisher)(nil)
+	_ MetricsFace         = (*metricsinfo.Store)(nil)
+	_ SecretFace          = (*secretstore.Store)(nil)
+	_ EventLogFace        = (*opslog.SQLiteStore)(nil)
+	_ ApplyLogFace        = (*opslog.SQLiteStore)(nil)
+	_ ApprovalLogFace     = (*opslog.SQLiteStore)(nil)
+	_ DesignDocs          = (*docrepo.Set)(nil)
+	_ SessionLivenessFace = (*sessionliveness.Watchdog)(nil)
 )
 
 // New 构建查询面 HTTP 处理器。端点：
@@ -842,6 +846,50 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// （样本保留数，排序确定性投影）与窗口聚合查询（queries 最小集投影）。数据面未装配
 	// =空投影（关断口径可见）；查询未命中/声明面外聚合=404（不冒充零值）。数据面零信号
 	// 面依赖同口径——本面只读样本库，零总线零判定。
+	// 会话活性面（KI-003，event.md 规则 14；agent-session.md §7）：
+	// POST /v1/sessions/heartbeat=会话侧心跳注册（--allow-apply 门控——写面动作与注入面同开关）；
+	// GET /v1/sessions=查询面恒开（判定态=state 词 suspected-stall 判定词 SuspectedStall 的 DB 词形）。
+	mux.HandleFunc("POST /v1/sessions/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		if o.sessionLiveness == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "sessionliveness: 会话活性面未装配（--session-watch-interval）"})
+			return
+		}
+		if applier == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "写面关断（--allow-apply 未开启）——心跳注册面随写面门控"})
+			return
+		}
+		var req sessionliveness.Heartbeat
+		if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "sessionliveness: 心跳载荷解析失败: " + err.Error()})
+			return
+		}
+		if err := o.sessionLiveness.Beat(req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sessionId": req.SessionID, "at": time.Now().UTC().Format(time.RFC3339Nano)})
+	})
+	mux.HandleFunc("GET /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if o.sessionLiveness == nil {
+			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "sessionliveness: 会话活性面未装配（--session-watch-interval）"})
+			return
+		}
+		limit := atoiDefault(r.URL.Query().Get("limit"), 200)
+		rows, err := o.sessionLiveness.Heartbeats(limit)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count": len(rows), "sessions": rows,
+			"watchdog": map[string]any{
+				"enabled":        o.sessionLiveness.Enabled(),
+				"interval":       o.sessionLiveness.Interval().String(),
+				"stallThreshold": o.sessionLiveness.Threshold().String(),
+				"healRetryLimit": o.sessionLiveness.HealLimit(),
+			},
+		})
+	})
 	mux.HandleFunc("GET /v1/metrics", func(w http.ResponseWriter, _ *http.Request) {
 		items := []map[string]any{}
 		if metrics != nil {
@@ -1274,4 +1322,20 @@ func writeJSON(w http.ResponseWriter, code int, payload any) {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(payload)
+}
+
+// SessionLivenessFace 会话活性面口面（sessionliveness.Watchdog 满足；KI-003——心跳注册面
+// POST /v1/sessions/heartbeat 与查询面 GET /v1/sessions；判定面=装配层 watchdog，零新 face）。
+type SessionLivenessFace interface {
+	Beat(h sessionliveness.Heartbeat) error
+	Heartbeats(limit int) ([]sessionliveness.SessionView, error)
+	Enabled() bool
+	Interval() time.Duration
+	Threshold() time.Duration
+	HealLimit() int
+}
+
+// WithSessionLiveness 注入会话活性面（KI-003：--session-watch-interval 装配；nil=面缺席）。
+func WithSessionLiveness(f SessionLivenessFace) Option {
+	return func(o *options) { o.sessionLiveness = f }
 }

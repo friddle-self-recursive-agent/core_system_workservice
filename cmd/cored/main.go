@@ -36,6 +36,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/proposal"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
@@ -112,6 +113,15 @@ func run() error {
 			"priority 逗号清单如 low——命中清单的提案提交即自动批准（引擎自写 fieldManager=proposal:auto，"+
 			"approval_log granted 行 judgedBy=引擎主体）+派单照常；未命中=人审（提交自产 ApprovalNeeded——"+
 			"event.md 规则 15 source=core）。批准只产派单受理投影，不 enable 任何 workflow 不自动执行代码）")
+	sessionWatchInterval := flag.Duration("session-watch-interval", 0,
+		"会话活性 watchdog 扫描拍间隔（KI-003，event.md 规则 14 引擎内部源第六段；0=关断零事件零扫描，"+
+			"缺省不改行为面。开启需 Scheme 注册 SessionStalled——注册表是引擎内部源唯一开关。停滞判定→自愈固定顺序"+
+			"（第一动作=注入固定 prompt「继续」→SessionHealed）→诊断分诊（权限类 ApprovalNeeded 向上提交/人工类按 "+
+			"bind 通道上报未配置=零通知零外发/长任务 LongTaskRunning 显式汇报）→连续无效达 --heal-retry-limit 升级 Escalate）")
+	stallThreshold := flag.Duration("stall-threshold", sessionliveness.DefaultStallThreshold,
+		"会话停滞判定阈值（KI-003；缺省 10m=event.md 规则 14② 声明缺省。updated_at 早于 now-阈值=停滞候选）")
+	healRetryLimit := flag.Int("heal-retry-limit", sessionliveness.DefaultHealRetryLimit,
+		"同会话连续自愈无效升级阈值（KI-003；缺省 2=event.md 规则 14⑤——达阈值合成 Escalate 停自动处置升级，不静默重试）")
 	var designRepos repoSpecs
 	flag.Var(&designRepos, "design-repo",
 		"设计文档白名单仓（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit；"+
@@ -315,6 +325,37 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
+	// 会话活性 watchdog（KI-003，event.md 规则 14/14b 引擎内部源第六段；agent-session.md §7）：
+	// 装配层定时扫描 ops DB session_heartbeat——超阈值无心跳自产 SessionStalled（判定态词=
+	// SuspectedStall；dedupKey=session:<id>）→自愈固定顺序（第一动作=注入固定 prompt「继续」，
+	// 恢复记 SessionHealed）→诊断分诊（权限类 ApprovalNeeded 向上提交/人工类 bind 通道上报、
+	// 未配置=零通知零外发/长任务 LongTaskRunning 显式汇报）→连续无效达 --heal-retry-limit 合成
+	// Escalate 停自动处置。注册表闸门前置（SessionStalled 未注册=unregistered 不启动）；
+	// interval=0 关断零事件零扫描（缺省不改行为面）。与注入面同一条主干零旁路。
+	heartbeatStore := struct {
+		sessionliveness.Registry
+	}{store}
+	liveness := sessionliveness.New(heartbeatStore, bus, sch, *sessionWatchInterval, *stallThreshold, *healRetryLimit)
+	liveness.OnEvent(func(typ, session string, err error) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cored: sessionliveness 会话 %s 合成事件 %s 发布失败（继续上报不静默）: %v\n", session, typ, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "cored: sessionliveness 会话 %s 合成事件 %s 已入总线\n", session, typ)
+	})
+	sessionState := "off"
+	switch {
+	case *sessionWatchInterval <= 0:
+		// 缺省关断
+	case !liveness.Enabled():
+		sessionState = "unregistered" // interval>0 但 SessionStalled 未注册：闸门前置不启动（缺口可见）
+	default:
+		sessionState = "on(" + liveness.Interval().String() + ",threshold=" + liveness.Threshold().String() + ")"
+		liveCtx, cancelLive := context.WithCancel(context.Background())
+		defer cancelLive()
+		go liveness.Run(liveCtx)
+	}
+	fmt.Fprintf(os.Stderr, "cored: 会话活性 watchdog=%s（--session-watch-interval；on=停滞判定 SuspectedStall→注入继续→SessionHealed→诊断分诊→升级 Escalate 全链事件化；unregistered=SessionStalled 未注册——注册表闸门前置；off=关断零事件缺省不改行为面；心跳注册面=POST /v1/sessions/heartbeat 查询面=GET /v1/sessions）\n", sessionState)
 	// 通知门链装配锚（v0.35 KI-001 通知段——探针机读判别器）：门恒挂接（修复非选项——
 	// apply 写入不触发用户通知）；dedup/minLevel 部署侧可调（<=0/空=关断词形）。
 	minLevelWord := *notifyMinLevel
@@ -609,7 +650,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
-	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts(metricsFace, secrets, store, dispLog, designDocs)...), ReadHeaderTimeout: 5 * time.Second}
+	apiserverOpts := func() []apiserver.Option {
+		opts := apiserverOpts(metricsFace, secrets, store, dispLog, designDocs)
+		if sessionState != "off" && sessionState != "unregistered" {
+			opts = append(opts, apiserver.WithSessionLiveness(liveness))
+		}
+		return opts
+	}
+	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts()...), ReadHeaderTimeout: 5 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

@@ -1,0 +1,14 @@
+apiVersion: core/v1
+metadata:
+  name: sessionliveness-test
+spec:
+  version: test-sessionliveness
+  kinds:
+    - {kind: Probe, storage: git}
+  eventTypes:
+    - {type: SessionStalled,   source: core, defaultLevel: error, dedup: "session:<id>",       route: root-agent+notification/*}
+    - {type: SessionHealed,    source: core, defaultLevel: info,  dedup: "session-heal:<id>",  route: dead-letter}
+    - {type: LongTaskRunning,  source: core, defaultLevel: info,  dedup: "longtask:<id>",      route: dead-letter}
+    - {type: ApprovalNeeded,   source: "permission|core", defaultLevel: warn, dedup: "<rule>:<obj>", route: notification/*}
+    - {type: Escalate,         source: engine, defaultLevel: error, dedup: "<workflow>:<reason>", route: owner-workflow+root+notification/*}
+  dispatch: []
