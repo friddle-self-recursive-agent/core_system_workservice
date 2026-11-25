@@ -193,7 +193,8 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		w.mu.Unlock()
 		hb.HealedAt = now
 		hb.HealAttempts = 0
-		_ = w.Registry.UpsertSessionHeartbeat(hb) // 行态快照并入恢复戳
+		hb.State = opslog.SessionStateHealed
+		_ = w.Registry.UpsertSessionHeartbeat(hb) // 行态快照并入恢复戳（state=healed）
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-by-beat")
 	} else if prev, ok := w.prevStalled[h.SessionID]; ok && prev {
 		// 无注入执行面部署的恢复判定：曾判停滞（本进程判定过 SuspectedStall）∧注入前
@@ -204,7 +205,8 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		delete(w.prevStalled, h.SessionID)
 		w.mu.Unlock()
 		hb.HealedAt = now
-		_ = w.Registry.UpsertSessionHeartbeat(hb)
+		hb.State = opslog.SessionStateHealed
+		_ = w.Registry.UpsertSessionHeartbeat(hb) // 行态快照并入恢复戳（state=healed）
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-self")
 	}
 	return nil
