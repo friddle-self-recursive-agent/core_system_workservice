@@ -866,9 +866,13 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		// v0.56 ask 批准动作面（workflow-runtime.md §11.5——拉起投影面第三段）：派单行随行
 		// approval 键（state 词=批准投影翻转词——人批/驳回=Apply 判定；审批投影面缺席=零值不冒充）。
 		approvalIdx := map[string]string{}
+		spawnIdx := map[string]flowbind.SpawnDeclaration{}
 		if o.inbox != nil {
 			for _, r := range o.inbox.State().Records {
 				approvalIdx[r.ApprovalID] = r.State
+				if d := flowbind.SpawnOf(r); d.Declared {
+					spawnIdx[r.ApprovalID] = d // v0.57 spawn 接线声明投影（approved 行——wired 恒 false）
+				}
 			}
 		}
 		for _, d := range st.Records {
@@ -890,7 +894,11 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				// v0.56 ask 批准动作面（拉起投影面第三段，workflow-runtime.md §11.5）：
 				// state=pending|approved|rejected（approved≠spawn 已拉起——真实执行仍 observe）。
 				"approval": map[string]any{"state": approvalIdx[matchingKeyOfRecord(d)], "approvalId": matchingKeyOfRecord(d)},
-				"at":       d.At.UTC().Format(time.RFC3339Nano),
+				// v0.57 spawn 接线声明投影（拉起投影面末段，workflow-runtime.md §11.7——零值键
+				// =代际判别器）：approved 批准投影行 → {declared:true, wired:false, target, …}
+				// 接线声明词形（approved≠拉起——真实拉起=agent-session 域 deferred，红线 a）。
+				"spawn": spawnPayload(spawnIdx[matchingKeyOfRecord(d)]),
+				"at":    d.At.UTC().Format(time.RFC3339Nano),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -1501,4 +1509,14 @@ func nilIfZero(t time.Time) any {
 // flowbind.DispatchRecord → matchingKeyOf 同源；空 connector/proposal 行=零值键不匹配任何投影）。
 func matchingKeyOfRecord(d flowbind.DispatchRecord) string {
 	return flowbind.ApprovalKeyOf(d)
+}
+
+// spawnPayload spawn 接线声明 → 载荷行（/v1/agents/dispatches spawn 键——键恒在=代际判别器；
+// 零值声明=接线缺席 `{declared:false, wired:false}` 诚实词形——pending/rejected 行或批准投影
+// 面缺席照落零值，不冒充已接线）。
+func spawnPayload(d flowbind.SpawnDeclaration) map[string]any {
+	return map[string]any{
+		"declared": d.Declared, "wired": d.Wired, "target": d.Target,
+		"approvalId": d.ApprovalID, "rv": d.RV, "eventId": d.EventID,
+	}
 }

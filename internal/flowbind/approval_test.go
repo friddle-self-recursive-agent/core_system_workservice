@@ -52,8 +52,8 @@ func TestSyncApprovalsFlipByApplyRows(t *testing.T) {
 	flips := syncA.Sync([]opslog.ApplyLog{
 		{Ts: ts, FieldManager: ApprovalManager, Subject: "console-operator", Obj: "ConnectorOps/global/wf-a", ResourceVersion: 2, Result: "ok"},
 		{Ts: ts, FieldManager: ApprovalRejecter, Subject: "console-operator", Obj: "ConnectorOps/global/wf-b", ResourceVersion: 2, Result: "ok"},
-		{Ts: ts, FieldManager: "console:approve", Obj: "ConnectorOps/global/wf-a", Result: "ok"},      // 非 ask 判定串=零翻转
-		{Ts: ts, FieldManager: ApprovalManager, Obj: "ConnectorOps/global/wf-x", Result: "ok"},         // 无挂起投影=零发明
+		{Ts: ts, FieldManager: "console:approve", Obj: "ConnectorOps/global/wf-a", Result: "ok"},                        // 非 ask 判定串=零翻转
+		{Ts: ts, FieldManager: ApprovalManager, Obj: "ConnectorOps/global/wf-x", Result: "ok"},                          // 无挂起投影=零发明
 		{Ts: ts, FieldManager: ApprovalManager, Obj: "ConnectorOps/global/ghost", ResourceVersion: 1, Result: "denied"}, // denied 不判定
 	})
 	if flips != 2 {
@@ -132,5 +132,55 @@ func TestBuildInboxClasses(t *testing.T) {
 	empty := BuildInbox(nil, nil, nil, nil)
 	if empty.Count != 0 || len(empty.Items) != 0 || empty.Classes[inboxNeedsHuman] != 0 {
 		t.Fatalf("空输入投影=%+v（期望零行空态显式）", empty)
+	}
+}
+
+// L59-01 spawn 接线声明投影（workflow-runtime.md §11.7——拉起投影面末段）：approved 批准
+// 投影行 → {declared:true, wired:false, target:apply-workflow}；pending/rejected 行=零声明
+// （零值键恒在）；wired 恒 false=真实拉起 deferred 的机械锚（红线 a——本面零拉起执行器）。
+func TestApprovalSpawnDeclaration(t *testing.T) {
+	approved := ApprovalRecord{Kind: DispatchKindWorkflow, Workflow: "wf-a", Scope: "global",
+		Connector: "wf-a", State: ApprovalApproved, AutoLevel: DispatchAutoLevel, RV: 2,
+		EventID: "evt-DocApplied-1", ApprovalID: "ConnectorOps/global/wf-a"}
+	d := ApprovalSpawnDeclaration(approved)
+	if !d.Declared || d.Wired || d.Target != DispatchAgent || d.RV != 2 || d.EventID != "evt-DocApplied-1" {
+		t.Fatalf("approved 行声明=%+v（期望 declared=true wired=false target=apply-workflow rv=2）", d)
+	}
+	pending := approved
+	pending.State = ApprovalPending
+	if pd := ApprovalSpawnDeclaration(pending); pd.Declared || pd.Wired {
+		t.Fatalf("pending 行=%+v（期望零声明——接线面未进入）", pd)
+	}
+	rejected := approved
+	rejected.State = ApprovalRejected
+	if rd := ApprovalSpawnDeclaration(rejected); rd.Declared {
+		t.Fatalf("rejected 行=%+v（期望零声明——驳回≠接线）", rd)
+	}
+}
+
+// L59-02 判定权威=apply_log 行：SyncApprovals 仅凭 workflow:approve ok 行翻转 approved →
+// spawn 声明在册（进程内投影环重启归零后，判定行重放=声明再现——账本事实投影单点真相）。
+func TestSpawnDeclarationFromApplyLogOnly(t *testing.T) {
+	log := NewApprovalLog(nil)
+	syncA := &SyncApprovals{Log: log}
+	d := NewDispatchLog(nil)
+	d.Approvals = syncA
+	d.Dispatch(DispatchRecord{Kind: DispatchKindWorkflow, Workflow: "wf-a", Scope: "global",
+		Connector: "wf-a", RV: 1, At: time.Now()})
+	flips := syncA.Sync([]opslog.ApplyLog{{Ts: time.Now(), FieldManager: ApprovalManager,
+		Subject: "console-operator", Obj: "ConnectorOps/global/wf-a", ResourceVersion: 2, Result: "ok"}})
+	if flips != 1 {
+		t.Fatalf("翻转行数=%d（期望 1）", flips)
+	}
+	st := log.State()
+	if len(st.Records) != 1 || st.Records[0].State != ApprovalApproved {
+		t.Fatalf("投影态=%+v（期望 approved 单行）", st.Records)
+	}
+	decl := ApprovalSpawnDeclaration(st.Records[0])
+	if !decl.Declared || decl.Wired || decl.Target != DispatchAgent {
+		t.Fatalf("apply_log 判定行 spawn 声明=%+v（期望 declared=true wired=false target=apply-workflow——判定权威=apply_log 行）", decl)
+	}
+	if decl.RV != 2 || st.Records[0].EventID != "" {
+		t.Fatalf("声明载荷=%+v（rv=%d 应=判定行 rv；eventId 应空——Sync 不复制派单载荷，声明面零拉起事实）", decl, decl.RV)
 	}
 }

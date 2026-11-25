@@ -67,9 +67,9 @@ func TestInboxFaceProjection(t *testing.T) {
 		t.Fatalf("GET /v1/inbox=%d（期望 200）", res.StatusCode)
 	}
 	var body struct {
-		Count    int            `json:"count"`
-		Classes  map[string]int `json:"classes"`
-		Items    []struct {
+		Count   int            `json:"count"`
+		Classes map[string]int `json:"classes"`
+		Items   []struct {
 			Class   string `json:"class"`
 			EventID string `json:"eventId"`
 			Link    string `json:"link"`
@@ -134,4 +134,112 @@ func TestHeartbeatWatchdogSourceRejected(t *testing.T) {
 	if len(live.beats) != 0 {
 		t.Fatalf("watchdog 来源心跳入账=%d（期望 0）", len(live.beats))
 	}
+}
+
+// L59-03 spawn 接线声明投影面（v0.57——workflow-runtime.md §11.7 拉起投影面末段）：派单行
+// spawn 键恒在（代际判别器）；零值=`{declared:false,wired:false}` 诚实缺席词形；approved
+// 批准投影 → `{declared:true, wired:false, target:apply-workflow}`（接线声明≠拉起——红线 a）。
+func TestDispatchFaceSpawnDeclaration(t *testing.T) {
+	// 派单面须随 --allow-apply 装配（WithDispatchFace）——双面装配 server（newSpawnServer）。
+	ts2, sy2, dl2 := newSpawnServer(t)
+	dl2.Approvals = sy2
+	dl2.Dispatch(flowbind.DispatchRecord{Kind: flowbind.DispatchKindWorkflow, Workflow: "wf-a",
+		Scope: "global", Connector: "wf-a", RV: 1, At: time.Now()})
+	// 批准前：spawn 键在册且零值（诚实缺席——pending 行不冒充接线）。
+	res, err := http.Get(ts2.URL + "/v1/agents/dispatches")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readDispatchBody(t, res)
+	res.Body.Close()
+	if body.Count != 1 {
+		t.Fatalf("派单行数=%d", body.Count)
+	}
+	if body.Dispatches[0].Spawn.Declared || body.Dispatches[0].Spawn.Wired {
+		t.Fatalf("pending 行 spawn=%+v（期望 declared=false wired=false——接线缺席词形）", body.Dispatches[0].Spawn)
+	}
+	if body.Dispatches[0].Approval.State != flowbind.ApprovalPending {
+		t.Fatalf("approval=%+v（期望 pending）", body.Dispatches[0].Approval)
+	}
+	// 人批=Apply 判定（workflow:approve ok 行）→ 投影翻转 → spawn 声明在册且 wired=false。
+	sy2.Sync([]opslog.ApplyLog{{Ts: time.Now(), FieldManager: flowbind.ApprovalManager,
+		Subject: "console-operator", Obj: "ConnectorOps/global/wf-a", ResourceVersion: 2, Result: "ok"}})
+	res2, err := http.Get(ts2.URL + "/v1/agents/dispatches")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body2 := readDispatchBody(t, res2)
+	res2.Body.Close()
+	sp := body2.Dispatches[0].Spawn
+	if !sp.Declared || sp.Wired || sp.Target != flowbind.DispatchAgent || sp.RV != 2 ||
+		sp.ApprovalID != "ConnectorOps/global/wf-a" {
+		t.Fatalf("approved 行 spawn=%+v（期望 declared=true wired=false target=apply-workflow rv=2 approvalId 同键）", sp)
+	}
+	if sp.EventID != "" {
+		t.Fatalf("spawn 声明 eventId=%q（期望空——判定行不复制派单载荷，接线声明=零拉起事实）", sp.EventID)
+	}
+	if body2.Dispatches[0].Approval.State != flowbind.ApprovalApproved {
+		t.Fatalf("approval=%+v（期望 approved）", body2.Dispatches[0].Approval)
+	}
+}
+
+// readDispatchBody 派单面载荷解析（spawn 键形状断言用）。
+func readDispatchBody(t *testing.T, res *http.Response) struct {
+	Count      int `json:"count"`
+	Dispatches []struct {
+		Workflow string `json:"workflow"`
+		Approval struct {
+			State      string `json:"state"`
+			ApprovalID string `json:"approvalId"`
+		} `json:"approval"`
+		Spawn struct {
+			Declared   bool   `json:"declared"`
+			Wired      bool   `json:"wired"`
+			Target     string `json:"target"`
+			ApprovalID string `json:"approvalId"`
+			RV         int64  `json:"rv"`
+			EventID    string `json:"eventId"`
+		} `json:"spawn"`
+	} `json:"dispatches"`
+} {
+	t.Helper()
+	var body struct {
+		Count      int `json:"count"`
+		Dispatches []struct {
+			Workflow string `json:"workflow"`
+			Approval struct {
+				State      string `json:"state"`
+				ApprovalID string `json:"approvalId"`
+			} `json:"approval"`
+			Spawn struct {
+				Declared   bool   `json:"declared"`
+				Wired      bool   `json:"wired"`
+				Target     string `json:"target"`
+				ApprovalID string `json:"approvalId"`
+				RV         int64  `json:"rv"`
+				EventID    string `json:"eventId"`
+			} `json:"spawn"`
+		} `json:"dispatches"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// newSpawnServer 派单面+收件箱面双装配 server（spawn 声明投影面测用——WithDispatchFace 随
+// --allow-apply 装配同款；返回注入的 DispatchLog=同环投影，零旁路）。
+func newSpawnServer(t *testing.T) (*httptest.Server, *flowbind.SyncApprovals, *flowbind.DispatchLog) {
+	t.Helper()
+	sch, err := scheme.Load([]byte(inboxFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := flowbind.NewApprovalLog(nil)
+	sy := &flowbind.SyncApprovals{Log: log}
+	dl := flowbind.NewDispatchLog(nil)
+	ts := httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil, nil, nil,
+		WithInboxFace(sy), WithDispatchFace(dl)))
+	t.Cleanup(ts.Close)
+	return ts, sy, dl
 }

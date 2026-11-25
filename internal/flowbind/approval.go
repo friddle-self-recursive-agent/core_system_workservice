@@ -24,14 +24,15 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 )
+
 // 审批词汇（agent-session.md §2 ask 分诊词汇同源；apply_log fieldManager 溯源串）。
 const (
-	ApprovalPending  = "pending"   // 批准投影初态（ask 派单挂起待批）
-	ApprovalApproved = "approved"  // 人批=Apply ok（fieldManager=workflow:approve）
-	ApprovalRejected = "rejected"  // 驳回=Apply ok（fieldManager=workflow:reject）
+	ApprovalPending  = "pending"          // 批准投影初态（ask 派单挂起待批）
+	ApprovalApproved = "approved"         // 人批=Apply ok（fieldManager=workflow:approve）
+	ApprovalRejected = "rejected"         // 驳回=Apply ok（fieldManager=workflow:reject）
 	ApprovalManager  = "workflow:approve" // 批准溯源串（approval_log 同款约定串——apply.md rule 2）
-	ApprovalRejecter = "workflow:reject" // 驳回溯源串（对称扩展——proposals_face.go 同款）
-	ApprovalSource   = "dispatch"   // 来源词（批准投影行 source 键——派单 ask 面）
+	ApprovalRejecter = "workflow:reject"  // 驳回溯源串（对称扩展——proposals_face.go 同款）
+	ApprovalSource   = "dispatch"         // 来源词（批准投影行 source 键——派单 ask 面）
 )
 
 // dispatchApprovalKey 批准投影与派单受理行的同拍关联键（matchingKeyOf 同源）。
@@ -199,10 +200,12 @@ func (s *SyncApprovals) Sync(rows []opslog.ApplyLog) int {
 			continue // 已终态且判定行不新于现投影判定=幂等（重复行集零重复翻转）
 		}
 		// 原地翻转（观测面=apply_log 账本事实的实时投影——判定行替换 pending 行，不双行并存：
-		// pending 与 approved 并存=同一待办双计数的假词形）。
+		// pending 与 approved 并存=同一待办双计数的假词形）。rv/判定词随判定行（v0.57 spawn
+		// 声明投影的 rv 基线=批准 Apply 落库后版本——接线声明与账本行同源零硬编码）。
 		r.State = state
 		r.JudgedBy = row.Subject
 		r.JudgedAt = row.Ts
+		r.RV = row.ResourceVersion
 		s.Log.ring[i] = r
 		n++
 	}
@@ -238,6 +241,41 @@ func (s *SyncApprovals) State() ApprovalState {
 	return s.Log.State()
 }
 
+// ApprovalSpawnDeclaration spawn 接线声明投影（v0.57，workflow-runtime.md §11.7——拉起投影
+// 面末段：ask 批准动作面（§11.5）→ spawn 接线声明 → 真实拉起（agent-session 域 deferred）。
+// 单一真相=approved 批准投影行（人批=Apply workflow:approve ok 行——apply_log 账本事实）；
+// 本纯函数零新零旁路零写面，approved 行缺席=声明缺席（诚实词形，不发明）。
+//
+// **红线 a 机械锚**：wired 恒 false——真实拉起=dsh 会话挂载（agent-session.md §3），本声明
+// 面零拉起执行器零自动触发；接线缺席=缺口可见（wired=true 而无执行面=静默缺口，本面禁此词形）。
+func ApprovalSpawnDeclaration(r ApprovalRecord) SpawnDeclaration {
+	if r.State != ApprovalApproved {
+		return SpawnDeclaration{} // 未批准（pending/rejected）=零声明（接线面未进入）
+	}
+	return SpawnDeclaration{
+		Declared:   true,
+		Wired:      false, // 真实拉起接线=agent-session 域 declared-deferred（诚实词形）
+		Target:     DispatchAgent,
+		ApprovalID: r.ApprovalID,
+		RV:         r.RV,
+		EventID:    r.EventID,
+	}
+}
+
+// SpawnDeclaration spawn 接线声明（approved 派单行的 spawn 键——接线声明词形，非拉起事实）。
+type SpawnDeclaration struct {
+	Declared   bool   `json:"declared"`   // approved 批准投影=接线声明在册
+	Wired      bool   `json:"wired"`      // 恒 false=真实拉起接线 deferred（红线 a 机械锚）
+	Target     string `json:"target"`     // 拉起目标锚（apply-workflow——§8 专用 agent）
+	ApprovalID string `json:"approvalId"` // 批准投影键（判据回链 approvals.records）
+	RV         int64  `json:"rv"`         // 骨架落库后版本（实现侧 diff 基线随行）
+	EventID    string `json:"eventId"`    // DocApplied 回执（来源链可回指）
+}
+
+// SpawnOf 批准投影 → spawn 声明（导出形——/apiserver 派单行集消费；ApprovalSpawnDeclaration
+// 同一投影零硬编码）。
+func SpawnOf(r ApprovalRecord) SpawnDeclaration { return ApprovalSpawnDeclaration(r) }
+
 // r2d 投影行 → 派单行形（matchingKeyOf 键源复用——pending 投影键=派单行键同构）。
 func r2d(r ApprovalRecord) DispatchRecord {
 	return DispatchRecord{Kind: r.Kind, Workflow: r.Workflow, Scope: r.Scope,
@@ -256,30 +294,30 @@ func approvalIDOf(rec DispatchRecord) string {
 // InboxRow 通知中心收件箱一行（机读判定分类自 cored 读面现读——console 不自建持久状态，
 // 渲染数据无双源红线 2；四类词=NeedsHuman|ApprovalNeeded|Proposal|DocReview）。
 type InboxRow struct {
-	Class   string `json:"class"`  // inboxNeedsHuman|inboxApprovalNeeded|inboxProposal|inboxDocReview（inboxClass* 词）
-	Kind    string `json:"kind"`   // 深链对象 kind（events 类=空——详情路由按 eventId）
-	Name    string `json:"name"`   // 对象名
-	Scope   string `json:"scope"`  // 对象 scope
-	Digest  string `json:"digest"` // 摘要（标题/事件类型+involved——页面展示词形）
+	Class   string `json:"class"`   // inboxNeedsHuman|inboxApprovalNeeded|inboxProposal|inboxDocReview（inboxClass* 词）
+	Kind    string `json:"kind"`    // 深链对象 kind（events 类=空——详情路由按 eventId）
+	Name    string `json:"name"`    // 对象名
+	Scope   string `json:"scope"`   // 对象 scope
+	Digest  string `json:"digest"`  // 摘要（标题/事件类型+involved——页面展示词形）
 	EventID string `json:"eventId"` // 事件锚（events 类）
-	At      string `json:"at"`     // 归档/更新时刻（RFC3339，现读面原值）
-	Link    string `json:"link"`   // console 深链路由（#/…——规则 6 页面兜底入口；操作面=编辑器/审批/提案详情）
+	At      string `json:"at"`      // 归档/更新时刻（RFC3339，现读面原值）
+	Link    string `json:"link"`    // console 深链路由（#/…——规则 6 页面兜底入口；操作面=编辑器/审批/提案详情）
 }
 
 // Inbox 通知中心收件箱投影（四类汇总+计数+深链；未配置通知通道=仅页面展示，规则 6）。
 type Inbox struct {
-	Count     int         `json:"count"`
-	Classes   map[string]int `json:"classes"`
-	Items     []InboxRow  `json:"items"`
-	Watchdog  map[string]any `json:"watchdog,omitempty"`
+	Count    int            `json:"count"`
+	Classes  map[string]int `json:"classes"`
+	Items    []InboxRow     `json:"items"`
+	Watchdog map[string]any `json:"watchdog,omitempty"`
 }
 
 // inbox 词汇常量（四类判定分类——console 判别词同源）。
 const (
-	inboxNeedsHuman    = "NeedsHuman"
+	inboxNeedsHuman     = "NeedsHuman"
 	inboxApprovalNeeded = "ApprovalNeeded"
-	inboxProposal      = "Proposal"
-	inboxDocReview     = "DocReview"
+	inboxProposal       = "Proposal"
+	inboxDocReview      = "DocReview"
 )
 
 // BuildInbox 收件箱投影组装（纯函数——装配层喂行集+watchdog 投影；读面缺席类=零行，
@@ -331,9 +369,27 @@ func BuildInbox(events []opslog.EventLog, drafts []InboxDraftRow, proposals []In
 }
 
 // involvedKind/involvedScope/involvedName involvedRef（kind/scope/name 三段）宽松拆解。
-func involvedKind(involved string) string  { k, _, _, ok := involvedRef(involved); if !ok { return "" }; return k }
-func involvedScope(involved string) string { _, s, _, ok := involvedRef(involved); if !ok { return "" }; return s }
-func involvedName(involved string) string  { _, _, n, ok := involvedRef(involved); if !ok { return "" }; return n }
+func involvedKind(involved string) string {
+	k, _, _, ok := involvedRef(involved)
+	if !ok {
+		return ""
+	}
+	return k
+}
+func involvedScope(involved string) string {
+	_, s, _, ok := involvedRef(involved)
+	if !ok {
+		return ""
+	}
+	return s
+}
+func involvedName(involved string) string {
+	_, _, n, ok := involvedRef(involved)
+	if !ok {
+		return ""
+	}
+	return n
+}
 
 // inboxLinkOf ApprovalNeeded involved → 操作面深链（对象族=编辑器屏；不可解析=事件详情兜底）。
 func inboxLinkOf(involved, eventID string) string {
