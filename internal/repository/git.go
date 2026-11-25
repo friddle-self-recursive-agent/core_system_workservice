@@ -761,7 +761,7 @@ func (r *GitRepo) applyWrite(req *writeReq) (int64, string, error) {
 			r.logApply(o, storedMeta.RV, "noop", req)
 			return storedMeta.RV, "noop", nil
 		}
-		if o.ResourceVersion == 0 {
+		if o.ResourceVersion == 0 && storedMeta.RV > 0 {
 			return 0, "", fmt.Errorf("%w: %s/%s/%s 现版本 %d", ErrAlreadyExists, o.Kind, o.Scope, o.Name, storedMeta.RV)
 		}
 		if o.ResourceVersion != storedMeta.RV {
@@ -783,13 +783,20 @@ func (r *GitRepo) applyWrite(req *writeReq) (int64, string, error) {
 		return 0, "", fmt.Errorf("repository: 读取 %s: %w", path, readErr)
 	}
 
-	// 注入 resourceVersion 后落盘（原子写：临时文件+rename）。
-	if err := setResourceVersion(inContainer, newRV); err != nil {
-		return 0, "", err
-	}
-	out, err := encodeDoc(inDoc, inBody, inMD)
-	if err != nil {
-		return 0, "", err
+	// 注入 resourceVersion 后落盘（原子写：临时文件+rename）；
+	// Scheme 单例（core/scheme.yaml）保留原文逐字节（保护注释与 LintSchemeMirror 镜像字节比对）。
+	var out []byte
+	if o.Kind == "Scheme" {
+		out = o.Content
+	} else {
+		if err := setResourceVersion(inContainer, newRV); err != nil {
+			return 0, "", err
+		}
+		var err error
+		out, err = encodeDoc(inDoc, inBody, inMD)
+		if err != nil {
+			return 0, "", err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return 0, "", fmt.Errorf("repository: 建目录 %s: %w", filepath.Dir(path), err)

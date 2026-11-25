@@ -115,7 +115,7 @@ func parseDecl(decl string) fieldDecl {
 		return d
 	}
 	switch s {
-	case "string", "int", "bool", "ref", "duration", "map", "timestamp", "number":
+	case "string", "text", "int", "bool", "ref", "duration", "map", "timestamp", "number":
 		d.typ = s
 	default:
 		d.typ = "any" // 不可机读 → 仅存在性
@@ -357,7 +357,7 @@ func checkNode(path string, node *yaml.Node, d fieldDecl) []string {
 		if node.Kind != yaml.MappingNode {
 			return []string{path + ": 须为映射"}
 		}
-	case "string", "ref":
+	case "string", "text", "ref":
 		if node.Kind != yaml.ScalarNode || node.Tag != "!!str" {
 			return []string{path + ": 须为字符串"}
 		}

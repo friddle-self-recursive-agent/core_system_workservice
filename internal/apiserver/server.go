@@ -1078,6 +1078,9 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 读/史/草稿/apply 路由注册（handler 体见 design_docs.go）。面未装配=503；写面随
 	// --allow-apply；白名单外 403 / lint 未过 400 携违规 / 基线 sha 不符 409——任务书判据三件。
 	registerDesignDocRoutes(mux, designDocs, drafts, applyLog)
+	// 对话式录入与三重 dry-run 预检面（v0.53 能力 D + R-UX-1/R-UX-2——cored-bridge.md §2.5）：
+	// GET /v1/intake/sessions* 恒开（旧构建 405=代际判别器）；POST /v1/intake/turn 与 /generate 随 --allow-apply 门控。
+	registerIntakeRoutes(mux, sch, objects, applier)
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {

@@ -6,10 +6,13 @@ package apply
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/docrepo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
@@ -103,7 +106,12 @@ func (e *Engine) Apply(ctx context.Context, o *repository.Object, opt Options) (
 		// conflict 审计行由 repository 落（它持有现库版本）；其余错误透传。
 		return nil, err
 	}
-	return e.finish(objKey, rv, action)
+	if o.Kind == "Scheme" && e.Sch != nil {
+		if newSch, lerr := scheme.Load(o.Content); lerr == nil {
+			e.Sch.Replace(newSch)
+		}
+	}
+	return e.finish(objKey, rv, action, o.Content)
 }
 
 // ApplyDraft 稿→面落库（apply.md §1「人确定后调用 apply 命令」）：取草稿差异走同一三步闸门，
@@ -146,12 +154,17 @@ func (e *Engine) ApplyDraft(ctx context.Context, kind, scope, name string, opt O
 	if err != nil {
 		return nil, err // Conflict：草稿保留（乐观锁语义，apply.md §3「后写者重读」）
 	}
+	if kind == "Scheme" && e.Sch != nil {
+		if newSch, lerr := scheme.Load(o.Content); lerr == nil {
+			e.Sch.Replace(newSch)
+		}
+	}
 	// rule 6「apply 后清空」：create/update/noop 都算 apply 已确认（noop=稿与面一致，
 	// 空差异无操作不落库不发事件，但稿已被确认消费）。清稿失败=落库成功但缓存脏，如实上抛。
 	if err := e.Drafts.Delete(kind, scope, name); err != nil {
 		return nil, fmt.Errorf("apply: 落库成功（rv=%d action=%s）但清稿失败: %w", rv, action, err)
 	}
-	return e.finish(objKey, rv, action)
+	return e.finish(objKey, rv, action, o.Content)
 }
 
 // admit 写路径前置闸门（① scheme 准入 ② 权限准入）；拒绝路径落 denied 审计行。
@@ -196,21 +209,40 @@ func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
 		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrSpecInvalid, err)
 	}
+	// R-UX-2 / R-PUB-1：Scheme 本体与 Proposal 提案正文走同一 R-PUB-1 lint 与结构闸门（禁止绕过 lint/准入直接改动）。
+	if o.Kind == "Scheme" || o.Kind == "Proposal" {
+		if vs := docrepo.Lint(o.Content); len(vs) > 0 {
+			msg := fmt.Sprintf("R-PUB-1 lint 未过（%d 处违规：line=%d rule=%s %q）", len(vs), vs[0].Line, vs[0].Rule, vs[0].Text)
+			e.audit(opt, objKey, 0, "denied", msg, sub)
+			return fmt.Errorf("%w: %s", ErrSpecInvalid, msg)
+		}
+	}
+	if o.Kind == "Scheme" {
+		if _, err := scheme.Load(o.Content); err != nil {
+			e.audit(opt, objKey, 0, "denied", err.Error(), sub)
+			return fmt.Errorf("%w: %v", ErrSpecInvalid, err)
+		}
+	}
 	return nil
 }
 
 // finish 落库后的收尾：DocApplied 必发（apply.md rule 1；noop 无差异不发——防自我唤醒循环）。
 // fieldManager 白名单豁免（Workflow 自写回执抑制）随 workflow 引擎接入（declared-deferred）。
-func (e *Engine) finish(objKey string, rv int64, action string) (*Result, error) {
+func (e *Engine) finish(objKey string, rv int64, action string, content []byte) (*Result, error) {
 	res := &Result{RV: rv, Action: action}
 	if action == "noop" {
 		return res, nil
+	}
+	dedupKey := fmt.Sprintf("apply:%s:%d", objKey, rv)
+	if strings.HasPrefix(objKey, "Scheme/") && len(content) > 0 {
+		sum := sha256.Sum256(content)
+		dedupKey = fmt.Sprintf("apply:%s:%x", objKey, sum[:6])
 	}
 	evt := eventbus.Event{
 		Type:     "DocApplied",
 		Source:   "apply",
 		Involved: objKey,
-		DedupKey: fmt.Sprintf("apply:%s:%d", objKey, rv), // 同对象同版本=同因，窗口内聚合
+		DedupKey: dedupKey, // 同对象同版本=同因，窗口内聚合（Scheme 原文保真无 rv 字段时以内容摘要区分不同次提交）
 		Level:    "info",
 	}
 	if e.Bus != nil {

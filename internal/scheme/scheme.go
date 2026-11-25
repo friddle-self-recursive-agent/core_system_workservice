@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,18 +16,20 @@ import (
 // Kind 注册表中的一个对象类型。
 // Storage 是存储路径模板（布局见 core_system_instance/layout.md）；
 // Spec/Fields/Status/Relations 保留声明原文（map 形态），供查询面透出；
+// Widgets 由 Spec/Fields 实时机读派生（R-UX-2 scheme→widget 单一真相）；
 // 未识别的顶层字段收敛进 Extra，避免声明演进时载入端先行失配。
 type Kind struct {
-	Name       string         `yaml:"kind" json:"name"`
-	Builtin    bool           `yaml:"builtin" json:"builtin,omitempty"`
-	Storage    string         `yaml:"storage" json:"storage"`
-	Spec       map[string]any `yaml:"spec,omitempty" json:"spec,omitempty"`
-	Fields     map[string]any `yaml:"fields,omitempty" json:"fields,omitempty"`
-	Status     map[string]any `yaml:"status,omitempty" json:"status,omitempty"`
-	Relations  map[string]any `yaml:"relations,omitempty" json:"relations,omitempty"`
-	BuiltinSet []string       `yaml:"builtinSet,omitempty" json:"builtinSet,omitempty"`
-	Rules      []string       `yaml:"rules,omitempty" json:"rules,omitempty"`
-	Extra      map[string]any `yaml:",inline" json:"extra,omitempty"`
+	Name       string            `yaml:"kind" json:"name"`
+	Builtin    bool              `yaml:"builtin" json:"builtin,omitempty"`
+	Storage    string            `yaml:"storage" json:"storage"`
+	Spec       map[string]any    `yaml:"spec,omitempty" json:"spec,omitempty"`
+	Fields     map[string]any    `yaml:"fields,omitempty" json:"fields,omitempty"`
+	Status     map[string]any    `yaml:"status,omitempty" json:"status,omitempty"`
+	Relations  map[string]any    `yaml:"relations,omitempty" json:"relations,omitempty"`
+	BuiltinSet []string          `yaml:"builtinSet,omitempty" json:"builtinSet,omitempty"`
+	Rules      []string          `yaml:"rules,omitempty" json:"rules,omitempty"`
+	Widgets    []FieldDescriptor `yaml:"-" json:"widgets,omitempty"`
+	Extra      map[string]any    `yaml:",inline" json:"extra,omitempty"`
 }
 
 // DocType 文档类型注册项（本系统的 CRD 机制，concepts/doctype.md）。
@@ -73,12 +76,13 @@ type SpecBody struct {
 	Conventions map[string]any `yaml:"conventions,omitempty" json:"conventions,omitempty"`
 }
 
-// Scheme 类型注册表（core/scheme.yaml 的内存态）。
+// Scheme 类型注册表（core/scheme.yaml 的内存态；支持 Replace 原子热刷新）。
 type Scheme struct {
-	APIVersion string   `yaml:"apiVersion" json:"apiVersion"`
-	KindName   string   `yaml:"kind" json:"kind"`
-	Metadata   Metadata `yaml:"metadata" json:"metadata"`
-	Spec       SpecBody `yaml:"spec" json:"spec"`
+	mu         sync.RWMutex `yaml:"-" json:"-"`
+	APIVersion string       `yaml:"apiVersion" json:"apiVersion"`
+	KindName   string       `yaml:"kind" json:"kind"`
+	Metadata   Metadata     `yaml:"metadata" json:"metadata"`
+	Spec       SpecBody     `yaml:"spec" json:"spec"`
 	// Source 载入来源路径（仅内存标注，不序列化）。
 	Source string `yaml:"-" json:"-"`
 }
@@ -139,6 +143,7 @@ func (s *Scheme) validate() error {
 		if k.Storage == "" {
 			return fmt.Errorf("scheme: kind %q 缺 storage 模板", k.Name)
 		}
+		k.Widgets = DescribeKindWidgets(*k)
 	}
 	seenDoc := map[string]bool{}
 	for _, d := range s.Spec.DocTypes {
@@ -168,10 +173,32 @@ func (s *Scheme) validate() error {
 	return nil
 }
 
+// Replace 原子热刷新内存中的 Scheme（当 Scheme/builtin/default 或 core/scheme.yaml 经准入落库后调用，
+// R-UX-2「改 scheme 后 UI 自动反映」）。
+func (s *Scheme) Replace(next *Scheme) {
+	if s == nil || next == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.APIVersion = next.APIVersion
+	s.KindName = next.KindName
+	s.Metadata = next.Metadata
+	s.Spec = next.Spec
+	for i := range s.Spec.Kinds {
+		s.Spec.Kinds[i].Widgets = DescribeKindWidgets(s.Spec.Kinds[i])
+	}
+}
+
 // Lookup 查找对象类型；未注册返回错误（Scheme 闸门：野对象拒绝）。
 func (s *Scheme) Lookup(kind string) (Kind, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, k := range s.Spec.Kinds {
 		if k.Name == kind {
+			if len(k.Widgets) == 0 {
+				k.Widgets = DescribeKindWidgets(k)
+			}
 			return k, nil
 		}
 	}
@@ -182,18 +209,28 @@ func (s *Scheme) Lookup(kind string) (Kind, error) {
 // 内容，concepts/event.md §2 边界+规则 8——注入面以本表为类型合法性唯一权威）。
 // 未注册返回错误；命中返回注册项指针（DefaultLevel 等由发布面按表投影）。
 func (s *Scheme) LookupEventType(typ string) (*EventType, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for i := range s.Spec.EventTypes {
 		if s.Spec.EventTypes[i].Type == typ {
-			return &s.Spec.EventTypes[i], nil
+			ev := s.Spec.EventTypes[i]
+			return &ev, nil
 		}
 	}
 	return nil, fmt.Errorf("scheme: 事件类型 %q 未注册", typ)
 }
 
-// ListKinds 返回全部已注册对象类型（只读清单）。
+// ListKinds 返回全部已注册对象类型（只读清单，含 R-UX-2 widgets 投影）。
 func (s *Scheme) ListKinds() []Kind {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make([]Kind, len(s.Spec.Kinds))
 	copy(out, s.Spec.Kinds)
+	for i := range out {
+		if len(out[i].Widgets) == 0 {
+			out[i].Widgets = DescribeKindWidgets(out[i])
+		}
+	}
 	return out
 }
 
@@ -211,6 +248,8 @@ type Summary struct {
 
 // Summary 计算 scheme 概览。
 func (s *Scheme) Summary() Summary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return Summary{
 		APIVersion:     s.APIVersion,
 		Name:           s.Metadata.Name,
