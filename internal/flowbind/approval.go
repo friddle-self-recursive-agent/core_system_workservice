@@ -35,6 +35,51 @@ const (
 	ApprovalSource   = "dispatch"         // 来源词（批准投影行 source 键——派单 ask 面）
 )
 
+// DecisionApprove/DecisionReject 派单批准/驳回动作（v0.58——§11.5 动作面 console 动作化）：
+// Apply 判定溯源串常量的动作对（常量本身=v0.56 既有判定词汇，零新词形零旁路——动作面只是
+// 把「构造同串 Apply」的调用形态单点化，字面量散用=漂移温床）。
+const (
+	DecisionApprove = "approve" // 批准动作→ Apply fieldManager=workflow:approve
+	DecisionReject  = "reject"  // 驳回动作→ Apply fieldManager=workflow:reject
+)
+
+// DecisionAction 派单批准判定动作的 Apply 输入面（红线 1 机械落点——批准/驳回=Apply 判定，
+// 本函数只拼既有写路径的载荷字段：对象键=matchingKeyOf（kind=workflow 派单→骨架 ConnectorOps
+// 对象、kind=proposal 派单→Proposal 对象；与 apply_log 判定行 Obj 同键=Sync 精确匹配零模糊），
+// fieldManager=workflow:approve|workflow:reject 判定溯源串，resourceVersion=批准投影行 rv
+// （派单落库后版本=乐观锁基线——同一派单行的同拍 diff 基线），content 零变更提交（批准判定
+// 只需成功事实，键已含对象身份——v0.57 loop-59 探针实证零 content noop 行照落照判定）。
+// 本函数零 HTTP 零引擎依赖——调用方（console 写路由）拿载荷走既有 /v1/apply 通路。
+func DecisionAction(r ApprovalRecord, decision string) (ApplyActionInput, bool) {
+	if decision != DecisionApprove && decision != DecisionReject {
+		return ApplyActionInput{}, false // 非判定动作=零输入（动作面不发明写词形）
+	}
+	fm := ApprovalManager
+	if decision == DecisionReject {
+		fm = ApprovalRejecter
+	}
+	kind, name := "ConnectorOps", r.Connector // kind=workflow 派单→骨架 ConnectorOps 对象（matchingKeyOf 同键）
+	if r.Kind == DispatchKindProposal || r.Proposal != "" {
+		kind, name = "Proposal", r.Proposal // kind=proposal 派单→Proposal 对象
+	}
+	return ApplyActionInput{
+		Kind: kind, Scope: r.Scope, Name: name,
+		FieldManager: fm, ReasonRef: "workflow:" + decision + ":" + r.ApprovalID,
+		ResourceVersion: r.RV,
+	}, true
+}
+
+// ApplyActionInput 派单批准判定动作的 Apply 载荷（宽松键零宿主依赖——console 写路由转译为
+// /v1/apply JSON；零值字段=不适用）。
+type ApplyActionInput struct {
+	Kind            string `json:"kind"`
+	Scope           string `json:"scope,omitempty"`
+	Name            string `json:"name"`
+	FieldManager    string `json:"fieldManager"`
+	ReasonRef       string `json:"reasonRef,omitempty"`
+	ResourceVersion int64  `json:"resourceVersion,omitempty"`
+}
+
 // dispatchApprovalKey 批准投影与派单受理行的同拍关联键（matchingKeyOf 同源）。
 func dispatchApprovalKey(rec DispatchRecord) string {
 	return matchingKeyOf(rec)

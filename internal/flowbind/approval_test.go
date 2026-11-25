@@ -184,3 +184,65 @@ func TestSpawnDeclarationFromApplyLogOnly(t *testing.T) {
 		t.Fatalf("声明载荷=%+v（rv=%d 应=判定行 rv；eventId 应空——Sync 不复制派单载荷，声明面零拉起事实）", decl, decl.RV)
 	}
 }
+
+// ───────────────── v0.58 派单批准动作面 console 动作化（§11.5 动作面——console-adoption §1.33） ─────────────────
+
+// L60-01 动作判定串单点真相：DecisionAction 拼装=既有写路径判定溯源串（workflow:approve|
+// workflow:reject——红线 1 机械落点零新词形）；对象键=matchingKeyOf 同键（kind=workflow 派单→
+// 骨架 ConnectorOps 对象 / kind=proposal 派单→Proposal 对象）；rv=批准投影行 rv（乐观锁基线=
+// 派单落库后版本）；未知动作=零输入（动作面不发明写词形）。
+func TestDecisionActionInputs(t *testing.T) {
+	wf := ApprovalRecord{Kind: DispatchKindWorkflow, Workflow: "wf-a", Scope: "global",
+		Connector: "wf-a", RV: 7, ApprovalID: "ConnectorOps/global/wf-a"}
+	in, ok := DecisionAction(wf, DecisionApprove)
+	if !ok {
+		t.Fatal("approve 动作应产输入")
+	}
+	if in.Kind != "ConnectorOps" || in.Scope != "global" || in.Name != "wf-a" {
+		t.Fatalf("approve 对象键=%+v（期望 ConnectorOps/global/wf-a——matchingKeyOf 同键）", in)
+	}
+	if in.FieldManager != ApprovalManager || in.ReasonRef != "workflow:approve:"+wf.ApprovalID {
+		t.Fatalf("approve 判定串=%s/%s（期望 workflow:approve + reasonRef 单点拼装）", in.FieldManager, in.ReasonRef)
+	}
+	if in.ResourceVersion != 7 {
+		t.Fatalf("rv=%d（期望 7——批准投影行 rv=乐观锁基线）", in.ResourceVersion)
+	}
+	pr := ApprovalRecord{Kind: DispatchKindProposal, Workflow: "", Scope: "global",
+		Proposal: "p1", RV: 3, ApprovalID: "Proposal/global/p1"}
+	inR, ok := DecisionAction(pr, DecisionReject)
+	if !ok {
+		t.Fatal("reject 动作应产输入")
+	}
+	if inR.Kind != "Proposal" || inR.Name != "p1" || inR.FieldManager != ApprovalRejecter {
+		t.Fatalf("proposal 驳回对象=%+v（期望 Proposal/global/p1 × workflow:reject）", inR)
+	}
+	if _, ok := DecisionAction(wf, "spawn"); ok {
+		t.Fatal("非判定动作（spawn）不得产输入——动作面零发明写词形（零拉起执行器红线 a）")
+	}
+}
+
+// L60-02 动作 → 判定 → 声明全链投影一致性（动作面=既有 Apply 判定通路的输入拼装——本测以
+// DecisionAction 输出喂 Sync 判定行：同键 ok 行翻转 approved ∧ spawn 声明随行——输入串与
+// 判定串漂移即本测红）。
+func TestDecisionActionFeedsSync(t *testing.T) {
+	log := NewApprovalLog(nil)
+	syncA := &SyncApprovals{Log: log}
+	d := NewDispatchLog(nil)
+	d.Approvals = syncA
+	d.Dispatch(DispatchRecord{Kind: DispatchKindWorkflow, Workflow: "wf-a", Scope: "global",
+		Connector: "wf-a", RV: 1, At: time.Now()})
+	in, ok := DecisionAction(log.State().Records[0], DecisionApprove)
+	if !ok {
+		t.Fatal("approve 动作应产输入")
+	}
+	flips := syncA.Sync([]opslog.ApplyLog{{Ts: time.Now(), FieldManager: in.FieldManager,
+		Subject: "console-operator", Obj: in.Kind + "/" + in.Scope + "/" + in.Name,
+		ResourceVersion: 2, Result: "ok"}})
+	if flips != 1 {
+		t.Fatalf("翻转行数=%d（期望 1——动作输入串与判定串同源）", flips)
+	}
+	r := log.State().Records[0]
+	if r.State != ApprovalApproved || !ApprovalSpawnDeclaration(r).Declared {
+		t.Fatalf("动作后投影态=%s（期望 approved+声明在册）", r.State)
+	}
+}

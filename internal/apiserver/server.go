@@ -434,6 +434,19 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		// workflow:approve|workflow:reject 溯源串行=派单批准判定（Apply ok/noop 成功事实即翻转
 		// 依据——flowbind.SyncApprovals.Sync 消费 apply_log 行集）。判定权威=apply_log 审计行；
 		// 本翻转面=观测投影同步（失败不翻转写路径结果，下一拍派单查询面重扫自愈）。
+		// v0.58 同拍判定行在账（workflow-runtime.md §11.5 动作面 console 动作化——判定行是
+		// 账本事实，动作返回后立即读得到：活体判定窗「批准动作 → inbox 下一次装载反映」等价
+		// 缩到「动作返回拍」——历拍重扫自愈路径保持不变作兜底）。判据语义锚不变（记录新增行）。
+		if o.inbox != nil && decision != "" && !req.DryRun && res != nil && o.applyLog != nil {
+			if rows, err := o.applyLog.QueryApplies(fmt.Sprintf("%s/%s/%s", req.Kind, req.Scope, req.Name), 5); err == nil {
+				for _, row := range rows {
+					if row.FieldManager == req.FieldManager {
+						o.inbox.Sync([]opslog.ApplyLog{row}) // v0.58 判定行在账（含 denied 形账本行零旁路——匹配判定不发明）
+						break
+					}
+				}
+			}
+		}
 		if o.inbox != nil && decision != "" && !req.DryRun && res != nil {
 			row := opslog.ApplyLog{
 				Ts: time.Now(), FieldManager: req.FieldManager, Subject: func() string {
@@ -954,25 +967,26 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		pending := 0
 		var pendRows []flowbind.InboxRow
 		for _, r := range st.Records {
-			if r.State == flowbind.ApprovalPending {
-				pending++
-				// v0.57 挂起行进行集（console-adoption.md §1.32 L59-UI-02——幽灵计数缺口收口）：
-				// ask 批准投影挂起行=ApprovalNeeded 类条目行（行集与计数同源不翻倍——加法投影
-				// 摘除，计数=行数）。落点=派单投影所在 wf 详情配置 tab（#/wf/<锚>——批准动作=
-				// Apply workflow:approve 判定链路）。
-				name := r.Connector
-				anchor := r.Workflow
-				if r.Kind == flowbind.DispatchKindProposal || r.Proposal != "" {
-					name = r.Proposal
-					anchor = r.Proposal
-				}
-				pendRows = append(pendRows, flowbind.InboxRow{
-					Class: flowbind.InboxClassApprovalNeeded, Kind: "dispatch", Name: name, Scope: r.Scope,
-					Digest:  "派单待批（" + anchor + " · autoLevel=" + r.AutoLevel + "）",
-					EventID: r.EventID, At: r.At.UTC().Format(time.RFC3339Nano),
-					Link: "#/wf/" + anchor,
-				})
+			if r.State != flowbind.ApprovalPending {
+				continue // v0.58：终态行（已判定）零挂起行——回链闭环拍即生效（动作面 console 动作化）
 			}
+			pending++
+			// v0.57 挂起行进行集（console-adoption.md §1.32 L59-UI-02——幽灵计数缺口收口）：
+			// ask 批准投影挂起行=ApprovalNeeded 类条目行（行集与计数同源不翻倍——加法投影
+			// 摘除，计数=行数）。落点=派单投影所在 wf 详情配置 tab（#/wf/<锚>——批准动作=
+			// Apply workflow:approve 判定链路）。
+			name := r.Connector
+			anchor := r.Workflow
+			if r.Kind == flowbind.DispatchKindProposal || r.Proposal != "" {
+				name = r.Proposal
+				anchor = r.Proposal
+			}
+			pendRows = append(pendRows, flowbind.InboxRow{
+				Class: flowbind.InboxClassApprovalNeeded, Kind: "dispatch", Name: name, Scope: r.Scope,
+				Digest:  "派单待批（" + anchor + " · autoLevel=" + r.AutoLevel + "）",
+				EventID: r.EventID, At: r.At.UTC().Format(time.RFC3339Nano),
+				Link: "#/wf/" + anchor,
+			})
 		}
 		box := flowbind.BuildInbox(evs, draftRows, propRows, nil)
 		if len(pendRows) > 0 {
