@@ -435,3 +435,106 @@ func TestApprovalResumeFromGateSequence(t *testing.T) {
 		t.Fatalf("core-workflow 批准应沿序列续行到 Executing: %+v", runs.State().Runs[0])
 	}
 }
+
+// L61-02 触发路径 enabled honoring（v0.58b——E3 余量段收口，workflow.md §1 语义零新词形）：
+// enabled=false 锚触发留痕仍在、run 不落（disabled 计数可见）；enabled=true/未声明/判定缺席
+// （ok=false）=放行既有行为面；precedence=系统层 override 优先（字典序首个）→ global 本体 →
+// 零对象=缺省启用；在途 run 迁移判定不受开关作用（ResumeSignal 零改动）。
+func TestStartRunEnabledGate(t *testing.T) {
+	newRuns := func(res EnabledResolver) *RunLog {
+		return NewRunLog(&RunOptions{EnabledRules: res})
+	}
+	rec := func() TriggerRecord {
+		return TriggerRecord{Seq: 1, Type: "DocApplied", ReceivedAt: time.Now(), Route: "owner-workflow"}
+	}
+	bind := ExecutorBinding{Executor: ExecWorkflow, Target: "owner"}
+	obj := func(scope string, enabled string) EnabledObject {
+		c := "apiVersion: core/v1\nkind: Workflow\nmetadata:\n  name: core-workflow\n  scope: " + scope + "\nspec:\n"
+		if enabled != "" {
+			c += "  enabled: " + enabled + "\n"
+		}
+		return EnabledObject{Scope: scope, Content: []byte(c)}
+	}
+	// ① enabled=false（系统 override）→ 拦：run 零落 + disabled=1；判定缺席面（nil resolver）
+	//    对照 = 全落 + disabled=0（既有行为面零翻转）。
+	gated := newRuns(EnabledFunc(func(name string) (bool, bool) { return false, true }))
+	gated.StartRun(rec(), bind)
+	if st := gated.State(); len(st.Runs) != 0 || st.Disabled != 1 || st.Started != 0 {
+		t.Fatalf("enabled=false 应拦（run 零落∧disabled 计数可见）: %+v", st)
+	}
+	plain := newRuns(nil)
+	plain.StartRun(rec(), bind)
+	if st := plain.State(); len(st.Runs) != 1 || st.Disabled != 0 {
+		t.Fatalf("判定面缺席应放行（既有行为面零翻转）: %+v", st)
+	}
+	// ② ok=false（判定缺席——未命中/零对象）→ 放行；enabled=true → 落；未声明 → 缺省启用落。
+	miss := newRuns(EnabledFunc(func(name string) (bool, bool) { return false, false }))
+	miss.StartRun(rec(), bind)
+	if st := miss.State(); len(st.Runs) != 1 || st.Disabled != 0 {
+		t.Fatalf("判定缺席应放行: %+v", st)
+	}
+	on := newRuns(EnabledFunc(func(name string) (bool, bool) { return true, true }))
+	on.StartRun(rec(), bind)
+	if st := on.State(); len(st.Runs) != 1 || st.Disabled != 0 {
+		t.Fatalf("enabled=true 应照落: %+v", st)
+	}
+	undeclared := newRuns(EnabledFunc(func(name string) (bool, bool) { return parseEnabled([]byte("spec: {}\n")), true }))
+	undeclared.StartRun(rec(), bind)
+	if st := undeclared.State(); len(st.Runs) != 1 {
+		t.Fatalf("enabled 未声明应缺省启用（scheme.yaml (=true)）: %+v", st)
+	}
+	// ③ precedence：系统层 override false 压 global 本体 true（拦）；global false 拦；
+	//    两系统并存=字典序首个生效（a-sys false 拦，即便 b-sys true）。
+	override := newRuns(EnabledFunc(func(name string) (bool, bool) {
+		return EnabledOf([]EnabledObject{obj("global", "true"), obj("systems/b-sys", "true"), obj("systems/a-sys", "false")})
+	}))
+	override.StartRun(rec(), bind)
+	if st := override.State(); len(st.Runs) != 0 || st.Disabled != 1 {
+		t.Fatalf("系统 override enabled=false 应压 global 本体与后序系统（字典序首个）: %+v", st)
+	}
+	globOnly := newRuns(EnabledFunc(func(name string) (bool, bool) {
+		return EnabledOf([]EnabledObject{obj("global", "false")})
+	}))
+	globOnly.StartRun(rec(), bind)
+	if st := globOnly.State(); len(st.Runs) != 0 || st.Disabled != 1 {
+		t.Fatalf("global 本体 enabled=false 应拦: %+v", st)
+	}
+	noObj := newRuns(EnabledFunc(func(name string) (bool, bool) { return EnabledOf(nil) }))
+	noObj.StartRun(rec(), bind)
+	if st := noObj.State(); len(st.Runs) != 1 || st.Disabled != 0 {
+		t.Fatalf("零对象应缺省启用（builtin 注册表缺省——缺省不改既有行为面）: %+v", st)
+	}
+	// ④ 在途 run 迁移判定不受开关作用：落 run 后翻转 enabled=false，审批提升照迁移（闸锚挂起）。
+	live := newRuns(EnabledFunc(func(name string) (bool, bool) { return true, true }))
+	live.StartRun(rec(), bind)
+	if len(live.State().Runs) != 1 {
+		t.Fatalf("前置 run 应在环: %+v", live.State())
+	}
+	live.ResumeSignal(TriggerRecord{Type: SignalSuspend, Involved: "Workflow/builtin/core-workflow", ReceivedAt: time.Now()})
+	if r := live.State().Runs[0]; r.Phase != string(AwaitingApproval) || r.Status != RunSuspended {
+		t.Fatalf("开关生效后在途 run 迁移判定应零改动（已完成轮次保留）: %+v", r)
+	}
+}
+
+// L61-02b EnabledOf 纯映射验收（precedence 三态+缺省词形+损坏文档防御）。
+func TestEnabledOfPrecedence(t *testing.T) {
+	obj := func(scope string, enabled string) EnabledObject {
+		c := "apiVersion: core/v1\nkind: Workflow\nmetadata:\n  name: wf\n  scope: " + scope + "\nspec:\n"
+		if enabled != "" {
+			c += "  enabled: " + enabled + "\n"
+		}
+		return EnabledObject{Scope: scope, Content: []byte(c)}
+	}
+	if v, ok := EnabledOf([]EnabledObject{obj("systems/z-sys", "false"), obj("systems/a-sys", "true")}); !ok || v != true {
+		t.Fatalf("多系统并存应字典序首个生效（a-sys=true——z-sys 不参与）: v=%v ok=%v", v, ok)
+	}
+	if v, ok := EnabledOf([]EnabledObject{obj("global", "")}); !ok || v != true {
+		t.Fatalf("global 未声明应缺省启用且判定在册: v=%v ok=%v", v, ok)
+	}
+	if v, ok := EnabledOf([]EnabledObject{{Scope: "systems/s", Content: []byte(":::broken")}}); !ok || v != true {
+		t.Fatalf("损坏文档应不拦阻（写路径校验=权威闸门）: v=%v ok=%v", v, ok)
+	}
+	if v, ok := EnabledOf(nil); ok || v != true {
+		t.Fatalf("零对象=缺省启用且判定缺席: v=%v ok=%v", v, ok)
+	}
+}

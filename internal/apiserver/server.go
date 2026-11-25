@@ -792,6 +792,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"advances": st.Advances, // v0.26 异步推进首段：累计推进 run·步计数（新载荷键=代际判别器）
 			"braked":   st.Braked,   // v0.32 刹车首段：累计冷却门拦阻触发数（新载荷键=代际判别器）
 			"capped":   st.Capped,   // v0.32 刹车首段：累计推进拍上限拦阻 run·步数（新载荷键=代际判别器）
+			"disabled": st.Disabled, // v0.58b enabled honoring：累计 enabled=false 锚拦阻触发数（新载荷键=代际判别器）
 			"runs":     items,
 		})
 	})

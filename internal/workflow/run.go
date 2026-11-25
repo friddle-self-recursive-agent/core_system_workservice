@@ -157,6 +157,7 @@ type RunState struct {
 	Advances int64       // 累计异步推进的 run·步计数（v0.26 异步推进首段——新载荷键=代际判别器）
 	Braked   int64       // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
 	Capped   int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
+	Disabled int64       // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
 	Runs     []RunRecord // 环内 run 投影（旧→新）
 }
 
@@ -191,6 +192,10 @@ type RunOptions struct {
 	// 零刹车既有行为面零翻转：触发全落 run、推进不限量）。注入开启后冷却门（受理路径）
 	// 与推进拍变更上限（推进路径）按生效刹车值生效（解析面未注入=全锚强制默认）。
 	Brakes BrakeOptions
+	// EnabledRules 规则开关判定面（v0.58b 触发路径 enabled honoring——E3 余量段收口，
+	// 可选能力，缺省 nil=零闸既有行为面零翻转）。注入后 enabled=false 的锚触发留痕仍在、
+	// run 不落（disabled 计数可见）；判定缺席（未命中/解析失败）=放行（缺口可见不静默拦）。
+	EnabledRules EnabledResolver
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
@@ -205,6 +210,7 @@ type RunLog struct {
 	advances     int64                // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
 	braked       int64                // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
 	capped       int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
+	disabled     int64                // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
 	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
@@ -246,7 +252,20 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	// 窗口内的后续触发不落 run（触发留痕仍在——braked 计数可见）；窗口外照落；跨 involved
 	// 不互踩（防震荡语义粒度=同一对象）。cooldown 锚首段=run 受理时刻（rec.ReceivedAt）。
 	// 判定在锁外算生效值（解析面文件 IO 不持 r.mu），闸判在锁内（braked/lastAccepted 并发安全）。
+	// 规则开关闸（v0.58b enabled honoring——E3 余量段收口）：enabled=false 的锚=该规则
+	// 不再触发（workflow.md §1 语义零新词形）——触发留痕仍在、run 不落、disabled 计数可见；
+	// 判定在锁外（解析面文件 IO 不持 r.mu——与刹车生效值同一拍面），缺席（ok=false）=放行
+	// 既有行为面（判定面不放大解析形变为整面拦阻——缺口可见不静默）。在途 run 的迁移判定
+	// 不受开关作用（ResumeSignal/Advance 零改动——已完成轮次与回归记录保留）。
 	brk := effectiveBrakes(r.opts.Brakes.Resolver, wf)
+	if r.opts.EnabledRules != nil {
+		if on, ok := r.opts.EnabledRules.Enabled(wf); ok && !on {
+			r.mu.Lock()
+			r.disabled++
+			r.mu.Unlock()
+			return
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.opts.Brakes.Enabled && brk.Cooldown > 0 {
@@ -371,7 +390,7 @@ func (r *RunLog) State() RunState {
 	defer r.mu.Unlock()
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
-	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Runs: runs}
+	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Disabled: r.disabled, Runs: runs}
 }
 
 // stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中

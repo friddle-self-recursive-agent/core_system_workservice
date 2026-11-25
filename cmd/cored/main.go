@@ -276,6 +276,7 @@ func run() error {
 		docsSpecs := workflow.DocsSpecs{Lookup: workflowDocLookup(repo)}
 		runOpts.Specs = docsSpecs
 		runOpts.Brakes.Resolver = docsSpecs // spec.brakes 声明收紧（未命中=强制默认兜底）
+		runOpts.EnabledRules = workflowEnabledResolver(repo) // 规则开关判定面（v0.58b enabled honoring——E3 余量段收口）
 		objSpecState = "on"
 		brakesResolverState = "docs"
 	}
@@ -735,30 +736,55 @@ func metricsSamplePump(in <-chan metricsinfo.Sample) <-chan metricsrc.Sample {
 // 投影）。零缓存：每次现读（git 后端权威，apply 落库即生效）。未挂库/未命中=nil。
 func workflowDocLookup(repo repository.Repository) func(string) ([]byte, bool) {
 	return func(name string) ([]byte, bool) {
-		if repo == nil || name == "" {
+		objs := workflowDocObjects(repo, name)
+		if len(objs) == 0 {
 			return nil, false
 		}
-		objs, err := repo.List(context.Background(), "Workflow", "")
-		if err != nil {
-			return nil, false
-		}
-		var pick *repository.Object
 		for _, o := range objs {
-			if o.Name != name {
-				continue
-			}
 			if o.Scope == "global" {
 				return o.Content, true // global 同名优先（确定性投影）
 			}
-			if pick == nil {
-				pick = o
-			}
 		}
-		if pick == nil {
-			return nil, false
-		}
-		return pick.Content, true
+		return objs[0].Content, true // 无 global=首个对象行（List 序）
 	}
+}
+
+// workflowEnabledResolver 规则开关判定面（v0.58b enabled honoring——E3 余量段收口）装配侧
+// 注入：按 workflow 锚名取文档库对象行集 → workflow.EnabledOf 生效值纯映射（系统层 override
+// 优先字典序首个 → global 本体 → 零对象=缺省启用——与 /v1/workflows 聚合面 effectiveObject
+// 同 precedence 口径，判定面与聚合面无双源漂移）。零缓存=apply 落库即生效（Specs 同款热装载
+// 语义天然跟随）。未命中=ok=false 放行（builtin 锚零对象=注册表缺省启用；缺口可见不静默拦）。
+func workflowEnabledResolver(repo repository.Repository) workflow.EnabledResolver {
+	return workflow.EnabledFunc(func(name string) (bool, bool) {
+		objs := workflowDocObjects(repo, name)
+		if len(objs) == 0 {
+			return true, false
+		}
+		rows := make([]workflow.EnabledObject, 0, len(objs))
+		for _, o := range objs {
+			rows = append(rows, workflow.EnabledObject{Scope: o.Scope, Content: o.Content})
+		}
+		return workflow.EnabledOf(rows)
+	})
+}
+
+// workflowDocObjects 按 workflow 锚名在文档库全 scope 取 Workflow 对象行集（enabled.go
+// 判定面与既有 workflowDocLookup 共用的装配侧查找单点——List 跨 scope 通配，零缓存现读）。
+func workflowDocObjects(repo repository.Repository, name string) []repository.Object {
+	if repo == nil || name == "" {
+		return nil
+	}
+	objs, err := repo.List(context.Background(), "Workflow", "")
+	if err != nil {
+		return nil
+	}
+	var out []repository.Object
+	for _, o := range objs {
+		if o.Name == name {
+			out = append(out, *o)
+		}
+	}
+	return out
 }
 
 func permDocs(ctx context.Context, repo repository.Repository) ([]permission.ObjectDoc, error) {
