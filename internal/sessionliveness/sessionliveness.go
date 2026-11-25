@@ -476,10 +476,15 @@ func (w *Watchdog) Heartbeats(limit int) ([]SessionView, error) {
 	defer w.mu.Unlock()
 	out := make([]SessionView, 0, len(rows))
 	for _, h := range rows {
+		var healedAt *time.Time
+		if !h.HealedAt.IsZero() {
+			t := h.HealedAt
+			healedAt = &t
+		}
 		out = append(out, SessionView{
 			SessionID: h.SessionID, State: h.State, Phase: h.Phase, LastAction: h.LastAction,
 			TaskName: h.TaskName, LongTask: h.LongTask, HealAttempts: h.HealAttempts,
-			LastBeat: h.UpdatedAt, HealedAt: h.HealedAt,
+			LastBeat: h.UpdatedAt, HealedAt: healedAt,
 			Heartbeats: w.counts[h.SessionID],
 			Involved:   SessionScope(h.SessionID),
 		})
@@ -489,17 +494,17 @@ func (w *Watchdog) Heartbeats(limit int) ([]SessionView, error) {
 
 // SessionView 查询面投影行（state 词=DB 词形：suspected-stall 判定态词=SuspectedStall）。
 type SessionView struct {
-	SessionID    string    `json:"sessionId"`
-	State        string    `json:"state"`
-	Phase        string    `json:"phase"`
-	LastAction   string    `json:"lastAction"`
-	TaskName     string    `json:"taskName,omitempty"`
-	LongTask     bool      `json:"longTask"`
-	HealAttempts int       `json:"healAttempts"`
-	Heartbeats   int       `json:"heartbeats"`
-	Involved     string    `json:"involved"`
-	LastBeat     time.Time `json:"lastBeat"`
-	HealedAt     time.Time `json:"healedAt,omitempty"`
+	SessionID    string     `json:"sessionId"`
+	State        string     `json:"state"`
+	Phase        string     `json:"phase"`
+	LastAction   string     `json:"lastAction"`
+	TaskName     string     `json:"taskName,omitempty"`
+	LongTask     bool       `json:"longTask"`
+	HealAttempts int        `json:"healAttempts"`
+	Heartbeats   int        `json:"heartbeats"`
+	Involved     string     `json:"involved"`
+	LastBeat     time.Time  `json:"lastBeat"`
+	HealedAt     *time.Time `json:"healedAt,omitempty"` // nil=未恢复过（零值时间不投影）
 }
 
 // updateState 行态更新（状态机落点；healed_at 随行）。
