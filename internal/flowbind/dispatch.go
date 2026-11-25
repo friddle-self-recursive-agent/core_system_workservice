@@ -57,7 +57,11 @@ type DispatchRecord struct {
 	Proposer   string   // 提出人（spec.proposer）
 	RV         int64    // 落库后 resourceVersion（实现侧 diff 基线）
 	EventID    string   // 关联 DocApplied 回执 id（apply 来源链——可回指 event_log）
-	At         time.Time // 受理时刻
+	// v0.55 节点接线载荷（kind=workflow 行——拉起投影面首件，workflow-runtime.md §11.2 第三段：
+	// 派单受理行=apply-workflow 的拉起输入面；节点清单=骨架 spec.flow.nodes 投影单点真相，
+	// 聚合面 reconcile.executionFlow 消费同一投影零硬编码）。
+	Nodes []Node
+	At    time.Time // 受理时刻
 }
 
 // 派单源种类词（Kind 字段取值；v0.50 形记录投影补 workflow——新载荷键=代际判别器）。

@@ -22,6 +22,7 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"gopkg.in/yaml.v3"
 )
@@ -129,7 +130,8 @@ type wfRow struct {
 	Latest     *wfLatest     `json:"latest"`     // 现势 run（环内最新；无 run=null）
 	RunsTotal  int64         `json:"runsTotal"`
 	Runs24h    int64         `json:"runs24h"`
-	Execution  *wfExecution  `json:"execution"` // 执行模型绑定面（v0.49 R-7——workflow-runtime.md §11.1；cored-bridge.md §2 execution 键=代际判别器）
+	Execution  *wfExecution  `json:"execution"`  // 执行模型绑定面（v0.49 R-7——workflow-runtime.md §11.1；cored-bridge.md §2 execution 键=代际判别器）
+	Reconcile  *flowbind.Reconcile `json:"reconcile"` // 构建生效链判别面（v0.55 R-9——console-adoption.md §1.29；新载荷键=代际判别器）
 }
 
 // wfExecution 决策面 execution 投影（connector.md 规则 6：未绑定=缺口可见不静默）。
@@ -218,7 +220,7 @@ func anchorRunCounts(triggers TriggerFace, eventLog EventLogFace, since time.Tim
 // collectWorkflowRows 聚合三源投影（纯读取：objects/runs/triggers/eventLog 全 GET 面；
 // 系统与对象都在控制面量级——现读现投零缓存，git 后端权威 apply 落库即生效）。
 // 返回行集（名字典序）+计数扫描有界口径。
-func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace, triggers TriggerFace, eventLog EventLogFace) (rows []wfRow, scanned int64, capped bool) {
+func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace, triggers TriggerFace, eventLog EventLogFace, applyLog ApplyLogFace) (rows []wfRow, scanned int64, capped bool) {
 	// ① 声明源：文档库 Workflow 对象（跨 scope 枚举）按名分组；global 本体行在最前。
 	objsByName := map[string][]wfObjectRow{}
 	if objects != nil {
@@ -264,6 +266,18 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 			connIdx = flowbind.IndexRows(cobjs)
 		} // 枚举失败=execution 缺面（行集照出，不冒充 unbound）
 	}
+	// ⑤ 构建生效链判别面（v0.55 R-9——console-adoption.md §1.29）：绑定对象 rv ↔ 最近绑定器
+	//    apply 行 rv 对账（chain=consistent|divergent|absent）+ 骨架节点接线投影
+	//    （executionFlow——派单行 nodes 同源单点真相）。apply_log 枚举失败=缺面（行集照出，
+	//    reconcile=null 不冒充）。
+	bindApplies := map[string][]opslog.ApplyLog{}
+	if applyLog != nil {
+		if rows, err := applyLog.QueryApplies("", opslog.MaxApplyLimit); err == nil {
+			for _, a := range rows {
+				bindApplies[a.Obj] = append(bindApplies[a.Obj], a)
+			}
+		} // 枚举失败=判别面缺席（不吞行不冒充）
+	}
 	// 行集=声明对象名 ∪ builtin 注册表 ∪ 现势 run 锚（三源并集——缺任何一源都不吞行）。
 	names := map[string]bool{}
 	for _, n := range workflow.BuiltinNames() {
@@ -291,12 +305,23 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 		}
 		// execution 投影（v0.49 R-7）：生效对象声明解析（缺= builtin 锚同名兜底——
 		// 无文档 builtin 的绑定=same-name ConnectorOps，缺席照实 unbound）。
+		// reconcile 判别面（v0.55 R-9）：同一绑定对象查 apply_log 绑定行对账+骨架节点投影。
+		var connObj *repository.Object
 		if eff := effectiveObject(name, objs); eff != nil {
 			row.Execution = flowbind.ExecutionOf(eff.Scope, name, eff.raw, connIdx)
 		} else if len(objs) > 0 {
 			row.Execution = flowbind.ExecutionOf(objs[0].Scope, name, objs[0].raw, connIdx)
 		} else {
 			row.Execution = flowbind.ExecutionOf("global", name, nil, connIdx)
+		}
+		if row.Execution != nil && row.Execution.State == flowbind.ExecBound {
+			for _, o := range connIdx[row.Execution.Connector] {
+				if o.Scope == row.Execution.ConnectorScope {
+					connObj = o
+					break
+				}
+			}
+			row.Reconcile = flowbind.ReconcileOf(row.Execution, connObj, bindApplies[bindObjKey(row.Execution.ConnectorScope, row.Execution.Connector)])
 		}
 		if lr, ok := latest[name]; ok {
 			row.Latest = &wfLatest{Run: lr.Run, Phase: lr.Phase, Status: lr.Status,
@@ -356,6 +381,39 @@ func effectivePhases(name string, objs []wfObjectRow) []string {
 		return workflow.BuiltinPhaseNames(name)
 	}
 	return []string{}
+}
+
+// bindObjKey 判别面 apply_log 行键（obj=kind/scope/name 精确匹配同词汇——opslog.QueryApplies
+// 口径；本面只收绑定对象行，经 flowbind.ReconcileOf 的 fieldManager/reasonRef 过滤收窄）。
+func bindObjKey(scope, name string) string { return "ConnectorOps/" + scope + "/" + name }
+
+// flowNodesJSON 骨架节点接线投影（v0.55 R-9 executionFlow 键；unbound/缺面=null——键缺席
+// 语义与 [] =声明为零分立；节点行=flowbind.Node 同构）。
+func flowNodesJSON(rc *flowbind.Reconcile) []flowbind.Node {
+	if rc == nil || !rc.Bound {
+		return nil
+	}
+	return rc.Nodes
+}
+
+// executionDigest 骨架产物 digest 投影（v0.55 R-9 executionDigest 键——构建产物的版本指纹；
+// 缺席=空对象不冒充零）。
+func executionDigest(rc *flowbind.Reconcile) map[string]any {
+	if rc == nil {
+		return nil
+	}
+	return map[string]any{"skeletonRv": rc.SkeletonRV, "bound": rc.Bound,
+		"skeleton": rc.Skeleton, "chain": rc.Chain}
+}
+
+// workflowHistoryRef 生效链 history 深链投影（v0.55 R-9 executionHistory 键——apply_log 对象
+// 链机读落点；bound 行=ConnectorOps 对象应用史查询参数）。缺席=空串（unbound 无产物无链）。
+func workflowHistoryRef(row wfRow) string {
+	ex := row.Execution
+	if ex == nil || ex.State != flowbind.ExecBound {
+		return ""
+	}
+	return "kind=ConnectorOps&scope=" + ex.ConnectorScope + "&name=" + ex.Connector
 }
 
 // workflowObjectsJSON 对象行 → 载荷 map（零值数组形状归一：[]=声明为空，null=缺席语义；

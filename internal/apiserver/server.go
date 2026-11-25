@@ -835,7 +835,10 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"proposal": d.Proposal, "title": d.Title, "summary": d.Summary,
 				"acceptance": d.Acceptance, "priority": d.Priority, "proposer": d.Proposer,
 				"rv": d.RV, "eventId": d.EventID,
-				"at": d.At.UTC().Format(time.RFC3339Nano),
+				// v0.55 节点接线载荷（拉起投影面首件，workflow-runtime.md §11.2 第三段——
+				// apply-workflow 拉起输入=骨架节点清单；kind=proposal 行空值=不适用）。
+				"nodes": d.Nodes,
+				"at":    d.At.UTC().Format(time.RFC3339Nano),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -973,7 +976,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// workflow.RunAnchor 与 run 投影同一锚解析）。只读 GET；旧构建（路由未注册）经兜底
 	// handler 405=代际判别器。投影/构造细节见 workflows_face.go。
 	mux.HandleFunc("GET /v1/workflows", func(w http.ResponseWriter, r *http.Request) {
-		rows, scanned, capped := collectWorkflowRows(r.Context(), objects, runs, triggers, eventLog)
+		rows, scanned, capped := collectWorkflowRows(r.Context(), objects, runs, triggers, eventLog, applyLog)
 		items := make([]map[string]any, 0, len(rows))
 		for _, row := range rows {
 			items = append(items, map[string]any{
@@ -981,6 +984,12 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"objects": workflowObjectsJSON(row.Objects), "effective": row.Effective,
 				"latest": row.Latest, "runsTotal": row.RunsTotal, "runs24h": row.Runs24h,
 				"execution": row.Execution, // v0.49 R-7 执行模型绑定面（新载荷键=代际判别器）
+				// v0.55 R-9 构建生效链判别面（console-adoption.md §1.29——骨架 rv ↔ 绑定 apply 行
+				// rv 对账+骨架节点接线投影；新载荷键=代际判别器）。
+				"reconcile":        row.Reconcile,
+				"executionFlow":    flowNodesJSON(row.Reconcile),
+				"executionDigest":  executionDigest(row.Reconcile),
+				"executionHistory": workflowHistoryRef(row),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{

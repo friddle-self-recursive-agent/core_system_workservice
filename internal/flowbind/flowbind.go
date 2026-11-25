@@ -293,10 +293,11 @@ func (m *Materializer) dispatch(res *apply.Result, action string, b Binding) {
 	if res.Event != nil {
 		eventID = res.Event.ID
 	}
+	// v0.55 节点接线载荷：派单行随骨架节点清单（拉起输入面首件——apply-workflow 消费）。
 	m.Dispatch.Dispatch(DispatchRecord{
 		Agent: DispatchAgent, Status: DispatchAccepted, AutoLevel: DispatchAutoLevel,
 		Action: action, Kind: DispatchKindWorkflow, Workflow: b.Workflow, Scope: b.Scope,
-		Connector: b.Connecto, RV: res.RV, EventID: eventID, At: time.Now(),
+		Connector: b.Connecto, RV: res.RV, EventID: eventID, Nodes: b.Nodes, At: time.Now(),
 	})
 }
 
