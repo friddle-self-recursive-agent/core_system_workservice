@@ -209,6 +209,12 @@ CREATE INDEX IF NOT EXISTS session_heartbeat_updated ON session_heartbeat(update
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("opslog: apply_log 升列 subject: %w", err)
 	}
+	// 既有 DB 升级：session_heartbeat 补 state 列（v0.54 KI-003——v0.54-rc 探针库已建无 state 版本表，
+	// 升列后历史行缺省 live=合法词；DB 非权威，无损升列同款口径）。
+	if _, err := s.db.Exec(`ALTER TABLE session_heartbeat ADD COLUMN state TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("opslog: session_heartbeat 升列 state: %w", err)
+	}
 	return nil
 }
 
