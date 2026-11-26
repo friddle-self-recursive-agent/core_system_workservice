@@ -6,7 +6,7 @@
  * 'core-workflow'——语义移植旧 console-app 同名函数）。 */
 
 import { esc, trunc, timeHtml, relAge } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoLinkChip } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
 /** route → workflow 锚（不匹配=空串——不编造锚）。 */
@@ -246,11 +246,15 @@ function detailScreen(el, ctx, name) {
     if (wf.resourceVersion != null) rows.push(['rv', esc(String(wf.resourceVersion))]);
     if (wf.spec && wf.spec.title) rows.push([tr('标题'), esc(String(wf.spec.title))]);
     if (wf.spec && wf.spec.goalRef) rows.push([tr('目标'), chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || 'docs', 'mute', true, tr('目标文档'))]);
+    // 代码 ref 直达仓库（pkg://<org>/<repo>/<path> / git:// 等——不匹配=不显示）。
+    const impl = (wf.spec && wf.spec.impl) || (wf.execution && wf.execution.impl) || '';
+    const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : '';
+    if (repoChip) rows.push([tr('实现仓库'), repoChip]);
   }
   if (wf && wf.spec && wf.spec.dependsOn) rows.push([tr('依赖'), (wf.spec.dependsOn || []).map((d) => chip(String(d), 'mute')).join(' ')]);
   rows.push([tr('运行'), chip(runs.length + tr(' 次'), runs.length ? 'acc' : 'mute')]);
   const runRows = runs.map((r, i) => {
-    const no = r.no != null ? r.no : (runs.length - i);
+    const no = r.run != null ? r.run : (r.no != null ? r.no : (runs.length - i));
     return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + '/r/' + encodeURIComponent(String(no)) + '">' +
       '<div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + '</b> ' + runChip(r) + '</div>' +
       '<div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || '—'), 80)) + '</div></div>' +

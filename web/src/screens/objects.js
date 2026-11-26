@@ -6,7 +6,7 @@
  * 安全红线：一切动态文本 esc/或经 md 渲染管线；零原文直插。 */
 
 import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip } from '../render/chips.js';
 import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -117,9 +117,14 @@ function ctxPanel(rv) {
 }
 
 function opsPanel(ref) {
+  // 代码 ref 直达仓库（2026-11-26 用户裁决——内部仓与外部仓都可 [ref] 打开代码仓库地址）。
+  const repoChips = [ref.scope, ref.name]
+    .map((x) => repoLinkChip(String(x || ''), String(x || '')))
+    .filter(Boolean).join(' ');
   return '<div>' +
     '<button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + tr('">编辑器</button> ') +
     '<button class="btn sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + tr('">所属 scope</button> ') +
+    (repoChips ? '<div class="ob-ctx" style="margin-top:8px">' + repoChips + '</div>' : '') +
     '</div>';
 }
 

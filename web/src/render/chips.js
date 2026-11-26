@@ -91,6 +91,59 @@ export function safeLink(label, href, cls = 'lk') {
     : '<span class="mono">' + esc(label) + '</span>';
 }
 
+/* ---------- 代码 ref → 仓库地址（2026-11-26 用户裁决：代码最好也能 [ref] 直接打开代码仓库地址，
+ * 对外的也可以）。映射口径（R-PUB-1：公开面只出现 org 名与公开仓——真实部署私有仓走部署侧
+ * 同名映射或 OneDev，不在前端硬编码私网地址）：
+ *   - pkg://<org>/<repo>/<path>   → https://github.com/<org>/<repo>/(tree|blob)/main/<path>
+ *   - git://<org>/<repo>          → https://github.com/<org>/<repo>
+ *   - github.com/<org>/<repo>[…]  → 透传 https 化
+ *   - 常见内部仓名（core_design/core_system_instance/core_system_workservice/core_system_dsh_plugin/
+ *     common_connector/sybran_usage_connector…）→ 默认 org 仓（前端注入 window.__CC.repoBase 可覆写）。
+ * 不匹配=空串（调用方降级纯文本——不编造外链）。 */
+const DEFAULT_ORG = (typeof window !== 'undefined' && window.__CC && window.__CC.repoOrg) || 'friddle-self-recursive-agent';
+const REPO_NAMES = [
+  'core_system', 'core_system_instance', 'core_system_workservice', 'core_system_dsh_plugin',
+  'common_connector', 'sybran_usage_connector', 'sybran-developer-system', 'sybran-business-system',
+];
+
+/** repoRef → 外部仓库 URL（纯函数——node 单测可机械直测；不匹配=空串）。 */
+export function repoUrl(ref) {
+  const r = String(ref || '').trim().replace(/^"+|"+$/g, '');
+  if (!r) return '';
+  if (/^https?:\/\//i.test(r)) return safeHref(r);
+  let m = /^(?:pkg|git|source):\/\/([^/\s]+)(?:\/([^\s#]*))?/.exec(r);
+  if (m) {
+    const org = m[1], rest = (m[2] || '').replace(/^\/+/, '');
+    const url = 'https://github.com/' + org;
+    return rest ? url + '/blob/main/' + rest : url;
+  }
+  m = /^github\.com\/([^/\s]+)\/([^/\s#]+)(?:\/([^\s#]*))?(?:#(\S+))?/.exec(r);
+  if (m) {
+    const url = 'https://github.com/' + m[1] + '/' + m[2].replace(/\.git$/, '');
+    const sub = (m[3] || '').replace(/^\/+/, '');
+    const frag = m[4] ? '#' + m[4] : '';
+    return sub ? url + '/blob/main/' + sub + frag : url + frag;
+  }
+  // 裸仓名（core_design/goal.md、core_system_workservice/internal/...）→ 默认 org。
+  const bare = /^([A-Za-z0-9._-]+)(?:\/([^\s#]+))?$/.exec(r);
+  if (bare && REPO_NAMES.includes(bare[1])) {
+    const url = 'https://github.com/' + DEFAULT_ORG + '/' + bare[1];
+    return bare[2] ? url + '/blob/main/' + bare[2] : url;
+  }
+  return '';
+}
+
+/** repoRef → 可点外链 chip（不匹配=空串——调用方降级纯文本 chip）。 */
+export function repoLinkChip(ref, label) {
+  const url = repoUrl(ref);
+  if (!url) return '';
+  const text = String(label || ref).trim() || ref;
+  return '<a class="chip mute tiny click lk" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" ' +
+    'title="' + esc(url) + '">' + esc(truncTxt(text, 44)) + '</a>';
+}
+
+function truncTxt(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
 /* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running，否则 InSync）。
  * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。 */
 export function syncBadge(runs, name) {

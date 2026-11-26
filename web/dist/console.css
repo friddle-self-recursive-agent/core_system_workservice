@@ -1721,6 +1721,72 @@
   max-height: 70vh;
   overflow-y: auto;
 }
+.cc-tr {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cc-msg {
+  display: flex;
+  max-width: 100%;
+}
+.cc-msg.user {
+  justify-content: flex-end;
+}
+.cc-msg.user .cc-bubble {
+  max-width: 72%;
+  background: var(--accent-dim, #eef1ff);
+  border: 1px solid var(--border);
+  border-radius: 14px 14px 4px 14px;
+  padding: 10px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cc-msg.ai {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.cc-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.cc-msg.ai .cc-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cc-md {
+  word-break: break-word;
+}
+.cc-md p {
+  margin: 0 0 8px;
+}
+.cc-msg.tool {
+  padding-left: 38px;
+}
+.cc-meta {
+  font-size: 12px;
+  padding: 0 2px;
+}
+.cc-empty {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px 18px;
+  text-align: center;
+  color: var(--text-2);
+  background: var(--panel-2);
+}
 
 /* styles/theme-dsh.css */
 .cc-app {

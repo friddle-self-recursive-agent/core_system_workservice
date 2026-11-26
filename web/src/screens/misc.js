@@ -16,6 +16,28 @@ const propOpen = new Set();      // 提案卡已展开集合（按 name 索引�
 const dd = { tree: null, sel: null, cache: new Map() }; // designdoc 工作台态（HEAD 现读——cache 仅防抖同屏重绘）
 
 /* ---------- 系统树（#/tree） ---------- */
+
+/** 树行落点（2026-11-26 用户裁决：点系统默认=看 goal——设计文档渲染视图，不是对象工作台；
+ * 文档/对象类仍进工作台。落点词形：ServiceDesc→doc 渲染（goal 是 ServiceDesc 的 goalRef）；
+ * 其余 kind 保持 objRoute。 */
+function treeLandingRoute(o) {
+  if (o && o.kind === 'ServiceDesc' && o.name) {
+    // goalRef 词形 system://<name>/goal —— 落设计文档仓的 goal.md（渲染视图）。
+    return 'designdoc/' + encodeURIComponent(repoOfScope(o.scope || o.name)) + '/' + encodeURIComponent('goal.md');
+  }
+  return objRoute(o.kind, o.scope, o.name);
+}
+
+/** scope → 设计文档仓名（core_system 三仓布局：scope=系统名；默认 core_design）。
+ * 声明侧（goal/desc/rule/concepts）都在 core_design 仓；实现侧（instance/workservice）是
+ * 运行时设计，不在本树落点。外部系统（非本仓家族）=返回 core_design（一致落点，不发明第三仓）。 */
+function repoOfScope(scope) {
+  const s = String(scope || '').toLowerCase();
+  if (s.includes('instance')) return 'core_system_instance';
+  if (s.includes('workservice') || s.includes('deploy') || s.includes('storage') || s.includes('user')) return 'core_design';
+  return 'core_design';
+}
+
 function treeScreen(el, ctx) {
   const objs = ctx.store.objects();
   const kinds = Array.from(new Set(objs.map((o) => o.kind))).sort();
@@ -38,7 +60,7 @@ function treeScreen(el, ctx) {
       ? Object.keys(scopeMap[kind] || {}).sort().map((scope) => {
         const items = (scopeMap[kind][scope] || []).slice().sort((a, b) => (a.name < b.name ? -1 : 1));
         return '<div class="tree-scope"><span class="small faint mono">' + esc(scope) + '/</span>' +
-          items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' +
+          items.map((o) => '<div class="tree-row leaf" data-go="' + esc(treeLandingRoute(o)) + '">' +
             '<span style="flex:1;min-width:0">' + esc(o.name) + '</span>' +
             ' <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + '</span>' +
             (o.kind === 'ServiceDesc' ? '<span class="ws-chip">' + chipGo(tr('Service 大屏'), 'service/' + encodeURIComponent(String(o.name || '')), 'acc', true, tr('深链 Service 大屏')) + '</span>' : '') +
