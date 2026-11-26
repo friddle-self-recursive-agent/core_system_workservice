@@ -1334,6 +1334,578 @@ var CoreConsole = (() => {
     return active ? chip("Running", "acc") : chip("InSync", "ok");
   }
 
+  // src/core/i18n.js
+  var KEY = "cc.locale";
+  var locale = "zh";
+  try {
+    locale = typeof localStorage !== "undefined" && localStorage.getItem(KEY) || "zh";
+  } catch {
+  }
+  var en = /* @__PURE__ */ new Map([
+    /* 侧栏/壳（main.js） */
+    ["Core Console", "Core Console"],
+    ["web \u91CD\u6784\u8D77\u70B9", "web rebuild baseline"],
+    ["\u8FDE\u63A5\u4E2D\u2026", "Connecting\u2026"],
+    ["\u5B9E\u65F6\uFF08WS patch\uFF09", "Live (WS patch)"],
+    ["\u91CD\u8FDE\u4E2D\u2026", "Reconnecting\u2026"],
+    ["\u964D\u7EA7\u8F6E\u8BE2\uFF0830s\uFF09", "Degraded polling (30s)"],
+    ["\u4E2D\u6587", "\u4E2D\u6587"],
+    ["EN", "EN"],
+    /* welcome */
+    ["\u5FEB\u7167\u88C5\u8F7D\u4E2D\u2026", "Loading snapshot\u2026"],
+    ["\u6B63\u5728\u5EFA\u7ACB /v1/snapshot \u57FA\u7EBF\uFF08\u8FDE\u63A5\u5EFA\u7ACB\u5373\u63A8\u5168\u91CF\uFF09", "Establishing /v1/snapshot baseline (full push on connect)"],
+    ["\u5728\u518C\u5BF9\u8C61", "Registered objects"],
+    ["\u5168\u90E8 kind \u5408\u8BA1", "All kinds total"],
+    ["kinds", "kinds"],
+    ["scheme \u6CE8\u518C", "scheme registry"],
+    ["\u4E8B\u4EF6\uFF08\u7A97\u53E3\u5185\uFF09", "Events (window)"],
+    ["\u5F52\u6863\u884C", "archived rows"],
+    ["\u5F85\u5BA1", "Pending review"],
+    ["\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09", "No pending reviews (explicit empty state)"],
+    ["\u6536\u4EF6\u7BB1", "Inbox"],
+    ["\u5F85\u4F60\u5904\u7406", "awaiting you"],
+    ["\u8FDB\u884C\u4E2D\u4EFB\u52A1", "Running tasks"],
+    ["\u4EFB\u52A1\u4E2D\u5FC3", "Task Center"],
+    ["kinds \u6458\u8981", "kinds summary"],
+    ["\u9996\u4E2A\uFF1A", "first: "],
+    [" \u4E2A", " item(s)"],
+    /* events */
+    ["\u4E8B\u4EF6\u6D41", "Event stream"],
+    ["\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09", "Archived events (snapshot aggregate + patch increments; click for detail & chain)"],
+    ["\u5168\u90E8\u7EA7\u522B", "All levels"],
+    ["\u5FAA\u73AF\u5524\u9192", "Loop wake"],
+    ["\u4E8B\u4EF6\u8BE6\u60C5", "Event detail"],
+    ["\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09", "Raw payload (JSON)"],
+    ["\u2190 \u56DE\u4E8B\u4EF6\u6D41", "\u2190 Back to events"],
+    ["\u5173\u8054", "Linked"],
+    ["\u65E0", "none"],
+    /* tasks */
+    ["\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5", "Groups = deterministic projection (single status writer = scheduler); click a row for detail"],
+    ["\u6B63\u5728\u505A", "Running"],
+    ["\u7B49\u4EBA", "Waiting on human"],
+    ["\u5361\u4F4F", "Stuck"],
+    ["\u5B8C\u6210", "Done"],
+    ["\u6392\u961F", "Queued"],
+    ["\u9879", "item(s)"],
+    ["\u6B63\u5728\u505A\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Running: none (explicit empty state)."],
+    ["\u7B49\u4EBA\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Waiting on human: none (explicit empty state)."],
+    ["\u5361\u4F4F\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Stuck: none (explicit empty state)."],
+    ["\u5B8C\u6210\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Done: none (explicit empty state)."],
+    ["\u6392\u961F\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Queued: none (explicit empty state)."],
+    ["\u72B6\u6001\u672A\u77E5", "state unknown"],
+    ["\u6700\u8FD1\u52A8\u4F5C\uFF1A", "last action: "],
+    ["\u5173\u6CE8\u62A5\u544A", "Attention Report"],
+    ["\u4EFB\u52A1\u8BE6\u60C5", "Task detail"],
+    ["\u2190 \u56DE\u4EFB\u52A1\u4E2D\u5FC3", "\u2190 Back to tasks"],
+    ["\u8BC1\u636E\u94FE", "Evidence chain"],
+    /* objects */
+    ["\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "Object Workbench"],
+    ["\u8BE5 kind \u6682\u65E0\u5BF9\u8C61", "No objects for this kind"],
+    ["\u6682\u65E0\u5728\u518C\u5BF9\u8C61", "No registered objects"],
+    ["\u5FAA\u73AF", "Loop"],
+    ["\u76F8\u4F4D", "Phase"],
+    ["\u8D1F\u8D23", "Owner"],
+    ["\u5F00\u59CB\u4E8E", "started at"],
+    ["\u76F8\u4F4D\u673A", "Phase machine"],
+    ["\u4E8B\u4EF6\u94FE", "Event chain"],
+    ["\u5BF9\u8C61\u8BE6\u60C5", "Object detail"],
+    ["\u6807\u7B7E", "Tags"],
+    ["\u8865\u6807", "Add tag"],
+    ["\u4E0A\u4E0B\u6587", "Context"],
+    ["\u5DE5\u4F5C\u53F0", "Workbench"],
+    ["\u5386\u53F2", "History"],
+    ["\u6B63\u6587", "Content"],
+    ["\u7F16\u8F91", "Edit"],
+    ["\u4FDD\u5B58", "Save"],
+    ["\u53D6\u6D88", "Cancel"],
+    ["\u8349\u7A3F", "Draft"],
+    ["\u5E94\u7528", "Apply"],
+    ["\u5F03\u7A3F", "Discard draft"],
+    ["\u4E50\u89C2\u9501", "optimistic lock"],
+    /* chat / sessionctx */
+    ["\u4F1A\u8BDD", "Sessions"],
+    ["\u4F1A\u8BDD\u6E05\u5355", "Session list"],
+    ["\u4E0E root \u5BF9\u8BDD", "Chat with root"],
+    ["\u5BF9\u8BDD", "Chat"],
+    ["\u8F6C\u5F55", "Transcript"],
+    ["\u8F6C\u5F55\u9762\u672A\u88C5\u914D\u2014\u2014\u5BBF\u4E3B\u6CE8\u5165 window.__CC.chatFaces \u540E\u73B0\uFF1B\u4F1A\u8BDD\u539F\u6587\u4E0D\u5165\u516C\u5171\u5E93\uFF08intake \u6682\u5047\u9762\u4E3A\u51C6\uFF09\u3002", "Transcript face not mounted \u2014 appears after host injects window.__CC.chatFaces; raw session text stays out of the public library (intake placeholder for now)."],
+    ["\u5165\u53E3", "Entry points"],
+    ["\u76F8\u5173\u4F1A\u8BDD", "Related sessions"],
+    ["\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09", "Context (ContextPack contract face)"],
+    ["\u7D22\u5F15\u5019\u9009\u6295\u5F71", "index-candidate projection"],
+    ["\u5199\u9762\u5F00", "Writes open"],
+    ["\u5199\u9762\u5173\u65AD", "Writes closed"],
+    ["\u5FC3\u8DF3", "Heartbeats"],
+    ["\u6B21 \xB7 \u6700\u8FD1", "hit(s) \xB7 last"],
+    ["\u52A8\u4F5C", "Action"],
+    ["\u6CE8\u5165\u56FA\u5B9A prompt\u300C\u7EE7\u7EED\u300D\uFF08\u81EA\u6108\u7B2C\u4E00\u52A8\u4F5C\uFF09", "Inject fixed prompt \u300C\u7EE7\u7EED\u300D (self-heal first action)"],
+    ["\u7F3A\u7701", "default"],
+    ["\u57DF", "range"],
+    ["\u672A\u88C5\u914D\uFF08tagSigSource=none\uFF09", "not assembled (tagSigSource=none)"],
+    ["\u5206\u7247\u7F13\u5B58", "Shard cache"],
+    ["\u5171", "total "],
+    ["\u7247 \xB7 stale", " shard(s) \xB7 stale"],
+    ["\u91CD\u5EFA\u9608\u503C", "rebuild threshold"],
+    ["\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002", "No override (effective value = ContextPolicy default \u2014 PUT and the override row appears here)."],
+    ["\u4FDD\u5B58\u5206\u53C9", "Save fork"],
+    ["\u64A4\u9500\u4E0A\u6B21", "Undo last"],
+    ["\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09", "Fork note (optional)"],
+    ["tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u22645 \u603B\u226420\uFF09", "tag set: tagType:tag, comma/space separated (\u22645 per type, \u226420 total)"],
+    ["chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09", "chunks (index TopK candidates)"],
+    ["\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002", "No index candidates (tagSig not assembled or zero hits \u2014 never fabricates pack content)."],
+    ["\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09", "Related tag shards (TagCtxShard)"],
+    ["\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002", "No active tag shards (tagSig not assembled \u2014 per-tagKey TagCtxShard projection after fork edit)."],
+    ["\u8986\u76D6\u884C", "Override"],
+    ["\u672C\u4EE3\u65E0\u4E09\u6BB5\u5F0F Session \u88C5\u914D\u5668\u2014\u2014chunks=\u7D22\u5F15 TopK \u5019\u9009\u6295\u5F71\uFF08context.md \u7D22\u5F15\u7B2C\u4E00\u6BB5\u8BCD\u5F62\uFF09\uFF0C\u975E\u4F1A\u8BDD\u771F\u5B9E\u88C5\u914D\u5305\u3002", "This generation has no three-stage Session assembler \u2014 chunks are index TopK candidate projections (context.md stage-one word form), not the real session pack."],
+    /* approvals */
+    ["\u5BA1\u6279", "Approvals"],
+    ["\u4E24\u6B65\u6279\u51C6", "Two-step approval"],
+    ["\u5F85\u5BA1\u533A", "Pending"],
+    ["\u5DF2\u51B3\u8D26", "Decision ledger"],
+    ["\u6279\u51C6", "Approve"],
+    ["\u9A73\u56DE", "Reject"],
+    ["\u6682\u65E0\u5F85\u5BA1\u9879\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No pending items (explicit empty state)."],
+    ["\u6682\u65E0\u5DF2\u51B3\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No decisions recorded (explicit empty state)."],
+    /* workflows */
+    ["\u5DE5\u4F5C\u6D41", "Workflows"],
+    ["\u8FD0\u884C", "Run"],
+    ["\u8FD0\u884C\u62BD\u5C49", "Run drawer"],
+    ["\u89E6\u53D1", "Trigger"],
+    ["\u6B65\u9AA4", "Steps"],
+    ["\u6682\u65E0\u5DE5\u4F5C\u6D41\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No workflows (explicit empty state)."],
+    /* misc */
+    ["\u7CFB\u7EDF\u6811", "System Tree"],
+    ["\u6587\u6863\u5E93", "Docs"],
+    ["\u63D0\u6848", "Proposals"],
+    ["\u8FDE\u63A5\u5C42", "Connectors"],
+    ["\u7CFB\u7EDF", "System"],
+    ["\u8FDE\u63A5\u5668", "Connectors"],
+    ["\u8BBE\u8BA1\u6587\u6863", "Design docs"],
+    ["\u6682\u65E0\u5185\u5BB9\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No content (explicit empty state)."],
+    ["\u52A0\u8F7D\u5931\u8D25", "Load failed"],
+    ["\u91CD\u8BD5", "Retry"],
+    [" vs \u7A3F\u57FA r", " vs draft base r"],
+    [" \xB7 \u57DF ", " \xB7 range "],
+    [" \xB7 \u5907\u6CE8 ", " \xB7 note "],
+    [" \xB7 \u622A\u81F3 ", " \xB7 as of "],
+    [" \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>", " \xB7 This report is a derived view and can be rebuilt anytime; not persisted as objects.</div>"],
+    [" \xB7 \u6700\u8FD1 ", " \xB7 last "],
+    [" \xB7 \u68C0\u67E5\u8303\u56F4 ", " \xB7 check scope "],
+    [" \xB7 \u7A3F ", " \xB7 draft "],
+    [" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A", " \xB7 missing data: "],
+    [" \xB7 \u91CD\u5EFA\u9608\u503C ", " \xB7 rebuild threshold "],
+    [" \u2192 \u5DE5\u4F5C\u6D41", " \u2192 Workflow"],
+    [" \u4E2A kind\u2014\u2014\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u5DE6\u4FA7\u6E05\u5355\u3002</div>", " kinds \u2014 see the list on the left of the Object Workbench.</div>"],
+    [" \u4E2A\u76F8\u5173", " related"],
+    [" \u4E2A\uFF1A", " item(s): "],
+    [" \u4EFD\u89C4\u5219\u6587\u6863\uFF09\u3002</div>", " rule document(s))."],
+    [" \u5904\u53D8\u66F4\uFF09", " change(s))"],
+    [" \u603B\u2264", " total \u2264"],
+    [" \u6B21", " time(s)"],
+    [" \u6B21\u8FD0\u884C", " run(s)"],
+    [" \u7247 \xB7 stale ", " shard(s) \xB7 stale "],
+    [" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", " objects & events (snapshot aggregate projection)"],
+    [" \u7684\u6570\u503C\uFF08ContextPolicy \u9884\u7B97\u57DF\uFF09", " value (ContextPolicy budget range)"],
+    [" \u7F3A", " missing"],
+    [" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>", " rows \u2014 narrow with the filter.</div>"],
+    [" \u884C\u5DEE\u5F02</div>", " line diff</div>"],
+    [" \u9879", " item(s)"],
+    [" \u9879</span>", " item(s)</span>"],
+    ['" data-docs-kind="">\u5168\u90E8</span>', '" data-docs-kind="">All</span>'],
+    ['" data-ed-tab="draft">\u8349\u7A3F</div>', '" data-ed-tab="draft">Draft</div>'],
+    ['" data-ed-tab="history">\u5386\u53F2</div>', '" data-ed-tab="history">History</div>'],
+    ['" data-ed-view-btn="raw">\u539F\u6587</span>', '" data-ed-view-btn="raw">Source</span>'],
+    ['" data-ed-view-btn="render">\u6B63\u6587</span>', '" data-ed-view-btn="render">Rendered</span>'],
+    ['" title="\u63D0\u53D6\u9884\u7B97\uFF08token \u6570\uFF09">', '" title="Take budget (token count)">'],
+    ['" title="\u770B\u540C tag \u5BF9\u8C61">#', '" title="Objects with the same tag">#'],
+    ['"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>', '"><div class="small faint">Loading diff\u2026</div></div>'],
+    ['">\u5FFD\u7565</button> ', '">Dismiss</button> '],
+    ['">\u5FFD\u7565</button></div></div></div>', '">Dismiss</button></div></div></div>'],
+    ['">\u6240\u5C5E scope</button> ', '">Owning scope</button> '],
+    ['">\u6279\u51C6\uFF08= Apply\uFF09</button> ', '">Approve (= Apply)</button> '],
+    ['">\u7F16\u8F91\u5668</button>', '">Open editor</button>'],
+    ['">\u7F16\u8F91\u5668</button> ', '">Open editor</button> '],
+    ['</b> <span class="small faint">\uFF08\u7F3A\u7701 ', '</b> <span class="small faint">(default '],
+    ['<button class="btn primary sm" data-ctx-save>\u4FDD\u5B58\u5206\u53C9</button>', '<button class="btn primary sm" data-ctx-save>Save fork</button>'],
+    ['<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">', '<details class="md-raw"><summary>Raw payload (JSON)</summary><pre class="mono md-raw-pre">'],
+    ['<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>', '<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply (no changes)</button></div>'],
+    ['<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08', '<div class="card"><div class="card-b"><div class="small faint">Context face unreachable ('],
+    ['<div class="card"><div class="card-b"><div class="small faint">\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u5F97', '<div class="card"><div class="card-b"><div class="small faint">Session list unavailable'],
+    ['<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u4E3A\u7A7A\uFF08\u96F6\u5F85\u529E\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div></div></div>', '<div class="card"><div class="card-b"><div class="small faint">Inbox is empty (zero to-dos \u2014 explicit empty state).</div></div></div>'],
+    ['<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u6295\u5F71\u7F3A\u5E2D\uFF08\u5FEB\u7167\u672A\u643A\u5E26 /v1/inbox \u805A\u5408\uFF09\u2014\u2014\u5F85\u4F60\u5904\u7406\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u88C5\u5047\u3002</div></div></div>', '<div class="card"><div class="card-b"><div class="small faint">Inbox projection absent (snapshot carries no /v1/inbox aggregate) \u2014 your to-do face is explicitly absent, never faked.</div></div></div>'],
+    ['<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">', '<div class="card"><div class="card-h"><span class="h-title">Overview</span></div><div class="card-b">'],
+    ['<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">', '<div class="card-h"><span class="h-title">Context (ContextPack contract face)</span><span class="h-right">'],
+    ['<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">', '<div class="card-h"><span class="h-title">History</span></div><div class="card-b">'],
+    ['<div class="card-h"><span class="h-title">\u8349\u7A3F</span></div><div class="card-b">', '<div class="card-h"><span class="h-title">Draft</span></div><div class="card-b">'],
+    ['<div class="card-h"><span class="h-title">\u8349\u7A3F</span><span class="h-right">', '<div class="card-h"><span class="h-title">Draft</span><span class="h-right">'],
+    ['<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>', '<div class="chat-grid"><div><h2 class="sec-title">Session list</h2>'],
+    ['<div class="dd-grid"><div data-dd-tree><div class="small faint">\u4ED3\u6811\u73B0\u8BFB\u4E2D\u2026</div></div>', '<div class="dd-grid"><div data-dd-tree><div class="small faint">Loading repo tree\u2026</div></div>'],
+    ['<div class="diff-line ctx">\u2026 \u5171 ', '<div class="diff-line ctx">\u2026 total '],
+    ['<div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ', '<div class="mr-sub small">Related objects '],
+    ['<div class="ob-empty">scheme \u6682\u4E0D\u53EF\u8FBE\uFF08kinds \u805A\u5408\u7F3A\u5E2D\uFF09\u3002</div>', '<div class="ob-empty">scheme unreachable (kinds aggregate absent).</div>'],
+    ['<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08', '<div class="ob-empty">Event detail unreachable ('],
+    ['<div class="ob-empty">\u4ED3\u6811\u4E3A\u7A7A\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002</div>', '<div class="ob-empty">Repo tree is empty (honest empty state).</div>'],
+    ['<div class="ob-empty">\u4ED3\u6811\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="ob-empty">Repo tree unreadable ('],
+    ['<div class="ob-empty">\u65E0\u9002\u7528\u89C4\u5219\u2014\u2014\u6309 kind/scope/tag/\u6B63\u6587\u5F15\u7528\u56DB\u8DEF\u68C0\u67E5\u96F6\u547D\u4E2D\uFF08\u68C0\u67E5\u8303\u56F4=', '<div class="ob-empty">No applicable rules \u2014 zero hits across kind/scope/tag/content-reference checks (check scope ='],
+    ['<div class="ob-empty">\u6682\u65E0\u6807\u7B7E\u2014\u2014\u5BF9\u8C61\u6B63\u6587\u672A\u58F0\u660E spec.metadata.tags\uFF08\u58F0\u660E\u7ECF Apply \u843D\u5E93\u540E\u6B64\u5904\u73B0\u8BFB\uFF09\u3002</div>', '<div class="ob-empty">No tags \u2014 object content declares no spec.metadata.tags (appears here once applied via Apply).</div>'],
+    ['<div class="ob-empty">\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002</div>', '<div class="ob-empty">This document has no content.</div>'],
+    ['<div class="ob-empty">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="ob-empty">Content unreadable ('],
+    ['<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>', '<div class="ob-empty">This kind has no field declarations (no spec).</div>'],
+    ['<div class="ob-empty">\u8F6C\u5F55\u9762\u672A\u88C5\u914D\u2014\u2014\u5BBF\u4E3B\u6CE8\u5165 window.__CC.chatFaces \u540E\u73B0\u8BFB\uFF1B', '<div class="ob-empty">Transcript face not mounted \u2014 reads live once the host injects window.__CC.chatFaces;'],
+    ['<div class="ob-empty">\uFF08\u7A7A\u58F0\u660E\uFF09</div>', '<div class="ob-empty">(empty declaration)</div>'],
+    ['<div class="report-foot small faint">\u6570\u636E\u53EF\u4FE1\u5EA6\uFF1A', '<div class="report-foot small faint">Data confidence:'],
+    ['<div class="small faint" style="grid-column:1/-1">\u2026\u53E6\u6709 ', '<div class="small faint" style="grid-column:1/-1">\u2026and '],
+    ['<div class="small faint" style="margin-bottom:10px">\u5FEB\u7167\u672A\u643A\u5E26 attention \u805A\u5408\u2014\u2014\u672C\u5361\u7531\u4E8B\u4EF6\u5F52\u6863\u884C\uFF08ApprovalNeeded/Escalate\uFF09\u6295\u5F71\u751F\u6210\u3002</div>', '<div class="small faint" style="margin-bottom:10px">Snapshot carries no attention aggregate \u2014 this card is projected from archived event rows (ApprovalNeeded/Escalate).</div>'],
+    ['<div class="small faint" style="margin-bottom:10px">\u5FEB\u7167\u672A\u643A\u5E26 attention \u805A\u5408\uFF0C\u4E8B\u4EF6\u5F52\u6863\u4EA6\u65E0\u5BA1\u6279/\u5347\u7EA7\u884C\u2014\u2014\u672C\u8F6E\u62A5\u544A\u6309\u5728\u518C\u4E8B\u5B9E\u6536\u655B\u4E3A\u96F6\u547D\u4E2D\uFF08\u4E0D\u88C5\u5047\uFF09\u3002</div>', '<div class="small faint" style="margin-bottom:10px">No attention aggregate in snapshot and no approval/escalation rows in the archive \u2014 this report converges to zero hits on recorded facts (never faked).</div>'],
+    ['<div class="small faint" style="margin-bottom:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A', '<div class="small faint" style="margin-bottom:6px">Draft source fieldManager: '],
+    ['<div class="small faint" style="margin-top:6px">\u57FA\u51C6=r', '<div class="small faint" style="margin-top:6px">base=r'],
+    ['<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>', '<div class="small faint" style="margin-top:6px">No override (effective value = ContextPolicy default \u2014 PUT and the override row appears here).</div>'],
+    ['<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ', '<div class="small faint" style="margin-top:6px">Current override: revision '],
+    ['<div class="small faint" style="margin-top:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A', '<div class="small faint" style="margin-top:8px">Draft source fieldManager: '],
+    ['<div class="small faint" style="margin-top:8px">\u8F6C\u5F55\u4E0E\u7EC8\u7AEF\u9762\u7531\u5BBF\u4E3B faces \u6CE8\u5165\uFF08__CC.chatFaces / __CC.termFaces\uFF09\uFF1B', '<div class="small faint" style="margin-top:8px">Transcript & terminal faces are host-injected (__CC.chatFaces / __CC.termFaces); '],
+    ['<div class="small faint" style="padding:8px 14px">\u2026\u5171 ', '<div class="small faint" style="padding:8px 14px">\u2026total '],
+    ['<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u5951\u7EA6\u9762\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>', `<div class="small faint">Session not in the liveness ledger (no heartbeat row) \u2014 the contract face still shows/edits this session's context override (never pretends it is live).</div>`],
+    ['<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08', '<div class="small faint">Save failed ('],
+    ['<div class="small faint">\u5199\u9762\u5173\u65AD\uFF08--allow-apply \u672A\u5F00\u542F\uFF09\u2014\u2014\u7F16\u8F91\u5206\u53C9\u4E0D\u53EF\u7528\uFF08\u4E0E\u5FC3\u8DF3\u6CE8\u518C\u9762\u540C\u5F00\u5173\uFF0C\u4E0D\u5192\u5145\u53EF\u7F16\u8F91\uFF09\u3002</div>', '<div class="small faint">Writes closed (--allow-apply off) \u2014 fork editing unavailable (same switch as the heartbeat registration face; never pretends to be editable).</div>'],
+    ['<div class="small faint">\u5206\u7247\u7F13\u5B58\u9762\u7F3A\u5E2D\uFF08contextidx \u672A\u66B4\u9732 Shards\u2014\u2014\u8BDA\u5B9E\u964D\u7EA7\uFF0C\u4E0D\u5192\u5145\u7A7A\u7F13\u5B58\uFF09\u3002</div>', '<div class="small faint">Shard cache face absent (contextidx exposes no Shards \u2014 honest degradation, never pretends an empty cache).</div>'],
+    ['<div class="small faint">\u5951\u7EA6\u672A\u643A\u5E26\u6B65\u9AA4\u660E\u7EC6\u2014\u2014\u4E0D\u663E\u793A\u4E0D\u7F16\u9020\u3002</div>', '<div class="small faint">Contract carries no step details \u2014 hidden, never fabricated.</div>'],
+    ['<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="small faint">Approval records unreadable ('],
+    ['<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ', '<div class="small faint">Saved (revision '],
+    ['<div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u6682\u65E0\u5224\u5B9A\u884C\uFF08\u6279\u51C6/\u9A73\u56DE\u5373\u51B3\u5373\u89C1\uFF09\u3002</div>', '<div class="small faint">No decision rows yet (approvals/rejections appear immediately).</div>'],
+    ['<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>', '<div class="small faint">Reverted \u2014 pre-write snapshot restored.</div>'],
+    ['<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08', '<div class="small faint">Revert failed ('],
+    ['<div class="small faint">\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002</div>', '<div class="small faint">No active tag shards (tagSig not assembled \u2014 per-tagKey TagCtxShard projection after a fork edit).</div>'],
+    ['<div class="small faint">\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002</div>', '<div class="small faint">No index candidates (tagSig not assembled or zero index hits \u2014 never fabricates pack content).</div>'],
+    ['<div class="small faint">\u65E0\u8349\u7A3F\u2014\u2014\u7F16\u8F91\u300C\u539F\u6587\u300D\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08\u5199\u7A7F /v1/drafts\uFF0C\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\u3002</div>', '<div class="small faint">No draft \u2014 editing "Source" accumulates a draft (writes through /v1/drafts; never touches the official document, no events).</div>'],
+    ['<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="small faint">Content unreadable ('],
+    ['<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>', '<div class="small faint">Loading content\u2026</div>'],
+    ['<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>', '<div class="small faint">Evaluating rule hits\u2026</div>'],
+    ['<div class="small faint">\u8BE5 kind \u6682\u65E0\u5728\u518C\u5BF9\u8C61\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No registered objects for this kind (explicit empty state).</div>'],
+    ['<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No runs for this workflow (explicit empty state).</div>'],
+    ['<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No archived event rows for this object (DocApplied/DocReview etc. \u2014 explicit empty state).</div>'],
+    ['<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>', '<div class="small faint">Shows the rendered result by default; click "Source" to view/edit the raw file. Editing accumulates a draft (POST /v1/drafts \u2014 never touches the official document, no events); the only Apply entry is the docked button in the right column.</div>'],
+    ['<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B', '<div class="w-foot small faint">Data plane: GET /v1/snapshot baseline + /v1/stream patch increments (auto-degrades to polling on WS loss); '],
+    ['<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>', '<div data-ap-ledger style="margin-top:20px"><div class="small faint">Loading decision ledger\u2026</div></div>'],
+    ['<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/', '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">Hydrating context\u2026 (GET /v1/sessions/'],
+    ['<div><h2 class="sec-title">\u8F6C\u5F55</h2><div class="card"><div class="card-b transcript">', '<div><h2 class="sec-title">Transcript</h2><div class="card"><div class="card-b transcript">'],
+    ['<h2 class="sec-title" style="margin-top:14px">\u4E0A\u4E0B\u6587</h2>', '<h2 class="sec-title" style="margin-top:14px">Context</h2>'],
+    ['<h2 class="sec-title">kinds \u6458\u8981</h2>', '<h2 class="sec-title">kinds summary</h2>'],
+    ['<h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>', '<h2 class="sec-title">Session list</h2>'],
+    ['<h2 class="sec-title">\u5165\u53E3</h2>', '<h2 class="sec-title">Entry points</h2>'],
+    ['<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">', '<h2 class="sec-title">Object</h2><div class="card">'],
+    ['<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>', '<h2 class="sec-title">Decision ledger</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>'],
+    ['<h2 class="sec-title">\u5F53\u524D\u5FAA\u73AF</h2>', '<h2 class="sec-title">Current loop</h2>'],
+    ['<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>', '<h2 class="sec-title">Inbox (awaiting you)</h2>'],
+    ['<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">', '<h2 class="sec-title">Recent related events</h2><div class="card">'],
+    ['<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">', '<h2 class="sec-title">Steps</h2><div class="card">'],
+    ['<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>', '<h2 class="sec-title">Run history</h2>'],
+    ['<h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>', '<h3 class="sec-title" style="margin:10px 0 6px">chunks (index TopK candidates)</h3>'],
+    ['<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>', '<h3 class="sec-title" style="margin:10px 0 6px">Related tag shards (TagCtxShard)</h3>'],
+    ['<input class="inp" data-ctx-note placeholder="\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09">', '<input class="inp" data-ctx-note placeholder="Fork note (optional)">'],
+    ['<input class="inp" data-ctx-tags placeholder="tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u2264', '<input class="inp" data-ctx-tags placeholder="tag set: tagType:tag, comma/space separated (per type \u2264'],
+    ['<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="', '<input class="inp" id="docs-q" placeholder="Filter by kind/scope/name\u2026" value="'],
+    ['<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="', '<input class="inp" id="ev-q" placeholder="Filter by type/object/summary\u2026" value="'],
+    ['<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">', '<section class="card obj-content"><div class="card-h"><span class="h-title">Content</span><span class="h-right">'],
+    ['<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">', '<section class="card"><div class="card-h"><span class="h-title">Context</span></div><div class="card-b">'],
+    ['<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">', '<section class="card"><div class="card-h"><span class="h-title">Actions</span></div><div class="card-b">'],
+    ['<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">', '<section class="card"><div class="card-h"><span class="h-title">Tags</span></div><div class="card-b" data-panel="tags">'],
+    ['<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">', '<section class="card"><div class="card-h"><span class="h-title">Applicable rules</span></div><div class="card-b" data-panel="rules">'],
+    ['<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>', '<span class="chip ok tiny" data-ed-draft-chip>No draft</span>'],
+    ['<span class="faint small">\u2026\u5171 ', '<span class="faint small">\u2026total '],
+    ['<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=', '<span class="faint small">not assembled (tagSigSource='],
+    ['<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>', '<span class="faint">Essential fields absent \u2014 never fabricated</span>'],
+    ['<span class="faint">\uFF08\u7A7A\uFF09</span>', '<span class="faint">(empty)</span>'],
+    ['<span class="mono faint small">\uFF08\u5D4C\u5957\u7ED3\u6784\u89C1\u300CYAML\u300D\uFF09</span>', '<span class="mono faint small">(nested structures in "YAML")</span>'],
+    ['<span class="small faint" data-conn-label>\u8FDE\u63A5\u4E2D\u2026</span></div></aside>', '<span class="small faint" data-conn-label>Connecting\u2026</span></div></aside>'],
+    ['<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08', '<span class="small faint">Loop status unreachable ('],
+    ['<span class="small faint">\u672C\u5468\u671F\u6682\u65E0\u5FAA\u73AF\u8BB0\u5F55\u3002\u70B9\u706B\u4E0B\u4E00\u8F6E\uFF1A<code class="mono">corectl loop</code></span></div></div></div>', '<span class="small faint">No loop records this cycle. Ignite the next round: <code class="mono">corectl loop</code></span></div></div></div>'],
+    ['<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>', '<span class="small faint">Evidence: \u2014</span>'],
+    ['<span><span class="logo-name">Core Console</span><br><span class="logo-sub">web \u91CD\u6784\u8D77\u70B9</span></span></div>', '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">web rebuild baseline</span></span></div>'],
+    ['<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"', '<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="Edit source \u2014 changes accumulate a draft"'],
+    ["<th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>", "<th>Time</th><th>Decision</th><th>Object</th><th>Decided by</th><th>rv</th></tr></thead><tbody>"],
+    [">\u64A4\u9500\u4E0A\u6B21</button>", ">Undo last</button>"],
+    ["Apply \u5931\u8D25\uFF08", "Apply failed ("],
+    ["Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=", "Apply succeeded \u2014 document persisted (rv="],
+    ["Apply \u843D\u5E93 ", "Apply persisted "],
+    ["Apply\uFF08\u65E0\u53D8\u66F4\uFF09", "Apply (no changes)"],
+    ["B vs \u843D\u5E93\u503C ", "B vs persisted "],
+    ["B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ", "B (read live, not cached) \xB7 "],
+    ["ConnectorOps / WorkService / Provider / Ref \u56DB\u65CF\uFF08\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\uFF09", "ConnectorOps / WorkService / Provider / Ref families (same rules for docs and resources)"],
+    ["attention \u805A\u5408\u96F6\u547D\u4E2D\uFF08\u7A7A\u6001\u663E\u5F0F\u2014\u2014\u4E0D\u5192\u5145\u6709\u98CE\u9669\uFF09\u3002", "attention aggregate zero hits (explicit empty state \u2014 never fakes risk)."],
+    ["dry-run \u9884\u68C0\u672A\u8FC7\uFF08", "dry-run precheck failed ("],
+    ["kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF09", "kinds \u2192 scope \u2192 objects (snapshot aggregate projection; object names click into the workbench)"],
+    ["severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F", "severity-sorted \xB7 clickable evidence \xB7 explicit data confidence"],
+    ["takeBudget \u987B\u4E3A ", "takeBudget must be "],
+    ["workflow \u951A ", "workflow anchor "],
+    ["\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09", " \u2014 contextidx not assembled (defensive face)"],
+    ["\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\u4F1A\u8BDD\u3002</div></div></div>", " \u2014 never pretends to be a registered session.</div></div></div>"],
+    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u7A3F\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5BF9\u9F50\u6700\u65B0 rv \u540E\u91CD\u8BD5", " \u2014 optimistic-lock conflict: draft preserved; align to the latest rv and retry"],
+    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09", " \u2014 optimistic-lock conflict: reopen the panel to align revision and retry (draft not overwritten, no silent rebase)"],
+    ["\u2014\u2014\u843D\u5E93\u5C06\u88AB\u62D2\uFF09", " \u2014 persistence would be rejected)"],
+    ["\u2190 \u4EFB\u52A1\u4E2D\u5FC3", "\u2190 Task Center"],
+    ["\u2190 \u4F1A\u8BDD", "\u2190 Sessions"],
+    ["\u2190 \u5DE5\u4F5C\u6D41", "\u2190 Workflows"],
+    ["\u25CF \u672A Apply\uFF08\u8349\u7A3F ", "\u25CF Not applied (draft "],
+    ["\u300D\u540C\u7EC4", '" group'],
+    ["\u4E00\u822C", "medium"],
+    ["\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002", "Never faked \u2014 scope word form may be an instance bucket (visible in the tree)."],
+    ["\u4E25\u91CD", "critical"],
+    ["\u4E50\u89C2\u9501\u5BF9\u9F50 r", "optimistic-lock align r"],
+    ["\u4E50\u89C2\u9501\u6F02\u79FB\uFF08\u73B0 r", "optimistic-lock drift (now r"],
+    ["\u4E8B\u4EF6", "Events"],
+    ["\u4EFB\u52A1\u4E0D\u5728\u518C", "Task not registered"],
+    ["\u4F1A\u8BDD ", "Session "],
+    ["\u4F1A\u8BDD\u539F\u6587\u4E0D\u5165\u516C\u5171\u5E93\uFF08intake \u7559\u75D5\u9762\u4E3A\u51C6\uFF09\u3002</div>", "Raw session text stays out of the public library (intake ledger face is authoritative).</div>"],
+    ["\u4F1A\u8BDD\u8BE6\u60C5", "Session detail"],
+    ["\u4F1A\u8BDD\u8F6C\u5F55", "Session transcript"],
+    ["\u4F5C\u7528\u57DF", "Scope"],
+    ["\u4F9D\u8D56", "Depends on"],
+    ["\u4F9D\u8D56 ", "Depends on "],
+    ["\u516D\u7247\u56FA\u5B9A\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme", "Six fixed panels: tags/rules/context/actions/content/scheme"],
+    ["\u5171 ", "total "],
+    ["\u5173\u8054\u4F1A\u8BDD", "Related sessions"],
+    ["\u5173\u8054\u8FD0\u884C", "Related runs"],
+    ["\u5185\u7F6E\u670D\u52A1", "Built-in services"],
+    ["\u51ED\u636E\u6E90", "Credential source"],
+    ["\u539F\u6587", "Source"],
+    ["\u539F\u6587\uFF08HEAD\uFF09", "Source (HEAD)"],
+    ["\u53BB\u5904\u7406", "Handle"],
+    ["\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "Go to Object Workbench"],
+    ["\u53D7\u963B", "Blocked"],
+    ["\u53EF\u64A4\u9500", "revertible"],
+    ["\u540C\u540D\u5BF9\u8C61\u8DE8 kind/scope \u4E0D\u552F\u4E00\u2014\u2014\u8BF7\u4ECE\u7CFB\u7EDF\u6811\u8FDB\u5165\u3002", "Object name is ambiguous across kinds/scopes \u2014 enter via the System Tree."],
+    ["\u540D\u79F0", "Name"],
+    ["\u56DE Welcome", "Back to Welcome"],
+    ["\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "Open in Docs"],
+    ["\u57FA\u51C6=r", "base=r"],
+    ["\u57FA\u51C6=r?", "base=r?"],
+    ["\u57FA\u7840\u6C47\u603B", "Summary"],
+    ["\u5916\u90E8\u4F9D\u8D56", "External dependencies"],
+    ["\u5931\u8D25", "failed"],
+    ["\u5BF9\u8BDD\u5165\u53E3\uFF08Agent\uFF09", "Chat entries (Agent)"],
+    ["\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09", "Object Workbench (six panels: tags/rules/context/actions/content/scheme)"],
+    ["\u5BF9\u8C61\u6B63\u6587\u5F15\u7528 ", "Object content reference "],
+    ["\u5BF9\u8C61\u6B63\u6587\u6309 resourceVersion \u7F13\u5B58\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\uFF09\u3002</div>", "Object content cached by resourceVersion (no re-read while rv unchanged).</div>"],
+    ["\u5BF9\u8C61\u89E3\u6790\u6B67\u4E49\u6216\u7F3A\u5E2D", "Object resolution ambiguous or absent"],
+    ["\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C", "Workflow not registered"],
+    ["\u5DE5\u4F5C\u6D41\u8BE6\u60C5", "Workflow detail"],
+    ["\u5DE6\u4FA7\u9009\u62E9\u4ED3\u6587\u4EF6\uFF08\u9ED8\u8BA4\u9996\u4ED3\u9996\u6587\u4EF6\uFF09\u3002", "Pick a repo file on the left (defaults to first repo, first file)."],
+    ["\u5DF2\u5165\u5FEB\u7167", "in snapshot"],
+    ["\u5DF2\u53D6\u6D88", "canceled"],
+    ["\u5DF2\u5B8C\u6210", "done"],
+    ["\u5DF2\u5E94\u7528\u7684\u7248\u672C", "Applied version"],
+    ["\u5DF2\u6302\u8F7D\u8FDE\u63A5", "Mounted connectors"],
+    ["\u5F53\u524D\u4F1A\u8BDD", "Current session"],
+    ["\u5F53\u524D\u5FAA\u73AF", "Current loop"],
+    ["\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF", "No loop in progress"],
+    ["\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002", "Filter has zero hits \u2014 relax the conditions and retry."],
+    ["\u5F85\u542F\u52A8", "pending start"],
+    ["\u5F85\u5B9A", "pending"],
+    ["\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002", "Pending = draft cache (DocReview same source) \u222A ApprovalNeeded archive rows (approved ones drop out). Approve/reject are human clicks; diff = draft vs live document, read fresh."],
+    ["\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09", "Pending is empty (both draft cache and ApprovalNeeded archive are empty)"],
+    ["\u5FAA\u73AF\u5524\u9192 #", "Loop wake #"],
+    ["\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026", "Loading loop status\u2026"],
+    ["\u5FEB\u7167", "Snapshot"],
+    ["\u5FEB\u7167 events \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot events aggregate is empty (never faked)."],
+    ["\u5FEB\u7167 objects \u805A\u5408\u4E3A\u7A7A\u6216\u8BE5 kind \u65E0\u5BF9\u8C61\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot objects aggregate empty or no objects for this kind (never faked)."],
+    ["\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Snapshot proposals aggregate is empty (explicit empty state)."],
+    ["\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002", "Snapshot runs aggregate has no such run (may have left the window)."],
+    ["\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot workflows aggregate is empty (never faked)."],
+    ["\u5FEB\u7167\u4EFB\u52A1\u6E05\u5355\u65E0\u6B64 id\uFF08\u53EF\u80FD\u5DF2\u5B8C\u6210\u51FA\u7A97\u6216 id \u6709\u8BEF\uFF09\u3002", "No such id in the snapshot task list (may be done and out of window, or a wrong id)."],
+    ["\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "Snapshot carries no object enumeration"],
+    ["\u5FEB\u7167\u805A\u5408\u65E0\u6B64 workflow\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u6709\u8BEF\uFF09\u3002", "Snapshot aggregate has no such workflow (may be offline or a wrong name)."],
+    ["\u6253\u5F00\u7CFB\u7EDF\u6811", "Open System Tree"],
+    ["\u6279\u51C6\uFF08= Apply\uFF09", "Approve (= Apply)"],
+    ["\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09", "Batch approval awaits a backend word form \u2014 approve one by one (honest note)"],
+    ["\u6392\u961F\u4E2D", "queued"],
+    ["\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09", "Proposal face (list + live essentials) \u2014 approve/reject go through Approvals and Apply (the LLM has no Apply right)"],
+    ["\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F", "Revert the latest context fork (restore the server-side pre-write snapshot)?"],
+    ["\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\u2014\u2014\u540C\u4E00\u6E32\u67D3\u6838\uFF1B\u25CF=\u6709\u672A Apply \u8349\u7A3F", "Docs and resources share the rules \u2014 one render core; \u25CF = unapplied draft exists"],
+    ["\u6587\u6863\u7F16\u8F91\u5668", "Document editor"],
+    ["\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09", "Document absent (registered draft base \u2014 Apply = create path)"],
+    ["\u65E0\u7A3F", "no draft"],
+    ["\u65E0\u8349\u7A3F", "No draft"],
+    ["\u65F6\u95F4\u672A\u77E5", "time unknown"],
+    ["\u667A\u80FD\u5F52\u7EB3", "Smart summary"],
+    ["\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41", "No registered workflows"],
+    ["\u6682\u65E0\u5F85\u529E", "No to-dos"],
+    ["\u6682\u65E0\u63D0\u6848", "No proposals"],
+    ["\u6700\u8FD1\u52A8\u4F5C", "Last action"],
+    ["\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014", "Last action: \u2014"],
+    ["\u6700\u8FD1\u9519\u8BEF", "Last error"],
+    ["\u670D\u52A1\u5B9E\u4F8B", "Service instances"],
+    ["\u672A\u5206\u7EA7", "unranked"],
+    ["\u672A\u5206\u7EC4", "Ungrouped"],
+    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"],
+    ["\u672A\u547D\u540D\u4EFB\u52A1", "Unnamed task"],
+    ["\u672A\u547D\u540D\u5173\u6CE8\u9879", "Unnamed attention item"],
+    ["\u672A\u547D\u540D\u63D0\u6848", "Unnamed proposal"],
+    ["\u672A\u6CE8\u5165=\u6E05\u5355\u964D\u7EA7\u5FEB\u7167\u6295\u5F71\uFF0C\u8F6C\u5F55\u9762\u663E\u5F0F\u7F3A\u5E2D\u8BCD\u5F62\u3002</div>", "Not injected = list degrades to snapshot projection; the transcript face is explicitly absent.</div>"],
+    ["\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95", "Unregistered declared kind \u2014 falls back to full enumeration"],
+    ["\u672A\u6CE8\u660E\u751F\u6210\u65B9\u5F0F", "generation method unspecified"],
+    ["\u672A\u77E5", "unknown"],
+    ["\u672A\u77E5\u8584\u5C4F", "Unknown thin screen"],
+    ["\u672A\u9009\u6863", "No file selected"],
+    ["\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879", "No attention items in this window"],
+    ["\u67E5\u770B ", "View "],
+    ["\u6807\u7B7E\u300C", 'Tag "'],
+    ["\u6807\u9898", "Title"],
+    ["\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08", "Content unreachable ("],
+    ["\u6CE8\u6C34\u4E2D\u2026", "Hydrating\u2026"],
+    ["\u7248\u672C\u53F7", "Version"],
+    ["\u72B6\u6001", "Status"],
+    ["\u73B0\u8BFB\u4E2D\u2026", "Loading\u2026"],
+    ["\u767D\u540D\u5355\u4ED3\u6811\uFF08GET /v1/design-docs\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF09", "Whitelisted repo tree (GET /v1/design-docs \u2014 HEAD authoritative, zero cache)"],
+    ["\u76EE\u6807", "Target"],
+    ["\u76EE\u6807\u6587\u6863", "Target document"],
+    ["\u76F8\u5173\u6587\u6863", "Related documents"],
+    ["\u770B root \u4F1A\u8BDD", "View root session"],
+    ["\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09", "Confirm approve (Apply)"],
+    ["\u7A3F: ", "Draft: "],
+    ["\u7A97\u53E3\u5185\u65E0\u4E8B\u4EF6", "No events in window"],
+    ["\u7A97\u53E3\u5185\u65E0\u6587\u6863", "No documents in window"],
+    ["\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002", "Waiting for the first snapshot aggregate."],
+    ["\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u6216 patch \u589E\u91CF", "Waiting for first snapshot aggregate or patch increment"],
+    ["\u7ED3\u675F\u4E8E", "ended at"],
+    ["\u7F51\u7EDC", "Network"],
+    ["\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5", "Aggregate face (snapshot workflows/runs); runs have their own detail page"],
+    ["\u8349\u7A3F\u222A\u5BA1\u6279\u4E8B\u4EF6\u2014\u2014\u70B9\u51FB\u5904\u7406", "Drafts \u222A approval events \u2014 click to handle"],
+    ["\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25\uFF08", "Draft save failed ("],
+    ["\u843D\u5E93\u4E2D\u2026", "Persisting\u2026"],
+    ["\u89C4\u5219\u539F\u6587\u63D0\u53CA ", "Rule source mentions "],
+    ["\u89C4\u5219\u6587\u6863\u65CF\u7D22\u5F15\u6682\u4E0D\u53EF\u8FBE\u2014\u2014\u547D\u4E2D\u5224\u5B9A\u6682\u7F3A\uFF08\u4E0D\u5192\u5145\u65E0\u9002\u7528\uFF09\u3002", "Rule doc family index unreachable \u2014 hit evaluation unavailable (never pretends none apply)."],
+    ["\u89E6\u53D1\u4E8B\u4EF6", "Trigger event"],
+    ["\u8BC1\u636E", "Evidence"],
+    ["\u8BC1\u636E\u2014\u2014\u70B9\u51FB\u8FDB\u5165", "Evidence \u2014 click to open"],
+    ["\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61", "No registered objects for this scope"],
+    ["\u8BF4\u660E\u6587\u6863", "Guide"],
+    ["\u8D1F\u8D23 ", "Owner "],
+    ["\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Filter zero hits or snapshot empty (explicit empty state)."],
+    ["\u8FD0\u884C\u72B6\u6001", "Run status"],
+    ["\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C", "Run record not registered"],
+    ["\u8FD0\u884C\u8BE6\u60C5", "Run detail"],
+    ["\u91CD\u8981", "important"],
+    ["\u9519\u8BEF", "error"],
+    ["\u9700\u6C42\u63D0\u6848", "Requirement proposal"],
+    ["\u9884\u68C0\u4E2D\u2026", "Prechecking\u2026"],
+    ["\u9A8C\u8BC1\u4E2D", "verifying"],
+    ["\uFF08faces \u672A\u6CE8\u5165\u4E14\u5FEB\u7167 sessions \u7F3A\u5E2D\uFF09", "(faces not injected and snapshot sessions absent)"],
+    ["\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>", "(git authoritative, zero cache) \xB7 draft/Apply path goes through the editor screen (doc/\u2026).</div>"],
+    ["\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>", "(content not re-read while rv unchanged \u2014 applies to the degraded polling path too)</span>"],
+    ["\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09", "(optimistic-lock base)"],
+    ["\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F ", "(optimistic-lock expected \u2014 409 never silently rebases) \xB7 draft "],
+    ["\uFF08\u5BF9\u8BDD\u662F\u4E00\u7B49\u9762\u2014\u2014\u540C\u4E00 dsh \u4F1A\u8BDD\u673A\u5236\u6295\u5F71\uFF09", "(chat is a first-class face \u2014 projection of the same dsh session mechanism)"],
+    ["\uFF08\u5BF9\u8C61\u4E0D\u5728\u518C\u2014\u2014apply \u5C06\u521B\u5EFA\u901A\u8DEF\uFF09", "(object not registered \u2014 apply is the create path)"],
+    ["\uFF08\u65E0\u5DEE\u5F02\uFF09", "(no diff)"],
+    ["\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A", "(face current value unreadable: "],
+    ["\uFF09\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF0C\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>", ") \u2014 HEAD authoritative, zero cache; re-enter to read fresh.</div>"],
+    ["\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>", ") \u2014 never pretends there is no loop.</span></div></div></div>"],
+    ["\uFF09\u2014\u2014\u5224\u5B9A\u7559\u75D5\u6682\u53EA=apply_log\u3002</div>", ") \u2014 decision trail is currently apply_log only.</div>"],
+    ["\uFF09\u2014\u2014\u5DE5\u4F5C\u526F\u672C\u4ECD\u5728\u5185\u5B58\uFF0C\u9000\u51FA\u524D\u4E0D\u4E22", ") \u2014 the working copy stays in memory, not lost until you leave"],
+    ["\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB", ") \u2014 re-enter after recovery to read fresh"],
+    ["\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>", ") \u2014 re-enter after recovery to read fresh.</div>"],
+    ["\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>", ") \u2014 empty stack cannot revert (never pretends a successful revert).</div>"],
+    ["\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002", ") \u2014 draft-preserved semantics, not persisted."],
+    ["\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>", ") \u2014 re-enter to restore.</div>"],
+    ["\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002", ") \u2014 zero side effects, draft preserved."],
+    ["\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>", "). Re-enter after recovery to read fresh.</div></div></div>"],
+    ["\uFF09\uFF1F\u4E50\u89C2\u9501\u57FA\u51C6 r", ")? optimistic-lock base r"],
+    ["\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>", ": none (explicit empty state).</div>"],
+    ["\uFF1B\u8D85\u9650 tag \u6536\u655B ", "; over-limit tags converge "],
+    ["\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=", "? dry-run passed (rv="]
+  ]);
+  var DICTS = { en };
+  var subs = /* @__PURE__ */ new Set();
+  function t(s) {
+    if (locale === "zh") return String(s);
+    const d = DICTS[locale];
+    return d && d.get(String(s)) || String(s);
+  }
+  function getLocale() {
+    return locale;
+  }
+  function setLocale(l) {
+    if (l !== "zh" && !DICTS[l]) return;
+    locale = l;
+    try {
+      if (typeof localStorage !== "undefined") localStorage.setItem(KEY, l);
+    } catch {
+    }
+    subs.forEach((f) => {
+      try {
+        f(l);
+      } catch {
+      }
+    });
+  }
+  function onLocaleChange(f) {
+    subs.add(f);
+    return () => subs.delete(f);
+  }
+
+  // src/render/refs.js
+  var REF_KINDS = "Rule|Goal|Desc|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event";
+  function refRoute(kind, scope, name) {
+    const k = encodeURIComponent(kind);
+    const s = encodeURIComponent(scope || "global");
+    const n = encodeURIComponent(name);
+    return "obj/" + k + "/" + s + "/" + n;
+  }
+  function linkifyRefs(text2, names) {
+    const s = String(text2 || "");
+    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
+    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
+    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
+    let html3 = "";
+    let last = 0;
+    const spans = [];
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
+    }
+    while ((m = connRe.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
+    }
+    spans.sort((a, b) => a.i - b.i);
+    for (const sp of spans) {
+      if (sp.i < last) continue;
+      html3 += esc(s.slice(last, sp.i));
+      if (sp.conn) {
+        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
+      } else {
+        const route = refRoute(sp.kind, sp.scope, sp.name);
+        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
+      }
+      last = sp.i + sp.len;
+    }
+    html3 += esc(s.slice(last));
+    if (nameSet && nameSet.size) {
+      for (const nm of nameSet) {
+        const needle = esc(nm);
+        if (!needle || !html3.includes(needle)) continue;
+        html3 = html3.split(needle).join(
+          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
+        );
+      }
+    }
+    return html3;
+  }
+  function expandBlock(innerHtml, label, opts) {
+    const o = opts || {};
+    return '<details class="ex-block' + (o.cls ? " " + esc(o.cls) : "") + (o.open ? " open" : "") + '"' + (o.open ? " open" : "") + '><summary class="ex-sum"><span class="ex-chev">\u25B8</span>' + esc(label || t("\u5C55\u5F00")) + '</summary><div class="ex-body">' + (innerHtml || "") + "</div></details>";
+  }
+  function renderMessage(msg, names) {
+    const m = msg || {};
+    const role = String(m.role || "assistant");
+    const isUser = role === "user";
+    const text2 = String(m.text || "");
+    const html3 = '<div class="msg ' + (isUser ? "msg-user" : "msg-ai") + '"><div class="msg-avatar">' + (isUser ? "\u{1F464}" : "\u25C6") + '</div><div class="msg-body"><div class="msg-head"><b class="msg-name">' + esc(isUser ? t("\u6211") : String(m.name || "rootAgent")) + "</b>" + (m.seq != null ? '<span class="small faint mono">seq ' + esc(String(m.seq)) + "</span>" : "") + (m.ts ? '<span class="small faint">' + esc(m.ts) + "</span>" : "") + "</div>" + (m.kind === "conclusion" ? '<div class="concl-card"><div class="concl-t">' + esc(t("\u751F\u6210\u7ED3\u8BBA")) + '</div><div class="concl-text">' + linkifyRefs(text2, names) + "</div>" + (Array.isArray(m.refs) && m.refs.length ? '<div class="concl-refs">' + m.refs.map((r) => {
+      const parts = String(r).split("/");
+      return parts.length >= 3 ? '<span class="ref-chip" data-doc-full="' + esc(r) + '">' + esc(t("\u5B8C\u6574\u6587\u6863\u6A21\u5F0F\uFF1A")) + esc(parts[2]) + "</span>" : "";
+    }).join("") : "") + '<div class="concl-acts"><button class="btn sm" data-doc-full="' + esc(String(m.refs && m.refs[0] || "")) + '">' + esc(t("\u5B8C\u6574\u6587\u6863\u6A21\u5F0F")) + '</button><button class="btn sm" data-go="chat/root-agent">' + esc(t("\u5199\u5165\u8349\u7A3F")) + "</button></div></div>" : '<div class="msg-text">' + linkifyRefs(text2, names) + "</div>") + (m.thinking ? expandBlock('<div class="msg-text faint">' + linkifyRefs(m.thinking, names) + "</div>", t("\u601D\u8003\u8FC7\u7A0B")) : "") + (m.tool ? expandBlock('<div class="msg-text mono faint">' + esc(String(m.tool)) + "</div>", t("\u5DE5\u5177\u8FC7\u7A0B")) : "") + "</div></div>";
+    return html3;
+  }
+
   // ../../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
@@ -8685,515 +9257,6 @@ ${text2}</tr>
     safeDump
   } = yaml;
 
-  // src/core/i18n.js
-  var KEY = "cc.locale";
-  var locale = "zh";
-  try {
-    locale = typeof localStorage !== "undefined" && localStorage.getItem(KEY) || "zh";
-  } catch {
-  }
-  var en = /* @__PURE__ */ new Map([
-    /* 侧栏/壳（main.js） */
-    ["Core Console", "Core Console"],
-    ["web \u91CD\u6784\u8D77\u70B9", "web rebuild baseline"],
-    ["\u8FDE\u63A5\u4E2D\u2026", "Connecting\u2026"],
-    ["\u5B9E\u65F6\uFF08WS patch\uFF09", "Live (WS patch)"],
-    ["\u91CD\u8FDE\u4E2D\u2026", "Reconnecting\u2026"],
-    ["\u964D\u7EA7\u8F6E\u8BE2\uFF0830s\uFF09", "Degraded polling (30s)"],
-    ["\u4E2D\u6587", "\u4E2D\u6587"],
-    ["EN", "EN"],
-    /* welcome */
-    ["\u5FEB\u7167\u88C5\u8F7D\u4E2D\u2026", "Loading snapshot\u2026"],
-    ["\u6B63\u5728\u5EFA\u7ACB /v1/snapshot \u57FA\u7EBF\uFF08\u8FDE\u63A5\u5EFA\u7ACB\u5373\u63A8\u5168\u91CF\uFF09", "Establishing /v1/snapshot baseline (full push on connect)"],
-    ["\u5728\u518C\u5BF9\u8C61", "Registered objects"],
-    ["\u5168\u90E8 kind \u5408\u8BA1", "All kinds total"],
-    ["kinds", "kinds"],
-    ["scheme \u6CE8\u518C", "scheme registry"],
-    ["\u4E8B\u4EF6\uFF08\u7A97\u53E3\u5185\uFF09", "Events (window)"],
-    ["\u5F52\u6863\u884C", "archived rows"],
-    ["\u5F85\u5BA1", "Pending review"],
-    ["\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09", "No pending reviews (explicit empty state)"],
-    ["\u6536\u4EF6\u7BB1", "Inbox"],
-    ["\u5F85\u4F60\u5904\u7406", "awaiting you"],
-    ["\u8FDB\u884C\u4E2D\u4EFB\u52A1", "Running tasks"],
-    ["\u4EFB\u52A1\u4E2D\u5FC3", "Task Center"],
-    ["kinds \u6458\u8981", "kinds summary"],
-    ["\u9996\u4E2A\uFF1A", "first: "],
-    [" \u4E2A", " item(s)"],
-    /* events */
-    ["\u4E8B\u4EF6\u6D41", "Event stream"],
-    ["\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09", "Archived events (snapshot aggregate + patch increments; click for detail & chain)"],
-    ["\u5168\u90E8\u7EA7\u522B", "All levels"],
-    ["\u5FAA\u73AF\u5524\u9192", "Loop wake"],
-    ["\u4E8B\u4EF6\u8BE6\u60C5", "Event detail"],
-    ["\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09", "Raw payload (JSON)"],
-    ["\u2190 \u56DE\u4E8B\u4EF6\u6D41", "\u2190 Back to events"],
-    ["\u5173\u8054", "Linked"],
-    ["\u65E0", "none"],
-    /* tasks */
-    ["\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5", "Groups = deterministic projection (single status writer = scheduler); click a row for detail"],
-    ["\u6B63\u5728\u505A", "Running"],
-    ["\u7B49\u4EBA", "Waiting on human"],
-    ["\u5361\u4F4F", "Stuck"],
-    ["\u5B8C\u6210", "Done"],
-    ["\u6392\u961F", "Queued"],
-    ["\u9879", "item(s)"],
-    ["\u6B63\u5728\u505A\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Running: none (explicit empty state)."],
-    ["\u7B49\u4EBA\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Waiting on human: none (explicit empty state)."],
-    ["\u5361\u4F4F\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Stuck: none (explicit empty state)."],
-    ["\u5B8C\u6210\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Done: none (explicit empty state)."],
-    ["\u6392\u961F\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Queued: none (explicit empty state)."],
-    ["\u72B6\u6001\u672A\u77E5", "state unknown"],
-    ["\u6700\u8FD1\u52A8\u4F5C\uFF1A", "last action: "],
-    ["\u5173\u6CE8\u62A5\u544A", "Attention Report"],
-    ["\u4EFB\u52A1\u8BE6\u60C5", "Task detail"],
-    ["\u2190 \u56DE\u4EFB\u52A1\u4E2D\u5FC3", "\u2190 Back to tasks"],
-    ["\u8BC1\u636E\u94FE", "Evidence chain"],
-    /* objects */
-    ["\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "Object Workbench"],
-    ["\u8BE5 kind \u6682\u65E0\u5BF9\u8C61", "No objects for this kind"],
-    ["\u6682\u65E0\u5728\u518C\u5BF9\u8C61", "No registered objects"],
-    ["\u5FAA\u73AF", "Loop"],
-    ["\u76F8\u4F4D", "Phase"],
-    ["\u8D1F\u8D23", "Owner"],
-    ["\u5F00\u59CB\u4E8E", "started at"],
-    ["\u76F8\u4F4D\u673A", "Phase machine"],
-    ["\u4E8B\u4EF6\u94FE", "Event chain"],
-    ["\u5BF9\u8C61\u8BE6\u60C5", "Object detail"],
-    ["\u6807\u7B7E", "Tags"],
-    ["\u8865\u6807", "Add tag"],
-    ["\u4E0A\u4E0B\u6587", "Context"],
-    ["\u5DE5\u4F5C\u53F0", "Workbench"],
-    ["\u5386\u53F2", "History"],
-    ["\u6B63\u6587", "Content"],
-    ["\u7F16\u8F91", "Edit"],
-    ["\u4FDD\u5B58", "Save"],
-    ["\u53D6\u6D88", "Cancel"],
-    ["\u8349\u7A3F", "Draft"],
-    ["\u5E94\u7528", "Apply"],
-    ["\u5F03\u7A3F", "Discard draft"],
-    ["\u4E50\u89C2\u9501", "optimistic lock"],
-    /* chat / sessionctx */
-    ["\u4F1A\u8BDD", "Sessions"],
-    ["\u4F1A\u8BDD\u6E05\u5355", "Session list"],
-    ["\u4E0E root \u5BF9\u8BDD", "Chat with root"],
-    ["\u5BF9\u8BDD", "Chat"],
-    ["\u8F6C\u5F55", "Transcript"],
-    ["\u8F6C\u5F55\u9762\u672A\u88C5\u914D\u2014\u2014\u5BBF\u4E3B\u6CE8\u5165 window.__CC.chatFaces \u540E\u73B0\uFF1B\u4F1A\u8BDD\u539F\u6587\u4E0D\u5165\u516C\u5171\u5E93\uFF08intake \u6682\u5047\u9762\u4E3A\u51C6\uFF09\u3002", "Transcript face not mounted \u2014 appears after host injects window.__CC.chatFaces; raw session text stays out of the public library (intake placeholder for now)."],
-    ["\u5165\u53E3", "Entry points"],
-    ["\u76F8\u5173\u4F1A\u8BDD", "Related sessions"],
-    ["\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09", "Context (ContextPack contract face)"],
-    ["\u7D22\u5F15\u5019\u9009\u6295\u5F71", "index-candidate projection"],
-    ["\u5199\u9762\u5F00", "Writes open"],
-    ["\u5199\u9762\u5173\u65AD", "Writes closed"],
-    ["\u5FC3\u8DF3", "Heartbeats"],
-    ["\u6B21 \xB7 \u6700\u8FD1", "hit(s) \xB7 last"],
-    ["\u52A8\u4F5C", "Action"],
-    ["\u6CE8\u5165\u56FA\u5B9A prompt\u300C\u7EE7\u7EED\u300D\uFF08\u81EA\u6108\u7B2C\u4E00\u52A8\u4F5C\uFF09", "Inject fixed prompt \u300C\u7EE7\u7EED\u300D (self-heal first action)"],
-    ["\u7F3A\u7701", "default"],
-    ["\u57DF", "range"],
-    ["\u672A\u88C5\u914D\uFF08tagSigSource=none\uFF09", "not assembled (tagSigSource=none)"],
-    ["\u5206\u7247\u7F13\u5B58", "Shard cache"],
-    ["\u5171", "total "],
-    ["\u7247 \xB7 stale", " shard(s) \xB7 stale"],
-    ["\u91CD\u5EFA\u9608\u503C", "rebuild threshold"],
-    ["\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002", "No override (effective value = ContextPolicy default \u2014 PUT and the override row appears here)."],
-    ["\u4FDD\u5B58\u5206\u53C9", "Save fork"],
-    ["\u64A4\u9500\u4E0A\u6B21", "Undo last"],
-    ["\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09", "Fork note (optional)"],
-    ["tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u22645 \u603B\u226420\uFF09", "tag set: tagType:tag, comma/space separated (\u22645 per type, \u226420 total)"],
-    ["chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09", "chunks (index TopK candidates)"],
-    ["\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002", "No index candidates (tagSig not assembled or zero hits \u2014 never fabricates pack content)."],
-    ["\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09", "Related tag shards (TagCtxShard)"],
-    ["\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002", "No active tag shards (tagSig not assembled \u2014 per-tagKey TagCtxShard projection after fork edit)."],
-    ["\u8986\u76D6\u884C", "Override"],
-    ["\u672C\u4EE3\u65E0\u4E09\u6BB5\u5F0F Session \u88C5\u914D\u5668\u2014\u2014chunks=\u7D22\u5F15 TopK \u5019\u9009\u6295\u5F71\uFF08context.md \u7D22\u5F15\u7B2C\u4E00\u6BB5\u8BCD\u5F62\uFF09\uFF0C\u975E\u4F1A\u8BDD\u771F\u5B9E\u88C5\u914D\u5305\u3002", "This generation has no three-stage Session assembler \u2014 chunks are index TopK candidate projections (context.md stage-one word form), not the real session pack."],
-    /* approvals */
-    ["\u5BA1\u6279", "Approvals"],
-    ["\u4E24\u6B65\u6279\u51C6", "Two-step approval"],
-    ["\u5F85\u5BA1\u533A", "Pending"],
-    ["\u5DF2\u51B3\u8D26", "Decision ledger"],
-    ["\u6279\u51C6", "Approve"],
-    ["\u9A73\u56DE", "Reject"],
-    ["\u6682\u65E0\u5F85\u5BA1\u9879\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No pending items (explicit empty state)."],
-    ["\u6682\u65E0\u5DF2\u51B3\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No decisions recorded (explicit empty state)."],
-    /* workflows */
-    ["\u5DE5\u4F5C\u6D41", "Workflows"],
-    ["\u8FD0\u884C", "Run"],
-    ["\u8FD0\u884C\u62BD\u5C49", "Run drawer"],
-    ["\u89E6\u53D1", "Trigger"],
-    ["\u6B65\u9AA4", "Steps"],
-    ["\u6682\u65E0\u5DE5\u4F5C\u6D41\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No workflows (explicit empty state)."],
-    /* misc */
-    ["\u7CFB\u7EDF\u6811", "System Tree"],
-    ["\u6587\u6863\u5E93", "Docs"],
-    ["\u63D0\u6848", "Proposals"],
-    ["\u8FDE\u63A5\u5C42", "Connectors"],
-    ["\u7CFB\u7EDF", "System"],
-    ["\u8FDE\u63A5\u5668", "Connectors"],
-    ["\u8BBE\u8BA1\u6587\u6863", "Design docs"],
-    ["\u6682\u65E0\u5185\u5BB9\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "No content (explicit empty state)."],
-    ["\u52A0\u8F7D\u5931\u8D25", "Load failed"],
-    ["\u91CD\u8BD5", "Retry"],
-    [" vs \u7A3F\u57FA r", " vs draft base r"],
-    [" \xB7 \u57DF ", " \xB7 range "],
-    [" \xB7 \u5907\u6CE8 ", " \xB7 note "],
-    [" \xB7 \u622A\u81F3 ", " \xB7 as of "],
-    [" \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>", " \xB7 This report is a derived view and can be rebuilt anytime; not persisted as objects.</div>"],
-    [" \xB7 \u6700\u8FD1 ", " \xB7 last "],
-    [" \xB7 \u68C0\u67E5\u8303\u56F4 ", " \xB7 check scope "],
-    [" \xB7 \u7A3F ", " \xB7 draft "],
-    [" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A", " \xB7 missing data: "],
-    [" \xB7 \u91CD\u5EFA\u9608\u503C ", " \xB7 rebuild threshold "],
-    [" \u2192 \u5DE5\u4F5C\u6D41", " \u2192 Workflow"],
-    [" \u4E2A kind\u2014\u2014\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u5DE6\u4FA7\u6E05\u5355\u3002</div>", " kinds \u2014 see the list on the left of the Object Workbench.</div>"],
-    [" \u4E2A\u76F8\u5173", " related"],
-    [" \u4E2A\uFF1A", " item(s): "],
-    [" \u4EFD\u89C4\u5219\u6587\u6863\uFF09\u3002</div>", " rule document(s))."],
-    [" \u5904\u53D8\u66F4\uFF09", " change(s))"],
-    [" \u603B\u2264", " total \u2264"],
-    [" \u6B21", " time(s)"],
-    [" \u6B21\u8FD0\u884C", " run(s)"],
-    [" \u7247 \xB7 stale ", " shard(s) \xB7 stale "],
-    [" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", " objects & events (snapshot aggregate projection)"],
-    [" \u7684\u6570\u503C\uFF08ContextPolicy \u9884\u7B97\u57DF\uFF09", " value (ContextPolicy budget range)"],
-    [" \u7F3A", " missing"],
-    [" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>", " rows \u2014 narrow with the filter.</div>"],
-    [" \u884C\u5DEE\u5F02</div>", " line diff</div>"],
-    [" \u9879", " item(s)"],
-    [" \u9879</span>", " item(s)</span>"],
-    ['" data-docs-kind="">\u5168\u90E8</span>', '" data-docs-kind="">All</span>'],
-    ['" data-ed-tab="draft">\u8349\u7A3F</div>', '" data-ed-tab="draft">Draft</div>'],
-    ['" data-ed-tab="history">\u5386\u53F2</div>', '" data-ed-tab="history">History</div>'],
-    ['" data-ed-view-btn="raw">\u539F\u6587</span>', '" data-ed-view-btn="raw">Source</span>'],
-    ['" data-ed-view-btn="render">\u6B63\u6587</span>', '" data-ed-view-btn="render">Rendered</span>'],
-    ['" title="\u63D0\u53D6\u9884\u7B97\uFF08token \u6570\uFF09">', '" title="Take budget (token count)">'],
-    ['" title="\u770B\u540C tag \u5BF9\u8C61">#', '" title="Objects with the same tag">#'],
-    ['"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>', '"><div class="small faint">Loading diff\u2026</div></div>'],
-    ['">\u5FFD\u7565</button> ', '">Dismiss</button> '],
-    ['">\u5FFD\u7565</button></div></div></div>', '">Dismiss</button></div></div></div>'],
-    ['">\u6240\u5C5E scope</button> ', '">Owning scope</button> '],
-    ['">\u6279\u51C6\uFF08= Apply\uFF09</button> ', '">Approve (= Apply)</button> '],
-    ['">\u7F16\u8F91\u5668</button>', '">Open editor</button>'],
-    ['">\u7F16\u8F91\u5668</button> ', '">Open editor</button> '],
-    ['</b> <span class="small faint">\uFF08\u7F3A\u7701 ', '</b> <span class="small faint">(default '],
-    ['<button class="btn primary sm" data-ctx-save>\u4FDD\u5B58\u5206\u53C9</button>', '<button class="btn primary sm" data-ctx-save>Save fork</button>'],
-    ['<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">', '<details class="md-raw"><summary>Raw payload (JSON)</summary><pre class="mono md-raw-pre">'],
-    ['<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>', '<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply (no changes)</button></div>'],
-    ['<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08', '<div class="card"><div class="card-b"><div class="small faint">Context face unreachable ('],
-    ['<div class="card"><div class="card-b"><div class="small faint">\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u5F97', '<div class="card"><div class="card-b"><div class="small faint">Session list unavailable'],
-    ['<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u4E3A\u7A7A\uFF08\u96F6\u5F85\u529E\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div></div></div>', '<div class="card"><div class="card-b"><div class="small faint">Inbox is empty (zero to-dos \u2014 explicit empty state).</div></div></div>'],
-    ['<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u6295\u5F71\u7F3A\u5E2D\uFF08\u5FEB\u7167\u672A\u643A\u5E26 /v1/inbox \u805A\u5408\uFF09\u2014\u2014\u5F85\u4F60\u5904\u7406\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u88C5\u5047\u3002</div></div></div>', '<div class="card"><div class="card-b"><div class="small faint">Inbox projection absent (snapshot carries no /v1/inbox aggregate) \u2014 your to-do face is explicitly absent, never faked.</div></div></div>'],
-    ['<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">', '<div class="card"><div class="card-h"><span class="h-title">Overview</span></div><div class="card-b">'],
-    ['<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">', '<div class="card-h"><span class="h-title">Context (ContextPack contract face)</span><span class="h-right">'],
-    ['<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">', '<div class="card-h"><span class="h-title">History</span></div><div class="card-b">'],
-    ['<div class="card-h"><span class="h-title">\u8349\u7A3F</span></div><div class="card-b">', '<div class="card-h"><span class="h-title">Draft</span></div><div class="card-b">'],
-    ['<div class="card-h"><span class="h-title">\u8349\u7A3F</span><span class="h-right">', '<div class="card-h"><span class="h-title">Draft</span><span class="h-right">'],
-    ['<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>', '<div class="chat-grid"><div><h2 class="sec-title">Session list</h2>'],
-    ['<div class="dd-grid"><div data-dd-tree><div class="small faint">\u4ED3\u6811\u73B0\u8BFB\u4E2D\u2026</div></div>', '<div class="dd-grid"><div data-dd-tree><div class="small faint">Loading repo tree\u2026</div></div>'],
-    ['<div class="diff-line ctx">\u2026 \u5171 ', '<div class="diff-line ctx">\u2026 total '],
-    ['<div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ', '<div class="mr-sub small">Related objects '],
-    ['<div class="ob-empty">scheme \u6682\u4E0D\u53EF\u8FBE\uFF08kinds \u805A\u5408\u7F3A\u5E2D\uFF09\u3002</div>', '<div class="ob-empty">scheme unreachable (kinds aggregate absent).</div>'],
-    ['<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08', '<div class="ob-empty">Event detail unreachable ('],
-    ['<div class="ob-empty">\u4ED3\u6811\u4E3A\u7A7A\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002</div>', '<div class="ob-empty">Repo tree is empty (honest empty state).</div>'],
-    ['<div class="ob-empty">\u4ED3\u6811\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="ob-empty">Repo tree unreadable ('],
-    ['<div class="ob-empty">\u65E0\u9002\u7528\u89C4\u5219\u2014\u2014\u6309 kind/scope/tag/\u6B63\u6587\u5F15\u7528\u56DB\u8DEF\u68C0\u67E5\u96F6\u547D\u4E2D\uFF08\u68C0\u67E5\u8303\u56F4=', '<div class="ob-empty">No applicable rules \u2014 zero hits across kind/scope/tag/content-reference checks (check scope ='],
-    ['<div class="ob-empty">\u6682\u65E0\u6807\u7B7E\u2014\u2014\u5BF9\u8C61\u6B63\u6587\u672A\u58F0\u660E spec.metadata.tags\uFF08\u58F0\u660E\u7ECF Apply \u843D\u5E93\u540E\u6B64\u5904\u73B0\u8BFB\uFF09\u3002</div>', '<div class="ob-empty">No tags \u2014 object content declares no spec.metadata.tags (appears here once applied via Apply).</div>'],
-    ['<div class="ob-empty">\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002</div>', '<div class="ob-empty">This document has no content.</div>'],
-    ['<div class="ob-empty">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="ob-empty">Content unreadable ('],
-    ['<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>', '<div class="ob-empty">This kind has no field declarations (no spec).</div>'],
-    ['<div class="ob-empty">\u8F6C\u5F55\u9762\u672A\u88C5\u914D\u2014\u2014\u5BBF\u4E3B\u6CE8\u5165 window.__CC.chatFaces \u540E\u73B0\u8BFB\uFF1B', '<div class="ob-empty">Transcript face not mounted \u2014 reads live once the host injects window.__CC.chatFaces;'],
-    ['<div class="ob-empty">\uFF08\u7A7A\u58F0\u660E\uFF09</div>', '<div class="ob-empty">(empty declaration)</div>'],
-    ['<div class="report-foot small faint">\u6570\u636E\u53EF\u4FE1\u5EA6\uFF1A', '<div class="report-foot small faint">Data confidence:'],
-    ['<div class="small faint" style="grid-column:1/-1">\u2026\u53E6\u6709 ', '<div class="small faint" style="grid-column:1/-1">\u2026and '],
-    ['<div class="small faint" style="margin-bottom:10px">\u5FEB\u7167\u672A\u643A\u5E26 attention \u805A\u5408\u2014\u2014\u672C\u5361\u7531\u4E8B\u4EF6\u5F52\u6863\u884C\uFF08ApprovalNeeded/Escalate\uFF09\u6295\u5F71\u751F\u6210\u3002</div>', '<div class="small faint" style="margin-bottom:10px">Snapshot carries no attention aggregate \u2014 this card is projected from archived event rows (ApprovalNeeded/Escalate).</div>'],
-    ['<div class="small faint" style="margin-bottom:10px">\u5FEB\u7167\u672A\u643A\u5E26 attention \u805A\u5408\uFF0C\u4E8B\u4EF6\u5F52\u6863\u4EA6\u65E0\u5BA1\u6279/\u5347\u7EA7\u884C\u2014\u2014\u672C\u8F6E\u62A5\u544A\u6309\u5728\u518C\u4E8B\u5B9E\u6536\u655B\u4E3A\u96F6\u547D\u4E2D\uFF08\u4E0D\u88C5\u5047\uFF09\u3002</div>', '<div class="small faint" style="margin-bottom:10px">No attention aggregate in snapshot and no approval/escalation rows in the archive \u2014 this report converges to zero hits on recorded facts (never faked).</div>'],
-    ['<div class="small faint" style="margin-bottom:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A', '<div class="small faint" style="margin-bottom:6px">Draft source fieldManager: '],
-    ['<div class="small faint" style="margin-top:6px">\u57FA\u51C6=r', '<div class="small faint" style="margin-top:6px">base=r'],
-    ['<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>', '<div class="small faint" style="margin-top:6px">No override (effective value = ContextPolicy default \u2014 PUT and the override row appears here).</div>'],
-    ['<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ', '<div class="small faint" style="margin-top:6px">Current override: revision '],
-    ['<div class="small faint" style="margin-top:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A', '<div class="small faint" style="margin-top:8px">Draft source fieldManager: '],
-    ['<div class="small faint" style="margin-top:8px">\u8F6C\u5F55\u4E0E\u7EC8\u7AEF\u9762\u7531\u5BBF\u4E3B faces \u6CE8\u5165\uFF08__CC.chatFaces / __CC.termFaces\uFF09\uFF1B', '<div class="small faint" style="margin-top:8px">Transcript & terminal faces are host-injected (__CC.chatFaces / __CC.termFaces); '],
-    ['<div class="small faint" style="padding:8px 14px">\u2026\u5171 ', '<div class="small faint" style="padding:8px 14px">\u2026total '],
-    ['<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u5951\u7EA6\u9762\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>', `<div class="small faint">Session not in the liveness ledger (no heartbeat row) \u2014 the contract face still shows/edits this session's context override (never pretends it is live).</div>`],
-    ['<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08', '<div class="small faint">Save failed ('],
-    ['<div class="small faint">\u5199\u9762\u5173\u65AD\uFF08--allow-apply \u672A\u5F00\u542F\uFF09\u2014\u2014\u7F16\u8F91\u5206\u53C9\u4E0D\u53EF\u7528\uFF08\u4E0E\u5FC3\u8DF3\u6CE8\u518C\u9762\u540C\u5F00\u5173\uFF0C\u4E0D\u5192\u5145\u53EF\u7F16\u8F91\uFF09\u3002</div>', '<div class="small faint">Writes closed (--allow-apply off) \u2014 fork editing unavailable (same switch as the heartbeat registration face; never pretends to be editable).</div>'],
-    ['<div class="small faint">\u5206\u7247\u7F13\u5B58\u9762\u7F3A\u5E2D\uFF08contextidx \u672A\u66B4\u9732 Shards\u2014\u2014\u8BDA\u5B9E\u964D\u7EA7\uFF0C\u4E0D\u5192\u5145\u7A7A\u7F13\u5B58\uFF09\u3002</div>', '<div class="small faint">Shard cache face absent (contextidx exposes no Shards \u2014 honest degradation, never pretends an empty cache).</div>'],
-    ['<div class="small faint">\u5951\u7EA6\u672A\u643A\u5E26\u6B65\u9AA4\u660E\u7EC6\u2014\u2014\u4E0D\u663E\u793A\u4E0D\u7F16\u9020\u3002</div>', '<div class="small faint">Contract carries no step details \u2014 hidden, never fabricated.</div>'],
-    ['<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="small faint">Approval records unreadable ('],
-    ['<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ', '<div class="small faint">Saved (revision '],
-    ['<div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u6682\u65E0\u5224\u5B9A\u884C\uFF08\u6279\u51C6/\u9A73\u56DE\u5373\u51B3\u5373\u89C1\uFF09\u3002</div>', '<div class="small faint">No decision rows yet (approvals/rejections appear immediately).</div>'],
-    ['<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>', '<div class="small faint">Reverted \u2014 pre-write snapshot restored.</div>'],
-    ['<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08', '<div class="small faint">Revert failed ('],
-    ['<div class="small faint">\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002</div>', '<div class="small faint">No active tag shards (tagSig not assembled \u2014 per-tagKey TagCtxShard projection after a fork edit).</div>'],
-    ['<div class="small faint">\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002</div>', '<div class="small faint">No index candidates (tagSig not assembled or zero index hits \u2014 never fabricates pack content).</div>'],
-    ['<div class="small faint">\u65E0\u8349\u7A3F\u2014\u2014\u7F16\u8F91\u300C\u539F\u6587\u300D\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08\u5199\u7A7F /v1/drafts\uFF0C\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\u3002</div>', '<div class="small faint">No draft \u2014 editing "Source" accumulates a draft (writes through /v1/drafts; never touches the official document, no events).</div>'],
-    ['<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08', '<div class="small faint">Content unreadable ('],
-    ['<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>', '<div class="small faint">Loading content\u2026</div>'],
-    ['<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>', '<div class="small faint">Evaluating rule hits\u2026</div>'],
-    ['<div class="small faint">\u8BE5 kind \u6682\u65E0\u5728\u518C\u5BF9\u8C61\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No registered objects for this kind (explicit empty state).</div>'],
-    ['<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No runs for this workflow (explicit empty state).</div>'],
-    ['<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>', '<div class="small faint">No archived event rows for this object (DocApplied/DocReview etc. \u2014 explicit empty state).</div>'],
-    ['<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>', '<div class="small faint">Shows the rendered result by default; click "Source" to view/edit the raw file. Editing accumulates a draft (POST /v1/drafts \u2014 never touches the official document, no events); the only Apply entry is the docked button in the right column.</div>'],
-    ['<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B', '<div class="w-foot small faint">Data plane: GET /v1/snapshot baseline + /v1/stream patch increments (auto-degrades to polling on WS loss); '],
-    ['<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>', '<div data-ap-ledger style="margin-top:20px"><div class="small faint">Loading decision ledger\u2026</div></div>'],
-    ['<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/', '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">Hydrating context\u2026 (GET /v1/sessions/'],
-    ['<div><h2 class="sec-title">\u8F6C\u5F55</h2><div class="card"><div class="card-b transcript">', '<div><h2 class="sec-title">Transcript</h2><div class="card"><div class="card-b transcript">'],
-    ['<h2 class="sec-title" style="margin-top:14px">\u4E0A\u4E0B\u6587</h2>', '<h2 class="sec-title" style="margin-top:14px">Context</h2>'],
-    ['<h2 class="sec-title">kinds \u6458\u8981</h2>', '<h2 class="sec-title">kinds summary</h2>'],
-    ['<h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>', '<h2 class="sec-title">Session list</h2>'],
-    ['<h2 class="sec-title">\u5165\u53E3</h2>', '<h2 class="sec-title">Entry points</h2>'],
-    ['<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">', '<h2 class="sec-title">Object</h2><div class="card">'],
-    ['<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>', '<h2 class="sec-title">Decision ledger</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>'],
-    ['<h2 class="sec-title">\u5F53\u524D\u5FAA\u73AF</h2>', '<h2 class="sec-title">Current loop</h2>'],
-    ['<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>', '<h2 class="sec-title">Inbox (awaiting you)</h2>'],
-    ['<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">', '<h2 class="sec-title">Recent related events</h2><div class="card">'],
-    ['<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">', '<h2 class="sec-title">Steps</h2><div class="card">'],
-    ['<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>', '<h2 class="sec-title">Run history</h2>'],
-    ['<h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>', '<h3 class="sec-title" style="margin:10px 0 6px">chunks (index TopK candidates)</h3>'],
-    ['<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>', '<h3 class="sec-title" style="margin:10px 0 6px">Related tag shards (TagCtxShard)</h3>'],
-    ['<input class="inp" data-ctx-note placeholder="\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09">', '<input class="inp" data-ctx-note placeholder="Fork note (optional)">'],
-    ['<input class="inp" data-ctx-tags placeholder="tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u2264', '<input class="inp" data-ctx-tags placeholder="tag set: tagType:tag, comma/space separated (per type \u2264'],
-    ['<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="', '<input class="inp" id="docs-q" placeholder="Filter by kind/scope/name\u2026" value="'],
-    ['<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="', '<input class="inp" id="ev-q" placeholder="Filter by type/object/summary\u2026" value="'],
-    ['<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">', '<section class="card obj-content"><div class="card-h"><span class="h-title">Content</span><span class="h-right">'],
-    ['<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">', '<section class="card"><div class="card-h"><span class="h-title">Context</span></div><div class="card-b">'],
-    ['<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">', '<section class="card"><div class="card-h"><span class="h-title">Actions</span></div><div class="card-b">'],
-    ['<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">', '<section class="card"><div class="card-h"><span class="h-title">Tags</span></div><div class="card-b" data-panel="tags">'],
-    ['<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">', '<section class="card"><div class="card-h"><span class="h-title">Applicable rules</span></div><div class="card-b" data-panel="rules">'],
-    ['<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>', '<span class="chip ok tiny" data-ed-draft-chip>No draft</span>'],
-    ['<span class="faint small">\u2026\u5171 ', '<span class="faint small">\u2026total '],
-    ['<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=', '<span class="faint small">not assembled (tagSigSource='],
-    ['<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>', '<span class="faint">Essential fields absent \u2014 never fabricated</span>'],
-    ['<span class="faint">\uFF08\u7A7A\uFF09</span>', '<span class="faint">(empty)</span>'],
-    ['<span class="mono faint small">\uFF08\u5D4C\u5957\u7ED3\u6784\u89C1\u300CYAML\u300D\uFF09</span>', '<span class="mono faint small">(nested structures in "YAML")</span>'],
-    ['<span class="small faint" data-conn-label>\u8FDE\u63A5\u4E2D\u2026</span></div></aside>', '<span class="small faint" data-conn-label>Connecting\u2026</span></div></aside>'],
-    ['<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08', '<span class="small faint">Loop status unreachable ('],
-    ['<span class="small faint">\u672C\u5468\u671F\u6682\u65E0\u5FAA\u73AF\u8BB0\u5F55\u3002\u70B9\u706B\u4E0B\u4E00\u8F6E\uFF1A<code class="mono">corectl loop</code></span></div></div></div>', '<span class="small faint">No loop records this cycle. Ignite the next round: <code class="mono">corectl loop</code></span></div></div></div>'],
-    ['<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>', '<span class="small faint">Evidence: \u2014</span>'],
-    ['<span><span class="logo-name">Core Console</span><br><span class="logo-sub">web \u91CD\u6784\u8D77\u70B9</span></span></div>', '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">web rebuild baseline</span></span></div>'],
-    ['<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"', '<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="Edit source \u2014 changes accumulate a draft"'],
-    ["<th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>", "<th>Time</th><th>Decision</th><th>Object</th><th>Decided by</th><th>rv</th></tr></thead><tbody>"],
-    [">\u64A4\u9500\u4E0A\u6B21</button>", ">Undo last</button>"],
-    ["Apply \u5931\u8D25\uFF08", "Apply failed ("],
-    ["Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=", "Apply succeeded \u2014 document persisted (rv="],
-    ["Apply \u843D\u5E93 ", "Apply persisted "],
-    ["Apply\uFF08\u65E0\u53D8\u66F4\uFF09", "Apply (no changes)"],
-    ["B vs \u843D\u5E93\u503C ", "B vs persisted "],
-    ["B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ", "B (read live, not cached) \xB7 "],
-    ["ConnectorOps / WorkService / Provider / Ref \u56DB\u65CF\uFF08\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\uFF09", "ConnectorOps / WorkService / Provider / Ref families (same rules for docs and resources)"],
-    ["attention \u805A\u5408\u96F6\u547D\u4E2D\uFF08\u7A7A\u6001\u663E\u5F0F\u2014\u2014\u4E0D\u5192\u5145\u6709\u98CE\u9669\uFF09\u3002", "attention aggregate zero hits (explicit empty state \u2014 never fakes risk)."],
-    ["dry-run \u9884\u68C0\u672A\u8FC7\uFF08", "dry-run precheck failed ("],
-    ["kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF09", "kinds \u2192 scope \u2192 objects (snapshot aggregate projection; object names click into the workbench)"],
-    ["severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F", "severity-sorted \xB7 clickable evidence \xB7 explicit data confidence"],
-    ["takeBudget \u987B\u4E3A ", "takeBudget must be "],
-    ["workflow \u951A ", "workflow anchor "],
-    ["\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09", " \u2014 contextidx not assembled (defensive face)"],
-    ["\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\u4F1A\u8BDD\u3002</div></div></div>", " \u2014 never pretends to be a registered session.</div></div></div>"],
-    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u7A3F\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5BF9\u9F50\u6700\u65B0 rv \u540E\u91CD\u8BD5", " \u2014 optimistic-lock conflict: draft preserved; align to the latest rv and retry"],
-    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09", " \u2014 optimistic-lock conflict: reopen the panel to align revision and retry (draft not overwritten, no silent rebase)"],
-    ["\u2014\u2014\u843D\u5E93\u5C06\u88AB\u62D2\uFF09", " \u2014 persistence would be rejected)"],
-    ["\u2190 \u4EFB\u52A1\u4E2D\u5FC3", "\u2190 Task Center"],
-    ["\u2190 \u4F1A\u8BDD", "\u2190 Sessions"],
-    ["\u2190 \u5DE5\u4F5C\u6D41", "\u2190 Workflows"],
-    ["\u25CF \u672A Apply\uFF08\u8349\u7A3F ", "\u25CF Not applied (draft "],
-    ["\u300D\u540C\u7EC4", '" group'],
-    ["\u4E00\u822C", "medium"],
-    ["\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002", "Never faked \u2014 scope word form may be an instance bucket (visible in the tree)."],
-    ["\u4E25\u91CD", "critical"],
-    ["\u4E50\u89C2\u9501\u5BF9\u9F50 r", "optimistic-lock align r"],
-    ["\u4E50\u89C2\u9501\u6F02\u79FB\uFF08\u73B0 r", "optimistic-lock drift (now r"],
-    ["\u4E8B\u4EF6", "Events"],
-    ["\u4EFB\u52A1\u4E0D\u5728\u518C", "Task not registered"],
-    ["\u4F1A\u8BDD ", "Session "],
-    ["\u4F1A\u8BDD\u539F\u6587\u4E0D\u5165\u516C\u5171\u5E93\uFF08intake \u7559\u75D5\u9762\u4E3A\u51C6\uFF09\u3002</div>", "Raw session text stays out of the public library (intake ledger face is authoritative).</div>"],
-    ["\u4F1A\u8BDD\u8BE6\u60C5", "Session detail"],
-    ["\u4F1A\u8BDD\u8F6C\u5F55", "Session transcript"],
-    ["\u4F5C\u7528\u57DF", "Scope"],
-    ["\u4F9D\u8D56", "Depends on"],
-    ["\u4F9D\u8D56 ", "Depends on "],
-    ["\u516D\u7247\u56FA\u5B9A\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme", "Six fixed panels: tags/rules/context/actions/content/scheme"],
-    ["\u5171 ", "total "],
-    ["\u5173\u8054\u4F1A\u8BDD", "Related sessions"],
-    ["\u5173\u8054\u8FD0\u884C", "Related runs"],
-    ["\u5185\u7F6E\u670D\u52A1", "Built-in services"],
-    ["\u51ED\u636E\u6E90", "Credential source"],
-    ["\u539F\u6587", "Source"],
-    ["\u539F\u6587\uFF08HEAD\uFF09", "Source (HEAD)"],
-    ["\u53BB\u5904\u7406", "Handle"],
-    ["\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "Go to Object Workbench"],
-    ["\u53D7\u963B", "Blocked"],
-    ["\u53EF\u64A4\u9500", "revertible"],
-    ["\u540C\u540D\u5BF9\u8C61\u8DE8 kind/scope \u4E0D\u552F\u4E00\u2014\u2014\u8BF7\u4ECE\u7CFB\u7EDF\u6811\u8FDB\u5165\u3002", "Object name is ambiguous across kinds/scopes \u2014 enter via the System Tree."],
-    ["\u540D\u79F0", "Name"],
-    ["\u56DE Welcome", "Back to Welcome"],
-    ["\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "Open in Docs"],
-    ["\u57FA\u51C6=r", "base=r"],
-    ["\u57FA\u51C6=r?", "base=r?"],
-    ["\u57FA\u7840\u6C47\u603B", "Summary"],
-    ["\u5916\u90E8\u4F9D\u8D56", "External dependencies"],
-    ["\u5931\u8D25", "failed"],
-    ["\u5BF9\u8BDD\u5165\u53E3\uFF08Agent\uFF09", "Chat entries (Agent)"],
-    ["\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09", "Object Workbench (six panels: tags/rules/context/actions/content/scheme)"],
-    ["\u5BF9\u8C61\u6B63\u6587\u5F15\u7528 ", "Object content reference "],
-    ["\u5BF9\u8C61\u6B63\u6587\u6309 resourceVersion \u7F13\u5B58\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\uFF09\u3002</div>", "Object content cached by resourceVersion (no re-read while rv unchanged).</div>"],
-    ["\u5BF9\u8C61\u89E3\u6790\u6B67\u4E49\u6216\u7F3A\u5E2D", "Object resolution ambiguous or absent"],
-    ["\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C", "Workflow not registered"],
-    ["\u5DE5\u4F5C\u6D41\u8BE6\u60C5", "Workflow detail"],
-    ["\u5DE6\u4FA7\u9009\u62E9\u4ED3\u6587\u4EF6\uFF08\u9ED8\u8BA4\u9996\u4ED3\u9996\u6587\u4EF6\uFF09\u3002", "Pick a repo file on the left (defaults to first repo, first file)."],
-    ["\u5DF2\u5165\u5FEB\u7167", "in snapshot"],
-    ["\u5DF2\u53D6\u6D88", "canceled"],
-    ["\u5DF2\u5B8C\u6210", "done"],
-    ["\u5DF2\u5E94\u7528\u7684\u7248\u672C", "Applied version"],
-    ["\u5DF2\u6302\u8F7D\u8FDE\u63A5", "Mounted connectors"],
-    ["\u5F53\u524D\u4F1A\u8BDD", "Current session"],
-    ["\u5F53\u524D\u5FAA\u73AF", "Current loop"],
-    ["\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF", "No loop in progress"],
-    ["\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002", "Filter has zero hits \u2014 relax the conditions and retry."],
-    ["\u5F85\u542F\u52A8", "pending start"],
-    ["\u5F85\u5B9A", "pending"],
-    ["\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002", "Pending = draft cache (DocReview same source) \u222A ApprovalNeeded archive rows (approved ones drop out). Approve/reject are human clicks; diff = draft vs live document, read fresh."],
-    ["\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09", "Pending is empty (both draft cache and ApprovalNeeded archive are empty)"],
-    ["\u5FAA\u73AF\u5524\u9192 #", "Loop wake #"],
-    ["\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026", "Loading loop status\u2026"],
-    ["\u5FEB\u7167", "Snapshot"],
-    ["\u5FEB\u7167 events \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot events aggregate is empty (never faked)."],
-    ["\u5FEB\u7167 objects \u805A\u5408\u4E3A\u7A7A\u6216\u8BE5 kind \u65E0\u5BF9\u8C61\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot objects aggregate empty or no objects for this kind (never faked)."],
-    ["\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Snapshot proposals aggregate is empty (explicit empty state)."],
-    ["\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002", "Snapshot runs aggregate has no such run (may have left the window)."],
-    ["\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot workflows aggregate is empty (never faked)."],
-    ["\u5FEB\u7167\u4EFB\u52A1\u6E05\u5355\u65E0\u6B64 id\uFF08\u53EF\u80FD\u5DF2\u5B8C\u6210\u51FA\u7A97\u6216 id \u6709\u8BEF\uFF09\u3002", "No such id in the snapshot task list (may be done and out of window, or a wrong id)."],
-    ["\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "Snapshot carries no object enumeration"],
-    ["\u5FEB\u7167\u805A\u5408\u65E0\u6B64 workflow\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u6709\u8BEF\uFF09\u3002", "Snapshot aggregate has no such workflow (may be offline or a wrong name)."],
-    ["\u6253\u5F00\u7CFB\u7EDF\u6811", "Open System Tree"],
-    ["\u6279\u51C6\uFF08= Apply\uFF09", "Approve (= Apply)"],
-    ["\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09", "Batch approval awaits a backend word form \u2014 approve one by one (honest note)"],
-    ["\u6392\u961F\u4E2D", "queued"],
-    ["\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09", "Proposal face (list + live essentials) \u2014 approve/reject go through Approvals and Apply (the LLM has no Apply right)"],
-    ["\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F", "Revert the latest context fork (restore the server-side pre-write snapshot)?"],
-    ["\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\u2014\u2014\u540C\u4E00\u6E32\u67D3\u6838\uFF1B\u25CF=\u6709\u672A Apply \u8349\u7A3F", "Docs and resources share the rules \u2014 one render core; \u25CF = unapplied draft exists"],
-    ["\u6587\u6863\u7F16\u8F91\u5668", "Document editor"],
-    ["\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09", "Document absent (registered draft base \u2014 Apply = create path)"],
-    ["\u65E0\u7A3F", "no draft"],
-    ["\u65E0\u8349\u7A3F", "No draft"],
-    ["\u65F6\u95F4\u672A\u77E5", "time unknown"],
-    ["\u667A\u80FD\u5F52\u7EB3", "Smart summary"],
-    ["\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41", "No registered workflows"],
-    ["\u6682\u65E0\u5F85\u529E", "No to-dos"],
-    ["\u6682\u65E0\u63D0\u6848", "No proposals"],
-    ["\u6700\u8FD1\u52A8\u4F5C", "Last action"],
-    ["\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014", "Last action: \u2014"],
-    ["\u6700\u8FD1\u9519\u8BEF", "Last error"],
-    ["\u670D\u52A1\u5B9E\u4F8B", "Service instances"],
-    ["\u672A\u5206\u7EA7", "unranked"],
-    ["\u672A\u5206\u7EC4", "Ungrouped"],
-    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"],
-    ["\u672A\u547D\u540D\u4EFB\u52A1", "Unnamed task"],
-    ["\u672A\u547D\u540D\u5173\u6CE8\u9879", "Unnamed attention item"],
-    ["\u672A\u547D\u540D\u63D0\u6848", "Unnamed proposal"],
-    ["\u672A\u6CE8\u5165=\u6E05\u5355\u964D\u7EA7\u5FEB\u7167\u6295\u5F71\uFF0C\u8F6C\u5F55\u9762\u663E\u5F0F\u7F3A\u5E2D\u8BCD\u5F62\u3002</div>", "Not injected = list degrades to snapshot projection; the transcript face is explicitly absent.</div>"],
-    ["\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95", "Unregistered declared kind \u2014 falls back to full enumeration"],
-    ["\u672A\u6CE8\u660E\u751F\u6210\u65B9\u5F0F", "generation method unspecified"],
-    ["\u672A\u77E5", "unknown"],
-    ["\u672A\u77E5\u8584\u5C4F", "Unknown thin screen"],
-    ["\u672A\u9009\u6863", "No file selected"],
-    ["\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879", "No attention items in this window"],
-    ["\u67E5\u770B ", "View "],
-    ["\u6807\u7B7E\u300C", 'Tag "'],
-    ["\u6807\u9898", "Title"],
-    ["\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08", "Content unreachable ("],
-    ["\u6CE8\u6C34\u4E2D\u2026", "Hydrating\u2026"],
-    ["\u7248\u672C\u53F7", "Version"],
-    ["\u72B6\u6001", "Status"],
-    ["\u73B0\u8BFB\u4E2D\u2026", "Loading\u2026"],
-    ["\u767D\u540D\u5355\u4ED3\u6811\uFF08GET /v1/design-docs\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF09", "Whitelisted repo tree (GET /v1/design-docs \u2014 HEAD authoritative, zero cache)"],
-    ["\u76EE\u6807", "Target"],
-    ["\u76EE\u6807\u6587\u6863", "Target document"],
-    ["\u76F8\u5173\u6587\u6863", "Related documents"],
-    ["\u770B root \u4F1A\u8BDD", "View root session"],
-    ["\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09", "Confirm approve (Apply)"],
-    ["\u7A3F: ", "Draft: "],
-    ["\u7A97\u53E3\u5185\u65E0\u4E8B\u4EF6", "No events in window"],
-    ["\u7A97\u53E3\u5185\u65E0\u6587\u6863", "No documents in window"],
-    ["\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002", "Waiting for the first snapshot aggregate."],
-    ["\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u6216 patch \u589E\u91CF", "Waiting for first snapshot aggregate or patch increment"],
-    ["\u7ED3\u675F\u4E8E", "ended at"],
-    ["\u7F51\u7EDC", "Network"],
-    ["\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5", "Aggregate face (snapshot workflows/runs); runs have their own detail page"],
-    ["\u8349\u7A3F\u222A\u5BA1\u6279\u4E8B\u4EF6\u2014\u2014\u70B9\u51FB\u5904\u7406", "Drafts \u222A approval events \u2014 click to handle"],
-    ["\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25\uFF08", "Draft save failed ("],
-    ["\u843D\u5E93\u4E2D\u2026", "Persisting\u2026"],
-    ["\u89C4\u5219\u539F\u6587\u63D0\u53CA ", "Rule source mentions "],
-    ["\u89C4\u5219\u6587\u6863\u65CF\u7D22\u5F15\u6682\u4E0D\u53EF\u8FBE\u2014\u2014\u547D\u4E2D\u5224\u5B9A\u6682\u7F3A\uFF08\u4E0D\u5192\u5145\u65E0\u9002\u7528\uFF09\u3002", "Rule doc family index unreachable \u2014 hit evaluation unavailable (never pretends none apply)."],
-    ["\u89E6\u53D1\u4E8B\u4EF6", "Trigger event"],
-    ["\u8BC1\u636E", "Evidence"],
-    ["\u8BC1\u636E\u2014\u2014\u70B9\u51FB\u8FDB\u5165", "Evidence \u2014 click to open"],
-    ["\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61", "No registered objects for this scope"],
-    ["\u8BF4\u660E\u6587\u6863", "Guide"],
-    ["\u8D1F\u8D23 ", "Owner "],
-    ["\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Filter zero hits or snapshot empty (explicit empty state)."],
-    ["\u8FD0\u884C\u72B6\u6001", "Run status"],
-    ["\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C", "Run record not registered"],
-    ["\u8FD0\u884C\u8BE6\u60C5", "Run detail"],
-    ["\u91CD\u8981", "important"],
-    ["\u9519\u8BEF", "error"],
-    ["\u9700\u6C42\u63D0\u6848", "Requirement proposal"],
-    ["\u9884\u68C0\u4E2D\u2026", "Prechecking\u2026"],
-    ["\u9A8C\u8BC1\u4E2D", "verifying"],
-    ["\uFF08faces \u672A\u6CE8\u5165\u4E14\u5FEB\u7167 sessions \u7F3A\u5E2D\uFF09", "(faces not injected and snapshot sessions absent)"],
-    ["\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>", "(git authoritative, zero cache) \xB7 draft/Apply path goes through the editor screen (doc/\u2026).</div>"],
-    ["\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>", "(content not re-read while rv unchanged \u2014 applies to the degraded polling path too)</span>"],
-    ["\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09", "(optimistic-lock base)"],
-    ["\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F ", "(optimistic-lock expected \u2014 409 never silently rebases) \xB7 draft "],
-    ["\uFF08\u5BF9\u8BDD\u662F\u4E00\u7B49\u9762\u2014\u2014\u540C\u4E00 dsh \u4F1A\u8BDD\u673A\u5236\u6295\u5F71\uFF09", "(chat is a first-class face \u2014 projection of the same dsh session mechanism)"],
-    ["\uFF08\u5BF9\u8C61\u4E0D\u5728\u518C\u2014\u2014apply \u5C06\u521B\u5EFA\u901A\u8DEF\uFF09", "(object not registered \u2014 apply is the create path)"],
-    ["\uFF08\u65E0\u5DEE\u5F02\uFF09", "(no diff)"],
-    ["\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A", "(face current value unreadable: "],
-    ["\uFF09\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF0C\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>", ") \u2014 HEAD authoritative, zero cache; re-enter to read fresh.</div>"],
-    ["\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>", ") \u2014 never pretends there is no loop.</span></div></div></div>"],
-    ["\uFF09\u2014\u2014\u5224\u5B9A\u7559\u75D5\u6682\u53EA=apply_log\u3002</div>", ") \u2014 decision trail is currently apply_log only.</div>"],
-    ["\uFF09\u2014\u2014\u5DE5\u4F5C\u526F\u672C\u4ECD\u5728\u5185\u5B58\uFF0C\u9000\u51FA\u524D\u4E0D\u4E22", ") \u2014 the working copy stays in memory, not lost until you leave"],
-    ["\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB", ") \u2014 re-enter after recovery to read fresh"],
-    ["\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>", ") \u2014 re-enter after recovery to read fresh.</div>"],
-    ["\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>", ") \u2014 empty stack cannot revert (never pretends a successful revert).</div>"],
-    ["\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002", ") \u2014 draft-preserved semantics, not persisted."],
-    ["\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>", ") \u2014 re-enter to restore.</div>"],
-    ["\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002", ") \u2014 zero side effects, draft preserved."],
-    ["\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>", "). Re-enter after recovery to read fresh.</div></div></div>"],
-    ["\uFF09\uFF1F\u4E50\u89C2\u9501\u57FA\u51C6 r", ")? optimistic-lock base r"],
-    ["\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>", ": none (explicit empty state).</div>"],
-    ["\uFF1B\u8D85\u9650 tag \u6536\u655B ", "; over-limit tags converge "],
-    ["\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=", "? dry-run passed (rv="]
-  ]);
-  var DICTS = { en };
-  var subs = /* @__PURE__ */ new Set();
-  function t(s) {
-    if (locale === "zh") return String(s);
-    const d = DICTS[locale];
-    return d && d.get(String(s)) || String(s);
-  }
-  function getLocale() {
-    return locale;
-  }
-  function setLocale(l) {
-    if (l !== "zh" && !DICTS[l]) return;
-    locale = l;
-    try {
-      if (typeof localStorage !== "undefined") localStorage.setItem(KEY, l);
-    } catch {
-    }
-    subs.forEach((f) => {
-      try {
-        f(l);
-      } catch {
-      }
-    });
-  }
-  function onLocaleChange(f) {
-    subs.add(f);
-    return () => subs.delete(f);
-  }
-
   // src/render/md.js
   marked.setOptions({ gfm: true, breaks: true, async: false });
   var PURIFY_CFG = {
@@ -9430,69 +9493,6 @@ ${text2}</tr>
   }
   function rawDisclosure(title, content) {
     return '<details class="md-raw"><summary>' + esc(title || t("\u539F\u6587")) + '</summary><pre class="mono md-raw-pre">' + esc(content == null ? "" : content) + "</pre></details>";
-  }
-
-  // src/render/refs.js
-  var REF_KINDS = "Rule|Goal|Desc|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event";
-  function refRoute(kind, scope, name) {
-    const k = encodeURIComponent(kind);
-    const s = encodeURIComponent(scope || "global");
-    const n = encodeURIComponent(name);
-    return "obj/" + k + "/" + s + "/" + n;
-  }
-  function linkifyRefs(text2, names) {
-    const s = String(text2 || "");
-    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
-    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
-    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
-    let html3 = "";
-    let last = 0;
-    const spans = [];
-    let m;
-    while ((m = re.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
-    }
-    while ((m = connRe.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
-    }
-    spans.sort((a, b) => a.i - b.i);
-    for (const sp of spans) {
-      if (sp.i < last) continue;
-      html3 += esc(s.slice(last, sp.i));
-      if (sp.conn) {
-        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
-      } else {
-        const route = refRoute(sp.kind, sp.scope, sp.name);
-        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
-      }
-      last = sp.i + sp.len;
-    }
-    html3 += esc(s.slice(last));
-    if (nameSet && nameSet.size) {
-      for (const nm of nameSet) {
-        const needle = esc(nm);
-        if (!needle || !html3.includes(needle)) continue;
-        html3 = html3.split(needle).join(
-          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
-        );
-      }
-    }
-    return html3;
-  }
-  function expandBlock(innerHtml, label, opts) {
-    const o = opts || {};
-    return '<details class="ex-block' + (o.cls ? " " + esc(o.cls) : "") + (o.open ? " open" : "") + '"' + (o.open ? " open" : "") + '><summary class="ex-sum"><span class="ex-chev">\u25B8</span>' + esc(label || t("\u5C55\u5F00")) + '</summary><div class="ex-body">' + (innerHtml || "") + "</div></details>";
-  }
-  function renderMessage(msg, names) {
-    const m = msg || {};
-    const role = String(m.role || "assistant");
-    const isUser = role === "user";
-    const text2 = String(m.text || "");
-    const html3 = '<div class="msg ' + (isUser ? "msg-user" : "msg-ai") + '"><div class="msg-avatar">' + (isUser ? "\u{1F464}" : "\u25C6") + '</div><div class="msg-body"><div class="msg-head"><b class="msg-name">' + esc(isUser ? t("\u6211") : String(m.name || "rootAgent")) + "</b>" + (m.seq != null ? '<span class="small faint mono">seq ' + esc(String(m.seq)) + "</span>" : "") + (m.ts ? '<span class="small faint">' + esc(m.ts) + "</span>" : "") + "</div>" + (m.kind === "conclusion" ? '<div class="concl-card"><div class="concl-t">' + esc(t("\u751F\u6210\u7ED3\u8BBA")) + '</div><div class="concl-text">' + linkifyRefs(text2, names) + "</div>" + (Array.isArray(m.refs) && m.refs.length ? '<div class="concl-refs">' + m.refs.map((r) => {
-      const parts = String(r).split("/");
-      return parts.length >= 3 ? '<span class="ref-chip" data-doc-full="' + esc(r) + '">' + esc(t("\u5B8C\u6574\u6587\u6863\u6A21\u5F0F\uFF1A")) + esc(parts[2]) + "</span>" : "";
-    }).join("") : "") + '<div class="concl-acts"><button class="btn sm" data-doc-full="' + esc(String(m.refs && m.refs[0] || "")) + '">' + esc(t("\u5B8C\u6574\u6587\u6863\u6A21\u5F0F")) + '</button><button class="btn sm" data-go="chat/root-agent">' + esc(t("\u5199\u5165\u8349\u7A3F")) + "</button></div></div>" : '<div class="msg-text">' + linkifyRefs(text2, names) + "</div>") + (m.thinking ? expandBlock('<div class="msg-text faint">' + linkifyRefs(m.thinking, names) + "</div>", t("\u601D\u8003\u8FC7\u7A0B")) : "") + (m.tool ? expandBlock('<div class="msg-text mono faint">' + esc(String(m.tool)) + "</div>", t("\u5DE5\u5177\u8FC7\u7A0B")) : "") + "</div></div>";
-    return html3;
   }
 
   // src/screens/sessionctx.js
@@ -9743,6 +9743,7 @@ ${text2}</tr>
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   var THREAD = { sessionId: "", msgs: [] };
+  var LAST = { route: "", paramKey: "", locale: "" };
   function sessionOptions(ctx2, cur) {
     const rows = (ctx2.store.sessions() || []).map((s) => String(s && (s.id || s.sessionId) || "")).filter(Boolean);
     const seen = new Set(rows);
@@ -9839,52 +9840,133 @@ ${text2}</tr>
     box.scrollTop = box.scrollHeight;
     bindDocFull(box, ctx2);
   }
-  function dialogScreen(el, ctx2, sessionId) {
-    const f = faces();
-    const native = expandBlock(
-      '<iframe class="host-embed" src="' + esc((function() {
-        try {
-          return location.origin + "/?embedded=1";
-        } catch {
-          return "/";
-        }
-      })()) + '" referrerpolicy="same-origin"></iframe>',
-      t("\u5BBF\u4E3B\u539F\u751F\u754C\u9762\uFF08\u6743\u5A01\u8F68\u8FF9\uFF09"),
-      { cls: "host-ex" }
-    );
-    el.innerHTML = '<div class="view-inner">' + screenHead(
-      t("\u5BF9\u8BDD"),
-      t("rootAgent\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\uFF1Bref \u53EF\u70B9\uFF0C\u7ED3\u8BBA\u53EF\u5168\u6587\u6863\u89C2\u770B"),
-      chipGo(t("\u65B0\u7A97\u53E3\u539F\u751F\u754C\u9762"), "", "mute", false)
-    ) + composerHtml(ctx2, sessionId) + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u5BF9\u8BDD\u7EBF\u7A0B")) + "</h2><div data-thread>" + threadHtml(THREAD.msgs, null) + '</div><div class="small faint" style="margin-top:8px">' + esc(t("\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002")) + "</div>" + native;
-    if (sessionId) {
-      const sess = (ctx2.store.sessions() || []).find((s) => String(s && (s.id || s.sessionId) || "") === sessionId);
-      if (sess || true) {
-        el.insertAdjacentHTML("beforeend", "");
-      }
-      el.insertAdjacentHTML(
-        "beforeend",
-        '<div class="view-inner"><h2 class="sec-title">' + esc(t("\u4E0A\u4E0B\u6587")) + '</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></div></div>"
-      );
-      mountSessionCtx(el, ctx2, sessionId);
+  function nativeSrc(target) {
+    let origin = "/";
+    try {
+      origin = location.origin + "/";
+    } catch {
     }
-    const pop = el.querySelector('[data-go=""]');
-    if (pop) {
-      pop.removeAttribute("data-go");
-      pop.addEventListener("click", () => {
-        try {
-          window.open(location.origin + "/?embedded=1", "_blank");
-        } catch {
+    return origin + "?embedded=1#/chat/" + (target ? encodeURIComponent(String(target)) : "");
+  }
+  function sessRowsHtml(ctx2, cur) {
+    const rows = (ctx2.store.sessions() || []).map((s) => {
+      const id = String(s && (s.id || s.sessionId) || "");
+      if (!id) return "";
+      const state = String(s && s.state || "");
+      const beat = String(s && s.lastBeat || "");
+      const sel = id === cur ? ' style="outline:1px solid var(--accent);background:var(--panel-2);border-radius:8px"' : "";
+      return '<div class="dash-row" data-sess-go="' + esc(id) + '" role="link"' + sel + ' title="' + esc(trunc(String(s && s.lastAction || ""), 120)) + '"><div class="dr-main"><b class="mono">' + esc(trunc(id, 24)) + '</b></div><div class="dr-side">' + (state ? chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : "") + (beat ? '<span class="small faint">' + esc(relAge(beat) || "") + "</span>" : "") + "</div></div>";
+    }).filter(Boolean).join("");
+    return rows || '<div class="small faint" style="padding:4px 6px">' + esc(t("\u5FEB\u7167\u65E0\u6D3B\u6027\u4F1A\u8BDD\u884C\u2014\u2014\u53EF\u5728\u53F3\u4FA7\u539F\u751F\u9762\u76F4\u63A5\u5BF9\u8BDD\uFF08\u65B0\u4F1A\u8BDD\u7531\u5BBF\u4E3B\u539F\u751F\u5EFA\u6863\uFF09")) + "</div>";
+  }
+  function agentRowsHtml(ctx2) {
+    const rows = (ctx2.store.objects() || []).filter((o) => o && o.kind === "Agent" && o.name).map((o) => '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(String(o.name))) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(String(o.name), 24)) + '</b></div><div class="dr-side"><span class="small faint">' + esc(String(o.scope || "global")) + "</span></div></div>").join("");
+    return rows || '<div class="small faint" style="padding:4px 6px">' + esc(t("\u5FEB\u7167\u6682\u65E0 Agent \u5BF9\u8C61\u679A\u4E3E")) + "</div>";
+  }
+  function ctxBarHtml(sessionId) {
+    if (!sessionId) return "";
+    return '<details class="ex-block" style="margin:0 0 10px;background:var(--panel-2)"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></div></div></details>";
+  }
+  function faceHtml(target) {
+    return '<div style="position:relative"><div data-native-ph style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:12px;background:var(--panel-2);z-index:2;pointer-events:none"><div class="small faint">' + esc(t("\u539F\u751F\u4F1A\u8BDD\u9762\u88C5\u8F7D\u4E2D\u2026")) + '</div></div><iframe data-native-iframe data-target="' + esc(target) + '" title="' + esc(t("\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\u9762\uFF08\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF09")) + '" src="' + esc(nativeSrc(target)) + '" referrerpolicy="same-origin" style="width:100%;height:calc(100vh - 96px);border:1px solid var(--border);border-radius:12px;background:var(--panel-2);display:block"></iframe></div>';
+  }
+  function bindFace(el) {
+    const ifr = el.querySelector("[data-native-iframe]");
+    const ph = el.querySelector("[data-native-ph]");
+    if (ifr && ph) ifr.addEventListener("load", () => {
+      ph.style.display = "none";
+    });
+  }
+  function swapFace(el, target) {
+    const ifr = el.querySelector("[data-native-iframe]");
+    if (!ifr) return;
+    const src = nativeSrc(target);
+    if (ifr.getAttribute("src") !== src) {
+      ifr.setAttribute("src", src);
+      const ph = el.querySelector("[data-native-ph]");
+      if (ph) ph.style.display = "";
+    }
+    ifr.setAttribute("data-target", String(target));
+  }
+  function bindSessRows(el, ctx2) {
+    el.querySelectorAll("[data-sess-go]").forEach((row) => {
+      row.addEventListener("click", () => {
+        const id = String(row.getAttribute("data-sess-go") || "");
+        if (!id) return;
+        THREAD.sessionId = id;
+        swapFace(el, id);
+        const listBox = el.querySelector("[data-sess-list]");
+        if (listBox) {
+          listBox.innerHTML = sessRowsHtml(ctx2, id);
+          bindSessRows(el, ctx2);
         }
+        ensureCtxBar(el, ctx2, id);
       });
-    }
-    bindComposer(el, ctx2, el);
-    bindDocFull(el, ctx2);
-    paintThread(el, ctx2);
+    });
+  }
+  function ensureCtxBar(el, ctx2, id) {
+    const holder = el.querySelector("[data-ctx-holder]");
+    if (!holder) return;
+    if (!holder.querySelector("[data-ctx-panel]")) holder.innerHTML = ctxBarHtml(id);
+    mountSessionCtx(el, ctx2, id);
+  }
+  function bindPop(el, target) {
+    const pop = el.querySelector("[data-native-pop]");
+    if (pop) pop.addEventListener("click", () => {
+      try {
+        window.open(nativeSrc(target), "_blank");
+      } catch {
+      }
+    });
+  }
+  function dialogScreen(el, ctx2, target) {
+    el.innerHTML = '<div class="view-inner">' + screenHead(
+      t("\u4F1A\u8BDD"),
+      t("\u539F\u751F DeepSeek \u4F1A\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u5DE6\u4FA7\u5207\u6362\u4F1A\u8BDD"),
+      chip(t("\u65B0\u7A97\u53E3\u539F\u751F\u754C\u9762"), "mute", false, 'data-native-pop="1" style="cursor:pointer"')
+    ) + '<div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start"><aside class="card" style="padding:8px;max-height:calc(100vh - 96px);overflow:auto"><div class="small faint" style="padding:2px 6px 8px;font-weight:700">' + esc(t("\u4F1A\u8BDD\uFF08\u6D3B\u6027\u8D26\uFF09")) + "</div><div data-sess-list>" + sessRowsHtml(ctx2, target) + '</div><div class="small faint" style="padding:12px 6px 8px;font-weight:700">' + esc(t("Agent")) + "</div><div data-agent-list>" + agentRowsHtml(ctx2) + '</div></aside><section style="min-width:0"><div data-ctx-holder>' + ctxBarHtml(THREAD.sessionId) + "</div>" + faceHtml(target) + "</section></div></div>";
+    bindFace(el);
+    bindSessRows(el, ctx2);
+    bindPop(el, target);
+    if (THREAD.sessionId) mountSessionCtx(el, ctx2, THREAD.sessionId);
   }
   function render(el, ctx2) {
     const id = ctx2.params && ctx2.params.id;
-    dialogScreen(el, ctx2, id ? String(id) : THREAD.sessionId || "");
+    const agent = ctx2.params && ctx2.params.agent;
+    const route = String(ctx2.route || "");
+    const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
+    const locale2 = getLocale();
+    const fresh = LAST.route !== route || LAST.paramKey !== paramKey || LAST.locale !== locale2;
+    LAST.route = route;
+    LAST.paramKey = paramKey;
+    LAST.locale = locale2;
+    if (fresh) {
+      if (id != null && id !== "") {
+        THREAD.sessionId = String(id);
+      } else if (agent != null && agent !== "") {
+        THREAD.sessionId = sessKnown(ctx2, String(agent)) ? String(agent) : "";
+      }
+    } else if (!THREAD.sessionId && agent != null && agent !== "" && sessKnown(ctx2, String(agent))) {
+      THREAD.sessionId = String(agent);
+      dialogScreen(el, ctx2, THREAD.sessionId);
+      return;
+    }
+    const target = THREAD.sessionId || String(agent || id || "");
+    const face = el.querySelector("[data-native-iframe]");
+    if (!fresh && face && face.getAttribute("data-target") === target) {
+      const sess = el.querySelector("[data-sess-list]");
+      if (sess) {
+        sess.innerHTML = sessRowsHtml(ctx2, target);
+        bindSessRows(el, ctx2);
+      }
+      const ag = el.querySelector("[data-agent-list]");
+      if (ag) ag.innerHTML = agentRowsHtml(ctx2);
+      return;
+    }
+    dialogScreen(el, ctx2, target);
+  }
+  function sessKnown(ctx2, candidate) {
+    return (ctx2.store.sessions() || []).some((s) => String(s && (s.id || s.sessionId) || "") === candidate);
   }
 
   // src/screens/welcome.js

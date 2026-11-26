@@ -1,24 +1,27 @@
-/* chat.js —— rootAgent 对话屏（2026-11-26 用户裁决·二次修正版）：
- *   入口永远是一个对话框（可选 session）；对话框目标=找文档、更新文档。
- *   交互=AI 主动提示（涉及文档 ref 可点 / 生成结论卡 / 完整文档模式观看）；
- *   消息与思考过程可 expand；数据通路=__CC.chatFaces.send（plugin chat-send 桥——
- *   sessionController.prompt queue，selfheal 同款受信通路）；无 reply 捕获=诚实词形
- *   （结论经原生界面返回，agent 自己 apply——文档状态徽与节点图跟进）。
- * 完整文档模式：data-doc-full="Kind/scope/name" → 拉取对象正文 → 渲染 md 弹层+写入草稿。 */
+/* chat.js —— 会话屏（§19.6 用户裁决版：会话屏=原生 DeepSeek 会话主面）：
+ * 布局=两列——左列（~300px）会话/Agent 列表（store 快照注水+点选）；右列=宿主原生会话主面
+ * 全高 iframe 直开 dsh 同域词形 /?embedded=1#/chat/<sessionId|agentName>（真实转录+真实
+ * composer+工具过程+任务条+模型切换全在原生面——权威轨迹=原生面）。
+ * 自绘 composer 与本地线程自会话屏退场；composerHtml/bindComposer 导出保留（总览大屏在用）。
+ * 重绘纪律：store patch 触发的整屏重绘=局部换左列（iframe 不动——滚动与输入态保真）；
+ * 会话点选=就地换 iframe src（不重绘、不改 hash）。ContextPack 面板=右列上方可折叠条（默认收起）。 */
 
 import { esc, trunc, relAge } from '../core/format.js';
-import { chip, chipGo, screenHead } from '../render/chips.js';
+import { chip, screenHead } from '../render/chips.js';
+import { renderMessage } from '../render/refs.js';
 import { renderMarkdown } from '../render/md.js';
-import { renderMessage, expandBlock, linkifyRefs } from '../render/refs.js';
 import { mountSessionCtx } from './sessionctx.js';
-import { t as tr } from '../core/i18n.js';
+import { t as tr, getLocale } from '../core/i18n.js';
 
 function faces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
 }
 
-/* 线程态（页面级内存——诚实口径：本地线程只记本控制台发出的消息；权威轨迹=宿主原生会话）。 */
+/* 线程态（页面级内存——诚实口径：本地线程只记本控制台发出的消息；权威轨迹=宿主原生会话面）。 */
 const THREAD = { sessionId: '', msgs: [] };
+
+/* 上次渲染标记（路由词形+locale——store patch 重绘 vs 导航/locale 切换的判据）。 */
+const LAST = { route: '', paramKey: '', locale: '' };
 
 function sessionOptions(ctx, cur) {
   const rows = (ctx.store.sessions() || []).map((s) => String(s && (s.id || s.sessionId) || '')).filter(Boolean);
@@ -30,7 +33,7 @@ function sessionOptions(ctx, cur) {
   return '<option value="">' + esc(tr('— 选择 session（或输入）—')) + '</option>' + extra + opts;
 }
 
-/* 对话 composer（session 可选 + 文本域 + 发送——大屏顶部与 chat 屏共用）。 */
+/* 对话 composer（session 可选 + 文本域 + 发送——总览大屏在用；会话屏本体已改原生主面）。 */
 export function composerHtml(ctx, curSession) {
   const f = faces();
   const canSend = !!(f && typeof f.send === 'function');
@@ -51,7 +54,7 @@ export function composerHtml(ctx, curSession) {
     '</div></div>';
 }
 
-/* 线程渲染（消息数组 → 气泡流；expand 内建）。 */
+/* 线程渲染（消息数组 → 气泡流；expand 内建——composerHtml/bindComposer 保留通路的书签位）。 */
 function threadHtml(msgs, names) {
   if (!msgs.length) {
     return '<div class="card"><div class="ob-empty">' + esc(tr('线程为空——发第一条需求；agent 的完整轨迹在原生界面（新窗口）可见。')) + '</div></div>';
@@ -90,7 +93,7 @@ function bindDocFull(el, ctx) {
   });
 }
 
-/* 绑定 composer 行为（session 解析+发送+本地回执）。 */
+/* 绑定 composer 行为（session 解析+发送+本地回执——总览大屏在用）。 */
 export function bindComposer(el, ctx, rootEl) {
   const sendBtn = rootEl.querySelector('[data-cc-send]');
   const sessSel = rootEl.querySelector('[data-cc-sess]');
@@ -138,45 +141,175 @@ function paintThread(rootEl, ctx) {
   bindDocFull(box, ctx);
 }
 
-/** #/chat/:agent 与 #/session/:id —— 对话屏（对话框是主体；原生界面收进 expand）。 */
-function dialogScreen(el, ctx, sessionId) {
-  const f = faces();
-  const native = expandBlock(
-    '<iframe class="host-embed" src="' + esc((function () { try { return location.origin + '/?embedded=1'; } catch { return '/'; } })()) + '" referrerpolicy="same-origin"></iframe>',
-    tr('宿主原生界面（权威轨迹）'), { cls: 'host-ex' });
-  el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('对话'), tr('rootAgent——找文档、更新文档；ref 可点，结论可全文档观看'),
-      chipGo(tr('新窗口原生界面'), '', 'mute', false)) +
-    composerHtml(ctx, sessionId) +
-    '<h2 class="sec-title" style="margin-top:14px">' + esc(tr('对话线程')) + '</h2>' +
-    '<div data-thread>' + threadHtml(THREAD.msgs, null) + '</div>' +
-    '<div class="small faint" style="margin-top:8px">' +
-    esc(tr('本地线程只记本控制台发出的消息；权威轨迹=宿主原生会话（下方 expand 内嵌）。')) + '</div>' +
-    native;
-  if (sessionId) {
-    const sess = (ctx.store.sessions() || []).find((s) => String((s && (s.id || s.sessionId)) || '') === sessionId);
-    if (sess || true) {
-      el.insertAdjacentHTML('beforeend', '');
-    }
-    // G-14 上下文面板（展开态由 sessionctx 自管）
-    el.insertAdjacentHTML('beforeend',
-      '<div class="view-inner"><h2 class="sec-title">' + esc(tr('上下文')) + '</h2>' +
-      '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' +
-      esc(tr('上下文注水中…（GET /v1/sessions/')) + esc(encodeURIComponent(sessionId)) + '/context）</div></div></div></div></div>');
-    mountSessionCtx(el, ctx, sessionId);
-  }
-  // 新窗口原生界面按钮
-  const pop = el.querySelector('[data-go=""]');
-  if (pop) {
-    pop.removeAttribute('data-go');
-    pop.addEventListener('click', () => { try { window.open(location.origin + '/?embedded=1', '_blank'); } catch { /* ignore */ } });
-  }
-  bindComposer(el, ctx, el);
-  bindDocFull(el, ctx);
-  paintThread(el, ctx);
+/* ---------- 原生会话主面（§19.6） ---------- */
+
+/* 原生面词形：同域 /?embedded=1#/chat/<target>——target=session id 或 agent 名（原生路由双词形）。 */
+function nativeSrc(target) {
+  let origin = '/';
+  try { origin = location.origin + '/'; } catch { /* 无 origin 环境（file://）降级相对词形 */ }
+  return origin + '?embedded=1#/chat/' + (target ? encodeURIComponent(String(target)) : '');
 }
 
+/* 左列：会话行（活性账 store.sessions()——state/lastBeat 词形投影；点选=就地换 src）。 */
+function sessRowsHtml(ctx, cur) {
+  const rows = (ctx.store.sessions() || []).map((s) => {
+    const id = String((s && (s.id || s.sessionId)) || '');
+    if (!id) return '';
+    const state = String((s && s.state) || '');
+    const beat = String((s && s.lastBeat) || '');
+    const sel = id === cur ? ' style="outline:1px solid var(--accent);background:var(--panel-2);border-radius:8px"' : '';
+    return '<div class="dash-row" data-sess-go="' + esc(id) + '" role="link"' + sel +
+      ' title="' + esc(trunc(String((s && s.lastAction) || ''), 120)) + '">' +
+      '<div class="dr-main"><b class="mono">' + esc(trunc(id, 24)) + '</b></div>' +
+      '<div class="dr-side">' +
+      (state ? chip(state, state === 'escalated' || state === 'suspected-stall' ? 'esc' : 'acc') : '') +
+      (beat ? '<span class="small faint">' + esc(relAge(beat) || '') + '</span>' : '') +
+      '</div></div>';
+  }).filter(Boolean).join('');
+  return rows || '<div class="small faint" style="padding:4px 6px">' +
+    esc(tr('快照无活性会话行——可在右侧原生面直接对话（新会话由宿主原生建档）')) + '</div>';
+}
+
+/* 左列：Agent 行（kind=Agent 在册对象——#/chat/<agent> 原生按 agent 打开会话）。 */
+function agentRowsHtml(ctx) {
+  const rows = (ctx.store.objects() || []).filter((o) => o && o.kind === 'Agent' && o.name).map((o) =>
+    '<div class="dash-row" data-go="' + esc('chat/' + encodeURIComponent(String(o.name))) + '" role="link">' +
+    '<div class="dr-main"><b class="mono">' + esc(trunc(String(o.name), 24)) + '</b></div>' +
+    '<div class="dr-side"><span class="small faint">' + esc(String(o.scope || 'global')) + '</span></div></div>').join('');
+  return rows || '<div class="small faint" style="padding:4px 6px">' + esc(tr('快照暂无 Agent 对象枚举')) + '</div>';
+}
+
+/* ContextPack 折叠条（默认收起——不占主面高度；展开态由 sessionctx 自管）。 */
+function ctxBarHtml(sessionId) {
+  if (!sessionId) return '';
+  return '<details class="ex-block" style="margin:0 0 10px;background:var(--panel-2)">' +
+    '<summary class="ex-sum"><span class="ex-chev">▶</span>' + esc(tr('上下文（ContextPack 契约面）')) + '</summary>' +
+    '<div class="ex-body"><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' +
+    esc(tr('上下文注水中…（GET /v1/sessions/')) + esc(encodeURIComponent(sessionId)) + '/context）</div></div></div></div></div></details>';
+}
+
+/* 右列主面：装载占位（load 后撤除——不冒充已就绪）+ 全高 iframe（圆角卡片边框）。 */
+function faceHtml(target) {
+  return '<div style="position:relative">' +
+    '<div data-native-ph style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+    'border:1px dashed var(--border);border-radius:12px;background:var(--panel-2);z-index:2;pointer-events:none">' +
+    '<div class="small faint">' + esc(tr('原生会话面装载中…')) + '</div></div>' +
+    '<iframe data-native-iframe data-target="' + esc(target) + '" title="' + esc(tr('宿主原生会话面（真实转录与发送）')) +
+    '" src="' + esc(nativeSrc(target)) + '" referrerpolicy="same-origin" ' +
+    'style="width:100%;height:calc(100vh - 96px);border:1px solid var(--border);border-radius:12px;background:var(--panel-2);display:block"></iframe>' +
+    '</div>';
+}
+
+/* iframe load → 撤装载占位（换 src 后复位——下一次 load 再撤）。 */
+function bindFace(el) {
+  const ifr = el.querySelector('[data-native-iframe]');
+  const ph = el.querySelector('[data-native-ph]');
+  if (ifr && ph) ifr.addEventListener('load', () => { ph.style.display = 'none'; });
+}
+
+/* 就地换 src（保滚动——不重绘整屏；占位词复位待 load 撤除）。 */
+function swapFace(el, target) {
+  const ifr = el.querySelector('[data-native-iframe]');
+  if (!ifr) return;
+  const src = nativeSrc(target);
+  if (ifr.getAttribute('src') !== src) {
+    ifr.setAttribute('src', src);
+    const ph = el.querySelector('[data-native-ph]');
+    if (ph) ph.style.display = '';
+  }
+  ifr.setAttribute('data-target', String(target));
+}
+
+/* 会话点选：THREAD.sessionId=该 id + iframe 就地换 src + 左列高亮 + ContextPack 条补挂。 */
+function bindSessRows(el, ctx) {
+  el.querySelectorAll('[data-sess-go]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const id = String(row.getAttribute('data-sess-go') || '');
+      if (!id) return;
+      THREAD.sessionId = id;
+      swapFace(el, id);
+      const listBox = el.querySelector('[data-sess-list]');
+      if (listBox) { listBox.innerHTML = sessRowsHtml(ctx, id); bindSessRows(el, ctx); }
+      ensureCtxBar(el, ctx, id);
+    });
+  });
+}
+
+/* ContextPack 条补挂（agent 面→点选会话后：holder 现挂折叠条+面板注水新 id）。 */
+function ensureCtxBar(el, ctx, id) {
+  const holder = el.querySelector('[data-ctx-holder]');
+  if (!holder) return;
+  if (!holder.querySelector('[data-ctx-panel]')) holder.innerHTML = ctxBarHtml(id);
+  mountSessionCtx(el, ctx, id);
+}
+
+/* 「新窗口原生界面」——同词形弹原生窗（不经 data-go 委托：目标在宿主，不在控制台路由）。 */
+function bindPop(el, target) {
+  const pop = el.querySelector('[data-native-pop]');
+  if (pop) pop.addEventListener('click', () => {
+    try { window.open(nativeSrc(target), '_blank'); } catch { /* 弹窗被拦=显式再点即可 */ }
+  });
+}
+
+/** 会话屏主体（两列：左=会话/Agent 列表；右=原生会话主面全高直开）。 */
+function dialogScreen(el, ctx, target) {
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead(tr('会话'), tr('原生 DeepSeek 会话面——真实转录与发送；左侧切换会话'),
+      chip(tr('新窗口原生界面'), 'mute', false, 'data-native-pop="1" style="cursor:pointer"')) +
+    '<div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start">' +
+    '<aside class="card" style="padding:8px;max-height:calc(100vh - 96px);overflow:auto">' +
+    '<div class="small faint" style="padding:2px 6px 8px;font-weight:700">' + esc(tr('会话（活性账）')) + '</div>' +
+    '<div data-sess-list>' + sessRowsHtml(ctx, target) + '</div>' +
+    '<div class="small faint" style="padding:12px 6px 8px;font-weight:700">' + esc(tr('Agent')) + '</div>' +
+    '<div data-agent-list>' + agentRowsHtml(ctx) + '</div>' +
+    '</aside>' +
+    '<section style="min-width:0">' +
+    '<div data-ctx-holder>' + ctxBarHtml(THREAD.sessionId) + '</div>' +
+    faceHtml(target) +
+    '</section>' +
+    '</div></div>';
+  bindFace(el);
+  bindSessRows(el, ctx);
+  bindPop(el, target);
+  if (THREAD.sessionId) mountSessionCtx(el, ctx, THREAD.sessionId);
+}
+
+/** #/chat/:agent 与 #/session/:id —— 会话屏（原生 DeepSeek 会话主面）。 */
 export function render(el, ctx) {
   const id = ctx.params && ctx.params.id;
-  dialogScreen(el, ctx, id ? String(id) : (THREAD.sessionId || ''));
+  const agent = ctx.params && ctx.params.agent;
+  const route = String(ctx.route || '');
+  const paramKey = (id != null && id !== '') ? 'session/' + String(id) : 'chat/' + String(agent || '');
+  const locale = getLocale();
+  const fresh = LAST.route !== route || LAST.paramKey !== paramKey || LAST.locale !== locale;
+  LAST.route = route; LAST.paramKey = paramKey; LAST.locale = locale;
+  if (fresh) {
+    if (id != null && id !== '') {
+      THREAD.sessionId = String(id); // #/session/:id —— 直开该会话
+    } else if (agent != null && agent !== '') {
+      /* #/chat/:agent —— 词形双关（agent 名或 session id）：活性账命中=session 面，否则=agent 面。 */
+      THREAD.sessionId = sessKnown(ctx, String(agent)) ? String(agent) : '';
+    }
+  } else if (!THREAD.sessionId && agent != null && agent !== '' && sessKnown(ctx, String(agent))) {
+    /* 深链 #/chat/<sessionId> 在快照到货后升格=session 面（补 ContextPack 条——一次性重建）。 */
+    THREAD.sessionId = String(agent);
+    dialogScreen(el, ctx, THREAD.sessionId);
+    return;
+  }
+  const target = THREAD.sessionId || String(agent || id || '');
+  /* store patch 重绘=局部换左列（iframe 不动——滚动/输入态保真；点选换 src 已同步 data-target）。 */
+  const face = el.querySelector('[data-native-iframe]');
+  if (!fresh && face && face.getAttribute('data-target') === target) {
+    const sess = el.querySelector('[data-sess-list]');
+    if (sess) { sess.innerHTML = sessRowsHtml(ctx, target); bindSessRows(el, ctx); }
+    const ag = el.querySelector('[data-agent-list]');
+    if (ag) ag.innerHTML = agentRowsHtml(ctx);
+    return;
+  }
+  dialogScreen(el, ctx, target);
+}
+
+/* 活性账命中判据：param 是否为已知 sessionId（#/chat/:agent 词形双关的裁决面）。 */
+function sessKnown(ctx, candidate) {
+  return (ctx.store.sessions() || []).some((s) => String((s && (s.id || s.sessionId)) || '') === candidate);
 }
