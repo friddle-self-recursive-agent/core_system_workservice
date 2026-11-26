@@ -11648,6 +11648,18 @@ ${text2}</tr>
       }
     };
   }
+  var lastConnState = "connecting";
+  function paintConn(state) {
+    lastConnState = state;
+    const text2 = { connected: t("\u5B9E\u65F6\uFF08WS patch\uFF09"), reconnecting: t("\u91CD\u8FDE\u4E2D\u2026"), degraded: t("\u964D\u7EA7\u8F6E\u8BE2\uFF0830s\uFF09"), connecting: t("\u8FDE\u63A5\u4E2D\u2026") }[state] || state;
+    const cls = { connected: "ok", reconnecting: "warn", degraded: "warn", connecting: "off" }[state] || "off";
+    [["[data-conn-lamp]", "[data-conn-label]"], ["[data-conn-lamp-top]", "[data-conn-label-top]"]].forEach(([ls, ltx]) => {
+      const lamp = document.querySelector(ls);
+      const label = document.querySelector(ltx);
+      if (lamp) lamp.className = "lamp " + cls + (state === "connected" ? " pulse-ok" : "");
+      if (label) label.textContent = text2;
+    });
+  }
   var hydrating = false;
   async function hydrateDocs() {
     if (hydrating) return;

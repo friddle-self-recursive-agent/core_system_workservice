@@ -172,6 +172,20 @@ function screenOf(fn) {
   };
 }
 
+/* 连接态绘制（侧栏+顶栏双位同步）。 */
+let lastConnState = 'connecting';
+function paintConn(state) {
+  lastConnState = state;
+  const text = { connected: tr('实时（WS patch）'), reconnecting: tr('重连中…'), degraded: tr('降级轮询（30s）'), connecting: tr('连接中…') }[state] || state;
+  const cls = { connected: 'ok', reconnecting: 'warn', degraded: 'warn', connecting: 'off' }[state] || 'off';
+  [['[data-conn-lamp]', '[data-conn-label]'], ['[data-conn-lamp-top]', '[data-conn-label-top]']].forEach(([ls, ltx]) => {
+    const lamp = document.querySelector(ls);
+    const label = document.querySelector(ltx);
+    if (lamp) lamp.className = 'lamp ' + cls + (state === 'connected' ? ' pulse-ok' : '');
+    if (label) label.textContent = text;
+  });
+}
+
 /* 快照后正文预取（rv 变化才 fetch——docCache 语义；并发 4、单轮上限 24）。 */
 let hydrating = false;
 async function hydrateDocs() {
