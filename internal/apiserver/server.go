@@ -943,6 +943,12 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			"count": len(items), "accepted": st.Accepted, "dropped": st.Dropped, "dispatches": items,
 		})
 	})
+	// 关注报告（R-UX-6 / concepts/attention.md；2026-11-26）：读侧派生，确定性候选+facts+
+	// 证据链；v1 规则版（generatedBy=rules，LLM 叙述/缓存/权限指纹后续段）。数据源=objects+
+	// runs+eventLog+inbox；face 缺席=degraded 报告（不 405，不空白）。只读 GET。
+	mux.HandleFunc("GET /v1/attention", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, attentionReport(r.Context(), objects, runs, o))
+	})
 	// 通知中心收件箱投影面（v0.56 R-10——console-adoption.md §1.25「待你处理收件箱」页面兜底
 	// 首段 + notification.md 规则 6「未配置通知通道=仅页面展示」的机读落点）。四类判定分类
 	// （机械判定=读面现读自分类——console 不自建持久状态红线 2）：NeedsHuman（归档 NeedsHuman
