@@ -7,6 +7,7 @@
 ```
 cmd/igniter      点火器：装载 core/ → 启动 cored → 消失（预算 <1000 行，instance 仓 loop/bootstrap.md）
 cmd/cored        Core 常驻进程：Apply/Event/Loop 引擎/Scheme/Policy（instance 仓 impl/self-recursive-core.md）
+cmd/corectl      命令行：桌面功能的同源投影（读面/Apply/Event 触发；core_design/concepts/cli.md）
 internal/
   scheme/        类型注册表载入与自检（core_system/core/scheme.yaml）
   repository/    文档库 git 后端（get/apply/list/watch，串行写队列）
@@ -33,6 +34,20 @@ internal/workflow/ Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹�
 | builtin-developer-system | connectors/dsh；onedev 驱动在 sybran_usage_connector 仓 |
 | builtin-deploy-system | plugins/execlocal, connectors/gitfs |
 | builtin-storage-system | connectors/gitfs；nas/oss 驱动在 sybran_usage_connector 仓 |
+
+## 命令行 corectl
+
+桌面（console）功能的同源 CLI：读面命令对应各屏，写命令只走既有 `POST /v1/apply` 与 `POST /v1/events`（同一权限/准入/事件链，无旁路）。
+
+```bash
+CORED_ADDR=http://127.0.0.1:<port> corectl report
+corectl get ServiceDesc --scope self-recursive-core
+corectl apply -f systems/.../system.yaml --dry-run
+corectl event publish --type ReconcileTick --dedup cli:<round>
+corectl tick          # = 发布 ReconcileTick（系统事件触发 core-workflow 对账 run）
+```
+
+设计依据：core_design/concepts/cli.md（R-UX-8）。
 
 ## 开发约定
 
