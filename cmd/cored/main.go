@@ -575,11 +575,15 @@ func run() error {
 			len(designDocs.Names()), strings.Join(designDocs.Names(), ","),
 			map[bool]string{true: "on（引擎随 --allow-apply 装配）", false: "off（写路由 405——引擎未装配）"}[*allowApply])
 	}
+	// 权限系统外提（connectops 读/调路由 G-03 权限门与 apply/eventpub 同源同一授权面；
+	// --allow-apply 关断时保持 nil——apiserver 侧零值 System 空授权面 fail-closed 兜底）。
+	var permSys *permission.System
 	if *allowApply {
 		// 权限对象装载（v0.9 对象准入）：Role/Group 文档对象是授权面唯一来源——
 		// 主体断言的 role 名必须对上 global/roles、global/groups 里的对象才产生权限。
 		// 启动装载=权威快照（失败=拒绝启动，授权面宁拒不降级）；其后事件驱动热装载（见下）。
 		perm := &permission.System{}
+		permSys = perm
 		objs, err := permDocs(ctx, repo)
 		if err != nil {
 			return err
@@ -766,6 +770,11 @@ func run() error {
 		// 索引=读侧派生内存结构（零 DocType/零落库/零写路径）；挂文档库即装配，face 缺席=503。
 		if store2 != nil {
 			opts = append(opts, apiserver.WithContextIdx(ctxIndex))
+		}
+		// connectops {op} 调用面权限门（G-03）：与 apply/publish 同一 *permission.System——
+		// 域 ops/<name> × 动作 call 按 Role 对象判定；未注入=face 零值 System 空授权面 fail-closed。
+		if permSys != nil {
+			opts = append(opts, apiserver.WithPerm(permSys))
 		}
 		return opts
 	}
