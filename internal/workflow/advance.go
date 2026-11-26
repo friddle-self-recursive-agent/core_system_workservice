@@ -34,6 +34,7 @@ func (r *RunLog) Advance() int {
 	defer r.mu.Unlock()
 	advanced := 0
 	mutated := map[string]int{} // 本拍每锚已发生迁移数（刹车闸挂接时生效）
+	var touched []int           // 本拍迁移过的环内下标（写穿透 upsert——R-ENG §1）
 	for i := range r.ring {
 		run := &r.ring[i]
 		if len(run.Phases) == 0 || run.Status != RunRunning {
@@ -56,6 +57,13 @@ func (r *RunLog) Advance() int {
 		}
 		mutated[run.Workflow]++
 		advanced++
+		touched = append(touched, i)
+	}
+	// 写穿透（R-ENG §1）：本拍迁移过的 run 逐条 upsert（锁内同步与投影同序；失败只注记）。
+	if r.opts.Store != nil {
+		for _, i := range touched {
+			persistAppend("run 推进", r.opts.Store.AppendRun(runToRow(r.ring[i])))
+		}
 	}
 	r.advances += int64(advanced)
 	return advanced

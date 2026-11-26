@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/runtimestore"
 )
 
 // 送达状态词汇（v0.16 受理；v0.17 扩出站结果——status 就地翻转，一投影一终态）。
@@ -128,6 +130,11 @@ type DeliveryOptions struct {
 	// 「同因聚合防轰炸」；空 dedupKey 永不聚合（与总线无键=永不聚合同口径）。
 	// 判别器：同 dedupKey 窗口内 N 次注入 → 实发 1、deduped=N-1（KI-001 §6）。
 	DedupWindow time.Duration
+	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。挂接后
+	// 写穿透（受理/出站起跑/出站终态翻转同步 upsert——送达是可演化投影，恢复取最新词形）
+	// + 启动恢复（New 时装载历史行续接 seq/accepted 与环内最近投影；门链计数/gate 窗口键
+	// 面不恢复=重启重置——窗口语义可接受偏差）。读面零变化。
+	Store runtimestore.Store
 }
 
 // DeliveryLog 送达投影的进程内落点（DeliverySink 缺省实现；并发安全；与 RunLog 同构）。
@@ -157,6 +164,8 @@ type DeliveryLog struct {
 }
 
 // NewDeliveryLog 构建送达投影落点（Outbound=nil 时零 goroutine，v0.16 语义不变）。
+// 挂有 Store 时先做启动恢复（R-ENG §1——装载历史行填环内最近 RingSize 条、seq/accepted
+// 续接为行数口径；sent/failed 计数从恢复行词形重推——诚实口径只认装载窗内行）。
 func NewDeliveryLog(opts *DeliveryOptions) *DeliveryLog {
 	d := &DeliveryLog{}
 	if opts != nil {
@@ -167,6 +176,31 @@ func NewDeliveryLog(opts *DeliveryOptions) *DeliveryLog {
 	}
 	if d.opts.DedupWindow > 0 {
 		d.lastDup = map[string]time.Time{}
+	}
+	if d.opts.Store != nil {
+		rows := loadDeliveryRows(d.opts.Store)
+		if len(rows) > 0 {
+			recs := make([]DeliveryRecord, len(rows))
+			maxSeq := int64(0)
+			for i, row := range rows {
+				recs[i] = deliveryFromRow(row)
+				if row.Delivery > maxSeq {
+					maxSeq = row.Delivery
+				}
+				switch recs[i].Status {
+				case DeliverSent:
+					d.sent++
+				case DeliverFailed:
+					d.failed++
+				}
+			}
+			d.seq = maxSeq
+			d.accepted = int64(len(rows))
+			if excess := len(recs) - d.opts.RingSize; excess > 0 {
+				recs = recs[excess:]
+			}
+			d.ring = recs
+		}
 	}
 	if d.opts.Outbound != nil {
 		if d.opts.OutboundTimeout <= 0 {
@@ -237,6 +271,10 @@ func (d *DeliveryLog) Deliver(rec TriggerRecord, b ExecutorBinding, origin strin
 		Level: rec.Level, Route: rec.Route, Owner: rec.Owner, At: rec.ReceivedAt,
 	}
 	d.ring = append(d.ring, proj)
+	// 写穿透（R-ENG §1）：受理词形同步 upsert（出站终态翻转随后续 attempt/finish 落库）。
+	if d.opts.Store != nil {
+		persistAppend("送达受理", d.opts.Store.AppendDelivery(deliveryToRow(proj)))
+	}
 	d.mu.Unlock()
 
 	if d.opts.Outbound == nil {
@@ -276,13 +314,17 @@ func (d *DeliveryLog) dispatch(proj DeliveryRecord) {
 	d.finish(proj.Delivery, d.opts.Outbound.Send(ctx, proj))
 }
 
-// attempt 出站起跑进位（attempts=真实尝试次数；投影已被环挤出=无处可记，只留结果计数）。
+// attempt 出站起跑进位（attempts=真实尝试次数；投影已被环挤出=无处可记，只留结果计数；
+// 写穿透——起跑词形同步 upsert，R-ENG §1）。
 func (d *DeliveryLog) attempt(seq int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for i := len(d.ring) - 1; i >= 0; i-- {
 		if d.ring[i].Delivery == seq {
 			d.ring[i].Attempts++
+			if d.opts.Store != nil {
+				persistAppend("送达起跑", d.opts.Store.AppendDelivery(deliveryToRow(d.ring[i])))
+			}
 			return
 		}
 	}
@@ -302,6 +344,10 @@ func (d *DeliveryLog) finish(seq int64, err error) {
 			d.ring[i].Status = status
 			d.ring[i].CompletedAt = time.Now()
 			d.ring[i].Error = text
+			// 写穿透（R-ENG §1）：出站终态词形同步 upsert（可演化投影——恢复取终态）。
+			if d.opts.Store != nil {
+				persistAppend("送达终态", d.opts.Store.AppendDelivery(deliveryToRow(d.ring[i])))
+			}
 			break
 		}
 	}
