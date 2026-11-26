@@ -34,6 +34,14 @@ type AgentEventScopes interface {
 	EventScopes(agent string) (patterns []string, own string, ok bool)
 }
 
+// AgentEventScopesFunc 函数适配器（装配层匿名实现用——免建 struct）。
+type AgentEventScopesFunc func(agent string) (patterns []string, own string, ok bool)
+
+// EventScopes 满足 AgentEventScopes。
+func (f AgentEventScopesFunc) EventScopes(agent string) ([]string, string, bool) {
+	return f(agent)
+}
+
 // ScopeBlockedBlock 一条拦截告警的静态词（OnBlocked 回调载荷——装配层转 log warning，
 // 可见不静默：拦截必有痕，不留「事件消失」的静默面）。
 type ScopeBlockedBlock struct {
