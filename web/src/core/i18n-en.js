@@ -69,6 +69,7 @@ export const enEntries = [
   ['相位机', 'Phase machine'],
   ['事件链', 'Event chain'],
   ['对象详情', 'Object detail'],
+  ['代码审核', 'Code Audit'],
   ['标签', 'Tags'],
   /* 「补标/Add tag」幽灵词条已销（V-22，2026-11-26 概念可见性批）：词表对账零 UI 引用；
    * tag 声明通路=对象 spec.metadata.tags 经 Apply 落库（聚合查看=新「标签」屏——非表单录入面）。 */

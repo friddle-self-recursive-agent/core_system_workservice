@@ -143,6 +143,8 @@ export function createStore() {
       return arrOf(a.items || a.cards);
     },
     inbox() { return (state && state.inbox) || null; },
+    deliveries() { return (state && state.deliveries) || null; },
+    codeAudit() { return (state && state.codeAudit) || null; },
 
     /* ---------- 对象级 rv 缓存（正文懒取的家） ---------- */
     cacheDoc(kind, scope, name, rv, content) {

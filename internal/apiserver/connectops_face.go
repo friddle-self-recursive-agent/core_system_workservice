@@ -47,10 +47,44 @@ func WithPerm(s *permission.System) Option {
 	return func(o *options) { o.perm = s }
 }
 
-// registerConnectOpsRoutes ops 调试面路由注册（server.go New 尾段装配；subject 权限门
-// fail-closed——无效/无权 subject 403 在 Invoke 之前；面恒开——判定过门即只读审核，非写面，
-// 不随 --allow-apply 门控）。
+// codeAuditFindingsLister 只读 findings 投影口面（*codeaudit.Connector 满足）。
+type codeAuditFindingsLister interface {
+	ListRecent() []codeaudit.Result
+}
+
+// codeAuditSnapshotPayload 代码审核只读投影载荷（V-18：GET /v1/code-audit/findings 与
+// /v1/snapshot 共用零双源；驱动未注册=nil 诚实缺席，不冒充空）。
+func codeAuditSnapshotPayload() map[string]any {
+	c, ok := connectors.LookupOpsConnector(codeaudit.TypeName)
+	if !ok {
+		return nil
+	}
+	lister, ok := c.(codeAuditFindingsLister)
+	if !ok {
+		return nil
+	}
+	audits := lister.ListRecent()
+	if audits == nil {
+		audits = []codeaudit.Result{}
+	}
+	return map[string]any{
+		"count":  len(audits),
+		"audits": audits,
+		"source": codeaudit.TypeName,
+	}
+}
+
+// registerConnectOpsRoutes ops 调试面与代码审核只读投影路由注册（server.go New 尾段装配；
+// POST 调试面 subject 权限门 fail-closed；GET /v1/code-audit/findings 为只读投影零写面）。
 func registerConnectOpsRoutes(mux *http.ServeMux, perm *permission.System) {
+	mux.HandleFunc("GET /v1/code-audit/findings", func(w http.ResponseWriter, _ *http.Request) {
+		p := codeAuditSnapshotPayload()
+		if p == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "connectops-code-audit 只读投影未装配（驱动未注册）"})
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	})
 	mux.HandleFunc("POST /v1/connectops/{name}/{op}", func(w http.ResponseWriter, r *http.Request) {
 		name, op := r.PathValue("name"), r.PathValue("op")
 		c, ok := connectors.LookupOpsConnector(name)

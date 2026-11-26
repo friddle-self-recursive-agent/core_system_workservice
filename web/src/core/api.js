@@ -71,6 +71,14 @@ export function createApi(base = '', paths = {}) {
     approvals: (limit = 20) => request('v1/approvals?limit=' + Number(limit)),
     designDocs: () => request('v1/design-docs'),
     designDoc: (repo, path) => request('v1/design-docs/' + enc(repo) + '/' + enc(path)),
+    /* V-16/V-17/V-18/V-21（2026-11-26 概念可见性批）：上下文索引 / 逐次正文史 / 历史快照 / 送达投影 / 代码审核只读面 */
+    contextIndex: () => request('v1/context/index'),
+    docHistory: (kind, scope, name) =>
+      request('v1/doc-history/' + enc(kind) + '/' + enc(name) + '?scope=' + enc(scope || 'global')),
+    revContent: (kind, scope, name, rv) =>
+      request('v1/rev-content/' + enc(kind) + '/' + enc(name) + '?scope=' + enc(scope || 'global') + '&rv=' + enc(String(rv))),
+    deliveries: () => request('v1/notifications/deliveries'),
+    codeAuditFindings: () => request('v1/code-audit/findings'),
     /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
     apply: (payload) => request(P.apply, { method: 'POST', body: payload }),
     saveDraft: (payload) => request(P.drafts, { method: 'POST', body: payload }),

@@ -41,7 +41,6 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
-	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -403,43 +402,7 @@ func run() error {
 	if advancer.Enabled() {
 		triggers.BindEventAdvance(runs)
 	}
-	// Agent 投递 scope 闸（BUG-010，event.md 规则 19③ 派发闸——挂文档库即接线）：执行面=agent
-	// 的绑定投递前校验 event.metadata.scope ∈ agent.spec.eventScopes（scopePattern 通配与
-	// 精确匹配）；Agent 未声明 eventScopes=只收 global/自身 scope（保守缺省）；被拦=告警可见
-	// 不静默+ScopeBlocked 计数（GET /v1/triggers 可查询），不投递。nil（未挂文档库）=闸缺席
-	// 既有行为面零翻转。消费闸（GET /v1/events?agent=）共用同一 Resolver 零双源。
-	// agentScopeResolverFor Agent 事件 scope 声明解析（文档库现读投影——BUG-010 派发闸/消费闸
-	// 共用同一实例零双源）：Agent 锚名 `<p>-agent`/root/parent/<p> 取末段匹配 Agent 对象名；
-	// 对象 spec.eventScopes=允许的 scopePattern（通配 *），own=对象自身 scope（保守缺省第二收窄项）；
-	// 解析失败按未声明处理（闸走保守缺省，宁拒不降级）。
-	agentScopeResolverFor := func(repo repository.Repository) flowbind.AgentEventScopes {
-		return flowbind.AgentEventScopesFunc(func(agent string) ([]string, string, bool) {
-			objs, err := repo.List(context.Background(), "Agent", "")
-			if err != nil {
-				return nil, "", false
-			}
-			target := agent
-			if i := strings.LastIndex(target, "/"); i >= 0 {
-				target = target[i+1:]
-			}
-			for _, o := range objs {
-				if o.Name != target {
-					continue
-				}
-				var doc struct {
-					Spec struct {
-						EventScopes []string `yaml:"eventScopes"`
-					} `yaml:"spec"`
-				}
-				if err := yaml.Unmarshal(o.Content, &doc); err != nil {
-					return nil, o.Scope, true // 文档坏=未声明声明面（闸保守缺省）
-				}
-				return doc.Spec.EventScopes, o.Scope, true
-			}
-			return nil, "", false
-		})
-	}
-
+	// Agent 投递 scope 闸（BUG-010，event.md 规则 19③ 派发闸——挂文档库即接线；解析器见 scope_resolver.go）：
 	var agentScopeResolver flowbind.AgentEventScopes
 	if repo != nil {
 		agentScopeResolver = agentScopeResolverFor(repo)

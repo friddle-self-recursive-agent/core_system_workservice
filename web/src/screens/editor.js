@@ -7,7 +7,7 @@
  *   - 历史 tab=快照 events 过滤该对象（DocApplied/DocReview——诚实可得数据面）。
  * 工作副本=内存态（ED[key]）；store 变更触发的整屏重绘在编辑态被 main 抑制（textarea 焦点保真）。 */
 
-import { esc, trunc } from '../core/format.js';
+import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute } from '../render/chips.js';
 import { renderMarkdown, yamlToCards, rawDisclosure } from '../render/md.js';
 import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
@@ -181,6 +181,103 @@ function paintBadges(key) {
   }
 }
 
+/** V-17：逐次正文历史账行渲染（纯函数——node 单测直测；数据=GET /v1/doc-history）。 */
+export function docHistoryRowsHtml(rows) {
+  if (!Array.isArray(rows) || !rows.length) {
+    return '<div class="small faint">' + esc(tr('doc_history 暂无历史翻页行（新建对象首次落库前无旧版——空态显式）。')) + '</div>';
+  }
+  return rows.slice(0, 40).map((h) => {
+    const rev = h && h.rev != null ? String(h.rev) : '?';
+    const at = String((h && (h.at || h.appliedAt)) || '');
+    const fm = String((h && h.fieldManager) || '—');
+    const bytes = h && h.bytes != null ? String(h.bytes) + ' B' : '—';
+    return '<div class="mini-row" data-hist-rev="' + esc(rev) + '">' +
+      '<div class="mr-main"><div><b class="mono">r' + esc(rev) + '</b> ' + chip(fm, 'mute') + ' ' + chip(bytes, 'mute') + '</div>' +
+      '<div class="mr-sub small mono">' + esc(at ? at.replace('T', ' ').slice(0, 19) : '—') +
+      (at && relAge(at) ? ' · ' + esc(relAge(at)) : '') + '</div></div>' +
+      '<button class="btn sm" data-rev-peek="' + esc(rev) + '">' + esc(tr('查看快照')) + '</button>' +
+      '</div>';
+  }).join('');
+}
+
+/** V-17 + V-02：历史 tab——真账（GET /v1/doc-history + GET /v1/rev-content）为主，
+ * 归档事件子串过滤退役为辅助注脚（每条事件均可点进 event/:id）。 */
+function paintHistoryTab(box, ed, ctx) {
+  const evRows = ctx.store.events()
+    .filter((e) => e && String(e.involved || '').includes(ed.ref.name))
+    .slice(0, 20);
+  const auxHtml = '<details class="ex-block" style="margin-top:12px">' +
+    '<summary class="ex-sum"><span class="ex-chev">▸</span>' + esc(tr('相关事件（辅助参考，非版本史 · ')) + evRows.length + '）</summary>' +
+    '<div class="ex-body">' + (evRows.length
+      ? evRows.map((e) => {
+        const eid = e && (e.id != null ? e.id : (e.eventId != null ? e.eventId : ''));
+        const goAttr = eid !== '' ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : '';
+        return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div>' + esc(String(e.type || '')) + '</div>' +
+          '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 50)) + '</div></div>' +
+          '<span class="w-ev-time mono">' + esc(String((e.ts || e.at || e.time || '').slice(0, 16))) + '</span></div>';
+      }).join('')
+      : '<div class="small faint">' + esc(tr('归档窗口内暂无相关事件。')) + '</div>') +
+    '</div></details>';
+
+  box.innerHTML = tr('<div class="card-h"><span class="h-title">历史</span><span class="h-right">') +
+    chip('doc_history', 'acc') + '</span></div><div class="card-b">' +
+    '<div data-ed-hist-list><div class="small faint">' + esc(tr('逐次正文史现读中…（GET /v1/doc-history）')) + '</div></div>' +
+    '<div data-ed-rev-preview style="margin-top:10px"></div>' +
+    auxHtml + '</div>';
+
+  const stamp = typeof location !== 'undefined' ? location.hash : '';
+  const fetchHist = ctx.api && typeof ctx.api.docHistory === 'function'
+    ? ctx.api.docHistory(ed.ref.kind, ed.ref.scope || 'global', ed.ref.name)
+    : Promise.resolve({ ok: false, status: 503, error: 'docHistory 接口缺席' });
+
+  fetchHist.then((r) => {
+    if (!box.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
+    const listEl = box.querySelector('[data-ed-hist-list]');
+    if (!listEl) return;
+    if (!r.ok) {
+      const msg = r.status === 503
+        ? tr('逐次正文史未装配（doc_history 仅 sqlite 后端装配；git 后端不冒充逐次史）')
+        : tr('历史清单暂不可读（') + String(r.error || r.status) + tr('）');
+      listEl.innerHTML = '<div class="small faint">' + esc(msg) + '</div>';
+      return;
+    }
+    const rows = (r.data && Array.isArray(r.data.history)) ? r.data.history : [];
+    listEl.innerHTML = docHistoryRowsHtml(rows);
+    listEl.querySelectorAll('[data-rev-peek]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const rv = btn.getAttribute('data-rev-peek');
+        const pv = box.querySelector('[data-ed-rev-preview]');
+        if (!pv || !rv) return;
+        pv.innerHTML = '<div class="small faint">' + esc(tr('正取 r')) + esc(rv) + esc(tr(' 正文快照…（GET /v1/rev-content）')) + '</div>';
+        const rr = ctx.api && typeof ctx.api.revContent === 'function'
+          ? await ctx.api.revContent(ed.ref.kind, ed.ref.scope || 'global', ed.ref.name, rv)
+          : { ok: false, status: 503, error: 'revContent 接口缺席' };
+        if (!pv.isConnected) return;
+        if (!rr.ok) {
+          pv.innerHTML = '<div class="small faint">' + esc(tr('快照不可读（')) + esc(String(rr.error || rr.status)) + '）</div>';
+          return;
+        }
+        const d = rr.data && typeof rr.data === 'object' ? rr.data : {};
+        const snap = String(d.content || '');
+        const src = String(d.source || 'doc-history');
+        const diff = diffLines(snap, ed.base || '');
+        const st = diffStats(diff);
+        pv.innerHTML = '<div class="card"><div class="card-h"><span class="h-title mono">r' + esc(rv) + ' ' + esc(tr('快照')) + '</span>' +
+          '<span class="h-right">' + chip(src, 'mute') + ' ' + chip('+' + st.add, 'ok') + ' ' + chip('-' + st.del, 'esc') + '</span></div>' +
+          '<div class="card-b">' +
+          '<div class="small faint" style="margin-bottom:6px">' + esc(tr('对比当前现值 r')) + esc(String(ed.faceRV || '?')) + '（' + snap.length + ' B）：</div>' +
+          renderDiff(diff, 36) +
+          '<details class="ex-block" style="margin-top:8px"><summary class="ex-sum"><span class="ex-chev">▸</span>' + esc(tr('查看 r')) + esc(rv) + esc(tr(' 原文快照')) + '</summary>' +
+          '<div class="ex-body"><pre class="mono small" style="max-height:240px;overflow:auto;white-space:pre-wrap">' + esc(trunc(snap, 8000)) + '</pre></div></details>' +
+          '</div></div>';
+      });
+    });
+  }).catch(() => {
+    const listEl = box.querySelector('[data-ed-hist-list]');
+    if (listEl) listEl.innerHTML = '<div class="small faint">' + esc(tr('历史清单读取异常——不冒充空。')) + '</div>';
+  });
+}
+
 /** 右栏（草稿 diff / 历史 tab）。 */
 function paintRail(key, ctx) {
   const box = document.querySelector('[data-ed-rail]');
@@ -230,15 +327,7 @@ function paintRail(key, ctx) {
     return;
   }
   if (ed.tab === 'history') {
-    const rows = ctx.store.events()
-      .filter((e) => e && String(e.involved || '').includes(ed.ref.name));
-    box.innerHTML = tr('<div class="card-h"><span class="h-title">历史</span></div><div class="card-b">') +
-      (rows.length
-        ? rows.slice(0, 30).map((e) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(e.type || '')) + '</div>' +
-          '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 50)) + '</div></div>' +
-          '<span class="w-ev-time mono">' + esc(String((e.ts || e.at || e.time || '').slice(0, 16))) + '</span></div>').join('')
-        : tr('<div class="small faint">该对象暂无归档事件行（DocApplied/DocReview 等——空态显式）。</div>')) +
-      '</div>';
+    paintHistoryTab(box, ed, ctx);
     return;
   }
   if (!hasDiff(ed)) {

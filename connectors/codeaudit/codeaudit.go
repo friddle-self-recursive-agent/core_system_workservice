@@ -441,6 +441,14 @@ func auditID(target string, entries []checkEntry) string {
 	return "audit-" + time.Now().UTC().Format("20060102T150405Z") + "-" + sum
 }
 
+// ListRecent 返回最近审核结果副本（最新在前——只读投影 GET /v1/code-audit/findings 与快照共用）。
+func (c *Connector) ListRecent() []Result {
+	if c == nil || c.recent == nil {
+		return []Result{}
+	}
+	return c.recent.list()
+}
+
 // resultLRU 最近结果环形账（内存容量 64；溢出淘汰最旧——findings 回查容量外语义=ErrNoAudit）。
 type resultLRU struct {
 	mu  sync.Mutex
@@ -476,4 +484,16 @@ func (l *resultLRU) get(id string) (Result, bool) {
 	defer l.mu.Unlock()
 	r, ok := l.m[id]
 	return r, ok
+}
+
+func (l *resultLRU) list() []Result {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]Result, 0, len(l.ids))
+	for i := len(l.ids) - 1; i >= 0; i-- {
+		if r, ok := l.m[l.ids[i]]; ok {
+			out = append(out, r)
+		}
+	}
+	return out
 }

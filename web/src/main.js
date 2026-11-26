@@ -26,6 +26,7 @@ import * as approvals from './screens/approvals.js';
 import * as workflows from './screens/workflows.js';
 import * as misc from './screens/misc.js';
 import * as tags from './screens/tags.js';
+import * as audit from './screens/audit.js';
 import { getLocale, onLocaleChange, setLocale, t as tr } from './core/i18n.js';
 
 /* 部署基路径注入（window.__CORE_CONSOLE_BASES__: api/ws/apply/drafts——直连同源部署缺省
@@ -62,6 +63,7 @@ const NAV_TREE = [
       ['designdoc', '设计文档', '✎'],
       ['obj', '对象工作台', '▭'],
       ['connectors', '连接', '⌁'],
+      ['audit', '代码审核', '✓'],
     ] },
   },
   {
@@ -130,7 +132,7 @@ function crumbLabel(route) {
     for (const [r, label] of sec.items) if (r.split('/')[0] === bare) return tr(label);
     if (sec.sub) for (const [r, label] of sec.sub.items) if (r.split('/')[0] === bare) return tr(label);
   }
-  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱'), tag: tr('文档库'), tags: tr('标签') };
+  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱'), prop: tr('需求提案'), tags: tr('标签'), audit: tr('代码审核') };
   return extra[bare] || bare;
 }
 
@@ -152,16 +154,15 @@ function shellHtml() {
     '<main class="main"><div class="view" id="view"></div></main></div></div>';
 }
 
-/* 导航高亮（route→nav 前缀映射；§19 R5：report 不再映射 tasks——双高亮残留）。
- * V-01 随行：docs/tag/:tag 直链高亮 docs；tags 屏高亮自身。 */
+/* 导航高亮（route→nav 前缀映射；§19 R5：report 不再映射 tasks——双高亮残留）。 */
 function paintNav(route) {
   document.querySelectorAll('[data-nav]').forEach((n) => {
     const r = String(n.dataset.nav || '');
     const on = route === r ||
       (r === 'tasks' && route === 'task') ||
       (r === 'events' && route === 'event') || (r === 'workflows' && route === 'wf') ||
-      (r === 'docs' && (route === 'doc' || route === 'designdoc' || route === 'tag')) ||
-      (r === 'tags' && route === 'tag') ||
+      (r === 'proposals' && route === 'prop') ||
+      (r === 'docs' && route === 'doc') ||
       (r === 'welcome' && (route === 'service')) ||
       (r === 'chat' && (route === 'session' || route.startsWith('chat')));
     n.classList.toggle('active', on);
@@ -222,6 +223,9 @@ async function hydrateDocs() {
       }
     };
     await Promise.all(Array.from({ length: Math.min(4, stale.length) }, worker));
+    if (stale.length && (router.current.route === 'tags' || router.current.route === 'docs' || router.current.route === 'obj')) {
+      router.render();
+    }
   } finally { hydrating = false; }
 }
 
@@ -273,18 +277,22 @@ export function mount(root, opts = {}) {
     .route('chat/:agent', screenOf(chat.render))
     .route('session/:id', screenOf(chat.render))
     .route('approvals', screenOf(approvals.render))
+    .route('approvals/:focus', screenOf(approvals.render))
     .route('inbox', screenOf(approvals.render))
     .route('proposals', screenOf(misc.render))
+    .route('proposals/:name', screenOf(misc.render))
+    .route('prop/:name', screenOf(misc.render))
     .route('workflows', screenOf(workflows.render))
     .route('wf/:name', screenOf(workflows.render))
     .route('wf/:name/r/:n', screenOf(workflows.render))
     .route('tree', screenOf(misc.render))
     .route('docs', screenOf(misc.render))
-    .route('docs/tag/:tag', screenOf(misc.render)) // V-01（2026-11-26 概念可见性批）：tag 直链第三段
-    .route('tags', screenOf(tags.render)) // V-16：标签聚合页（NAV「标签」）
+    .route('docs/tag/:tag', screenOf(misc.render))
+    .route('tags', screenOf(tags.render))
     .route('designdoc', screenOf(misc.render))
     .route('designdoc/:repo/:path', screenOf(misc.render))
     .route('connectors', screenOf(misc.render))
+    .route('audit', screenOf(audit.render))
     .route('s/:name', screenOf(misc.render))
     .route('service/:name', screenOf(welcome.renderService))
     .route('biz', screenOf(misc.renderBiz));
