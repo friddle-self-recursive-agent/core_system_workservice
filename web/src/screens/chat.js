@@ -20,8 +20,8 @@ function faces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
 }
 
-/* 会话屏内存态：当前会话 + 轮询定时器（导航离开即清）+ 待达回声。 */
-const CHAT = { sessionId: '', timer: 0, pending: [] };
+/* 会话屏内存态：当前会话 + 轮询定时器（导航离开即清）+ 待达回声 + 标题缓存。 */
+const CHAT = { sessionId: '', timer: 0, pending: [], titles: new Map() };
 const LAST = { route: '', paramKey: '', locale: '' };
 
 /* ---------- 转录映射（journal 事件 → 渲染节点） ---------- */
@@ -115,19 +115,44 @@ function transcriptHtml(nodes, names) {
   return nodes.map((n) => nodeHtml(n, names)).join('');
 }
 
-function sessionRowHtml(s, cur) {
-  const id = String(s.sessionId || '');
+function sessionRowHtml(s, cur, display, pick) {
+  const id = String(pick != null ? pick : s.sessionId || '');
+  const label = String(display || id);
   const sel = id === cur ? ' style="outline:1px solid var(--accent);background:var(--panel-2);border-radius:8px"' : '';
   const flag = s.blank ? chip(tr('空白'), 'mute') : (s.running ? chip(tr('运行中'), 'acc') : '');
   return '<div class="dash-row" data-sess-pick="' + esc(id) + '" role="link"' + sel + '>' +
-    '<div class="dr-main"><b class="mono">' + esc(trunc(id, 22)) + '</b></div>' +
+    '<div class="dr-main"><b class="mono">' + esc(trunc(label, 24)) + '</b></div>' +
     '<div class="dr-side">' + flag + (s.updatedAt ? '<span class="small faint">' + esc(relAge(new Date(Number(s.updatedAt)).toISOString()) || '') + '</span>' : '') + '</div></div>';
 }
 
 function sessionsHtml(items, cur) {
-  const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId);
+  const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId)
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
   if (!rows.length) return '<div class="small faint" style="padding:4px 6px">' + esc(tr('会话清单为空——点「新会话」由宿主建档。')) + '</div>';
-  return rows.map((s) => sessionRowHtml(s, cur)).join('');
+  const head = rows.slice(0, 40).map((s) => {
+    const title = CHAT.titles.get(String(s.sessionId));
+    return sessionRowHtml(s, cur, title, String(s.sessionId));
+  }).join('');
+  return head + (rows.length > 40 ? '<div class="small faint" style="padding:4px 6px">' + esc(tr('…共 ') + rows.length + tr(' 会话（最近 40 条）')) + '</div>' : '');
+}
+
+/* 标题注水（惰性——最近 10 条：转录首页首条 user 消息截断为题；缓存免重读）。 */
+async function hydrateTitles(el, f, items) {
+  const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId)
+    .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)).slice(0, 10);
+  let dirty = false;
+  await Promise.all(rows.map(async (s) => {
+    const id = String(s.sessionId);
+    if (CHAT.titles.has(id) || s.blank) return;
+    try {
+      const r = await f.transcript(id, 12);
+      if (r.status !== 200 || !Array.isArray(r.data && r.data.events)) return;
+      const firstUser = r.data.events.filter((e) => e && e.type === 'user/message')
+        .map((e) => String((((e.data && e.data.content) || []).filter((b) => b && b.type === 'text').map((b) => b.text).join(' ')) || '')).filter(Boolean)[0];
+      if (firstUser) { CHAT.titles.set(id, trunc(firstUser, 24)); dirty = true; }
+    } catch { /* 标题缺席=行显 id（诚实降级） */ }
+  }));
+  if (dirty) refreshSessions(el, f);
 }
 
 /* ---------- 数据面 ---------- */
@@ -136,8 +161,12 @@ async function refreshSessions(el, f) {
   const box = el.querySelector('[data-cc-sessions]');
   if (!box) return;
   const r = await f.sessions();
-  box.innerHTML = r.status === 200 ? sessionsHtml(r.data && r.data.items, CHAT.sessionId) :
-    '<div class="small faint" style="padding:4px 6px">' + esc(tr('会话清单暂不可读（') + String(r.status) + tr('）——不冒充空。')) + '</div>';
+  if (r.status === 200) {
+    box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId);
+    hydrateTitles(el, f, r.data && r.data.items);
+  } else {
+    box.innerHTML = '<div class="small faint" style="padding:4px 6px">' + esc(tr('会话清单暂不可读（') + String(r.status) + tr('）——不冒充空。')) + '</div>';
+  }
   box.querySelectorAll('[data-sess-pick]').forEach((row) => {
     row.addEventListener('click', () => {
       CHAT.sessionId = String(row.getAttribute('data-sess-pick') || '');

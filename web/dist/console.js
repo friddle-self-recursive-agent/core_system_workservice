@@ -10036,7 +10036,7 @@ ${text2}</tr>
   function faces() {
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
-  var CHAT = { sessionId: "", timer: 0, pending: [] };
+  var CHAT = { sessionId: "", timer: 0, pending: [], titles: /* @__PURE__ */ new Map() };
   var LAST = { route: "", paramKey: "", locale: "" };
   function blocksOf(content) {
     const out = { text: "", reasoning: "", toolCalls: [] };
@@ -10108,22 +10108,51 @@ ${text2}</tr>
     }
     return nodes.map((n) => nodeHtml(n, names)).join("");
   }
-  function sessionRowHtml2(s, cur) {
-    const id = String(s.sessionId || "");
+  function sessionRowHtml2(s, cur, display, pick) {
+    const id = String(pick != null ? pick : s.sessionId || "");
+    const label = String(display || id);
     const sel = id === cur ? ' style="outline:1px solid var(--accent);background:var(--panel-2);border-radius:8px"' : "";
     const flag = s.blank ? chip(t("\u7A7A\u767D"), "mute") : s.running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : "";
-    return '<div class="dash-row" data-sess-pick="' + esc(id) + '" role="link"' + sel + '><div class="dr-main"><b class="mono">' + esc(trunc(id, 22)) + '</b></div><div class="dr-side">' + flag + (s.updatedAt ? '<span class="small faint">' + esc(relAge(new Date(Number(s.updatedAt)).toISOString()) || "") + "</span>" : "") + "</div></div>";
+    return '<div class="dash-row" data-sess-pick="' + esc(id) + '" role="link"' + sel + '><div class="dr-main"><b class="mono">' + esc(trunc(label, 24)) + '</b></div><div class="dr-side">' + flag + (s.updatedAt ? '<span class="small faint">' + esc(relAge(new Date(Number(s.updatedAt)).toISOString()) || "") + "</span>" : "") + "</div></div>";
   }
   function sessionsHtml(items, cur) {
-    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId);
+    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
     if (!rows.length) return '<div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002")) + "</div>";
-    return rows.map((s) => sessionRowHtml2(s, cur)).join("");
+    const head = rows.slice(0, 40).map((s) => {
+      const title = CHAT.titles.get(String(s.sessionId));
+      return sessionRowHtml2(s, cur, title, String(s.sessionId));
+    }).join("");
+    return head + (rows.length > 40 ? '<div class="small faint" style="padding:4px 6px">' + esc(t("\u2026\u5171 ") + rows.length + t(" \u4F1A\u8BDD\uFF08\u6700\u8FD1 40 \u6761\uFF09")) + "</div>" : "");
+  }
+  async function hydrateTitles(el, f, items) {
+    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)).slice(0, 10);
+    let dirty = false;
+    await Promise.all(rows.map(async (s) => {
+      const id = String(s.sessionId);
+      if (CHAT.titles.has(id) || s.blank) return;
+      try {
+        const r = await f.transcript(id, 12);
+        if (r.status !== 200 || !Array.isArray(r.data && r.data.events)) return;
+        const firstUser = r.data.events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join(" ") || "")).filter(Boolean)[0];
+        if (firstUser) {
+          CHAT.titles.set(id, trunc(firstUser, 24));
+          dirty = true;
+        }
+      } catch {
+      }
+    }));
+    if (dirty) refreshSessions(el, f);
   }
   async function refreshSessions(el, f) {
     const box = el.querySelector("[data-cc-sessions]");
     if (!box) return;
     const r = await f.sessions();
-    box.innerHTML = r.status === 200 ? sessionsHtml(r.data && r.data.items, CHAT.sessionId) : '<div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
+    if (r.status === 200) {
+      box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId);
+      hydrateTitles(el, f, r.data && r.data.items);
+    } else {
+      box.innerHTML = '<div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
+    }
     box.querySelectorAll("[data-sess-pick]").forEach((row) => {
       row.addEventListener("click", () => {
         CHAT.sessionId = String(row.getAttribute("data-sess-pick") || "");
