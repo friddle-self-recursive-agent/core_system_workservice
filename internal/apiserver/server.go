@@ -423,6 +423,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	registerWorkflowRoutes(d, mux) // triggers / runs / deliveries / wakes / dispatches / workflows
 	registerReadRoutes(d, mux)     // metrics / history / rev-content / doc-history / approvals / tasks / proposals / design_docs / intake / connectops / context
 	registerStreamRoutes(d, mux)   // snapshot 聚合快照 + /v1/stream WebSocket（v0.66）
+	registerSessionCtxRoutes(d, mux) // 会话上下文契约面（G-14——routes_sessions.go：GET/PUT/revert）
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {

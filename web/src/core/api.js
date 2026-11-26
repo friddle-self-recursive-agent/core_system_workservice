@@ -50,6 +50,12 @@ export function createApi(base = '') {
     workflowRuns: () => request('v1/workflows/runs'),
     sessions: () => request('v1/sessions'),
     session: (id) => request('v1/sessions/' + enc(String(id == null ? '' : id))),
+    /* 会话上下文契约面（G-14——routes_sessions.go：ContextPack 词形投影+编辑分叉） */
+    sessionContext: (id) => request('v1/sessions/' + enc(String(id == null ? '' : id)) + '/context'),
+    saveSessionContext: (id, payload) =>
+      request('v1/sessions/' + enc(String(id == null ? '' : id)) + '/context', { method: 'PUT', body: payload }),
+    revertSessionContext: (id) =>
+      request('v1/sessions/' + enc(String(id == null ? '' : id)) + '/context/revert', { method: 'POST' }),
     inbox: () => request('v1/inbox'),
     proposals: () => request('v1/proposals'),
     approvals: (limit = 20) => request('v1/approvals?limit=' + Number(limit)),

@@ -1,10 +1,11 @@
-/* chat.js —— 会话屏（清单 + 转录）。faces 注入点保留：window.__CC.chatFaces 同款接口——
- * {sessions(ctx)?, transcript(id)?} 可由宿主注入后现读；未注入=快照 sessions 清单 +
- * 诚实降级词形（不冒充转录内容——零编造）。深链：#/chat/:agent（agent 入口）、
- * #/session/:id（转录）。 */
+/* chat.js —— 会话屏（清单 + 转录 + 上下文面板）。faces 注入点保留：window.__CC.chatFaces
+ * 同款接口——{sessions(ctx)?, transcript(id)?} 可由宿主注入后现读；未注入=快照 sessions
+ * 清单 + 诚实降级词形（不冒充转录内容——零编造）。深链：#/chat/:agent（agent 入口）、
+ * #/session/:id（转录+上下文——sessionctx.js 挂载 ContextPack 契约面 G-14）。 */
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead } from '../render/chips.js';
+import { mountSessionCtx } from './sessionctx.js';
 
 function faces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
@@ -76,17 +77,22 @@ function chatScreen(el, ctx) {
   });
 }
 
-/** #/session/:id —— 转录屏。 */
+/** #/session/:id —— 转录屏 + 上下文面板（G-14：ContextPack/TagCtxShard/takeBudget 查看
+ * 与编辑分叉——sessionctx.js 异步注水，hash stamp 丢弃过期响应）。 */
 function sessionScreen(el, ctx) {
   const id = String(ctx.params.id || '');
   el.innerHTML = '<div class="view-inner">' +
     screenHead('会话转录', 'id=' + id, chipGo('← 会话', 'chat/root-agent', 'mute', false)) +
     '<div class="chat-grid"><div><h2 class="sec-title">会话清单</h2>' + sessionList(ctx, id) + '</div>' +
-    '<div><h2 class="sec-title">转录</h2><div class="card"><div class="card-b transcript">' + transcript(ctx, id) + '</div></div></div>' +
-    '</div></div>';
+    '<div><h2 class="sec-title">转录</h2><div class="card"><div class="card-b transcript">' + transcript(ctx, id) + '</div></div>' +
+    '<h2 class="sec-title" style="margin-top:14px">上下文</h2>' +
+    '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">上下文注水中…（GET /v1/sessions/' +
+    esc(encodeURIComponent(id)) + '/context）</div></div></div></div>' +
+    '</div></div></div>';
   el.querySelectorAll('[data-sess]').forEach((row) => {
     row.addEventListener('click', () => ctx.go('session/' + encodeURIComponent(row.dataset.sess)));
   });
+  mountSessionCtx(el, ctx, id);
 }
 
 export function render(el, ctx) {
