@@ -12,14 +12,24 @@ import (
 )
 
 func (a *app) cmdDelete(args []string) int {
+	// 旗标先行归一（Go flag 包遇首个位置参数即停——`delete k/s/n --yes` 词形把 --yes 落入
+	// 位置参数；把带 -- 前缀的词挪到前面即可两种词形都吃）。
+	var flags, pos []string
+	for _, x := range args {
+		if strings.HasPrefix(x, "--") || strings.HasPrefix(x, "-") {
+			flags = append(flags, x)
+		} else {
+			pos = append(pos, x)
+		}
+	}
 	fs := flag.NewFlagSet("delete", flag.ContinueOnError)
 	yes := fs.Bool("yes", false, "显式确认（破坏性动作缺省拒执行）")
 	rv := fs.Int64("rv", 0, "乐观锁期望 resourceVersion（0=不设防）")
 	fm := fs.String("field-manager", "corectl:delete", "fieldManager 留账词形")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
-	rest := fs.Args()
+	rest := pos
 	if len(rest) != 1 || !strings.Contains(rest[0], "/") {
 		fmt.Fprintln(a.err, "用法：corectl delete <kind>/<scope>/<name> [--rv N] --yes")
 		return 2
