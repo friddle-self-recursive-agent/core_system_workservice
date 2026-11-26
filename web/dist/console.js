@@ -25,6 +25,71 @@ var CoreConsole = (() => {
     mount: () => mount
   });
 
+  // src/core/format.js
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function safeHref(u) {
+    const s = String(u || "").trim();
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^(#|\/|\.\.?\/)/.test(s)) return s;
+    return "";
+  }
+  function pad(n) {
+    return n < 10 ? "0" + n : "" + n;
+  }
+  function toDate(v) {
+    if (v instanceof Date) return v;
+    if (typeof v === "number") return new Date(v);
+    return new Date(String(v == null ? "" : v).replace(" ", "T"));
+  }
+  function fmtTime(v) {
+    const d = toDate(v);
+    return isNaN(d) ? "\u2014" : pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function fmtTimeS(v) {
+    const d = toDate(v);
+    return isNaN(d) ? "\u2014" : fmtTime(d) + ":" + pad(d.getSeconds());
+  }
+  function fmtDate(v) {
+    const d = toDate(v);
+    return isNaN(d) ? "\u2014" : d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function fmtAbs(v) {
+    const d = toDate(v);
+    if (isNaN(d)) return "\u65F6\u95F4\u672A\u77E5";
+    let zone = "";
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      zone = "";
+    }
+    return fmtDate(d) + " " + fmtTimeS(d) + (zone ? " " + zone : "");
+  }
+  function relAge(ts, nowMs) {
+    const t = toDate(ts).getTime();
+    if (isNaN(t)) return "";
+    const d = Math.max(0, Math.round(((nowMs || Date.now()) - t) / 1e3));
+    if (d < 60) return d + "s \u524D";
+    if (d < 3600) return Math.round(d / 60) + "m \u524D";
+    if (d < 86400) return Math.round(d / 3600) + "h \u524D";
+    return Math.round(d / 86400) + "d \u524D";
+  }
+  function timeHtml(value) {
+    const d = toDate(value);
+    const iso = isNaN(d) ? "" : d.toISOString();
+    return '<time class="mono" datetime="' + esc(iso) + '" title="' + esc(fmtAbs(d)) + '">' + esc(relAge(value) || "\u65F6\u95F4\u672A\u77E5") + "</time>";
+  }
+  function fmtNum(n) {
+    if (n == null || isNaN(Number(n))) return "\u2014";
+    return Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 1 });
+  }
+  function trunc(s, n) {
+    const t = String(s == null ? "" : s);
+    return t.length > n ? t.slice(0, n) + "\u2026" : t;
+  }
+
   // node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
@@ -1206,91 +1271,26 @@ var CoreConsole = (() => {
     };
   }
 
-  // src/core/format.js
-  function esc2(s) {
-    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function safeHref(u) {
-    const s = String(u || "").trim();
-    if (!s) return "";
-    if (/^https?:\/\//i.test(s)) return s;
-    if (/^(#|\/|\.\.?\/)/.test(s)) return s;
-    return "";
-  }
-  function pad(n) {
-    return n < 10 ? "0" + n : "" + n;
-  }
-  function toDate(v) {
-    if (v instanceof Date) return v;
-    if (typeof v === "number") return new Date(v);
-    return new Date(String(v == null ? "" : v).replace(" ", "T"));
-  }
-  function fmtTime(v) {
-    const d = toDate(v);
-    return isNaN(d) ? "\u2014" : pad(d.getHours()) + ":" + pad(d.getMinutes());
-  }
-  function fmtTimeS(v) {
-    const d = toDate(v);
-    return isNaN(d) ? "\u2014" : fmtTime(d) + ":" + pad(d.getSeconds());
-  }
-  function fmtDate(v) {
-    const d = toDate(v);
-    return isNaN(d) ? "\u2014" : d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-  }
-  function fmtAbs(v) {
-    const d = toDate(v);
-    if (isNaN(d)) return "\u65F6\u95F4\u672A\u77E5";
-    let zone = "";
-    try {
-      zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    } catch {
-      zone = "";
-    }
-    return fmtDate(d) + " " + fmtTimeS(d) + (zone ? " " + zone : "");
-  }
-  function relAge(ts, nowMs) {
-    const t = toDate(ts).getTime();
-    if (isNaN(t)) return "";
-    const d = Math.max(0, Math.round(((nowMs || Date.now()) - t) / 1e3));
-    if (d < 60) return d + "s \u524D";
-    if (d < 3600) return Math.round(d / 60) + "m \u524D";
-    if (d < 86400) return Math.round(d / 3600) + "h \u524D";
-    return Math.round(d / 86400) + "d \u524D";
-  }
-  function timeHtml(value) {
-    const d = toDate(value);
-    const iso = isNaN(d) ? "" : d.toISOString();
-    return '<time class="mono" datetime="' + esc2(iso) + '" title="' + esc2(fmtAbs(d)) + '">' + esc2(relAge(value) || "\u65F6\u95F4\u672A\u77E5") + "</time>";
-  }
-  function fmtNum(n) {
-    if (n == null || isNaN(Number(n))) return "\u2014";
-    return Number(n).toLocaleString("zh-CN", { maximumFractionDigits: 1 });
-  }
-  function trunc(s, n) {
-    const t = String(s == null ? "" : s);
-    return t.length > n ? t.slice(0, n) + "\u2026" : t;
-  }
-
   // src/render/chips.js
   function chip(label, cls = "mute", tiny = true, attrs = "") {
-    return '<span class="chip ' + esc2(cls) + (tiny ? " tiny" : "") + '"' + (attrs ? " " + attrs : "") + ">" + esc2(label) + "</span>";
+    return '<span class="chip ' + esc(cls) + (tiny ? " tiny" : "") + '"' + (attrs ? " " + attrs : "") + ">" + esc(label) + "</span>";
   }
   function chipGo(label, route, cls = "mute", tiny = true, title = "") {
-    return '<span class="chip ' + esc2(cls) + (tiny ? " tiny" : "") + ' click" data-go="' + esc2(route) + '"' + (title ? ' title="' + esc2(title) + '"' : "") + ">" + esc2(label) + "</span>";
+    return '<span class="chip ' + esc(cls) + (tiny ? " tiny" : "") + ' click" data-go="' + esc(route) + '"' + (title ? ' title="' + esc(title) + '"' : "") + ">" + esc(label) + "</span>";
   }
   function kindBadge(kind) {
-    return '<span class="chip kind tiny">' + esc2(kind) + "</span>";
+    return '<span class="chip kind tiny">' + esc(kind) + "</span>";
   }
   function kv(rows) {
     return '<div class="kv">' + (rows || []).filter((r) => r && r.length === 2).map(
-      ([k, v]) => '<span class="k">' + esc2(k) + '</span><span class="v">' + v + "</span>"
+      ([k, v]) => '<span class="k">' + esc(k) + '</span><span class="v">' + v + "</span>"
     ).join("") + "</div>";
   }
   function emptyBox(title, sub = "", actionHtml = "") {
-    return '<div class="empty"><div class="e-title">' + esc2(title) + "</div>" + (sub ? '<div class="small faint">' + esc2(sub) + "</div>" : "") + (actionHtml ? '<div class="e-act">' + actionHtml + "</div>" : "") + "</div>";
+    return '<div class="empty"><div class="e-title">' + esc(title) + "</div>" + (sub ? '<div class="small faint">' + esc(sub) + "</div>" : "") + (actionHtml ? '<div class="e-act">' + actionHtml + "</div>" : "") + "</div>";
   }
   function screenHead(title, sub = "", actionsHtml = "") {
-    return '<div class="dh"><div class="dh-main"><div class="dh-title"><h1>' + esc2(title) + "</h1></div>" + (sub ? '<div class="dh-sub">' + esc2(sub) + "</div>" : "") + "</div>" + (actionsHtml ? '<div class="dh-actions">' + actionsHtml + "</div>" : "") + "</div>";
+    return '<div class="dh"><div class="dh-main"><div class="dh-title"><h1>' + esc(title) + "</h1></div>" + (sub ? '<div class="dh-sub">' + esc(sub) + "</div>" : "") + "</div>" + (actionsHtml ? '<div class="dh-actions">' + actionsHtml + "</div>" : "") + "</div>";
   }
   function encSeg(s) {
     return encodeURIComponent(String(s == null ? "" : s));
@@ -1315,7 +1315,7 @@ var CoreConsole = (() => {
 
   // src/screens/welcome.js
   function statCard(label, num, sub, route, cls) {
-    return '<div class="stat ' + esc2(cls || "") + '" data-go="' + esc2(route) + '" role="link"><div class="st-num">' + esc2(fmtNum(num)) + '</div><div class="st-label">' + esc2(label) + '<span class="small faint">' + esc2(sub || "") + "</span></div></div>";
+    return '<div class="stat ' + esc(cls || "") + '" data-go="' + esc(route) + '" role="link"><div class="st-num">' + esc(fmtNum(num)) + '</div><div class="st-label">' + esc(label) + '<span class="small faint">' + esc(sub || "") + "</span></div></div>";
   }
   function kindCard(kindRow, refs) {
     const k = kindRow && (kindRow.name || kindRow.kind);
@@ -1323,7 +1323,7 @@ var CoreConsole = (() => {
     const rows = refs.filter((r) => r.kind === k);
     const first = rows[0];
     const firstHtml = first ? chipGo(first.name, objRoute(first.kind, first.scope, first.name), "mute", true, first.kind + "/" + first.scope + "/" + first.name) : chip("\u6682\u65E0\u5728\u518C\u5BF9\u8C61", "mute");
-    return '<div class="w-svc" data-go="' + esc2(rows.length ? objRoute(k, rows[0].scope, rows[0].name) : "docs") + '" role="link"><div class="ws-main"><div class="ws-title">' + esc2(k) + '</div><div class="ws-desc">' + esc2(rows.length ? "\u9996\u4E2A\uFF1A" + (first ? first.scope + "/" + first.name : "\u2014") : "\u8BE5 kind \u6682\u65E0\u5BF9\u8C61") + '</div></div><span class="ws-chip">' + chip(String(rows.length) + " \u4E2A", rows.length ? "acc" : "mute") + "</span></div>";
+    return '<div class="w-svc" data-go="' + esc(rows.length ? objRoute(k, rows[0].scope, rows[0].name) : "docs") + '" role="link"><div class="ws-main"><div class="ws-title">' + esc(k) + '</div><div class="ws-desc">' + esc(rows.length ? "\u9996\u4E2A\uFF1A" + (first ? first.scope + "/" + first.name : "\u2014") : "\u8BE5 kind \u6682\u65E0\u5BF9\u8C61") + '</div></div><span class="ws-chip">' + chip(String(rows.length) + " \u4E2A", rows.length ? "acc" : "mute") + "</span></div>";
   }
   function loopCardHtml(data) {
     const d = data && typeof data === "object" ? data : {};
@@ -1343,7 +1343,7 @@ var CoreConsole = (() => {
     const r = await ctx2.api.loopCurrent();
     if (!el.isConnected || box.getAttribute("data-loop-box") === "stale") return;
     if (!r.ok) {
-      box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b"><div class="report-loop-top">' + chip("\u5F53\u524D\u5FAA\u73AF", "mute") + '<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc2(String(r.error || r.status)) + "\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>";
+      box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b"><div class="report-loop-top">' + chip("\u5F53\u524D\u5FAA\u73AF", "mute") + '<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc(String(r.error || r.status)) + "\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>";
       return;
     }
     if (!r.data || !r.data.loop && !r.data.id && !r.data.phase) {
@@ -1370,7 +1370,7 @@ var CoreConsole = (() => {
     const runningN = tasks.filter((t) => t && t.status && t.status.phase === "running").length;
     const kindCards = kindsList.slice(0, 12).map((k) => kindCard(k, objs)).join("");
     const kindMore = kindsList.length > 12 ? '<div class="small faint" style="grid-column:1/-1">\u2026\u53E6\u6709 ' + (kindsList.length - 12) + " \u4E2A kind\u2014\u2014\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u5DE6\u4FA7\u6E05\u5355\u3002</div>" : "";
-    el.innerHTML = '<div class="view-inner welcome"><div class="w-hello"><h1>Welcome</h1><span class="w-date mono">' + esc2((/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) + '</span><span class="w-conn" data-conn-slot></span></div><div class="statbar">' + statCard("\u5728\u518C\u5BF9\u8C61", objs.length, "\u5168\u90E8 kind \u5408\u8BA1", "obj") + statCard("kinds", kindsList.length, "scheme \u6CE8\u518C", "docs") + statCard("\u4E8B\u4EF6\uFF08\u7A97\u53E3\u5185\uFF09", events.length, "\u5F52\u6863\u884C", "events") + statCard("\u5F85\u5BA1", approvalN, approvalN ? "\u8349\u7A3F\u222A\u5BA1\u6279\u4E8B\u4EF6\u2014\u2014\u70B9\u51FB\u5904\u7406" : "\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09", "approvals", approvalN ? "alert" : "") + statCard("\u6536\u4EF6\u7BB1", inboxN, inboxN ? "\u5F85\u4F60\u5904\u7406" : "\u6682\u65E0\u5F85\u529E", "inbox", inboxN ? "alert" : "") + statCard("\u8FDB\u884C\u4E2D\u4EFB\u52A1", runningN, "\u4EFB\u52A1\u4E2D\u5FC3", "tasks") + '</div><h2 class="sec-title">kinds \u6458\u8981</h2>' + (objs.length || kindsList.length ? '<div class="w-services">' + kindCards + kindMore + "</div>" : emptyBox("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u6216 patch \u589E\u91CF")) + '<h2 class="sec-title">\u5F53\u524D\u5FAA\u73AF</h2><div data-loop-box="pending">' + emptyBox("\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026") + '</div><div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B\u5BF9\u8C61\u6B63\u6587\u6309 resourceVersion \u7F13\u5B58\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\uFF09\u3002</div></div>';
+    el.innerHTML = '<div class="view-inner welcome"><div class="w-hello"><h1>Welcome</h1><span class="w-date mono">' + esc((/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) + '</span><span class="w-conn" data-conn-slot></span></div><div class="statbar">' + statCard("\u5728\u518C\u5BF9\u8C61", objs.length, "\u5168\u90E8 kind \u5408\u8BA1", "obj") + statCard("kinds", kindsList.length, "scheme \u6CE8\u518C", "docs") + statCard("\u4E8B\u4EF6\uFF08\u7A97\u53E3\u5185\uFF09", events.length, "\u5F52\u6863\u884C", "events") + statCard("\u5F85\u5BA1", approvalN, approvalN ? "\u8349\u7A3F\u222A\u5BA1\u6279\u4E8B\u4EF6\u2014\u2014\u70B9\u51FB\u5904\u7406" : "\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09", "approvals", approvalN ? "alert" : "") + statCard("\u6536\u4EF6\u7BB1", inboxN, inboxN ? "\u5F85\u4F60\u5904\u7406" : "\u6682\u65E0\u5F85\u529E", "inbox", inboxN ? "alert" : "") + statCard("\u8FDB\u884C\u4E2D\u4EFB\u52A1", runningN, "\u4EFB\u52A1\u4E2D\u5FC3", "tasks") + '</div><h2 class="sec-title">kinds \u6458\u8981</h2>' + (objs.length || kindsList.length ? '<div class="w-services">' + kindCards + kindMore + "</div>" : emptyBox("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u6216 patch \u589E\u91CF")) + '<h2 class="sec-title">\u5F53\u524D\u5FAA\u73AF</h2><div data-loop-box="pending">' + emptyBox("\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026") + '</div><div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B\u5BF9\u8C61\u6B63\u6587\u6309 resourceVersion \u7F13\u5B58\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\uFF09\u3002</div></div>';
     hydrateLoop(el, ctx2);
   }
 
@@ -1395,7 +1395,7 @@ var CoreConsole = (() => {
       if (!name) return "";
       const myRuns = runs.filter((r) => String(r && (r.workflow || r.name || "")) === name);
       const last = myRuns[0];
-      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(name) + '"><div class="mr-main"><div><b class="mono">' + esc2(name) + "</b> " + (w.spec ? kindBadge("Workflow") : "") + '</div><div class="mr-sub small">' + esc2(trunc(String(w.summary || w.desc || w.spec && w.spec.title || "\u2014"), 90)) + '</div></div><span class="ws-chip">' + chip(myRuns.length + " \u6B21\u8FD0\u884C", myRuns.length ? "acc" : "mute") + (last ? runChip(last) : "") + "</span></div>";
+      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(name) + '"><div class="mr-main"><div><b class="mono">' + esc(name) + "</b> " + (w.spec ? kindBadge("Workflow") : "") + '</div><div class="mr-sub small">' + esc(trunc(String(w.summary || w.desc || w.spec && w.spec.title || "\u2014"), 90)) + '</div></div><span class="ws-chip">' + chip(myRuns.length + " \u6B21\u8FD0\u884C", myRuns.length ? "acc" : "mute") + (last ? runChip(last) : "") + "</span></div>";
     }).filter(Boolean);
     el.innerHTML = '<div class="view-inner">' + screenHead("\u5DE5\u4F5C\u6D41", "\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5") + (rows.length ? '<div class="card">' + rows.join("") + "</div>" : emptyBox("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41", "\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
@@ -1413,16 +1413,16 @@ var CoreConsole = (() => {
     }
     const rows = [];
     if (wf) {
-      if (wf.scope) rows.push(["scope", esc2(String(wf.scope))]);
-      if (wf.resourceVersion != null) rows.push(["rv", esc2(String(wf.resourceVersion))]);
-      if (wf.spec && wf.spec.title) rows.push(["\u6807\u9898", esc2(String(wf.spec.title))]);
+      if (wf.scope) rows.push(["scope", esc(String(wf.scope))]);
+      if (wf.resourceVersion != null) rows.push(["rv", esc(String(wf.resourceVersion))]);
+      if (wf.spec && wf.spec.title) rows.push(["\u6807\u9898", esc(String(wf.spec.title))]);
       if (wf.spec && wf.spec.goalRef) rows.push(["\u76EE\u6807", chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || "docs", "mute", true, "\u76EE\u6807\u6587\u6863")]);
     }
     if (wf && wf.spec && wf.spec.dependsOn) rows.push(["\u4F9D\u8D56", (wf.spec.dependsOn || []).map((d) => chip(String(d), "mute")).join(" ")]);
     rows.push(["\u8FD0\u884C", chip(runs.length + " \u6B21", runs.length ? "acc" : "mute")]);
     const runRows = runs.map((r, i) => {
       const no = r.no != null ? r.no : runs.length - i;
-      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc2(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc2(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc2(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
+      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">' + kv(rows) + '</div></div><h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>' + (runRows ? '<div class="card">' + runRows + "</div>" : '<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>') + "</div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
@@ -1443,14 +1443,14 @@ var CoreConsole = (() => {
     }
     const rows = [
       ["\u72B6\u6001", runChip(run)],
-      ["route", esc2(trunc(String(run.route || "\u2014"), 120))]
+      ["route", esc(trunc(String(run.route || "\u2014"), 120))]
     ];
     if (run.startedAt || run.at || run.ts) rows.push(["\u5F00\u59CB\u4E8E", timeHtml(run.startedAt || run.at || run.ts)]);
     if (run.finishedAt || run.doneAt) rows.push(["\u7ED3\u675F\u4E8E", timeHtml(run.finishedAt || run.doneAt)]);
     if (run.error) rows.push(["\u9519\u8BEF", chip(trunc(String(run.error), 160), "esc")]);
     const steps = Array.isArray(run.steps) ? run.steps : [];
     el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">' + kv(rows) + "</div></div>" + (steps.length ? '<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">' + steps.map(
-      (s) => '<div class="mini-row"><div class="mr-main"><div>' + esc2(String(s && (s.name || s.step) || "\u6B65\u9AA4")) + " " + runChip(s) + '</div><div class="mr-sub small mono">' + esc2(trunc(String(s && (s.detail || s.message) || ""), 120)) + "</div></div></div>"
+      (s) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || "\u6B65\u9AA4")) + " " + runChip(s) + '</div><div class="mr-sub small mono">' + esc(trunc(String(s && (s.detail || s.message) || ""), 120)) + "</div></div></div>"
     ).join("") + "</div>" : '<div class="small faint">\u5951\u7EA6\u672A\u643A\u5E26\u6B65\u9AA4\u660E\u7EC6\u2014\u2014\u4E0D\u663E\u793A\u4E0D\u7F16\u9020\u3002</div>') + "</div>";
   }
   function render2(el, ctx2) {
@@ -1489,7 +1489,7 @@ var CoreConsole = (() => {
   }
   function eventRow(e) {
     const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc2(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc2(String(e && e.type || "\u672A\u547D\u540D\u4E8B\u4EF6")) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + esc2(trunc(String(e && e.involved || "\u2014"), 60)) + '</div></div><span class="w-ev-time mono">' + esc2(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + "</span></div>";
+    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || "\u672A\u547D\u540D\u4E8B\u4EF6")) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + esc(trunc(String(e && e.involved || "\u2014"), 60)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + "</span></div>";
   }
   function listScreen2(el, ctx2) {
     let rows = ctx2.store.events().slice();
@@ -1498,8 +1498,8 @@ var CoreConsole = (() => {
       const q = filter.q.toLowerCase();
       rows = rows.filter((e) => String(e && (e.type || "") + " " + (e.involved || "") + " " + (e.summary || e.message || "")).toLowerCase().includes(q));
     }
-    const fbar = '<div class="filter-bar"><input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="' + esc2(filter.q) + '">' + ["", "error", "warn", "info"].map(
-      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc2(lv) + '">' + esc2(lv || "\u5168\u90E8\u7EA7\u522B") + "</span>"
+    const fbar = '<div class="filter-bar"><input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="' + esc(filter.q) + '">' + ["", "error", "warn", "info"].map(
+      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc(lv) + '">' + esc(lv || "\u5168\u90E8\u7EA7\u522B") + "</span>"
     ).join("") + "</div>";
     el.innerHTML = '<div class="view-inner">' + screenHead("\u4E8B\u4EF6\u6D41", "\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09") + fbar + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join("") + (rows.length > 300 ? '<div class="small faint" style="padding:8px 14px">\u2026\u5171 ' + rows.length + " \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>" : "") + "</div>" : emptyBox("\u7A97\u53E3\u5185\u65E0\u4E8B\u4EF6", filter.q || filter.level ? "\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002" : "\u5FEB\u7167 events \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div>";
     const inp = el.querySelector("#ev-q");
@@ -1527,13 +1527,13 @@ var CoreConsole = (() => {
     const box = el.querySelector(".card .card-b");
     if (!box) return;
     if (!r.ok) {
-      box.innerHTML = '<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc2(String(r.error || r.status)) + "\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>";
+      box.innerHTML = '<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc(String(r.error || r.status)) + "\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>";
       return;
     }
     const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
     const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
-    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc2(trunc(String(e[k]), 200))]);
-    box.innerHTML = '<div class="ev-head">' + esc2(String(e.type || "\u672A\u547D\u540D\u4E8B\u4EF6")) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + '<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">' + esc2(JSON.stringify(e, null, 2)) + "</pre></details>";
+    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(String(e[k]), 200))]);
+    box.innerHTML = '<div class="ev-head">' + esc(String(e.type || "\u672A\u547D\u540D\u4E8B\u4EF6")) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + '<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">' + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
   }
   function render3(el, ctx2) {
     const id = ctx2.params && ctx2.params.id;
@@ -8939,7 +8939,7 @@ ${text2}</tr>
     let out = String(s).replace(/`([^`]+)`/g, '<code class="md-code">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text2, href) => {
       const ok = safeHref(href);
-      return ok ? '<a class="md-a" href="' + esc2(ok) + '">' + text2 + "</a>" : text2 + ' <span class="mono faint small">(' + href + ")</span>";
+      return ok ? '<a class="md-a" href="' + esc(ok) + '">' + text2 + "</a>" : text2 + ' <span class="mono faint small">(' + href + ")</span>";
     });
     return out;
   }
@@ -8949,7 +8949,7 @@ ${text2}</tr>
     const para = [];
     const flush = () => {
       if (para.length) {
-        out.push('<p class="md-p">' + inline2(esc2(para.join(" "))) + "</p>");
+        out.push('<p class="md-p">' + inline2(esc(para.join(" "))) + "</p>");
         para.length = 0;
       }
     };
@@ -8971,14 +8971,14 @@ ${text2}</tr>
           i += 1;
         }
         i += 1;
-        out.push('<pre class="md-pre">' + esc2(buf.join("\n")) + "</pre>");
+        out.push('<pre class="md-pre">' + esc(buf.join("\n")) + "</pre>");
         continue;
       }
       const h = /^(#{1,6})\s+(.*)$/.exec(line);
       if (h) {
         flush();
         const lv = Math.min(h[1].length, 6);
-        out.push("<h" + lv + ' class="md-h md-h' + lv + '">' + inline2(esc2(h[2])) + "</h" + lv + ">");
+        out.push("<h" + lv + ' class="md-h md-h' + lv + '">' + inline2(esc(h[2])) + "</h" + lv + ">");
         i += 1;
         continue;
       }
@@ -8995,7 +8995,7 @@ ${text2}</tr>
           q.push(lines[i].replace(/^\s*>\s?/, ""));
           i += 1;
         }
-        out.push('<blockquote class="md-quote">' + inline2(esc2(q.join(" "))) + "</blockquote>");
+        out.push('<blockquote class="md-quote">' + inline2(esc(q.join(" "))) + "</blockquote>");
         continue;
       }
       if (/^\s*\|.+\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
@@ -9007,7 +9007,7 @@ ${text2}</tr>
           body.push(lines[i].trim().replace(/^\||\|$/g, "").split("|").map((x) => x.trim()));
           i += 1;
         }
-        out.push('<table class="md-tbl"><thead><tr>' + heads.map((x) => "<th>" + inline2(esc2(x)) + "</th>").join("") + "</tr></thead><tbody>" + body.map((row) => "<tr>" + heads.map((_, ci) => "<td>" + inline2(esc2(row[ci] == null ? "" : row[ci])) + "</td>").join("") + "</tr>").join("") + "</tbody></table>");
+        out.push('<table class="md-tbl"><thead><tr>' + heads.map((x) => "<th>" + inline2(esc(x)) + "</th>").join("") + "</tr></thead><tbody>" + body.map((row) => "<tr>" + heads.map((_, ci) => "<td>" + inline2(esc(row[ci] == null ? "" : row[ci])) + "</td>").join("") + "</tr>").join("") + "</tbody></table>");
         continue;
       }
       if (isList(line)) {
@@ -9036,7 +9036,7 @@ ${text2}</tr>
             html3 += "<" + want + ' class="md-list">';
             stack.push({ tag: want });
           }
-          html3 += '<li class="md-li">' + inline2(esc2(it.text));
+          html3 += '<li class="md-li">' + inline2(esc(it.text));
           openLi = true;
         }
         if (openLi) html3 += "</li>";
@@ -9106,20 +9106,20 @@ ${text2}</tr>
       const keys = Object.keys(v);
       if (!keys.length) return '<span class="faint">\uFF08\u7A7A\uFF09</span>';
       return '<div class="md-subcards">' + keys.map(
-        (k) => '<div class="md-subcard"><div class="md-subcard-k">' + esc2(k) + '</div><div class="md-subcard-v">' + cardVal(v[k], depth + 1) + "</div></div>"
+        (k) => '<div class="md-subcard"><div class="md-subcard-k">' + esc(k) + '</div><div class="md-subcard-v">' + cardVal(v[k], depth + 1) + "</div></div>"
       ).join("") + "</div>";
     }
     const s = String(v);
-    if (/^(agent|system|session):/.test(s)) return '<span class="lk md-lk">' + esc2(s) + "</span>";
+    if (/^(agent|system|session):/.test(s)) return '<span class="lk md-lk">' + esc(s) + "</span>";
     if (/^https?:\/\//i.test(s)) {
       const href = safeHref(s);
-      return href ? '<a class="md-a" href="' + esc2(href) + '">' + esc2(trunc(s, 80)) + "</a>" : esc2(trunc(s, 80));
+      return href ? '<a class="md-a" href="' + esc(href) + '">' + esc(trunc(s, 80)) + "</a>" : esc(trunc(s, 80));
     }
-    return esc2(trunc(s, 300));
+    return esc(trunc(s, 300));
   }
   function cardHtml(key, v, depth) {
     const g = FIELD_GLOSS[String(key)];
-    return '<div class="md-card"><div class="md-card-k">' + esc2(String(key)) + (g ? '<span class="md-gloss">' + esc2(g) + "</span>" : "") + '</div><div class="md-card-v">' + cardVal(v, depth) + "</div></div>";
+    return '<div class="md-card"><div class="md-card-k">' + esc(String(key)) + (g ? '<span class="md-gloss">' + esc(g) + "</span>" : "") + '</div><div class="md-card-v">' + cardVal(v, depth) + "</div></div>";
   }
   function yamlToCards(src) {
     const tree = loadYaml(src);
@@ -9127,7 +9127,7 @@ ${text2}</tr>
     return '<div class="md-cards">' + Object.keys(tree).map((k) => cardHtml(k, tree[k], 0)).join("") + "</div>";
   }
   function rawDisclosure(title, content) {
-    return '<details class="md-raw"><summary>' + esc2(title || "\u539F\u6587") + '</summary><pre class="mono md-raw-pre">' + esc2(content == null ? "" : content) + "</pre></details>";
+    return '<details class="md-raw"><summary>' + esc(title || "\u539F\u6587") + '</summary><pre class="mono md-raw-pre">' + esc(content == null ? "" : content) + "</pre></details>";
   }
 
   // src/screens/objects.js
@@ -9203,23 +9203,23 @@ ${text2}</tr>
       return '<div class="ob-empty">\u6682\u65E0\u6807\u7B7E\u2014\u2014\u5BF9\u8C61\u6B63\u6587\u672A\u58F0\u660E spec.metadata.tags\uFF08\u58F0\u660E\u7ECF Apply \u843D\u5E93\u540E\u6B64\u5904\u73B0\u8BFB\uFF09\u3002</div>';
     }
     return groups.map(
-      (g) => '<div class="ob-tagrow">' + chip(g.type, "mute") + " " + g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc2(t) + '" title="\u770B\u540C tag \u5BF9\u8C61">#' + esc2(t) + "</span>").join(" ") + "</div>"
+      (g) => '<div class="ob-tagrow">' + chip(g.type, "mute") + " " + g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + '" title="\u770B\u540C tag \u5BF9\u8C61">#' + esc(t) + "</span>").join(" ") + "</div>"
     ).join("");
   }
   function rulePanel(res) {
-    if (res.degraded) return '<div class="ob-empty">' + esc2(res.reason) + "</div>";
+    if (res.degraded) return '<div class="ob-empty">' + esc(res.reason) + "</div>";
     if (!res.hits.length) {
       return '<div class="ob-empty">\u65E0\u9002\u7528\u89C4\u5219\u2014\u2014\u6309 kind/scope/tag/\u6B63\u6587\u5F15\u7528\u56DB\u8DEF\u68C0\u67E5\u96F6\u547D\u4E2D\uFF08\u68C0\u67E5\u8303\u56F4=' + res.scanned + " \u4EFD\u89C4\u5219\u6587\u6863\uFF09\u3002</div>";
     }
     return res.hits.map(
-      (h, i) => '<details class="ob-rule"><summary><span class="lk mono" data-go="' + esc2("designdoc/core_design/" + encodeURIComponent(String(h.ref.replace(/^[^/]+\/([^#]+).*/, "$1") + ".md"))) + '">' + esc2(h.ref) + '</span></summary><div class="ob-rule-why small">' + h.why.map((w) => chip(w, "mute")).join(" ") + "</div></details>"
+      (h, i) => '<details class="ob-rule"><summary><span class="lk mono" data-go="' + esc("designdoc/core_design/" + encodeURIComponent(String(h.ref.replace(/^[^/]+\/([^#]+).*/, "$1") + ".md"))) + '">' + esc(h.ref) + '</span></summary><div class="ob-rule-why small">' + h.why.map((w) => chip(w, "mute")).join(" ") + "</div></details>"
     ).join("");
   }
   function ctxPanel(rv) {
-    return '<div class="ob-ctx">' + chip("\u5DF2\u5165\u5FEB\u7167", "ok") + ' <span class="small">resourceVersion r' + esc2(String(rv || 0)) + "\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span> " + chipGo("\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "docs", "mute", true) + "</div>";
+    return '<div class="ob-ctx">' + chip("\u5DF2\u5165\u5FEB\u7167", "ok") + ' <span class="small">resourceVersion r' + esc(String(rv || 0)) + "\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span> " + chipGo("\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "docs", "mute", true) + "</div>";
   }
   function opsPanel(ref) {
-    return '<div><button class="btn sm" data-go="' + esc2(docRoute(ref.kind, ref.scope, ref.name)) + '">\u7F16\u8F91\u5668</button> <button class="btn sm" data-go="' + esc2("s/" + encodeURIComponent(ref.scope)) + '">\u6240\u5C5E scope</button> </div>';
+    return '<div><button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + '">\u7F16\u8F91\u5668</button> <button class="btn sm" data-go="' + esc("s/" + encodeURIComponent(ref.scope)) + '">\u6240\u5C5E scope</button> </div>';
   }
   function schemePanel(kindReg, content) {
     if (!kindReg) return '<div class="ob-empty">scheme \u6682\u4E0D\u53EF\u8FBE\uFF08kinds \u805A\u5408\u7F3A\u5E2D\uFF09\u3002</div>';
@@ -9390,14 +9390,14 @@ ${text2}</tr>
     const agent = String(s.agent || spec.agent || "").trim();
     const sess = String(s.agentSession || "").trim();
     const last = String(s.lastAction || "").trim();
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc2(taskTitle(t)) + "</b>" + phaseChip(t) + chip(id, "mute") + (deps ? chip("\u4F9D\u8D56 " + deps, "mute") : "") + (agent ? chip("\u8D1F\u8D23 " + agent, "mute") : "") + '</div><div class="task-sub small">' + esc2(last || "\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014") + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + '</div></div><div class="task-acts">' + (sess ? chipGo("\u5BF9\u8BDD", "session/" + encodeURIComponent(sess), "mute", true, "\u5173\u8054\u4F1A\u8BDD") : "") + "</div></div>";
+    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t)) + "</b>" + phaseChip(t) + chip(id, "mute") + (deps ? chip("\u4F9D\u8D56 " + deps, "mute") : "") + (agent ? chip("\u8D1F\u8D23 " + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || "\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014") + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + '</div></div><div class="task-acts">' + (sess ? chipGo("\u5BF9\u8BDD", "session/" + encodeURIComponent(sess), "mute", true, "\u5173\u8054\u4F1A\u8BDD") : "") + "</div></div>";
   }
   function tasksScreen(el, ctx2) {
     const tasks = ctx2.store.tasks();
     const g = groupTasks(tasks);
     const body = GROUPS.map((grp) => {
       const rows = g[grp.id] || [];
-      return '<div class="card"><div class="card-h"><span class="h-title">' + esc2(grp.label) + "</span>" + chip(String(rows.length) + " \u9879", rows.length ? "acc" : "mute") + "</div>" + (rows.length ? '<div class="card-b">' + rows.map(taskRow).join("") + "</div>" : '<div class="card-b small faint">' + esc2(grp.label) + "\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>") + "</div>";
+      return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + "</span>" + chip(String(rows.length) + " \u9879", rows.length ? "acc" : "mute") + "</div>" + (rows.length ? '<div class="card-b">' + rows.map(taskRow).join("") + "</div>" : '<div class="card-b small faint">' + esc(grp.label) + "\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>") + "</div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead("\u4EFB\u52A1\u4E2D\u5FC3", "\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5", chipGo("\u5173\u6CE8\u62A5\u544A", "report", "acc", false)) + '<div class="grid cols-2">' + body + "</div></div>";
     el.querySelectorAll(".task-row").forEach((row, i) => {
@@ -9426,12 +9426,12 @@ ${text2}</tr>
     const spec = specOf(t);
     const rows = [
       ["\u76F8\u4F4D", phaseChip(t)],
-      ["\u6807\u9898", esc2(taskTitle(t))],
-      ["id", esc2(taskIdOf(t))]
+      ["\u6807\u9898", esc(taskTitle(t))],
+      ["id", esc(taskIdOf(t))]
     ];
-    if (spec.agent || s.agent) rows.push(["\u8D1F\u8D23", esc2(String(s.agent || spec.agent))]);
+    if (spec.agent || s.agent) rows.push(["\u8D1F\u8D23", esc(String(s.agent || spec.agent))]);
     if (s.agentSession) rows.push(["\u4F1A\u8BDD", chipGo(trunc(String(s.agentSession), 24), "session/" + encodeURIComponent(String(s.agentSession)), "acc", true, "\u5173\u8054\u4F1A\u8BDD")]);
-    if (s.lastAction) rows.push(["\u6700\u8FD1\u52A8\u4F5C", esc2(trunc(String(s.lastAction), 200))]);
+    if (s.lastAction) rows.push(["\u6700\u8FD1\u52A8\u4F5C", esc(trunc(String(s.lastAction), 200))]);
     if (s.lastError) rows.push(["\u6700\u8FD1\u9519\u8BEF", chip(trunc(String(s.lastError), 120), "esc")]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push(["\u4F9D\u8D56", deps.map((d) => chip(String(d), "mute")).join(" ")]);
@@ -9474,7 +9474,7 @@ ${text2}</tr>
     }).filter(Boolean);
     const action = a.action || {};
     const route = action.target ? String(action.target).replace(/^#\/?/, "") : "";
-    return '<div class="att-card sev-' + esc2(String(a.severity || "unknown")) + '"><div class="att-h">' + chip(sev.label, sev.chip) + (a.category ? chip(a.category, "mute") : "") + "<b>" + esc2(String(a.title || "\u672A\u547D\u540D\u5173\u6CE8\u9879")) + "</b></div>" + (a.why ? '<div class="att-why small">' + esc2(String(a.why)) + "</div>" : "") + '<div class="att-ev">' + (evs.length ? evs.join(" ") : '<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>') + "</div>" + (route ? '<div class="att-acts"><button class="btn sm" data-go="' + esc2(route) + '">' + esc2(String(action.label || "\u53BB\u5904\u7406")) + "</button></div>" : "") + "</div>";
+    return '<div class="att-card sev-' + esc(String(a.severity || "unknown")) + '"><div class="att-h">' + chip(sev.label, sev.chip) + (a.category ? chip(a.category, "mute") : "") + "<b>" + esc(String(a.title || "\u672A\u547D\u540D\u5173\u6CE8\u9879")) + "</b></div>" + (a.why ? '<div class="att-why small">' + esc(String(a.why)) + "</div>" : "") + '<div class="att-ev">' + (evs.length ? evs.join(" ") : '<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>') + "</div>" + (route ? '<div class="att-acts"><button class="btn sm" data-go="' + esc(route) + '">' + esc(String(action.label || "\u53BB\u5904\u7406")) + "</button></div>" : "") + "</div>";
   }
   function reportFooter(body) {
     const b = body || {};
@@ -9483,7 +9483,7 @@ ${text2}</tr>
     const missText = Array.isArray(missing) ? missing.map((m) => String(m)).join("\u3001") : String(missing || "");
     const gb = String(b.generatedBy || "");
     const gbLabel = gb === "llm" ? "\u667A\u80FD\u5F52\u7EB3" : gb === "rules" ? "\u57FA\u7840\u6C47\u603B" : gb || "\u672A\u6CE8\u660E\u751F\u6210\u65B9\u5F0F";
-    return '<div class="report-foot small faint">\u6570\u636E\u53EF\u4FE1\u5EA6\uFF1A' + esc2(gbLabel) + " \xB7 \u68C0\u67E5\u8303\u56F4 " + esc2(String(b.scope || "global")) + (b.asOf ? " \xB7 \u622A\u81F3 " + esc2(String(b.asOf)) : "") + (missText ? " \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A" + esc2(missText) : "") + " \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>";
+    return '<div class="report-foot small faint">\u6570\u636E\u53EF\u4FE1\u5EA6\uFF1A' + esc(gbLabel) + " \xB7 \u68C0\u67E5\u8303\u56F4 " + esc(String(b.scope || "global")) + (b.asOf ? " \xB7 \u622A\u81F3 " + esc(String(b.asOf)) : "") + (missText ? " \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A" + esc(missText) : "") + " \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>";
   }
   function reportScreen(el, ctx2) {
     const st = ctx2.store;
@@ -9798,7 +9798,7 @@ ${text2}</tr>
       if (l.t === "gap") return '<div class="diff-line ctx">   \u22EF</div>';
       const sign = l.t === "+" ? "+" : l.t === "-" ? "-" : " ";
       const cls = l.t === "+" ? "add" : l.t === "-" ? "del" : "ctx";
-      return '<div class="diff-line ' + cls + '"><span class="d-sign">' + sign + "</span>" + esc2(trunc(l.s, 500)) + "</div>";
+      return '<div class="diff-line ' + cls + '"><span class="d-sign">' + sign + "</span>" + esc(trunc(l.s, 500)) + "</div>";
     }).join("");
     const tail = lines.length > cap ? '<div class="diff-line ctx">\u2026 \u5171 ' + lines.length + " \u884C\u5DEE\u5F02</div>" : "";
     return '<div class="diff">' + html3 + tail + "</div>";
@@ -9872,7 +9872,7 @@ ${text2}</tr>
     } else if (faceR.status === 404 && row) {
       faceAbsent = true;
     } else {
-      notice = "\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08" + esc2(String(faceR.error || faceR.status)) + "\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB";
+      notice = "\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08" + esc(String(faceR.error || faceR.status)) + "\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB";
     }
     const working = draftR && draftR.ok && draftR.data && draftR.data.content != null ? String(draftR.data.content) : base;
     ED.set(key.key, {
@@ -9926,16 +9926,16 @@ ${text2}</tr>
     if (!box || !ed) return;
     if (ed.tab === "history") {
       const rows = ctx2.store.events().filter((e) => e && String(e.involved || "").includes(ed.ref.name));
-      box.innerHTML = '<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">' + (rows.length ? rows.slice(0, 30).map((e) => '<div class="mini-row"><div class="mr-main"><div>' + esc2(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc2(trunc(String(e.involved || "\u2014"), 50)) + '</div></div><span class="w-ev-time mono">' + esc2(String((e.ts || e.at || e.time || "").slice(0, 16))) + "</span></div>").join("") : '<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>') + "</div>";
+      box.innerHTML = '<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">' + (rows.length ? rows.slice(0, 30).map((e) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 50)) + '</div></div><span class="w-ev-time mono">' + esc(String((e.ts || e.at || e.time || "").slice(0, 16))) + "</span></div>").join("") : '<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>') + "</div>";
       return;
     }
     if (!hasDiff(ed)) {
-      box.innerHTML = '<div class="card-h"><span class="h-title">\u8349\u7A3F</span></div><div class="card-b"><div class="small faint">\u65E0\u8349\u7A3F\u2014\u2014\u7F16\u8F91\u300C\u539F\u6587\u300D\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08\u5199\u7A7F /v1/drafts\uFF0C\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\u3002</div>' + (ed.draftFM ? '<div class="small faint" style="margin-top:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A' + esc2(ed.draftFM) + "</div>" : "") + "</div>";
+      box.innerHTML = '<div class="card-h"><span class="h-title">\u8349\u7A3F</span></div><div class="card-b"><div class="small faint">\u65E0\u8349\u7A3F\u2014\u2014\u7F16\u8F91\u300C\u539F\u6587\u300D\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08\u5199\u7A7F /v1/drafts\uFF0C\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\u3002</div>' + (ed.draftFM ? '<div class="small faint" style="margin-top:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A' + esc(ed.draftFM) + "</div>" : "") + "</div>";
       return;
     }
     const lines = diffLines2(ed.base, ed.working);
     const stats = diffStats(lines);
-    box.innerHTML = '<div class="card-h"><span class="h-title">\u8349\u7A3F</span><span class="h-right">' + chip("+" + stats.add, "ok") + " " + chip("-" + stats.del, "esc") + '</span></div><div class="card-b">' + (ed.draftFM ? '<div class="small faint" style="margin-bottom:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A' + esc2(ed.draftFM) + "</div>" : "") + renderDiff(lines, 40) + '<div class="small faint" style="margin-top:6px">\u57FA\u51C6=r' + ed.baseRV + "\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F " + ed.working.length + "B vs \u843D\u5E93\u503C " + ed.base.length + "B</div></div>";
+    box.innerHTML = '<div class="card-h"><span class="h-title">\u8349\u7A3F</span><span class="h-right">' + chip("+" + stats.add, "ok") + " " + chip("-" + stats.del, "esc") + '</span></div><div class="card-b">' + (ed.draftFM ? '<div class="small faint" style="margin-bottom:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A' + esc(ed.draftFM) + "</div>" : "") + renderDiff(lines, 40) + '<div class="small faint" style="margin-top:6px">\u57FA\u51C6=r' + ed.baseRV + "\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F " + ed.working.length + "B vs \u843D\u5E93\u503C " + ed.base.length + "B</div></div>";
   }
   function scheduleSave(ctx2, key) {
     const prev = saveTimers.get(key.key);
@@ -9952,7 +9952,7 @@ ${text2}</tr>
         fieldManager: "console:web"
       });
       if (!r.ok) {
-        notice = "\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25\uFF08" + esc2(String(r.error || r.status)) + "\uFF09\u2014\u2014\u5DE5\u4F5C\u526F\u672C\u4ECD\u5728\u5185\u5B58\uFF0C\u9000\u51FA\u524D\u4E0D\u4E22";
+        notice = "\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25\uFF08" + esc(String(r.error || r.status)) + "\uFF09\u2014\u2014\u5DE5\u4F5C\u526F\u672C\u4ECD\u5728\u5185\u5B58\uFF0C\u9000\u51FA\u524D\u4E0D\u4E22";
         paintNotice();
       }
     }, 800));
@@ -9964,7 +9964,7 @@ ${text2}</tr>
   function editorScreen(el, ctx2, key) {
     const ed = ED.get(key.key);
     const view = ed ? ed.view : "render";
-    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc2(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + '<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span><div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + '" data-ed-view-btn="render">\u6B63\u6587</span><span class="chip click small' + (view === "raw" ? " acc" : " mute") + '" data-ed-view-btn="raw">\u539F\u6587</span></div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? "\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09" : "r" + ed.faceRV + "\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09" : "\u6CE8\u6C34\u4E2D\u2026") + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + '></div><textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"' + (view === "raw" ? "" : " hidden") + '></textarea><div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div></div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + '" data-ed-tab="draft">\u8349\u7A3F</div><div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + '" data-ed-tab="history">\u5386\u53F2</div></div><div class="collab-body" data-ed-rail></div><div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div></div></div></div>';
+    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + '<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span><div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + '" data-ed-view-btn="render">\u6B63\u6587</span><span class="chip click small' + (view === "raw" ? " acc" : " mute") + '" data-ed-view-btn="raw">\u539F\u6587</span></div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? "\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09" : "r" + ed.faceRV + "\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09" : "\u6CE8\u6C34\u4E2D\u2026") + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + '></div><textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"' + (view === "raw" ? "" : " hidden") + '></textarea><div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div></div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + '" data-ed-tab="draft">\u8349\u7A3F</div><div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + '" data-ed-tab="history">\u5386\u53F2</div></div><div class="collab-body" data-ed-rail></div><div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div></div></div></div>';
     paintNotice();
     if (ed && ed.loaded) {
       paintBody(key.key);
@@ -10022,11 +10022,11 @@ ${text2}</tr>
         });
         dock.disabled = false;
         if (!r.ok) {
-          notice = "Apply \u5931\u8D25\uFF08" + esc2(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? "\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u7A3F\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5BF9\u9F50\u6700\u65B0 rv \u540E\u91CD\u8BD5" : "");
+          notice = "Apply \u5931\u8D25\uFF08" + esc(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? "\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u7A3F\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5BF9\u9F50\u6700\u65B0 rv \u540E\u91CD\u8BD5" : "");
           paintNotice();
           return;
         }
-        notice = "Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=" + esc2(String(r.data && r.data.rv || "?")) + "\uFF09\u3002";
+        notice = "Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=" + esc(String(r.data && r.data.rv || "?")) + "\uFF09\u3002";
         cur.base = cur.working;
         paintBadges(key.key);
         paintRail(key.key, ctx2);
@@ -10174,9 +10174,9 @@ ${text2}</tr>
     const cls = s.state === "suspected-stall" || s.state === "escalated" ? "esc" : s.state ? "acc" : "mute";
     return kv([
       ["state", s.state ? chip(s.state, cls) : '<span class="faint">\u2014</span>'],
-      ["phase", esc2(s.phase || "\u2014")],
-      ["\u5FC3\u8DF3", esc2(fmtNum(s.heartbeats)) + " \u6B21" + (s.lastBeat ? " \xB7 \u6700\u8FD1 " + esc2(relAge(s.lastBeat) || "\u65F6\u95F4\u672A\u77E5") : "")],
-      ["\u52A8\u4F5C", esc2(trunc(s.lastAction || "\u2014", 80))]
+      ["phase", esc(s.phase || "\u2014")],
+      ["\u5FC3\u8DF3", esc(fmtNum(s.heartbeats)) + " \u6B21" + (s.lastBeat ? " \xB7 \u6700\u8FD1 " + esc(relAge(s.lastBeat) || "\u65F6\u95F4\u672A\u77E5") : "")],
+      ["\u52A8\u4F5C", esc(trunc(s.lastAction || "\u2014", 80))]
     ]);
   }
   function chunksHtml(m) {
@@ -10185,7 +10185,7 @@ ${text2}</tr>
     }
     return m.chunks.map((c) => {
       const key = [c.kind, c.scope, c.name].filter(Boolean).join("/");
-      return '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc2(trunc(key, 64)) + "</b> " + chip(String(Math.round(c.score)), c.score >= 60 ? "ok" : "mute") + "</div>" + (c.why ? '<div class="mr-sub small">' + esc2(trunc(c.why, 90)) + "</div>" : "") + "</div></div>";
+      return '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(trunc(key, 64)) + "</b> " + chip(String(Math.round(c.score)), c.score >= 60 ? "ok" : "mute") + "</div>" + (c.why ? '<div class="mr-sub small">' + esc(trunc(c.why, 90)) + "</div>" : "") + "</div></div>";
     }).join("");
   }
   function shardsHtml(m) {
@@ -10196,7 +10196,7 @@ ${text2}</tr>
       return '<div class="small faint">\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002</div>';
     }
     return m.shards.map(
-      (s) => '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc2(s.tagKey) + "</b> " + (s.stale ? chip("stale", "warn") : chip("fresh", "ok")) + '</div><div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ' + esc2(fmtNum(s.docs)) + " \u4E2A" + (s.topDocs.length ? " \xB7 " + esc2(trunc(s.topDocs.join(", "), 60)) : "") + "</div></div></div>"
+      (s) => '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(s.tagKey) + "</b> " + (s.stale ? chip("stale", "warn") : chip("fresh", "ok")) + '</div><div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ' + esc(fmtNum(s.docs)) + " \u4E2A" + (s.topDocs.length ? " \xB7 " + esc(trunc(s.topDocs.join(", "), 60)) : "") + "</div></div></div>"
     ).join("");
   }
   function formHtml(m) {
@@ -10207,13 +10207,13 @@ ${text2}</tr>
   }
   function renderSessionCtx(m) {
     const headChips = (m.degraded ? chip("\u7D22\u5F15\u5019\u9009\u6295\u5F71", "warn") : "") + (m.writeOpen ? chip("\u5199\u9762\u5F00", "ok") : chip("\u5199\u9762\u5173\u65AD", "esc")) + (m.canRevert ? chip("\u53EF\u64A4\u9500", "acc") : "");
-    const ovLine = m.override ? '<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ' + esc2(fmtNum(m.override.revision)) + " \xB7 takeBudget " + esc2(fmtNum(m.override.takeBudget)) + " \xB7 by " + esc2(m.override.by || "\u2014") + (m.override.note ? " \xB7 \u5907\u6CE8 " + esc2(trunc(m.override.note, 60)) : "") + (m.override.updatedAt ? " \xB7 " + esc2(relAge(m.override.updatedAt) || "") : "") + "</div>" : '<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>';
+    const ovLine = m.override ? '<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ' + esc(fmtNum(m.override.revision)) + " \xB7 takeBudget " + esc(fmtNum(m.override.takeBudget)) + " \xB7 by " + esc(m.override.by || "\u2014") + (m.override.note ? " \xB7 \u5907\u6CE8 " + esc(trunc(m.override.note, 60)) : "") + (m.override.updatedAt ? " \xB7 " + esc(relAge(m.override.updatedAt) || "") : "") + "</div>" : '<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>';
     return '<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">' + headChips + '</span></div><div class="card-b">' + sessionRowHtml(m) + '<div style="margin-top:10px">' + kv([
-      ["takeBudget", '<b class="mono">' + esc2(fmtNum(m.takeBudget)) + '</b> <span class="small faint">\uFF08\u7F3A\u7701 ' + esc2(fmtNum(m.takeBudgetDefault)) + " \xB7 \u57DF " + m.policy.minTakeBudget + "\u2013" + m.policy.maxTakeBudget + "\uFF09</span>"],
-      ["tagSig", m.tags.length ? m.tags.map((t) => chip(t, "mute")).join(" ") : '<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=' + esc2(m.tagSigSource) + "\uFF09</span>"],
-      ["\u5206\u7247\u7F13\u5B58", m.stats ? "\u5171 " + esc2(fmtNum(m.stats.total)) + " \u7247 \xB7 stale " + esc2(fmtNum(m.stats.stale)) + " \xB7 \u91CD\u5EFA\u9608\u503C " + esc2(fmtNum(m.stats.threshold)) : '<span class="faint">\u2014</span>'],
-      ["shardMaxTokens", '<span class="mono">' + esc2(fmtNum(m.policy.shardMaxTokens)) + "</span>"]
-    ]) + "</div>" + ovLine + '<div data-ctx-notice></div><div style="margin:10px 0 4px">' + formHtml(m) + '</div><h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>' + chunksHtml(m) + '<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>' + shardsHtml(m) + (m.degraded && m.degradedReason ? '<div class="small faint" style="margin-top:8px">' + esc2(m.degradedReason) + "</div>" : "") + "</div>";
+      ["takeBudget", '<b class="mono">' + esc(fmtNum(m.takeBudget)) + '</b> <span class="small faint">\uFF08\u7F3A\u7701 ' + esc(fmtNum(m.takeBudgetDefault)) + " \xB7 \u57DF " + m.policy.minTakeBudget + "\u2013" + m.policy.maxTakeBudget + "\uFF09</span>"],
+      ["tagSig", m.tags.length ? m.tags.map((t) => chip(t, "mute")).join(" ") : '<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=' + esc(m.tagSigSource) + "\uFF09</span>"],
+      ["\u5206\u7247\u7F13\u5B58", m.stats ? "\u5171 " + esc(fmtNum(m.stats.total)) + " \u7247 \xB7 stale " + esc(fmtNum(m.stats.stale)) + " \xB7 \u91CD\u5EFA\u9608\u503C " + esc(fmtNum(m.stats.threshold)) : '<span class="faint">\u2014</span>'],
+      ["shardMaxTokens", '<span class="mono">' + esc(fmtNum(m.policy.shardMaxTokens)) + "</span>"]
+    ]) + "</div>" + ovLine + '<div data-ctx-notice></div><div style="margin:10px 0 4px">' + formHtml(m) + '</div><h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>' + chunksHtml(m) + '<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>' + shardsHtml(m) + (m.degraded && m.degradedReason ? '<div class="small faint" style="margin-top:8px">' + esc(m.degradedReason) + "</div>" : "") + "</div>";
   }
   function focusIn(box) {
     return !!(document.activeElement && box.contains(document.activeElement));
@@ -10244,17 +10244,17 @@ ${text2}</tr>
         note: q("[data-ctx-note]").value
       });
       if (!built.ok) {
-        notice2('<div class="small faint">' + esc2(built.error) + "</div>");
+        notice2('<div class="small faint">' + esc(built.error) + "</div>");
         return;
       }
       saveBtn.disabled = true;
       const r = await ctx2.api.saveSessionContext(id, built.payload);
       saveBtn.disabled = false;
       if (!r.ok) {
-        notice2('<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08' + esc2(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? "\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09" : "") + "</div>");
+        notice2('<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08' + esc(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? "\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09" : "") + "</div>");
         return;
       }
-      notice2('<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ' + esc2(String(r.data && r.data.override && r.data.override.revision || "?")) + "\uFF09" + (built.dropped.length ? "\uFF1B\u8D85\u9650 tag \u6536\u655B " + built.dropped.length + " \u4E2A\uFF1A" + esc2(trunc(built.dropped.join(", "), 80)) : "") + "\u3002</div>");
+      notice2('<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ' + esc(String(r.data && r.data.override && r.data.override.revision || "?")) + "\uFF09" + (built.dropped.length ? "\uFF1B\u8D85\u9650 tag \u6536\u655B " + built.dropped.length + " \u4E2A\uFF1A" + esc(trunc(built.dropped.join(", "), 80)) : "") + "\u3002</div>");
       refresh(ctx2, id, box);
     });
     const revertBtn = q("[data-ctx-revert]");
@@ -10264,7 +10264,7 @@ ${text2}</tr>
       const r = await ctx2.api.revertSessionContext(id);
       revertBtn.disabled = false;
       if (!r.ok) {
-        notice2('<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08' + esc2(String(r.error || r.status)) + "\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>");
+        notice2('<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08' + esc(String(r.error || r.status)) + "\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>");
         return;
       }
       notice2('<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>');
@@ -10282,7 +10282,7 @@ ${text2}</tr>
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     if (!r.ok) {
       if (!focusIn(box)) {
-        box.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc2(String(r.error || r.status)) + (r.status === 503 ? "\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09" : "") + "\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>";
+        box.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08' + esc(String(r.error || r.status)) + (r.status === 503 ? "\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09" : "") + "\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>";
       }
       return;
     }
@@ -10299,7 +10299,7 @@ ${text2}</tr>
     if (!id) return "";
     const state = String(s && (s.state || s.status) || "");
     const cls = state === "suspected-stall" || state === "escalated" ? "esc" : state ? "acc" : "mute";
-    return '<div class="mini-row' + (id === String(activeId || "") ? " sel" : "") + '" data-sess="' + esc2(id) + '"><div class="mr-main"><div><b class="mono">' + esc2(trunc(id, 34)) + "</b> " + (state ? chip(state, cls) : "") + '</div><div class="mr-sub small">' + esc2(String(s && (s.agent || s.route) || "\u2014")) + (s && s.startedAt ? " \xB7 " + esc2(relAge(s.startedAt) || "") : "") + "</div></div></div>";
+    return '<div class="mini-row' + (id === String(activeId || "") ? " sel" : "") + '" data-sess="' + esc(id) + '"><div class="mr-main"><div><b class="mono">' + esc(trunc(id, 34)) + "</b> " + (state ? chip(state, cls) : "") + '</div><div class="mr-sub small">' + esc(String(s && (s.agent || s.route) || "\u2014")) + (s && s.startedAt ? " \xB7 " + esc(relAge(s.startedAt) || "") : "") + "</div></div></div>";
   }
   function sessionList(ctx2, activeId) {
     const f = faces();
@@ -10337,9 +10337,9 @@ ${text2}</tr>
       "agent=" + agent + "\uFF08\u5BF9\u8BDD\u662F\u4E00\u7B49\u9762\u2014\u2014\u540C\u4E00 dsh \u4F1A\u8BDD\u673A\u5236\u6295\u5F71\uFF09",
       chipGo("\u770B root \u4F1A\u8BDD", "chat/root-agent", "acc", false)
     ) + '<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>' + sessionList(ctx2) + '</div><div><h2 class="sec-title">\u5165\u53E3</h2><div class="card"><div class="card-b">' + kv([
-      ["agent", esc2(agent)],
+      ["agent", esc(agent)],
       ["\u4F1A\u8BDD", chip(sessions.length + " \u4E2A\u76F8\u5173", sessions.length ? "acc" : "mute")],
-      ["CLI", '<code class="mono">corectl chat ' + esc2(agent) + "</code>"]
+      ["CLI", '<code class="mono">corectl chat ' + esc(agent) + "</code>"]
     ]) + '<div class="small faint" style="margin-top:8px">\u8F6C\u5F55\u4E0E\u7EC8\u7AEF\u9762\u7531\u5BBF\u4E3B faces \u6CE8\u5165\uFF08__CC.chatFaces / __CC.termFaces\uFF09\uFF1B\u672A\u6CE8\u5165=\u6E05\u5355\u964D\u7EA7\u5FEB\u7167\u6295\u5F71\uFF0C\u8F6C\u5F55\u9762\u663E\u5F0F\u7F3A\u5E2D\u8BCD\u5F62\u3002</div></div></div></div></div></div>';
     el.querySelectorAll("[data-sess]").forEach((row) => {
       row.addEventListener("click", () => ctx2.go("session/" + encodeURIComponent(row.dataset.sess)));
@@ -10347,7 +10347,7 @@ ${text2}</tr>
   }
   function sessionScreen(el, ctx2) {
     const id = String(ctx2.params.id || "");
-    el.innerHTML = '<div class="view-inner">' + screenHead("\u4F1A\u8BDD\u8F6C\u5F55", "id=" + id, chipGo("\u2190 \u4F1A\u8BDD", "chat/root-agent", "mute", false)) + '<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>' + sessionList(ctx2, id) + '</div><div><h2 class="sec-title">\u8F6C\u5F55</h2><div class="card"><div class="card-b transcript">' + transcript(ctx2, id) + '</div></div><h2 class="sec-title" style="margin-top:14px">\u4E0A\u4E0B\u6587</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/' + esc2(encodeURIComponent(id)) + "/context\uFF09</div></div></div></div></div></div></div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead("\u4F1A\u8BDD\u8F6C\u5F55", "id=" + id, chipGo("\u2190 \u4F1A\u8BDD", "chat/root-agent", "mute", false)) + '<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>' + sessionList(ctx2, id) + '</div><div><h2 class="sec-title">\u8F6C\u5F55</h2><div class="card"><div class="card-b transcript">' + transcript(ctx2, id) + '</div></div><h2 class="sec-title" style="margin-top:14px">\u4E0A\u4E0B\u6587</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/' + esc(encodeURIComponent(id)) + "/context\uFF09</div></div></div></div></div></div></div>";
     el.querySelectorAll("[data-sess]").forEach((row) => {
       row.addEventListener("click", () => ctx2.go("session/" + encodeURIComponent(row.dataset.sess)));
     });
@@ -10373,11 +10373,11 @@ ${text2}</tr>
       const e = it.ev;
       const involved = String(e.involved || "");
       const route = involvedRoute2(involved.split(",")[0] || "");
-      return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc2(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc2(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, "\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0") : chip(involved || "\u2014", "mute")) + ' <button class="btn sm" data-ap-ignore="' + esc2(it.key) + '">\u5FFD\u7565</button></div></div></div>';
+      return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, "\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0") : chip(involved || "\u2014", "mute")) + ' <button class="btn sm" data-ap-ignore="' + esc(it.key) + '">\u5FFD\u7565</button></div></div></div>';
     }
     const d = it.draft;
     const scope = d.scope || "global";
-    return '<div class="card ap-item" data-ap-item="' + esc2(apKeyOf(d)) + '"><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc2(docRoute(d.kind, scope, d.name)) + '">' + esc2(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip("\u7A3F: " + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc2(apKeyOf(d)) + '"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div><div class="dh-actions" style="margin-top:10px"><button class="btn sm primary" data-ap-approve="' + esc2(apKeyOf(d)) + '">\u6279\u51C6\uFF08= Apply\uFF09</button> <button class="btn sm" data-ap-ignore="' + esc2(it.key) + '">\u5FFD\u7565</button> <button class="btn sm" data-go="' + esc2(docRoute(d.kind, scope, d.name)) + '">\u7F16\u8F91\u5668</button></div></div></div>';
+    return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip("\u7A3F: " + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + '"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div><div class="dh-actions" style="margin-top:10px"><button class="btn sm primary" data-ap-approve="' + esc(apKeyOf(d)) + '">\u6279\u51C6\uFF08= Apply\uFF09</button> <button class="btn sm" data-ap-ignore="' + esc(it.key) + '">\u5FFD\u7565</button> <button class="btn sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">\u7F16\u8F91\u5668</button></div></div></div>';
   }
   async function hydrateDiff(ctx2, d) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
@@ -10389,7 +10389,7 @@ ${text2}</tr>
     const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
     if (!box) return;
     if (!draftR.ok) {
-      box.innerHTML = '<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc2(String(draftR.error || draftR.status)) + "\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>";
+      box.innerHTML = '<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc(String(draftR.error || draftR.status)) + "\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>";
       return;
     }
     const dr = draftR.data && typeof draftR.data === "object" ? draftR.data : {};
@@ -10404,7 +10404,7 @@ ${text2}</tr>
       base = "\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A" + String(faceR.error || faceR.status) + "\uFF09";
     }
     const stats = diffStats(diffLines2(base, working));
-    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc2(baseNote) + " \xB7 \u7A3F " + working.length + "B vs \u843D\u5E93\u503C " + base.length + 'B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 <span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
+    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + " \xB7 \u7A3F " + working.length + "B vs \u843D\u5E93\u503C " + base.length + 'B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 <span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
   }
   async function approve(ctx2, d, btn) {
     btn.disabled = true;
@@ -10458,7 +10458,7 @@ ${text2}</tr>
     const r = await ctx2.api.approvals(20);
     if (!el__isConnected(slot) || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     if (!r.ok) {
-      slot.innerHTML = '<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc2(String(r.error || r.status)) + "\uFF09\u2014\u2014\u5224\u5B9A\u7559\u75D5\u6682\u53EA=apply_log\u3002</div>";
+      slot.innerHTML = '<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc(String(r.error || r.status)) + "\uFF09\u2014\u2014\u5224\u5B9A\u7559\u75D5\u6682\u53EA=apply_log\u3002</div>";
       return;
     }
     const rows = r.data && Array.isArray(r.data.approvals) ? r.data.approvals : [];
@@ -10466,7 +10466,7 @@ ${text2}</tr>
       slot.innerHTML = '<div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u6682\u65E0\u5224\u5B9A\u884C\uFF08\u6279\u51C6/\u9A73\u56DE\u5373\u51B3\u5373\u89C1\uFF09\u3002</div>';
       return;
     }
-    slot.innerHTML = '<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>' + rows.map((x) => '<tr><td class="mono small">' + esc2(String(x.ts || "").replace("T", " ").slice(0, 19)) + "</td><td>" + chip(String(x.decision || ""), x.decision === "granted" ? "ok" : "esc") + '</td><td class="mono small">' + (involvedRoute2(x.obj) ? '<span class="lk" data-go="' + esc2(involvedRoute2(x.obj)) + '">' + esc2(String(x.obj || "")) + "</span>" : esc2(String(x.obj || ""))) + '</td><td class="mono small">' + esc2(String(x.judgedBy || "anonymous")) + '</td><td class="mono small">' + esc2(x.rv ? "r" + x.rv : "\u2014") + "</td></tr>").join("") + "</tbody></table></div>";
+    slot.innerHTML = '<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>' + rows.map((x) => '<tr><td class="mono small">' + esc(String(x.ts || "").replace("T", " ").slice(0, 19)) + "</td><td>" + chip(String(x.decision || ""), x.decision === "granted" ? "ok" : "esc") + '</td><td class="mono small">' + (involvedRoute2(x.obj) ? '<span class="lk" data-go="' + esc(involvedRoute2(x.obj)) + '">' + esc(String(x.obj || "")) + "</span>" : esc(String(x.obj || ""))) + '</td><td class="mono small">' + esc(String(x.judgedBy || "anonymous")) + '</td><td class="mono small">' + esc(x.rv ? "r" + x.rv : "\u2014") + "</td></tr>").join("") + "</tbody></table></div>";
   }
   function el__isConnected(x) {
     return !!(x && x.isConnected);
@@ -10481,7 +10481,7 @@ ${text2}</tr>
     return '<div class="card">' + items.slice(0, 50).map((x) => {
       const route = involvedRoute2(x && (x.link || x.ref || x.obj));
       const main = String(x && (x.title || x.summary || x.kind) || "");
-      return '<div class="mini-row"><div class="mr-main"><div>' + esc2(trunc(main, 80)) + " " + chip(String(x && x.class || x && x.kind || ""), "mute") + '</div><div class="mr-sub small">' + esc2(trunc(String(x && (x.note || x.detail) || ""), 90)) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo("\u53BB\u5904\u7406", route, "acc", true) + "</span>" : "") + "</div>";
+      return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(String(x && x.class || x && x.kind || ""), "mute") + '</div><div class="mr-sub small">' + esc(trunc(String(x && (x.note || x.detail) || ""), 90)) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo("\u53BB\u5904\u7406", route, "acc", true) + "</span>" : "") + "</div>";
     }).join("") + "</div>";
   }
   function approvalsScreen(el, ctx2) {
@@ -10532,9 +10532,9 @@ ${text2}</tr>
       const n = objs.filter((o) => o.kind === kind).length;
       const rows = open ? Object.keys(scopeMap[kind] || {}).sort().map((scope) => {
         const items = (scopeMap[kind][scope] || []).slice().sort((a, b) => a.name < b.name ? -1 : 1);
-        return '<div class="tree-scope"><span class="small faint mono">' + esc2(scope) + "/</span>" + items.map((o) => '<div class="tree-row leaf" data-go="' + esc2(objRoute(o.kind, o.scope, o.name)) + '">' + esc2(o.name) + ' <span class="faint tiny mono">r' + esc2(String(o.rv || 0)) + "</span></div>").join("") + "</div>";
+        return '<div class="tree-scope"><span class="small faint mono">' + esc(scope) + "/</span>" + items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' + esc(o.name) + ' <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + "</span></div>").join("") + "</div>";
       }).join("") : "";
-      return '<div class="tree-node"><div class="tree-row grp" data-tree-toggle="' + esc2(kind) + '"><b>' + esc2(kind) + "</b>" + chip(n + " \u4E2A", n ? "acc" : "mute") + '<span class="faint">' + (open ? "\u25BE" : "\u25B8") + "</span></div>" + rows + "</div>";
+      return '<div class="tree-node"><div class="tree-row grp" data-tree-toggle="' + esc(kind) + '"><b>' + esc(kind) + "</b>" + chip(n + " \u4E2A", n ? "acc" : "mute") + '<span class="faint">' + (open ? "\u25BE" : "\u25B8") + "</span></div>" + rows + "</div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead("\u7CFB\u7EDF\u6811", "kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF09") + (kinds.length ? '<div class="tree-box">' + body + "</div>" : emptyBox("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002")) + "</div>";
     el.querySelectorAll("[data-tree-toggle]").forEach((row) => {
@@ -10563,8 +10563,8 @@ ${text2}</tr>
       "\u6587\u6863\u5E93",
       "\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\u2014\u2014\u540C\u4E00\u6E32\u67D3\u6838\uFF1B\u25CF=\u6709\u672A Apply \u8349\u7A3F",
       docKinds.length ? "" : chip("\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95", "mute")
-    ) + '<div class="filter-bar"><input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="' + esc2(docFilter.q) + '"><span class="fchip' + (!docFilter.kind ? " on" : "") + '" data-docs-kind="">\u5168\u90E8</span>' + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc2(k) + '">' + esc2(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(
-      (o) => '<div class="mini-row" data-go="' + esc2(docRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc2(o.name) + "</b>" + (draftSet.has(o.kind + "|" + o.scope + "|" + o.name) ? '<span class="draft-dot">\u25CF</span>' : "") + '</div><div class="mr-sub small mono">' + esc2(o.kind + "/" + o.scope) + '</div></div><span class="ws-chip">' + chipGo("\u5DE5\u4F5C\u53F0", objRoute(o.kind, o.scope, o.name), "mute", true, "\u5BF9\u8C61\u5DE5\u4F5C\u53F0") + "</span></div>"
+    ) + '<div class="filter-bar"><input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="' + esc(docFilter.q) + '"><span class="fchip' + (!docFilter.kind ? " on" : "") + '" data-docs-kind="">\u5168\u90E8</span>' + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(
+      (o) => '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b>" + (draftSet.has(o.kind + "|" + o.scope + "|" + o.name) ? '<span class="draft-dot">\u25CF</span>' : "") + '</div><div class="mr-sub small mono">' + esc(o.kind + "/" + o.scope) + '</div></div><span class="ws-chip">' + chipGo("\u5DE5\u4F5C\u53F0", objRoute(o.kind, o.scope, o.name), "mute", true, "\u5BF9\u8C61\u5DE5\u4F5C\u53F0") + "</span></div>"
     ).join("") + (rows.length > 300 ? '<div class="small faint" style="padding:8px 14px">\u2026\u5171 ' + rows.length + " \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>" : "") + "</div>" : emptyBox("\u7A97\u53E3\u5185\u65E0\u6587\u6863", "\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002")) + "</div>";
     const inp = el.querySelector("#docs-q");
     if (inp) inp.addEventListener("input", () => {
@@ -10593,12 +10593,12 @@ ${text2}</tr>
     const box = document.querySelector("[data-dd-body]");
     if (!box) return;
     if (!res || !res.ok) {
-      box.innerHTML = '<div class="ob-empty">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc2(String(res && res.error || res && res.status || "\u7F51\u7EDC")) + "\uFF09\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF0C\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>";
+      box.innerHTML = '<div class="ob-empty">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc(String(res && res.error || res && res.status || "\u7F51\u7EDC")) + "\uFF09\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF0C\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>";
       return;
     }
     const data = res.data && typeof res.data === "object" ? res.data : {};
     const content = data.content != null ? String(data.content) : typeof res.data === "string" ? res.data : "";
-    box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + "</div>" + rawDisclosure("\u539F\u6587\uFF08HEAD\uFF09", content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc2(String(data.sha).slice(0, 8)) : "HEAD") + "\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>";
+    box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + "</div>" + rawDisclosure("\u539F\u6587\uFF08HEAD\uFF09", content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc(String(data.sha).slice(0, 8)) : "HEAD") + "\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>";
   }
   function designDocScreen(el, ctx2) {
     const repo = ctx2.params && ctx2.params.repo;
@@ -10613,7 +10613,7 @@ ${text2}</tr>
       const treeBox = el.querySelector("[data-dd-tree]");
       if (!treeBox) return;
       if (!r.ok) {
-        treeBox.innerHTML = '<div class="ob-empty">\u4ED3\u6811\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc2(String(r.error || r.status)) + "\uFF09\u3002</div>";
+        treeBox.innerHTML = '<div class="ob-empty">\u4ED3\u6811\u6682\u4E0D\u53EF\u8BFB\uFF08' + esc(String(r.error || r.status)) + "\uFF09\u3002</div>";
         return;
       }
       dd.tree = r.data;
@@ -10626,7 +10626,7 @@ ${text2}</tr>
         const fr = f.repo || (r.data.repo || "");
         const fp = f.path || String(f);
         const key = fr + "|" + fp;
-        return '<div class="mini-row' + (sel && sel.repo === fr && sel.path === fp ? " sel" : "") + '" data-dd-file="' + esc2(key) + '"><div class="mr-main"><div class="mono small">' + esc2(trunc(fp, 40)) + '</div><div class="mr-sub tiny">' + esc2(fr) + "</div></div></div>";
+        return '<div class="mini-row' + (sel && sel.repo === fr && sel.path === fp ? " sel" : "") + '" data-dd-file="' + esc(key) + '"><div class="mr-main"><div class="mono small">' + esc(trunc(fp, 40)) + '</div><div class="mr-sub tiny">' + esc(fr) + "</div></div></div>";
       }).join("");
       treeBox.querySelectorAll("[data-dd-file]").forEach((row) => {
         row.addEventListener("click", () => {
@@ -10648,7 +10648,7 @@ ${text2}</tr>
     const kinds = ["ConnectorOps", "WorkService", "Provider", "Ref"];
     const secs = kinds.map((kind) => {
       const rows = ctx2.store.refs(kind);
-      return '<section class="card"><div class="card-h"><span class="h-title">' + esc2(kind) + '</span><span class="h-right">' + chip(rows.length + " \u4E2A", rows.length ? "acc" : "mute") + '</span></div><div class="card-b">' + (rows.length ? rows.map((o) => '<div class="mini-row" data-go="' + esc2(docRoute(kind, o.scope, o.name)) + '"><div class="mr-main"><div><b class="mono">' + esc2(o.name) + '</b></div><div class="mr-sub small mono">' + esc2(o.scope) + " \xB7 r" + esc2(String(o.rv || 0)) + '</div></div><span class="ws-chip">' + chipGo("\u5DE5\u4F5C\u53F0", objRoute(kind, o.scope, o.name), "mute", true) + "</span></div>").join("") : '<div class="small faint">\u8BE5 kind \u6682\u65E0\u5728\u518C\u5BF9\u8C61\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>') + "</div></section>";
+      return '<section class="card"><div class="card-h"><span class="h-title">' + esc(kind) + '</span><span class="h-right">' + chip(rows.length + " \u4E2A", rows.length ? "acc" : "mute") + '</span></div><div class="card-b">' + (rows.length ? rows.map((o) => '<div class="mini-row" data-go="' + esc(docRoute(kind, o.scope, o.name)) + '"><div class="mr-main"><div><b class="mono">' + esc(o.name) + '</b></div><div class="mr-sub small mono">' + esc(o.scope) + " \xB7 r" + esc(String(o.rv || 0)) + '</div></div><span class="ws-chip">' + chipGo("\u5DE5\u4F5C\u53F0", objRoute(kind, o.scope, o.name), "mute", true) + "</span></div>").join("") : '<div class="small faint">\u8BE5 kind \u6682\u65E0\u5728\u518C\u5BF9\u8C61\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>') + "</div></section>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead("\u8FDE\u63A5\u5C42", "ConnectorOps / WorkService / Provider / Ref \u56DB\u65CF\uFF08\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\uFF09") + '<div class="grid cols-2">' + secs + "</div></div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
@@ -10660,8 +10660,8 @@ ${text2}</tr>
     el.innerHTML = '<div class="view-inner">' + screenHead("\u9700\u6C42\u63D0\u6848", "\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09") + (rows.length ? '<div class="card">' + rows.map((p) => {
       const keys = p && typeof p === "object" ? Object.keys(p) : [];
       const known = ["title", "summary", "status", "proposer", "createdAt", "scope", "name"];
-      const sub = known.filter((k) => p[k] != null && k !== "title").map((k) => esc2(k) + ": " + esc2(trunc(String(p[k]), 40))).join(" \xB7 ");
-      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc2(String(p.title || p.name || "\u672A\u547D\u540D\u63D0\u6848")) + "</b> " + chip(String(p.status || "\u5F85\u5B9A"), "mute") + '</div><div class="mr-sub small">' + (sub || '<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>') + "</div></div></div>";
+      const sub = known.filter((k) => p[k] != null && k !== "title").map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
+      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || "\u672A\u547D\u540D\u63D0\u6848")) + "</b> " + chip(String(p.status || "\u5F85\u5B9A"), "mute") + '</div><div class="mr-sub small">' + (sub || '<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>') + "</div></div></div>";
     }).join("") + "</div>" : emptyBox("\u6682\u65E0\u63D0\u6848", "\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002")) + "</div>";
   }
   function systemScreen(el, ctx2) {
@@ -10672,7 +10672,7 @@ ${text2}</tr>
     objs.forEach((o) => {
       byKind[o.kind] = (byKind[o.kind] || 0) + 1;
     });
-    el.innerHTML = '<div class="view-inner">' + screenHead(scope, "scope=" + scope + " \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", chipGo("\u7CFB\u7EDF\u6811", "tree", "mute", false)) + '<div class="statbar">' + Object.keys(byKind).sort().map((k) => '<div class="stat" data-go="' + esc2("obj/" + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div><div class="st-label">' + esc2(k) + "</div></div>").join("") + "</div>" + (objs.length ? '<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">' + objs.map((o) => '<div class="mini-row" data-go="' + esc2(objRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc2(o.name) + "</b> " + kindBadge(o.kind) + '</div><div class="mr-sub small mono">r' + esc2(String(o.rv || 0)) + "</div></div></div>").join("") + "</div>" : emptyBox("\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61", "\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002")) + (evs.length ? '<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">' + evs.map((e) => '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '"><div class="mr-main"><div>' + esc2(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc2(trunc(String(e.involved || "\u2014"), 60)) + "</div></div></div>").join("") + "</div>" : "") + "</div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead(scope, "scope=" + scope + " \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", chipGo("\u7CFB\u7EDF\u6811", "tree", "mute", false)) + '<div class="statbar">' + Object.keys(byKind).sort().map((k) => '<div class="stat" data-go="' + esc("obj/" + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div><div class="st-label">' + esc(k) + "</div></div>").join("") + "</div>" + (objs.length ? '<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">' + objs.map((o) => '<div class="mini-row" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b> " + kindBadge(o.kind) + '</div><div class="mr-sub small mono">r' + esc(String(o.rv || 0)) + "</div></div></div>").join("") + "</div>" : emptyBox("\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61", "\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002")) + (evs.length ? '<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">' + evs.map((e) => '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + "</div></div></div>").join("") + "</div>" : "") + "</div>";
     el.querySelectorAll("[data-go]").forEach((x) => {
       x.addEventListener("click", () => ctx2.go(x.dataset.go));
     });

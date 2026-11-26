@@ -8,6 +8,7 @@ import '../styles/base.css';
 import '../styles/components.css';
 import '../styles/screens.css';
 
+import { esc } from './core/format.js';
 import { createStore } from './core/store.js';
 import { createApi } from './core/api.js';
 import { createRouter } from './core/router.js';
