@@ -90,7 +90,7 @@ var CoreConsole = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -104,7 +104,7 @@ var CoreConsole = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -231,7 +231,7 @@ var CoreConsole = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -551,7 +551,7 @@ var CoreConsole = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -721,7 +721,7 @@ var CoreConsole = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -1334,7 +1334,7 @@ var CoreConsole = (() => {
     return active ? chip("Running", "acc") : chip("InSync", "ok");
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -3470,7 +3470,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -5619,7 +5619,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -9361,8 +9361,8 @@ ${text2}</tr>
       } catch {
         raw = "";
       }
-      const clean = sanitizeHtml(raw);
-      return clean || minimalRender(s);
+      const clean2 = sanitizeHtml(raw);
+      return clean2 || minimalRender(s);
     }
     return minimalRender(s);
   }
@@ -10155,16 +10155,20 @@ ${text2}</tr>
   // src/screens/events.js
   var filter = { level: "", q: "" };
   var LEVEL_CLS = { critical: "esc", error: "esc", warn: "warn", warning: "warn", info: "mute", debug: "mute" };
+  function clean(x) {
+    return String(x == null ? "" : x).replace(/^"+|"+$/g, "");
+  }
   function levelChip(e) {
     const lv = String(e && e.level || "info");
     return chip(lv, LEVEL_CLS[lv] || "mute");
   }
   function involvedHtml(e) {
-    const s = String(e && e.involved || "");
+    const s = clean(e && e.involved);
     if (!s) return chip("involved\uFF1A\u2014", "mute");
     return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
-      const route = involvedRoute2(part.trim());
-      return route ? chipGo(part.trim(), route, "mute", true, t("\u67E5\u770B ") + part.trim()) : chip(part.trim(), "mute");
+      const p = part.trim();
+      const route = involvedRoute2(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : chip(p, "mute");
     }).join(" ");
   }
   function linksHtml(e) {
@@ -10173,7 +10177,7 @@ ${text2}</tr>
     const wf = wfAnchorOfRoute(route);
     if (wf) out.push(chipGo(t("workflow \u951A ") + wf, "wf/" + encodeURIComponent(wf), "acc", true, "route " + route + t(" \u2192 \u5DE5\u4F5C\u6D41")));
     if (e && e.run) out.push(chipGo("run #" + e.run, route && wf ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(e.run)) : "workflows", "mute", true, t("\u5173\u8054\u8FD0\u884C")));
-    const sess = String(e && (e.agentSession || e.session) || "");
+    const sess = clean(e && (e.agentSession || e.session));
     if (sess) out.push(chipGo(t("\u4F1A\u8BDD ") + trunc(sess, 18), "session/" + encodeURIComponent(sess), "mute", true, t("\u4F1A\u8BDD\u8BE6\u60C5")));
     const wake = e && (e.wake != null ? e.wake : e.loopId != null ? e.loopId : null);
     if (wake != null) out.push(chip(t("\u5FAA\u73AF\u5524\u9192 #") + wake, "mute"));
@@ -10181,7 +10185,15 @@ ${text2}</tr>
   }
   function eventRow(e) {
     const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + esc(trunc(String(e && e.involved || "\u2014"), 60)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + "</span></div>";
+    const involved = clean(e && e.involved);
+    const parts = involved.split(/[,;]\s*/).filter(Boolean);
+    const invHtml = parts.length ? parts.map((part) => {
+      const p = part.trim();
+      const route = involvedRoute2(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : '<span class="mono">' + esc(p) + "</span>";
+    }).join(" ") : '<span class="mono">\u2014</span>';
+    const hasClipboard = typeof navigator !== "undefined" && !!(navigator.clipboard && navigator.clipboard.writeText);
+    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + invHtml + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + '</span><button class="btn sm" data-copy-id="' + esc(String(id)) + '"' + (hasClipboard ? "" : ' disabled title="' + esc(t("\u526A\u8D34\u677F\u4E0D\u53EF\u7528")) + '"') + ">" + esc(t("\u590D\u5236 id")) + "</button></div>";
   }
   function listScreen2(el, ctx2) {
     let rows = ctx2.store.events().slice();
@@ -10210,6 +10222,24 @@ ${text2}</tr>
         listScreen2(el, ctx2);
       });
     });
+    el.querySelectorAll("[data-copy-id]").forEach((btn) => {
+      if (btn.disabled) return;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const raw = String(btn.dataset.copyId || "");
+        navigator.clipboard.writeText(raw).then(() => {
+          btn.textContent = t("\u5DF2\u590D\u5236");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        }).catch(() => {
+          btn.textContent = t("\u590D\u5236\u5931\u8D25");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        });
+      });
+    });
   }
   async function detailScreen2(el, ctx2, id) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
@@ -10224,7 +10254,10 @@ ${text2}</tr>
     }
     const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
     const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
-    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(String(e[k]), 200))]);
+    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => {
+      const v = k === "involved" || k === "summary" || k === "message" || k === "agentSession" || k === "session" ? clean(e[k]) : String(e[k]);
+      return [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(v, 200))];
+    });
     box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
   }
   function render4(el, ctx2) {
@@ -10485,15 +10518,55 @@ ${text2}</tr>
     const spec = specOf(t2);
     return String(spec.title || t2 && t2.title || t2 && t2.name || t("\u672A\u547D\u540D\u4EFB\u52A1"));
   }
+  var cancelReq = /* @__PURE__ */ new Set();
+  function cancellable(t2) {
+    const phase = String(statusOf(t2).phase || "");
+    return !phase || phase === "queued" || phase === "pending";
+  }
+  function cancelBtnHtml(t2) {
+    const id = taskIdOf(t2);
+    if (cancelReq.has(id)) return chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn");
+    if (!cancellable(t2)) return "";
+    return '<button class="btn sm" data-task-cancel="' + esc(id) + '">' + esc(t("\u53D6\u6D88")) + "</button>";
+  }
+  function requestCancel(el, ctx2, t2) {
+    const name = String(t2 && t2.name || "");
+    const scope = String(t2 && t2.scope || "global") || "global";
+    if (!name) {
+      alert(t("\u4EFB\u52A1\u7F3A name\u2014\u2014\u65E0\u6CD5\u6784\u9020 Task/<scope>/<name> \u8BCD\u5F62\uFF0C\u53D6\u6D88\u672A\u53D1\u5E03"));
+      return;
+    }
+    const ok = confirm(t("\u53D6\u6D88\u4EFB\u52A1 ") + name + t("\uFF1F\u53D1\u5E03 TaskCancelRequested\uFF08\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39\u2014\u2014\u4E0D\u4FDD\u8BC1\u5DF2\u5728\u8DD1\u7684\u8FDB\u7A0B\u7ACB\u523B\u7EC8\u6B62\uFF09"));
+    if (!ok) return;
+    ctx2.api.eventPub({
+      type: "TaskCancelRequested",
+      involved: "Task/" + scope + "/" + name,
+      dedupKey: "console-cancel-" + name + "-" + Date.now()
+    }).then((r) => {
+      if (r && r.ok) {
+        cancelReq.add(taskIdOf(t2));
+        ctx2.api.snapshot().then((s) => {
+          if (s && s.ok) ctx2.store.init(s.data);
+        }).catch(() => {
+        });
+        if (el.isConnected) render6(el, ctx2);
+      } else {
+        alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38")));
+      }
+    }).catch((err) => {
+      alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(err && err.message || err || t("\u7F51\u7EDC\u5F02\u5E38")));
+    });
+  }
   function taskRow(t2) {
     const id = taskIdOf(t2);
     const s = statusOf(t2);
     const spec = specOf(t2);
     const deps = (spec.dependsOn || s.dependsOn || []).length;
     const agent = String(s.agent || spec.agent || "").trim();
-    const sess = String(s.agentSession || "").trim();
+    const sess = String(s.agentSession || s.sessionId || "").trim();
     const last = String(s.lastAction || "").trim();
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (deps ? chip(t("\u4F9D\u8D56 ") + deps, "mute") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + '</div></div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + "</div></div>";
+    const unknown = !String(s.phase || "");
+    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (deps ? chip(t("\u4F9D\u8D56 ") + deps, "mute") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u5DF2\u77E5\u6D3B\u4F53 bug\uFF08BUG \u53F0\u8D26\uFF1A\u7A7A status \u4E0D\u8C03\u5EA6\uFF09\uFF1B\u53EF\u7528\u53D6\u6D88\u52A8\u4F5C\u9003\u751F")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
   }
   function tasksScreen(el, ctx2) {
     const tasks = ctx2.store.tasks();
@@ -10516,6 +10589,14 @@ ${text2}</tr>
         n += rows.length;
       }
     });
+    const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
+    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const t2 = byId.get(btn.dataset.taskCancel);
+        if (t2) requestCancel(el, ctx2, t2);
+      });
+    });
   }
   function taskDetailScreen(el, ctx2, id) {
     const tasks = ctx2.store.tasks();
@@ -10533,12 +10614,18 @@ ${text2}</tr>
       ["id", esc(taskIdOf(t2))]
     ];
     if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
-    if (s.agentSession) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(String(s.agentSession), 24), "session/" + encodeURIComponent(String(s.agentSession)), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    const sessId = String(s.agentSession || s.sessionId || "").trim();
+    if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
     if (s.lastAction) rows.push([t("\u6700\u8FD1\u52A8\u4F5C"), esc(trunc(String(s.lastAction), 200))]);
     if (s.lastError) rows.push([t("\u6700\u8FD1\u9519\u8BEF"), chip(trunc(String(s.lastError), 120), "esc")]);
+    if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u5DF2\u77E5\u6D3B\u4F53 bug\uFF08BUG \u53F0\u8D26\uFF1A\u7A7A status \u4E0D\u8C03\u5EA6\uFF09\uFF1B\u53EF\u7528\u53D6\u6D88\u52A8\u4F5C\u9003\u751F"))]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push([t("\u4F9D\u8D56"), deps.map((d) => chip(String(d), "mute")).join(" ")]);
-    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + "</div></div></div>";
+    if (cancelReq.has(taskIdOf(t2))) rows.push([t("\u53D6\u6D88"), chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn")]);
+    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + (cancellable(t2) && !cancelReq.has(taskIdOf(t2)) ? '<div style="margin-top:10px"><button class="btn sm" data-task-cancel="' + esc(taskIdOf(t2)) + '">' + esc(t("\u53D6\u6D88")) + '</button><span class="small faint" style="margin-left:8px">' + esc(t("\u53D1\u5E03 TaskCancelRequested\u2014\u2014\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39")) + "</span></div>" : "") + "</div></div></div>";
+    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
+      btn.addEventListener("click", () => requestCancel(el, ctx2, t2));
+    });
   }
   var SEV_VIEW = { critical: { label: t("\u4E25\u91CD"), chip: "esc" }, high: { label: t("\u91CD\u8981"), chip: "warn" }, medium: { label: t("\u4E00\u822C"), chip: "mute" } };
   function sevView(sev) {
@@ -10615,7 +10702,7 @@ ${text2}</tr>
     reportScreen(el, ctx2);
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -10817,7 +10904,7 @@ ${text2}</tr>
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -11355,7 +11442,9 @@ ${text2}</tr>
 
   // src/screens/misc.js
   var treeOpen = /* @__PURE__ */ new Set();
+  var treeSeeded = false;
   var docFilter = { kind: "", q: "" };
+  var propOpen = /* @__PURE__ */ new Set();
   var dd = { tree: null, sel: null, cache: /* @__PURE__ */ new Map() };
   function treeScreen(el, ctx2) {
     const objs = ctx2.store.objects();
@@ -11365,16 +11454,22 @@ ${text2}</tr>
       const k = scopeMap[o.kind] = scopeMap[o.kind] || {};
       (k[o.scope] = k[o.scope] || []).push(o);
     });
+    if (!treeSeeded) {
+      kinds.forEach((kind) => {
+        if (objs.filter((o) => o.kind === kind).length <= 3) treeOpen.add(kind);
+      });
+      treeSeeded = true;
+    }
     const body = kinds.map((kind) => {
       const open = treeOpen.has(kind);
       const n = objs.filter((o) => o.kind === kind).length;
       const rows = open ? Object.keys(scopeMap[kind] || {}).sort().map((scope) => {
         const items = (scopeMap[kind][scope] || []).slice().sort((a, b) => a.name < b.name ? -1 : 1);
-        return '<div class="tree-scope"><span class="small faint mono">' + esc(scope) + "/</span>" + items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' + esc(o.name) + ' <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + "</span></div>").join("") + "</div>";
+        return '<div class="tree-scope"><span class="small faint mono">' + esc(scope) + "/</span>" + items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '"><span style="flex:1;min-width:0">' + esc(o.name) + '</span> <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + "</span>" + (o.kind === "ServiceDesc" ? '<span class="ws-chip">' + chipGo(t("Service \u5927\u5C4F"), "service/" + encodeURIComponent(String(o.name || "")), "acc", true, t("\u6DF1\u94FE Service \u5927\u5C4F")) + "</span>" : "") + "</div>").join("") + "</div>";
       }).join("") : "";
       return '<div class="tree-node"><div class="tree-row grp" data-tree-toggle="' + esc(kind) + '"><b>' + esc(kind) + "</b>" + chip(n + t(" \u4E2A"), n ? "acc" : "mute") + '<span class="faint">' + (open ? "\u25BE" : "\u25B8") + "</span></div>" + rows + "</div>";
     }).join("");
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u7CFB\u7EDF\u6811"), t("kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF09")) + (kinds.length ? '<div class="tree-box">' + body + "</div>" : emptyBox(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E"), t("\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002"))) + "</div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u7CFB\u7EDF\u6811"), t("kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF1B\u22643 \u5BF9\u8C61\u7684 kind \u9ED8\u8BA4\u5C55\u5F00\uFF09")) + (kinds.length ? '<div class="tree-box" style="min-width:min(680px,100%)">' + body + "</div>" : emptyBox(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E"), t("\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002"))) + "</div>";
     el.querySelectorAll("[data-tree-toggle]").forEach((row) => {
       row.addEventListener("click", () => {
         const k = row.dataset.treeToggle;
@@ -11423,7 +11518,7 @@ ${text2}</tr>
       t("\u6587\u6863\u5E93"),
       t("\u76EE\u5F55\u6811\u5F0F\u6587\u6863\u6E05\u5355\u2014\u2014tag \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863"),
       docKinds.length ? "" : chip(t("\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95"), "mute")
-    ) + '<div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u7F13\u5B58\u6B63\u6587\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
+    ) + '<div class="card" style="margin-bottom:10px"><div class="card-b small">' + esc(t("\u65B0\u5EFA\u6587\u6863\uFF1A\u5BF9\u8BDD\u63D0\u4EA4\u9700\u6C42\uFF08\u603B\u89C8\u6216\u4F1A\u8BDD\u5C4F\uFF09\u2192 agent \u8D77\u8349 \u2192 Apply \u843D\u5E93\u2014\u2014\u6587\u6863\u521B\u5EFA\u8D70\u5BF9\u8BDD+Apply\uFF0C\u65E0\u72EC\u7ACB\u8868\u5355\u3002")) + " " + chipGo(t("\u6253\u5F00\u5BF9\u8BDD"), "chat/root-agent", "acc", true, t("\u5728\u4F1A\u8BDD\u5C4F\u63D0\u4EA4\u9700\u6C42\u2014\u2014agent \u8D77\u8349\u540E Apply \u843D\u5E93")) + '</div></div><div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u7F13\u5B58\u6B63\u6587\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
       const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
       const meta = c ? fmMeta(c.content) : null;
       const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, "mute")).join("");
@@ -11527,12 +11622,25 @@ ${text2}</tr>
   }
   function proposalsScreen(el, ctx2) {
     const rows = ctx2.store.proposals();
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u9700\u6C42\u63D0\u6848"), t("\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09")) + (rows.length ? '<div class="card">' + rows.map((p) => {
+    const cards = rows.map((p, i) => {
       const keys = p && typeof p === "object" ? Object.keys(p) : [];
+      const key = String(p && p.name || "") || "#" + i;
+      const open = propOpen.has(key);
       const known = ["title", "summary", "status", "proposer", "createdAt", "scope", "name"];
       const sub = known.filter((k) => p[k] != null && k !== "title").map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
-      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(String(p.status || t("\u5F85\u5B9A")), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>')) + "</div></div></div>";
-    }).join("") + "</div>" : emptyBox(t("\u6682\u65E0\u63D0\u6848"), t("\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + "</div>";
+      const extras = keys.filter((k) => !known.includes(k) && k !== "summary" && p[k] != null && p[k] !== "").map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + "</span>").join("");
+      return '<div class="mini-row" data-prop="' + esc(key) + '"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(String(p.status || t("\u5F85\u5B9A")), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>')) + "</div>" + (open ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ""), 2e3) || t("summary \u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020")) + "</div>" + (extras ? '<div class="kv" style="margin-top:6px">' + extras + "</div>" : "") + '<div class="small faint" style="margin-top:6px">' + esc(t("\u518D\u70B9\u4E00\u6B21\u5361\u7247\u6536\u8D77\u3002")) + "</div>" : "") + '</div><span class="ws-chip">' + chipGo(t("\u53BB\u5BA1\u6279"), "approvals", "acc", true) + "</span></div>";
+    }).join("");
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u9700\u6C42\u63D0\u6848"), t("\u63D0\u6848\u9762\uFF08\u70B9\u5361\u7247\u5C55\u5F00 summary \u5168\u6587\u4E0E\u8981\u7D20\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09")) + (rows.length ? '<div class="card">' + cards + "</div>" : emptyBox(t("\u6682\u65E0\u63D0\u6848"), t("\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + "</div>";
+    el.querySelectorAll("[data-prop]").forEach((row) => {
+      row.addEventListener("click", (ev) => {
+        if (ev.target.closest("[data-go]")) return;
+        const key = row.dataset.prop;
+        if (propOpen.has(key)) propOpen.delete(key);
+        else propOpen.add(key);
+        proposalsScreen(el, ctx2);
+      });
+    });
   }
   function systemScreen(el, ctx2) {
     const scope = String(ctx2.params.name || "");

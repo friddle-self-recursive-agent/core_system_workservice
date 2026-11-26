@@ -9,8 +9,10 @@ import { renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ---------- 视图态 ---------- */
-const treeOpen = new Set();      // tree 已展开 kind 集合
+const treeOpen = new Set();      // tree 已展开 kind 集合（内存视图态）
+let treeSeeded = false;          // 首次渲染播种标记：对象数 ≤3 的 kind 自动展开一次，其后纯用户手控
 const docFilter = { kind: '', q: '' };
+const propOpen = new Set();      // 提案卡已展开集合（按 name 索引——内存视图态）
 const dd = { tree: null, sel: null, cache: new Map() }; // designdoc 工作台态（HEAD 现读——cache 仅防抖同屏重绘）
 
 /* ---------- 系统树（#/tree） ---------- */
@@ -22,6 +24,13 @@ function treeScreen(el, ctx) {
     const k = (scopeMap[o.kind] = scopeMap[o.kind] || {});
     (k[o.scope] = k[o.scope] || []).push(o);
   });
+  if (!treeSeeded) {
+    // 默认展开规则（§19.3）：对象总数 ≤3 的 kind 首渲染自动进 treeOpen——窄列+全折叠=逐个点箭头不可用
+    kinds.forEach((kind) => {
+      if (objs.filter((o) => o.kind === kind).length <= 3) treeOpen.add(kind);
+    });
+    treeSeeded = true;
+  }
   const body = kinds.map((kind) => {
     const open = treeOpen.has(kind);
     const n = objs.filter((o) => o.kind === kind).length;
@@ -29,8 +38,11 @@ function treeScreen(el, ctx) {
       ? Object.keys(scopeMap[kind] || {}).sort().map((scope) => {
         const items = (scopeMap[kind][scope] || []).slice().sort((a, b) => (a.name < b.name ? -1 : 1));
         return '<div class="tree-scope"><span class="small faint mono">' + esc(scope) + '/</span>' +
-          items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' + esc(o.name) +
-            ' <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + '</span></div>').join('') + '</div>';
+          items.map((o) => '<div class="tree-row leaf" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' +
+            '<span style="flex:1;min-width:0">' + esc(o.name) + '</span>' +
+            ' <span class="faint tiny mono">r' + esc(String(o.rv || 0)) + '</span>' +
+            (o.kind === 'ServiceDesc' ? '<span class="ws-chip">' + chipGo(tr('Service 大屏'), 'service/' + encodeURIComponent(String(o.name || '')), 'acc', true, tr('深链 Service 大屏')) + '</span>' : '') +
+            '</div>').join('') + '</div>';
       }).join('')
       : '';
     return '<div class="tree-node">' +
@@ -38,8 +50,8 @@ function treeScreen(el, ctx) {
       '<span class="faint">' + (open ? '▾' : '▸') + '</span></div>' + rows + '</div>';
   }).join('');
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('系统树'), tr('kinds → scope → 对象（快照聚合投影；对象名可点进工作台）')) +
-    (kinds.length ? '<div class="tree-box">' + body + '</div>' : emptyBox(tr('快照暂无对象枚举'), tr('等待首个快照聚合。'))) +
+    screenHead(tr('系统树'), tr('kinds → scope → 对象（快照聚合投影；对象名可点进工作台；≤3 对象的 kind 默认展开）')) +
+    (kinds.length ? '<div class="tree-box" style="min-width:min(680px,100%)">' + body + '</div>' : emptyBox(tr('快照暂无对象枚举'), tr('等待首个快照聚合。'))) +
     '</div>';
   el.querySelectorAll('[data-tree-toggle]').forEach((row) => {
     row.addEventListener('click', () => {
@@ -90,6 +102,10 @@ function docsScreen(el, ctx) {
   el.innerHTML = '<div class="view-inner">' +
     screenHead(tr('文档库'), tr('目录树式文档清单——tag 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
       docKinds.length ? '' : chip(tr('未注册声明 kind——全量枚举兜底'), 'mute')) +
+    '<div class="card" style="margin-bottom:10px"><div class="card-b small">' +
+    esc(tr('新建文档：对话提交需求（总览或会话屏）→ agent 起草 → Apply 落库——文档创建走对话+Apply，无独立表单。')) + ' ' +
+    chipGo(tr('打开对话'), 'chat/root-agent', 'acc', true, tr('在会话屏提交需求——agent 起草后 Apply 落库')) +
+    '</div></div>' +
     '<div class="filter-bar">' +
     tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +
     tr('<input class="inp" id="docs-tag" placeholder="tag 过滤（缓存正文现匹配）…" value="') + esc(docFilter.tag || '') + '" style="max-width:220px">' +
@@ -215,17 +231,39 @@ function connectorsScreen(el, ctx) {
 /* ---------- 需求提案（#/proposals） ---------- */
 function proposalsScreen(el, ctx) {
   const rows = ctx.store.proposals();
-  el.innerHTML = '<div class="view-inner">' + screenHead(tr('需求提案'), tr('提案面（列表+要素现读）——批准/驳回走审批与 Apply（LLM 无 Apply 权）')) +
-    (rows.length
-      ? '<div class="card">' + rows.map((p) => {
-        const keys = p && typeof p === 'object' ? Object.keys(p) : [];
-        const known = ['title', 'summary', 'status', 'proposer', 'createdAt', 'scope', 'name'];
-        const sub = known.filter((k) => p[k] != null && k !== 'title').map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
-        return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
-          '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席——不编造</span>')) + '</div></div></div>';
-      }).join('') + '</div>'
+  const cards = rows.map((p, i) => {
+    const keys = p && typeof p === 'object' ? Object.keys(p) : [];
+    const key = String((p && p.name) || '') || '#' + i; // 无 name 提案退化为序号键（展开态仍可用）
+    const open = propOpen.has(key);
+    const known = ['title', 'summary', 'status', 'proposer', 'createdAt', 'scope', 'name'];
+    const sub = known.filter((k) => p[k] != null && k !== 'title').map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
+    // 展开区要素：known 之外的对象字段（acceptance/impact/priority/origin/landing 等）有则显示
+    const extras = keys.filter((k) => !known.includes(k) && k !== 'summary' && p[k] != null && p[k] !== '')
+      .map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + '</span>').join('');
+    return '<div class="mini-row" data-prop="' + esc(key) + '">' +
+      '<div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
+      '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席——不编造</span>')) + '</div>' +
+      (open
+        ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ''), 2000) || tr('summary 缺席——不编造')) + '</div>' +
+          (extras ? '<div class="kv" style="margin-top:6px">' + extras + '</div>' : '') +
+          '<div class="small faint" style="margin-top:6px">' + esc(tr('再点一次卡片收起。')) + '</div>'
+        : '') +
+      '</div>' +
+      '<span class="ws-chip">' + chipGo(tr('去审批'), 'approvals', 'acc', true) + '</span>' +
+      '</div>';
+  }).join('');
+  el.innerHTML = '<div class="view-inner">' + screenHead(tr('需求提案'), tr('提案面（点卡片展开 summary 全文与要素）——批准/驳回走审批与 Apply（LLM 无 Apply 权）')) +
+    (rows.length ? '<div class="card">' + cards + '</div>'
       : emptyBox(tr('暂无提案'), tr('快照 proposals 聚合为空（空态显式）。'))) +
     '</div>';
+  el.querySelectorAll('[data-prop]').forEach((row) => {
+    row.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-go]')) return; // 「去审批」chip 走自身深链——不触发展开
+      const key = row.dataset.prop;
+      if (propOpen.has(key)) propOpen.delete(key); else propOpen.add(key);
+      proposalsScreen(el, ctx);
+    });
+  });
 }
 
 /* ---------- 系统详情（#/s/:name——scope 视角的对象清单+摘要） ---------- */

@@ -69,14 +69,56 @@ export function taskTitle(t) {
   return String(spec.title || (t && t.title) || (t && t.name) || tr('未命名任务'));
 }
 
+/* ---------- 取消通路（§19.3）：发布 TaskCancelRequested——调度器归档面消费 ---------- */
+const cancelReq = new Set(); // 本页会话内已发布取消请求的任务 id（内存反馈态——权威投影仍以快照为准）
+
+/** 可取消判定：status 缺席（状态未知=已知活体 bug 空 status 不调度）或 phase ∈ queued/pending。 */
+function cancellable(t) {
+  const phase = String(statusOf(t).phase || '');
+  return !phase || phase === 'queued' || phase === 'pending';
+}
+
+/** 取消按钮词形（行尾/详情通用）。已发布过=chip 反馈，按钮收起。 */
+function cancelBtnHtml(t) {
+  const id = taskIdOf(t);
+  if (cancelReq.has(id)) return chip(tr('取消请求已发布'), 'warn');
+  if (!cancellable(t)) return '';
+  return '<button class="btn sm" data-task-cancel="' + esc(id) + '">' + esc(tr('取消')) + '</button>';
+}
+
+/** 发布 TaskCancelRequested → 成功=行尾 chip + 快照重读（store 权威投影跟进）；失败=alert 显式词形。 */
+function requestCancel(el, ctx, t) {
+  const name = String((t && t.name) || '');
+  const scope = String((t && t.scope) || 'global') || 'global';
+  if (!name) { alert(tr('任务缺 name——无法构造 Task/<scope>/<name> 词形，取消未发布')); return; }
+  const ok = confirm(tr('取消任务 ') + name + tr('？发布 TaskCancelRequested（调度器归档面消费——不保证已在跑的进程立刻终止）'));
+  if (!ok) return;
+  ctx.api.eventPub({
+    type: 'TaskCancelRequested',
+    involved: 'Task/' + scope + '/' + name,
+    dedupKey: 'console-cancel-' + name + '-' + Date.now(),
+  }).then((r) => {
+    if (r && r.ok) {
+      cancelReq.add(taskIdOf(t));
+      ctx.api.snapshot().then((s) => { if (s && s.ok) ctx.store.init(s.data); }).catch(() => { /* 快照重读失败=保留现投影与 chip 反馈 */ });
+      if (el.isConnected) render(el, ctx); // 本屏立即重绘——行尾出现「取消请求已发布」
+    } else {
+      alert(tr('取消请求发布失败：') + String((r && (r.error || r.status)) || tr('网络异常')));
+    }
+  }).catch((err) => {
+    alert(tr('取消请求发布失败：') + String((err && err.message) || err || tr('网络异常')));
+  });
+}
+
 function taskRow(t) {
   const id = taskIdOf(t);
   const s = statusOf(t);
   const spec = specOf(t);
   const deps = (spec.dependsOn || s.dependsOn || []).length;
   const agent = String(s.agent || spec.agent || '').trim();
-  const sess = String(s.agentSession || '').trim();
+  const sess = String(s.agentSession || s.sessionId || '').trim();
   const last = String(s.lastAction || '').trim();
+  const unknown = !String(s.phase || '');
   return '<div class="task-row">' +
     '<div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t)) + '</b>' + phaseChip(t) +
     chip(id, 'mute') +
@@ -84,8 +126,11 @@ function taskRow(t) {
     (agent ? chip(tr('负责 ') + agent, 'mute') : '') + '</div>' +
     '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
-    '</div></div>' +
-    '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') + '</div>' +
+    '</div>' +
+    (unknown ? '<div class="task-sub small faint">' + esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生')) + '</div>' : '') +
+    '</div>' +
+    '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') +
+    cancelBtnHtml(t) + '</div>' +
     '</div>';
 }
 
@@ -116,6 +161,16 @@ function tasksScreen(el, ctx) {
       n += rows.length;
     }
   });
+
+  // 取消按钮：stopPropagation——不触发行进详情；发布 TaskCancelRequested（§19.3 取消通路）
+  const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
+  el.querySelectorAll('[data-task-cancel]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const t = byId.get(btn.dataset.taskCancel);
+      if (t) requestCancel(el, ctx, t);
+    });
+  });
 }
 
 /** 任务详情（store 在册投影；不在册=诚实空态——URL 手输名不冒充）。 */
@@ -135,14 +190,24 @@ function taskDetailScreen(el, ctx, id) {
     ['id', esc(taskIdOf(t))],
   ];
   if (spec.agent || s.agent) rows.push([tr('负责'), esc(String(s.agent || spec.agent))]);
-  if (s.agentSession) rows.push([tr('会话'), chipGo(trunc(String(s.agentSession), 24), 'session/' + encodeURIComponent(String(s.agentSession)), 'acc', true, tr('关联会话'))]);
+  const sessId = String(s.agentSession || s.sessionId || '').trim();
+  if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
   if (s.lastAction) rows.push([tr('最近动作'), esc(trunc(String(s.lastAction), 200))]);
   if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
+  if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), deps.map((d) => chip(String(d), 'mute')).join(' ')]);
+  if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +
+    (cancellable(t) && !cancelReq.has(taskIdOf(t))
+      ? '<div style="margin-top:10px"><button class="btn sm" data-task-cancel="' + esc(taskIdOf(t)) + '">' + esc(tr('取消')) + '</button>' +
+        '<span class="small faint" style="margin-left:8px">' + esc(tr('发布 TaskCancelRequested——调度器归档面消费')) + '</span></div>'
+      : '') +
     '</div></div></div>';
+  el.querySelectorAll('[data-task-cancel]').forEach((btn) => {
+    btn.addEventListener('click', () => requestCancel(el, ctx, t));
+  });
 }
 
 /* ---------- 关注报告（R-UX-6：attention 排序 + 证据路由 + 循环卡 + 可信度注脚） ---------- */
