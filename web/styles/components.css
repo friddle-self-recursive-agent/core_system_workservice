@@ -160,18 +160,6 @@
   font-size: 11px; padding: 2px 8px; border-radius: 8px; cursor: pointer; }
 .lang-btn.active { color: var(--text); border-color: var(--accent); background: rgba(77, 107, 254, .12); }
 
-/* ── 两级控制台（系统/业务）+分组导航 ── */
-.level-tabs { display: flex; gap: 6px; padding: 0 14px 10px; }
-.level-tab { flex: 1; border: 1px solid var(--border); background: transparent; color: var(--text-2);
-  padding: 6px 0; border-radius: 10px; font-size: 12px; cursor: pointer; }
-.level-tab.active { color: var(--text); border-color: var(--accent); background: rgba(77, 107, 254, .12); font-weight: 600; }
-.nav-group { margin-top: 10px; }
-.nav-group-h { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px;
-  font-size: 11px; letter-spacing: .08em; color: var(--text-2); cursor: pointer; user-select: none; }
-.nav-group-h:hover { color: var(--text); }
-.fold-chev { font-size: 12px; opacity: .7; }
-.nav-group.folded .nav-group-h { opacity: .6; }
-
 /* ── 总览大屏 ── */
 .page-title { font-size: 22px; font-weight: 700; letter-spacing: .01em; }
 .dash-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }

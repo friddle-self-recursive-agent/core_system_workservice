@@ -38,94 +38,101 @@ const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: ''
  * 业务控制台=占位级（后续 ServiceAgent 登录的业务面，先不加东西）。
  * 连接/会话/系统树/文档/对象工作台收进二级「基础设施」折叠组。
  * 标签存源词形（中文原文）——locale 切换靠 sidebarHtml 渲染期 tr(label) 现译。 */
-const LEVELS = [
-  { id: 'sys', label: '系统控制台' },
-  { id: 'biz', label: '业务控制台' },
+/* 三级菜单树（2026-11-26 四次裁决：学 dsh 原生侧栏——一级=分组头可折叠，二级=条目，
+ * 三级=缩进子组；语言切换挪顶栏右上角）。标签存源词形；icon=单色 glyph。 */
+const NAV_TREE = [
+  {
+    level: 'sys', label: '系统控制台', icon: '▣',
+    items: [
+      ['welcome', '总览', '⌂'],
+      ['report', '关注报告', '≈'],
+      ['tasks', '任务中心', '⊞'],
+      ['workflows', 'Workflows', '⟳'],
+      ['events', '事件', '⚡'],
+      ['approvals', '审批', '✓'],
+      ['proposals', '需求提案', '✦'],
+    ],
+    sub: { label: '基础设施', items: [
+      ['chat/root-agent', '会话', '💬'],
+      ['tree', '系统树', '⑃'],
+      ['docs', '文档库', '▤'],
+      ['obj', '对象工作台', '▭'],
+      ['connectors', '连接', '⌁'],
+    ] },
+  },
+  {
+    level: 'biz', label: '业务控制台', icon: '◆',
+    items: [['biz', '业务总览', '⌂']],
+    sub: null,
+  },
 ];
 let curLevel = 'sys';
 try { curLevel = (typeof localStorage !== 'undefined' && localStorage.getItem('cc.level')) || 'sys'; } catch { /* ignore */ }
 
-const NAV_SYS = [
-  { group: null, items: [['welcome', '总览'], ['report', '关注报告'], ['tasks', '任务中心'], ['workflows', 'Workflows'], ['events', '事件'], ['approvals', '审批'], ['proposals', '需求提案']] },
-  { group: '基础设施', fold: true, items: [['chat/root-agent', '会话'], ['tree', '系统树'], ['docs', '文档库'], ['obj', '对象工作台'], ['connectors', '连接']] },
-];
-const NAV_BIZ = [
-  { group: null, items: [['biz', '业务总览']] },
-];
-function navGroups() { return curLevel === 'biz' ? NAV_BIZ : NAV_SYS; }
-
-/* 语言切换钮（中文/EN——当前词形高亮；点击经 data-lang 委托进 setLocale）。 */
+/* 语言切换（顶栏右上角——四次裁决：不在侧栏底角）。 */
 function langToggleHtml() {
   const cur = getLocale();
   const btn = (id, label) => '<button class="lang-btn' + (cur === id ? ' active' : '') + '" data-lang="' + id + '">' + label + '</button>';
   return '<span class="lang-toggle">' + btn('zh', '中文') + btn('en', 'EN') + '</span>';
 }
 
+/* 折叠态（section/子组两级） */
+const foldState = { '基础设施': false };
+
+/* 审批徽标数（草稿 ∪ ApprovalNeeded——人一眼看到欠账）。 */
+function approvalBadge() {
+  try {
+    const n = (store.drafts() || []).length + (store.events() || []).filter((e) => e && e.type === 'ApprovalNeeded').length;
+    return n > 0 ? '<span class="nav-badge">' + n + '</span>' : '';
+  } catch { return ''; }
+}
+
+/* 侧栏：品牌行 + 三级分组树（一级 section 头=级别折叠；二级条目 icon+徽；三级缩进子组）。 */
+function sidebarHtml() {
+  const sections = navTree().map((sec) => {
+    const open = curLevel === sec.level;
+    const items = sec.items.map(([r, label, icon]) => {
+      const badge = r === 'approvals' ? approvalBadge() : '';
+      return '<div class="nav-item l2" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
+        '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + badge + '</div>';
+    }).join('');
+    const sub = sec.sub
+      ? '<div class="nav-sub-h" data-fold="' + esc(sec.sub.label) + '"><span class="nav-ico fold-chev">' + (foldState[sec.sub.label] ? '▸' : '▾') + '</span>' + esc(tr(sec.sub.label)) + '</div>' +
+        (foldState[sec.sub.label] ? '' : '<nav class="side-nav l3">' + sec.sub.items.map(([r, label, icon]) =>
+          '<div class="nav-item l3" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
+          '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + '</div>').join('') + '</nav>')
+      : '';
+    return '<div class="nav-section' + (open ? ' open' : '') + '" data-section="' + sec.level + '">' +
+      '<div class="nav-section-h" data-level="' + sec.level + '">' +
+      '<span class="nav-ico">' + sec.icon + '</span>' + esc(tr(sec.label)) +
+      '<span class="fold-chev">' + (open ? '▾' : '▸') + '</span></div>' +
+      (open ? '<nav class="side-nav l2">' + items + '</nav>' + sub : '') +
+      '</div>';
+  }).join('');
+  return sections + sideFootHtml();
+}
+
 function sideFootHtml() {
-  return '<div class="side-foot">' + langToggleHtml() +
-    '<span class="lamp off" data-conn-lamp></span>' +
+  return '<div class="side-foot"><span class="lamp off" data-conn-lamp></span>' +
     '<span class="small faint" data-conn-label>' + esc(tr('连接中…')) + '</span></div>';
 }
 
-/* 二级折叠态（会话级内存——默认展开；点组头切换）。 */
-const foldState = {};
-
-/* 侧栏整体：级别 tabs（系统/业务）+分组导航（二级折叠）。
- * locale 切换与级别切换=整段重渲染——标签/文案全部渲染期 tr 现译。 */
-function sidebarHtml() {
-  const levelTabs = '<div class="level-tabs">' + LEVELS.map((l) =>
-    '<button class="level-tab' + (curLevel === l.id ? ' active' : '') + '" data-level="' + l.id + '">' + esc(tr(l.label)) + '</button>').join('') + '</div>';
-  const groups = navGroups().map((g) => {
-    const rows = g.items.map(([r, label]) =>
-      '<div class="nav-item" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' + esc(tr(label)) + '</div>').join('');
-    if (!g.group) return '<nav class="side-nav">' + rows + '</nav>';
-    const folded = !!foldState[g.group];
-    return '<div class="nav-group' + (folded ? ' folded' : '') + '">' +
-      '<div class="nav-group-h" data-fold="' + esc(g.group) + '">' + esc(tr(g.group)) +
-      '<span class="fold-chev">' + (folded ? '›' : '⌄') + '</span></div>' +
-      (folded ? '' : '<nav class="side-nav sub">' + rows + '</nav>') +
-      '</div>';
-  }).join('');
-  return '<div class="side-logo"><span class="logo-mark">C</span>' +
-    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('web 重构起点')) + '</span></span></div>' +
-    levelTabs + groups + sideFootHtml();
-}
-
 function shellHtml() {
-  return '<div class="app"><aside class="sidebar">' + sidebarHtml() +
-    '</aside><main class="main"><div class="view" id="view"></div></main></div>';
-}
-
-let lastConnState = 'connecting';
-function paintConn(state) {
-  lastConnState = state;
-  const lamp = document.querySelector('[data-conn-lamp]');
-  const label = document.querySelector('[data-conn-label]');
-  const text = { connected: tr('实时（WS patch）'), reconnecting: tr('重连中…'), degraded: tr('降级轮询（30s）'), connecting: tr('连接中…') }[state] || state;
-  const cls = { connected: 'ok', reconnecting: 'warn', degraded: 'warn', connecting: 'off' }[state] || 'off';
-  if (lamp) lamp.className = 'lamp ' + cls + (state === 'connected' ? ' pulse-ok' : '');
-  if (label) label.textContent = text;
-}
-
-function paintNav(route) {
-  document.querySelectorAll('[data-nav]').forEach((n) => {
-    const r = String(n.dataset.nav || '');
-    const on = route === r || (r === 'tasks' && (route === 'task' || route === 'report')) ||
-      (r === 'events' && route === 'event') || (r === 'workflows' && (route === 'wf')) ||
-      (r === 'docs' && (route === 'doc' || route === 'designdoc')) ||
-      (r === 'welcome' && (route === 'service')) ||
-      (r === 'chat' && (route === 'session' || route.startsWith('chat')));
-    n.classList.toggle('active', on);
-  });
-}
-
-function screenOf(fn) {
-  return (el, params) => {
-    ctx.params = params;
-    ctx.route = router.current.route;
-    fn(el, ctx);
-    paintNav(router.current.route);
-  };
+  return '<div class="app">' +
+    '<aside class="sidebar">' +
+    '<div class="side-logo"><span class="logo-mark">C</span>' +
+    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('web 重构起点')) + '</span></span></div>' +
+    '<div data-nav-tree>' + sidebarHtml() + '</div>' +
+    sideFootHtml() +
+    '</aside>' +
+    '<div class="main-wrap"><header class="topbar">' +
+    '<span class="topbar-crumb" data-topbar-crumb></span>' +
+    '<span class="topbar-right">' +
+    '<span class="lamp off" data-conn-lamp-top></span>' +
+    '<span class="small faint" data-conn-label-top>' + esc(tr('连接中…')) + '</span>' +
+    langToggleHtml() +
+    '</span></header>' +
+    '<main class="main"><div class="view" id="view"></div></main></div></div>';
 }
 
 /* 快照后正文预取（rv 变化才 fetch——docCache 语义；并发 4、单轮上限 24）。 */
@@ -164,11 +171,11 @@ export function mount(root, opts = {}) {
   root.addEventListener('click', (ev) => {
     const lv = ev.target.closest('[data-level]');
     if (lv) { ev.preventDefault(); curLevel = lv.dataset.level; try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
-      const aside = root.querySelector('.sidebar'); if (aside) aside.innerHTML = sidebarHtml();
+      const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml();
       router.go(curLevel === 'biz' ? 'biz' : 'welcome'); return; }
     const fold = ev.target.closest('[data-fold]');
     if (fold) { ev.preventDefault(); const g = fold.dataset.fold; foldState[g] = !foldState[g];
-      const aside = root.querySelector('.sidebar'); if (aside) aside.innerHTML = sidebarHtml(); return; }
+      const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml(); return; }
     const langBtn = ev.target.closest('[data-lang]');
     if (langBtn) { ev.preventDefault(); setLocale(langBtn.dataset.lang); return; }
     const t = ev.target.closest('[data-go]');
@@ -177,8 +184,8 @@ export function mount(root, opts = {}) {
 
   // locale 变更：侧栏整段重渲染（NAV/文案现译）+连接灯恢复+当前屏重绘+标题
   onLocaleChange(() => {
-    const aside = root.querySelector('.sidebar');
-    if (aside) aside.innerHTML = sidebarHtml();
+    const tree = root.querySelector('[data-nav-tree]');
+    if (tree) tree.innerHTML = sidebarHtml();
     paintConn(lastConnState);
     if (view.isConnected) router.render();
     try { document.title = getLocale() === 'en' ? 'Core Console v2' : 'Core Console v2（web 重构载体·并行验收面）'; } catch { /* 无 document 环境 */ }
