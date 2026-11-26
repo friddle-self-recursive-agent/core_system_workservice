@@ -143,7 +143,7 @@ function detailScreen(el, ctx, name) {
 /** 运行独立页（#/wf/:name/r/:n——运行抽屉的独立路由形态）。 */
 function runScreen(el, ctx, name, no) {
   const runs = ctx.store.runs().filter((r) => String(r && (r.workflow || r.name || '')) === String(name));
-  const run = runs.find((r) => String(r.no != null ? r.no : '') === String(no)) || runs[0];
+  const run = runs.find((r) => String(r.run != null ? r.run : (r.no != null ? r.no : '')) === String(no)) || runs[0];
   const head = screenHead(tr('运行详情'), 'workflow=' + String(name) + ' · run #' + String(no),
     chipGo('← ' + String(name), 'wf/' + encodeURIComponent(String(name)), 'mute', false));
   if (!run) {

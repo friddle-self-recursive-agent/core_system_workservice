@@ -10066,7 +10066,7 @@ ${text2}</tr>
   }
   function runScreen(el, ctx2, name, no) {
     const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const run2 = runs.find((r) => String(r.no != null ? r.no : "") === String(no)) || runs[0];
+    const run2 = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
     const head = screenHead(
       t("\u8FD0\u884C\u8BE6\u60C5"),
       "workflow=" + String(name) + " \xB7 run #" + String(no),
