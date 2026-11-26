@@ -137,6 +137,41 @@ function shellHtml() {
     '<main class="main"><div class="view" id="view"></div></main></div></div>';
 }
 
+/* 导航高亮（route→nav 前缀映射）。 */
+function paintNav(route) {
+  document.querySelectorAll('[data-nav]').forEach((n) => {
+    const r = String(n.dataset.nav || '');
+    const on = route === r || (r === 'tasks' && (route === 'task' || route === 'report')) ||
+      (r === 'events' && route === 'event') || (r === 'workflows' && route === 'wf') ||
+      (r === 'docs' && (route === 'doc' || route === 'designdoc')) ||
+      (r === 'welcome' && (route === 'service')) ||
+      (r === 'chat' && (route === 'session' || route.startsWith('chat')));
+    n.classList.toggle('active', on);
+    // 三级菜单：路由命中时所在 section 自动展开并置级别
+    const section = n.closest('.nav-section');
+    if (on && section && section.dataset.section && section.dataset.section !== curLevel) {
+      curLevel = section.dataset.section;
+      try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
+      const tree = document.querySelector('[data-nav-tree]');
+      if (tree) tree.innerHTML = sidebarHtml();
+    }
+  });
+}
+
+/* 屏包装（params 注入+当前 route 记录+导航高亮）。 */
+function screenOf(fn) {
+  return (el, params) => {
+    ctx.params = params;
+    ctx.route = router.current.route;
+    fn(el, ctx);
+    paintNav(router.current.route);
+    try {
+      const crumb = document.querySelector('[data-topbar-crumb]');
+      if (crumb) crumb.textContent = router.current.route;
+    } catch { /* 无 crumb 环境 */ }
+  };
+}
+
 /* 快照后正文预取（rv 变化才 fetch——docCache 语义；并发 4、单轮上限 24）。 */
 let hydrating = false;
 async function hydrateDocs() {

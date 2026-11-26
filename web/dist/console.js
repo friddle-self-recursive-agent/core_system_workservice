@@ -9647,17 +9647,17 @@ ${text2}</tr>
   function focusIn(box) {
     return !!(document.activeElement && box.contains(document.activeElement));
   }
-  function paint(box, ctx, id, model) {
+  function paint(box, ctx2, id, model) {
     PANEL.set(id, { model });
     box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(model) + "</div>";
-    wireSessionCtx(box, ctx, id);
+    wireSessionCtx(box, ctx2, id);
   }
-  async function refresh(ctx, id, box) {
-    const r = await ctx.api.sessionContext(id);
+  async function refresh(ctx2, id, box) {
+    const r = await ctx2.api.sessionContext(id);
     if (!r.ok || focusIn(box)) return;
-    paint(box, ctx, id, normalizeContext(r.data));
+    paint(box, ctx2, id, normalizeContext(r.data));
   }
-  function wireSessionCtx(box, ctx, id) {
+  function wireSessionCtx(box, ctx2, id) {
     const q = (sel) => box.querySelector(sel);
     const notice2 = (html3) => {
       const slot = q("[data-ctx-notice]");
@@ -9677,37 +9677,37 @@ ${text2}</tr>
         return;
       }
       saveBtn.disabled = true;
-      const r = await ctx.api.saveSessionContext(id, built.payload);
+      const r = await ctx2.api.saveSessionContext(id, built.payload);
       saveBtn.disabled = false;
       if (!r.ok) {
         notice2(t('<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? t("\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09") : "") + "</div>");
         return;
       }
       notice2(t('<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ') + esc(String(r.data && r.data.override && r.data.override.revision || "?")) + "\uFF09" + (built.dropped.length ? t("\uFF1B\u8D85\u9650 tag \u6536\u655B ") + built.dropped.length + t(" \u4E2A\uFF1A") + esc(trunc(built.dropped.join(", "), 80)) : "") + "\u3002</div>");
-      refresh(ctx, id, box);
+      refresh(ctx2, id, box);
     });
     const revertBtn = q("[data-ctx-revert]");
     if (revertBtn) revertBtn.addEventListener("click", async () => {
       if (!window.confirm(t("\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F"))) return;
       revertBtn.disabled = true;
-      const r = await ctx.api.revertSessionContext(id);
+      const r = await ctx2.api.revertSessionContext(id);
       revertBtn.disabled = false;
       if (!r.ok) {
         notice2(t('<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>"));
         return;
       }
       notice2(t('<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>'));
-      refresh(ctx, id, box);
+      refresh(ctx2, id, box);
     });
   }
-  async function mountSessionCtx(el, ctx, id) {
+  async function mountSessionCtx(el, ctx2, id) {
     const box = el.querySelector("[data-ctx-panel]");
     if (!box || !id) return;
     if (focusIn(box)) return;
     const cached = PANEL.get(id);
     if (cached && cached.model) box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(cached.model) + "</div>";
     const stamp = typeof location !== "undefined" ? location.hash : "";
-    const r = await ctx.api.sessionContext(id);
+    const r = await ctx2.api.sessionContext(id);
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     if (!r.ok) {
       if (!focusIn(box)) {
@@ -9716,7 +9716,7 @@ ${text2}</tr>
       return;
     }
     if (focusIn(box)) return;
-    paint(box, ctx, id, normalizeContext(r.data));
+    paint(box, ctx2, id, normalizeContext(r.data));
   }
 
   // src/screens/chat.js
@@ -9724,17 +9724,17 @@ ${text2}</tr>
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   var THREAD = { sessionId: "", msgs: [] };
-  function sessionOptions(ctx, cur) {
-    const rows = (ctx.store.sessions() || []).map((s) => String(s && (s.id || s.sessionId) || "")).filter(Boolean);
+  function sessionOptions(ctx2, cur) {
+    const rows = (ctx2.store.sessions() || []).map((s) => String(s && (s.id || s.sessionId) || "")).filter(Boolean);
     const seen = new Set(rows);
     const opts = rows.slice(0, 30).map((id) => '<option value="' + esc(id) + '"' + (id === cur ? " selected" : "") + ">" + esc(trunc(id, 30)) + "</option>").join("");
     const extra = cur && !seen.has(cur) ? '<option value="' + esc(cur) + '" selected>' + esc(trunc(cur, 30)) + "</option>" : "";
     return '<option value="">' + esc(t("\u2014 \u9009\u62E9 session\uFF08\u6216\u8F93\u5165\uFF09\u2014")) + "</option>" + extra + opts;
   }
-  function composerHtml(ctx, curSession) {
+  function composerHtml(ctx2, curSession) {
     const f = faces();
     const canSend = !!(f && typeof f.send === "function");
-    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions(ctx, curSession) + '</select><input class="inp cc-sess-free" data-cc-sess-free placeholder="' + esc(t("\u6216\u624B\u586B session id")) + '" value="' + esc(curSession || "") + '"></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn primary cc-send" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
+    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions(ctx2, curSession) + '</select><input class="inp cc-sess-free" data-cc-sess-free placeholder="' + esc(t("\u6216\u624B\u586B session id")) + '" value="' + esc(curSession || "") + '"></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn primary cc-send" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
   }
   function threadHtml(msgs, names) {
     if (!msgs.length) {
@@ -9742,14 +9742,14 @@ ${text2}</tr>
     }
     return '<div class="card thread">' + msgs.map((m) => renderMessage(m, names)).join("") + "</div>";
   }
-  function bindDocFull(el, ctx) {
+  function bindDocFull(el, ctx2) {
     el.querySelectorAll("[data-doc-full]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const ref = String(btn.getAttribute("data-doc-full") || "");
         const parts = ref.split("/");
         if (parts.length < 3) return;
         const [kind, scope, name] = parts;
-        const r = await ctx.api.object(decodeURIComponent(kind), decodeURIComponent(scope), decodeURIComponent(name));
+        const r = await ctx2.api.object(decodeURIComponent(kind), decodeURIComponent(scope), decodeURIComponent(name));
         const body = r.ok && r.data && r.data.content != null ? String(r.data.content) : t("\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08") + (r.ok ? t("\u5185\u5BB9\u7F3A\u5E2D") : String(r.error || r.status)) + "\uFF09";
         let ov = document.querySelector("[data-doc-ov]");
         if (!ov) {
@@ -9763,13 +9763,13 @@ ${text2}</tr>
           ov.className = "doc-ov hidden";
         });
         ov.querySelector("[data-doc-ov-edit]").addEventListener("click", () => {
-          ctx.go("doc/" + encodeURIComponent(decodeURIComponent(kind)) + "/" + encodeURIComponent(decodeURIComponent(scope)) + "/" + encodeURIComponent(decodeURIComponent(name)));
+          ctx2.go("doc/" + encodeURIComponent(decodeURIComponent(kind)) + "/" + encodeURIComponent(decodeURIComponent(scope)) + "/" + encodeURIComponent(decodeURIComponent(name)));
           ov.className = "doc-ov hidden";
         });
       });
     });
   }
-  function bindComposer(el, ctx, rootEl) {
+  function bindComposer(el, ctx2, rootEl) {
     const sendBtn = rootEl.querySelector("[data-cc-send]");
     const sessSel = rootEl.querySelector("[data-cc-sess]");
     const sessFree = rootEl.querySelector("[data-cc-sess-free]");
@@ -9784,7 +9784,7 @@ ${text2}</tr>
       if (!f || typeof f.send !== "function") return;
       THREAD.msgs.push({ role: "user", text: text2, ts: (/* @__PURE__ */ new Date()).toISOString().slice(11, 19) });
       textTa.value = "";
-      paintThread(rootEl, ctx);
+      paintThread(rootEl, ctx2);
       const r = await f.send(sessionId, text2);
       if (r && r.status === 200) {
         THREAD.msgs.push({
@@ -9802,7 +9802,7 @@ ${text2}</tr>
           text: t("\u9001\u8FBE\u5931\u8D25\uFF08") + (r && r.status || "\u2014") + "\uFF09" + (r && r.data && r.data.error ? " \xB7 " + r.data.error : "")
         });
       }
-      paintThread(rootEl, ctx);
+      paintThread(rootEl, ctx2);
     };
     sendBtn.addEventListener("click", doSend);
     textTa.addEventListener("keydown", (ev) => {
@@ -9812,15 +9812,15 @@ ${text2}</tr>
       }
     });
   }
-  function paintThread(rootEl, ctx) {
+  function paintThread(rootEl, ctx2) {
     const box = rootEl.querySelector("[data-thread]");
     if (!box) return;
-    const names = new Set((ctx.store.objects() || []).map((o) => o.name).filter(Boolean));
+    const names = new Set((ctx2.store.objects() || []).map((o) => o.name).filter(Boolean));
     box.innerHTML = threadHtml(THREAD.msgs, names);
     box.scrollTop = box.scrollHeight;
-    bindDocFull(box, ctx);
+    bindDocFull(box, ctx2);
   }
-  function dialogScreen(el, ctx, sessionId) {
+  function dialogScreen(el, ctx2, sessionId) {
     const f = faces();
     const native = expandBlock(
       '<iframe class="host-embed" src="' + esc((function() {
@@ -9837,9 +9837,9 @@ ${text2}</tr>
       t("\u5BF9\u8BDD"),
       t("rootAgent\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\uFF1Bref \u53EF\u70B9\uFF0C\u7ED3\u8BBA\u53EF\u5168\u6587\u6863\u89C2\u770B"),
       chipGo(t("\u65B0\u7A97\u53E3\u539F\u751F\u754C\u9762"), "", "mute", false)
-    ) + composerHtml(ctx, sessionId) + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u5BF9\u8BDD\u7EBF\u7A0B")) + "</h2><div data-thread>" + threadHtml(THREAD.msgs, null) + '</div><div class="small faint" style="margin-top:8px">' + esc(t("\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002")) + "</div>" + native;
+    ) + composerHtml(ctx2, sessionId) + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u5BF9\u8BDD\u7EBF\u7A0B")) + "</h2><div data-thread>" + threadHtml(THREAD.msgs, null) + '</div><div class="small faint" style="margin-top:8px">' + esc(t("\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002")) + "</div>" + native;
     if (sessionId) {
-      const sess = (ctx.store.sessions() || []).find((s) => String(s && (s.id || s.sessionId) || "") === sessionId);
+      const sess = (ctx2.store.sessions() || []).find((s) => String(s && (s.id || s.sessionId) || "") === sessionId);
       if (sess || true) {
         el.insertAdjacentHTML("beforeend", "");
       }
@@ -9847,7 +9847,7 @@ ${text2}</tr>
         "beforeend",
         '<div class="view-inner"><h2 class="sec-title">' + esc(t("\u4E0A\u4E0B\u6587")) + '</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></div></div>"
       );
-      mountSessionCtx(el, ctx, sessionId);
+      mountSessionCtx(el, ctx2, sessionId);
     }
     const pop = el.querySelector('[data-go=""]');
     if (pop) {
@@ -9859,13 +9859,13 @@ ${text2}</tr>
         }
       });
     }
-    bindComposer(el, ctx, el);
-    bindDocFull(el, ctx);
-    paintThread(el, ctx);
+    bindComposer(el, ctx2, el);
+    bindDocFull(el, ctx2);
+    paintThread(el, ctx2);
   }
-  function render(el, ctx) {
-    const id = ctx.params && ctx.params.id;
-    dialogScreen(el, ctx, id ? String(id) : THREAD.sessionId || "");
+  function render(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    dialogScreen(el, ctx2, id ? String(id) : THREAD.sessionId || "");
   }
 
   // src/screens/welcome.js
@@ -9884,10 +9884,10 @@ ${text2}</tr>
     const chips = fields.map(([k, v]) => chip(k + ": " + v, "mute")).join("");
     return '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "acc") + chips + (d.eventId ? '<span class="report-loop-acts">' + chipGo(t("\u89E6\u53D1\u4E8B\u4EF6"), "event/" + encodeURIComponent(String(d.eventId)), "mute") + "</span>" : "") + "</div></div></div>";
   }
-  async function hydrateLoop(el, ctx) {
+  async function hydrateLoop(el, ctx2) {
     const box = el.querySelector("[data-loop-box]");
     if (!box) return;
-    const r = await ctx.api.loopCurrent();
+    const r = await ctx2.api.loopCurrent();
     if (!el.isConnected || box.getAttribute("data-loop-box") === "stale") return;
     if (!r.ok) {
       box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>");
@@ -9902,8 +9902,8 @@ ${text2}</tr>
   function zoneHead(label, route) {
     return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
   }
-  function runningWorkflowsHtml(ctx) {
-    const runs = ctx.store.runs().filter((r) => {
+  function runningWorkflowsHtml(ctx2) {
+    const runs = ctx2.store.runs().filter((r) => {
       const st = String(r && (r.status || r.state) || "");
       return st && st !== "done" && st !== "failed" && st !== "canceled";
     }).slice(0, 8);
@@ -9917,15 +9917,15 @@ ${text2}</tr>
     }).join("");
     return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
   }
-  function pendingApprovalsHtml(ctx) {
-    const drafts = ctx.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({
+  function pendingApprovalsHtml(ctx2) {
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({
       src: "draft",
       t: d.updatedAt || d.ts || null,
       go: "doc/" + encodeURIComponent(d.kind) + "/" + encodeURIComponent(d.scope || "global") + "/" + encodeURIComponent(d.name),
       title: d.kind + "/" + (d.scope || "global") + "/" + d.name,
       tag: t("\u7A3F")
     }));
-    const evs = ctx.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).slice(0, 8).map((e) => ({
+    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).slice(0, 8).map((e) => ({
       src: "ev",
       t: e.ts || null,
       go: "event/" + encodeURIComponent(String(e.id ?? "")),
@@ -9936,11 +9936,11 @@ ${text2}</tr>
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
   }
-  function agentsHtml(ctx, filterAgents) {
-    const objs = ctx.store.objects();
+  function agentsHtml(ctx2, filterAgents) {
+    const objs = ctx2.store.objects();
     let agents = objs.filter((o) => o.kind === "Agent").map((o) => ({ name: o.name, scope: o.scope || "global", route: objRoute("Agent", o.scope || "global", o.name) }));
     if (filterAgents && filterAgents.length) agents = agents.filter((a) => filterAgents.includes(a.name));
-    const sessions = ctx.store.sessions();
+    const sessions = ctx2.store.sessions();
     const rows = agents.map((a) => {
       const sess = sessions.find((s) => String(s && (s.agent || s.route) || "").includes(a.name)) || sessions.find((s) => String(s && s.id || "") === a.name);
       const state = sess ? String(sess.state || sess.status || "") : "";
@@ -9949,32 +9949,32 @@ ${text2}</tr>
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
   }
-  function dashLayout(ctx, opts) {
-    const store2 = ctx.store;
+  function dashLayout(ctx2, opts) {
+    const store2 = ctx2.store;
     const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded").length, t("\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + statCard(t("\u6536\u4EF6\u7BB1"), (store2.inbox() || []).length, t("\u5F85\u4F60\u5904\u7406"), "inbox", "") + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(String(x && x.status && (x.status.phase || x.status) || ""))).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
-    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
+    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
   }
-  function render2(el, ctx) {
-    el.innerHTML = dashLayout(ctx, {
+  function render2(el, ctx2) {
+    el.innerHTML = dashLayout(ctx2, {
       head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>",
       composer: true
     });
-    bindComposer(el, ctx, el);
-    hydrateLoop(el, ctx);
+    bindComposer(el, ctx2, el);
+    hydrateLoop(el, ctx2);
   }
-  function renderService(el, ctx) {
-    const name = String(ctx.params.name || "");
-    const sd = ctx.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
+  function renderService(el, ctx2) {
+    const name = String(ctx2.params.name || "");
+    const sd = ctx2.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
     let agents = [];
     if (sd && typeof sd.content === "string") {
       agents = [...String(sd.content).matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
     }
-    el.innerHTML = dashLayout(ctx, {
+    el.innerHTML = dashLayout(ctx2, {
       head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u5373\u843D\u6B64\u89C6\u56FE\uFF09")) + "</span></div>",
       coreAgents: agents.length ? agents : null,
       foot: '<div class="card"><div class="card-b"><div class="small faint">' + (sd ? esc(t("ServiceDesc \u5728\u518C\u2014\u2014agents=")) + esc(agents.join(", ") || "\u2014") : esc(t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09"))) + "</div></div></div>"
     });
-    hydrateLoop(el, ctx);
+    hydrateLoop(el, ctx2);
   }
 
   // src/screens/workflows.js
@@ -9985,7 +9985,7 @@ ${text2}</tr>
     if (/-workflow$/.test(r)) return "core-workflow";
     return "";
   }
-  function phaseGraphHtml(run2, ctx) {
+  function phaseGraphHtml(run2, ctx2) {
     const phases = Array.isArray(run2.phases) ? run2.phases : [];
     const cur = String(run2.phase || "");
     const st = String(run2.status || "");
@@ -10003,9 +10003,9 @@ ${text2}</tr>
     const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
     return chip(st, RUN_CLS[st] || "mute");
   }
-  function listScreen(el, ctx) {
-    const wfs = ctx.store.workflows();
-    const runs = ctx.store.runs();
+  function listScreen(el, ctx2) {
+    const wfs = ctx2.store.workflows();
+    const runs = ctx2.store.runs();
     const rows = wfs.map((w) => {
       const name = String(w && (w.name || w.workflow || ""));
       if (!name) return "";
@@ -10015,12 +10015,12 @@ ${text2}</tr>
     }).filter(Boolean);
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5DE5\u4F5C\u6D41"), t("\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5")) + (rows.length ? '<div class="card">' + rows.join("") + "</div>" : emptyBox(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41"), t("\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002"))) + "</div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx.go(row.dataset.go));
+      row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
   }
-  function detailScreen(el, ctx, name) {
-    const wfs = ctx.store.workflows();
-    const runs = ctx.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
+  function detailScreen(el, ctx2, name) {
+    const wfs = ctx2.store.workflows();
+    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
     const wf = wfs.find((w) => String(w && (w.name || w.workflow || "")) === String(name));
     const head = screenHead(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "name=" + String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false));
     if (!wf && !runs.length) {
@@ -10040,18 +10040,18 @@ ${text2}</tr>
       const no = r.no != null ? r.no : runs.length - i;
       return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
     }).join("");
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run, ctx) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
+    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx.go(row.dataset.go));
+      row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
   }
-  function bindDocLinks(scopeEl, ctx) {
+  function bindDocLinks(scopeEl, ctx2) {
     scopeEl.querySelectorAll("[data-go]").forEach((n) => {
-      n.addEventListener("click", () => ctx.go(n.getAttribute("data-go")));
+      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
     });
   }
-  function runScreen(el, ctx, name, no) {
-    const runs = ctx.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
+  function runScreen(el, ctx2, name, no) {
+    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
     const run2 = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
     if (!run2) {
       el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002")) + "</div>";
@@ -10100,10 +10100,10 @@ ${text2}</tr>
         return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
       }).join(" ");
       nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? t("\u6B63\u5728\u53D1\u751F\u2014\u2014\u63A8\u8FDB\u7531 patch \u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u4E8B\u4EF6\u6309\u5F52\u6863\u7A97\u53E3\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
-      bindDocLinks(nowEl, ctx);
+      bindDocLinks(nowEl, ctx2);
     };
     const paintTl = () => {
-      const evs = ctx.store.events().filter((e) => {
+      const evs = ctx2.store.events().filter((e) => {
         const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
         return hay.includes(String(run2.workflow || "")) || hay.includes(String(run2.phase || ""));
       }).slice(0, 12);
@@ -10112,7 +10112,7 @@ ${text2}</tr>
     paintLine();
     paintNow();
     paintTl();
-    ctx.api.workflowRuns().then((r) => {
+    ctx2.api.workflowRuns().then((r) => {
       if (!r.ok || !el.isConnected) return;
       const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
       const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
@@ -10126,11 +10126,11 @@ ${text2}</tr>
       paintTl();
     });
   }
-  function render3(el, ctx) {
-    const p = ctx.params || {};
-    if (p.n != null && p.n !== "") runScreen(el, ctx, p.name, p.n);
-    else if (p.name != null && p.name !== "") detailScreen(el, ctx, p.name);
-    else listScreen(el, ctx);
+  function render3(el, ctx2) {
+    const p = ctx2.params || {};
+    if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
+    else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
+    else listScreen(el, ctx2);
   }
 
   // src/screens/events.js
@@ -10164,8 +10164,8 @@ ${text2}</tr>
     const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
     return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + esc(trunc(String(e && e.involved || "\u2014"), 60)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + "</span></div>";
   }
-  function listScreen2(el, ctx) {
-    let rows = ctx.store.events().slice();
+  function listScreen2(el, ctx2) {
+    let rows = ctx2.store.events().slice();
     if (filter.level) rows = rows.filter((e) => String(e && e.level || "") === filter.level);
     if (filter.q) {
       const q = filter.q.toLowerCase();
@@ -10179,7 +10179,7 @@ ${text2}</tr>
     if (inp) {
       inp.addEventListener("input", () => {
         filter.q = inp.value;
-        listScreen2(el, ctx);
+        listScreen2(el, ctx2);
       });
       inp.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") ev.preventDefault();
@@ -10188,14 +10188,14 @@ ${text2}</tr>
     el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
       c.addEventListener("click", () => {
         filter.level = c.dataset.lv || "";
-        listScreen2(el, ctx);
+        listScreen2(el, ctx2);
       });
     });
   }
-  async function detailScreen2(el, ctx, id) {
+  async function detailScreen2(el, ctx2, id) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u8BE6\u60C5"), "id=" + id) + '<div class="card"><div class="card-b">' + kv([[t("\u72B6\u6001"), chip(t("\u73B0\u8BFB\u4E2D\u2026"), "mute")]]) + '</div></div><div class="dh-actions" style="margin-top:10px">' + chipGo(t("\u2190 \u56DE\u4E8B\u4EF6\u6D41"), "events", "mute", false) + "</div></div>";
-    const r = await ctx.api.event(id);
+    const r = await ctx2.api.event(id);
     if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     const box = el.querySelector(".card .card-b");
     if (!box) return;
@@ -10208,10 +10208,10 @@ ${text2}</tr>
     const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(String(e[k]), 200))]);
     box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
   }
-  function render4(el, ctx) {
-    const id = ctx.params && ctx.params.id;
-    if (id != null && id !== "") detailScreen2(el, ctx, String(id));
-    else listScreen2(el, ctx);
+  function render4(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
+    else listScreen2(el, ctx2);
   }
 
   // src/screens/objects.js
@@ -10323,44 +10323,44 @@ ${text2}</tr>
     }
     return '<div data-md-cards="1">' + (yamlToCards(content) || t('<div class="ob-empty">\uFF08\u7A7A\u58F0\u660E\uFF09</div>')) + "</div>" + rawDisclosure("YAML", content);
   }
-  async function hydrateDoc(el, ctx, ref) {
+  async function hydrateDoc(el, ctx2, ref) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
-    const cached = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+    const cached = ctx2.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
     if (cached) return cached.content;
-    const r = await ctx.api.object(ref.kind, ref.scope, ref.name);
+    const r = await ctx2.api.object(ref.kind, ref.scope, ref.name);
     if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return null;
     if (!r.ok) return null;
     const data = r.data && typeof r.data === "object" ? r.data : {};
     const content = data.content != null ? String(data.content) : typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
-    ctx.store.cacheDoc(ref.kind, ref.scope, ref.name, ref.rv, content);
+    ctx2.store.cacheDoc(ref.kind, ref.scope, ref.name, ref.rv, content);
     return content;
   }
-  async function hydrateRules(el, ctx) {
+  async function hydrateRules(el, ctx2) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
-    const ruleRefs = ctx.store.refs("Rule").slice(0, 12);
+    const ruleRefs = ctx2.store.refs("Rule").slice(0, 12);
     if (!ruleRefs.length) return null;
     const rules = [];
     for (const rr of ruleRefs) {
       let content = "";
-      const cached = ctx.store.cachedDoc(rr.kind, rr.scope, rr.name, rr.rv);
+      const cached = ctx2.store.cachedDoc(rr.kind, rr.scope, rr.name, rr.rv);
       if (cached) content = cached.content;
       else {
-        const r = await ctx.api.object(rr.kind, rr.scope, rr.name);
+        const r = await ctx2.api.object(rr.kind, rr.scope, rr.name);
         if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return null;
         if (r.ok) {
           const data = r.data && typeof r.data === "object" ? r.data : {};
           content = data.content != null ? String(data.content) : "";
-          if (content) ctx.store.cacheDoc(rr.kind, rr.scope, rr.name, rr.rv, content);
+          if (content) ctx2.store.cacheDoc(rr.kind, rr.scope, rr.name, rr.rv, content);
         }
       }
       rules.push({ repo: rr.scope, path: rr.name + ".md", tags: tagsOfDoc(content), content });
     }
     return rules;
   }
-  function renderScreen(el, ctx, ref) {
-    const kinds = ctx.store.kinds();
+  function renderScreen(el, ctx2, ref) {
+    const kinds = ctx2.store.kinds();
     const kindReg = kinds.find((k) => k && k.name === ref.kind) || null;
-    const cached = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+    const cached = ctx2.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
     const content = cached ? cached.content : "";
     const tags = tagsOfDoc(content);
     const ruleState = rulesPending.get(ref.kind + "|" + ref.name) || null;
@@ -10370,18 +10370,18 @@ ${text2}</tr>
       kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute")
     ) + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags)) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref) + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + "</div></section></div></div>";
     el.querySelectorAll("[data-obj-tag]").forEach((t2) => {
-      t2.addEventListener("click", () => ctx.go("docs"));
+      t2.addEventListener("click", () => ctx2.go("docs"));
     });
     if (!cached) {
-      hydrateDoc(el, ctx, ref).then((c) => {
+      hydrateDoc(el, ctx2, ref).then((c) => {
         if (c == null || !el.isConnected) return;
-        renderScreen(el, ctx, ref);
+        renderScreen(el, ctx2, ref);
       });
     }
     if (!ruleState) {
-      hydrateRules(el, ctx).then((rules) => {
+      hydrateRules(el, ctx2).then((rules) => {
         if (rules == null || !el.isConnected) return;
-        const fresh = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+        const fresh = ctx2.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
         const res = rulesFor({ kind: ref.kind, scope: ref.scope, name: ref.name, content: fresh ? fresh.content : "", tags }, rules);
         rulesPending.set(ref.kind + "|" + ref.name, res);
         const panel = el.querySelector('[data-panel="rules"]');
@@ -10390,9 +10390,9 @@ ${text2}</tr>
     }
   }
   var rulesPending = /* @__PURE__ */ new Map();
-  function render5(el, ctx) {
-    const p = ctx.params || {};
-    let objs = ctx.store.objects();
+  function render5(el, ctx2) {
+    const p = ctx2.params || {};
+    let objs = ctx2.store.objects();
     let ref = null;
     if (p.kind && p.name) {
       ref = objs.find((o) => o.kind === p.kind && o.name === p.name && (!p.scope || p.scope === "global" || o.scope === p.scope)) || null;
@@ -10406,7 +10406,7 @@ ${text2}</tr>
       el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), t("\u516D\u7247\u56FA\u5B9A\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme")) + emptyBox(hint + t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61"), t("\u5FEB\u7167 objects \u805A\u5408\u4E3A\u7A7A\u6216\u8BE5 kind \u65E0\u5BF9\u8C61\uFF08\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div>";
       return;
     }
-    renderScreen(el, ctx, ref);
+    renderScreen(el, ctx2, ref);
   }
 
   // src/screens/tasks.js
@@ -10476,8 +10476,8 @@ ${text2}</tr>
     const last = String(s.lastAction || "").trim();
     return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (deps ? chip(t("\u4F9D\u8D56 ") + deps, "mute") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + '</div></div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + "</div></div>";
   }
-  function tasksScreen(el, ctx) {
-    const tasks = ctx.store.tasks();
+  function tasksScreen(el, ctx2) {
+    const tasks = ctx2.store.tasks();
     const g = groupTasks(tasks);
     const body = GROUPS.map((grp) => {
       const rows = g[grp.id] || [];
@@ -10491,15 +10491,15 @@ ${text2}</tr>
         if (i < n + rows.length) {
           const t2 = rows[i - n];
           row.style.cursor = "pointer";
-          row.addEventListener("click", () => ctx.go("task/" + encodeURIComponent(taskIdOf(t2))));
+          row.addEventListener("click", () => ctx2.go("task/" + encodeURIComponent(taskIdOf(t2))));
           return;
         }
         n += rows.length;
       }
     });
   }
-  function taskDetailScreen(el, ctx, id) {
-    const tasks = ctx.store.tasks();
+  function taskDetailScreen(el, ctx2, id) {
+    const tasks = ctx2.store.tasks();
     const t2 = tasks.find((x) => taskIdOf(x) === String(id));
     const head = screenHead(t("\u4EFB\u52A1\u8BE6\u60C5"), "id=" + String(id), chipGo(t("\u2190 \u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false));
     if (!t2) {
@@ -10569,8 +10569,8 @@ ${text2}</tr>
     const gbLabel = gb === "llm" ? t("\u667A\u80FD\u5F52\u7EB3") : gb === "rules" ? t("\u57FA\u7840\u6C47\u603B") : gb || t("\u672A\u6CE8\u660E\u751F\u6210\u65B9\u5F0F");
     return t('<div class="report-foot small faint">\u6570\u636E\u53EF\u4FE1\u5EA6\uFF1A') + esc(gbLabel) + t(" \xB7 \u68C0\u67E5\u8303\u56F4 ") + esc(String(b.scope || "global")) + (b.asOf ? t(" \xB7 \u622A\u81F3 ") + esc(String(b.asOf)) : "") + (missText ? t(" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A") + esc(missText) : "") + t(" \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>");
   }
-  function reportScreen(el, ctx) {
-    const st = ctx.store;
+  function reportScreen(el, ctx2) {
+    const st = ctx2.store;
     let att = st.attention();
     let degradedNote = "";
     if (!att.length) {
@@ -10586,14 +10586,14 @@ ${text2}</tr>
     }
     const sorted = sortAttention(att);
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5173\u6CE8\u62A5\u544A"), t("severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F"), chipGo(t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false)) + degradedNote + '<div data-loop-box="pending"></div>' + (sorted.length ? '<div class="att-list">' + sorted.map(attentionCard).join("") + "</div>" : emptyBox(t("\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879"), t("attention \u805A\u5408\u96F6\u547D\u4E2D\uFF08\u7A7A\u6001\u663E\u5F0F\u2014\u2014\u4E0D\u5192\u5145\u6709\u98CE\u9669\uFF09\u3002"))) + reportFooter(st.get("attention") && st.get("attention").dataQuality) + "</div>";
-    hydrateLoop(el, ctx);
+    hydrateLoop(el, ctx2);
   }
-  function render6(el, ctx) {
-    if (ctx.params && ctx.params.id != null && ctx.params.id !== "") taskDetailScreen(el, ctx, String(ctx.params.id));
-    else tasksScreen(el, ctx);
+  function render6(el, ctx2) {
+    if (ctx2.params && ctx2.params.id != null && ctx2.params.id !== "") taskDetailScreen(el, ctx2, String(ctx2.params.id));
+    else tasksScreen(el, ctx2);
   }
-  function renderReport(el, ctx) {
-    reportScreen(el, ctx);
+  function renderReport(el, ctx2) {
+    reportScreen(el, ctx2);
   }
 
   // node_modules/diff/libesm/diff/base.js
@@ -10932,9 +10932,9 @@ ${text2}</tr>
   function hasDiff(ed) {
     return !!ed && ed.loaded && ed.working !== ed.base;
   }
-  function resolveRef(ctx) {
-    const p = ctx.params || {};
-    const objs = ctx.store.objects();
+  function resolveRef(ctx2) {
+    const p = ctx2.params || {};
+    const objs = ctx2.store.objects();
     if (p.kind && p.name) {
       const hit = objs.find((o) => o.kind === p.kind && o.name === p.name && (!p.scope || p.scope === "global" || o.scope === p.scope));
       if (hit) return { kind: hit.kind, scope: hit.scope, name: hit.name, rv: hit.rv };
@@ -10947,12 +10947,12 @@ ${text2}</tr>
     }
     return null;
   }
-  async function hydrate(ctx, key) {
+  async function hydrate(ctx2, key) {
     const { kind, scope, name, rv } = key.ref;
     const stamp = typeof location !== "undefined" ? location.hash : "";
-    const faceP = ctx.api.object(kind, scope, name);
-    const row = ctx.store.drafts().find((d) => d && d.kind === kind && (d.scope || "global") === scope && d.name === name);
-    const draftP = row ? ctx.api.draft(kind, name, scope) : Promise.resolve({ ok: false, status: 404, error: t("\u65E0\u7A3F") });
+    const faceP = ctx2.api.object(kind, scope, name);
+    const row = ctx2.store.drafts().find((d) => d && d.kind === kind && (d.scope || "global") === scope && d.name === name);
+    const draftP = row ? ctx2.api.draft(kind, name, scope) : Promise.resolve({ ok: false, status: 404, error: t("\u65E0\u7A3F") });
     const [faceR, draftR] = await Promise.all([faceP, draftP]);
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     const prev = ED.get(key.key);
@@ -10983,7 +10983,7 @@ ${text2}</tr>
     });
     paintBody(key.key);
     paintBadges(key.key);
-    paintRail(key.key, ctx);
+    paintRail(key.key, ctx2);
   }
   function paintBody(key) {
     const el = document.querySelector("[data-ed-body]");
@@ -11018,7 +11018,7 @@ ${text2}</tr>
       dock.textContent = has ? "Apply\uFF08" + hunks + t(" \u5904\u53D8\u66F4\uFF09") : t("Apply\uFF08\u65E0\u53D8\u66F4\uFF09");
     }
   }
-  function paintRail(key, ctx) {
+  function paintRail(key, ctx2) {
     const box = document.querySelector("[data-ed-rail]");
     const ed = ED.get(key);
     if (!box || !ed) return;
@@ -11055,7 +11055,7 @@ ${text2}</tr>
       return;
     }
     if (ed.tab === "history") {
-      const rows = ctx.store.events().filter((e) => e && String(e.involved || "").includes(ed.ref.name));
+      const rows = ctx2.store.events().filter((e) => e && String(e.involved || "").includes(ed.ref.name));
       box.innerHTML = t('<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">') + (rows.length ? rows.slice(0, 30).map((e) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 50)) + '</div></div><span class="w-ev-time mono">' + esc(String((e.ts || e.at || e.time || "").slice(0, 16))) + "</span></div>").join("") : t('<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
       return;
     }
@@ -11067,13 +11067,13 @@ ${text2}</tr>
     const stats = diffStats(lines);
     box.innerHTML = t('<div class="card-h"><span class="h-title">\u8349\u7A3F</span><span class="h-right">') + chip("+" + stats.add, "ok") + " " + chip("-" + stats.del, "esc") + '</span></div><div class="card-b">' + (ed.draftFM ? t('<div class="small faint" style="margin-bottom:6px">\u7A3F\u6765\u6E90 fieldManager\uFF1A') + esc(ed.draftFM) + "</div>" : "") + renderDiff(lines, 40) + t('<div class="small faint" style="margin-top:6px">\u57FA\u51C6=r') + ed.baseRV + t("\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F ") + ed.working.length + t("B vs \u843D\u5E93\u503C ") + ed.base.length + "B</div></div>";
   }
-  function scheduleSave(ctx, key) {
+  function scheduleSave(ctx2, key) {
     const prev = saveTimers.get(key.key);
     if (prev) clearTimeout(prev);
     saveTimers.set(key.key, setTimeout(async () => {
       const ed = ED.get(key.key);
       if (!ed || !hasDiff(ed)) return;
-      const r = await ctx.api.saveDraft({
+      const r = await ctx2.api.saveDraft({
         kind: ed.ref.kind,
         scope: ed.ref.scope,
         name: ed.ref.name,
@@ -11091,7 +11091,7 @@ ${text2}</tr>
     const slot = document.querySelector("[data-ed-notice]");
     if (slot) slot.innerHTML = notice ? '<div class="small faint">' + notice + "</div>" : "";
   }
-  function editorScreen(el, ctx, key) {
+  function editorScreen(el, ctx2, key) {
     const ed = ED.get(key.key);
     const view = ed ? ed.view : "render";
     el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09") : t("\u6CE8\u6C34\u4E2D\u2026")) + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
@@ -11099,8 +11099,8 @@ ${text2}</tr>
     if (ed && ed.loaded) {
       paintBody(key.key);
       paintBadges(key.key);
-      paintRail(key.key, ctx);
-    } else hydrate(ctx, key);
+      paintRail(key.key, ctx2);
+    } else hydrate(ctx2, key);
     el.querySelectorAll("[data-ed-view-btn]").forEach((b) => {
       b.addEventListener("click", () => {
         const cur = ED.get(key.key);
@@ -11118,7 +11118,7 @@ ${text2}</tr>
         if (!cur) return;
         cur.tab = t2.dataset.edTab;
         el.querySelectorAll("[data-ed-tab]").forEach((x) => x.classList.toggle("active", x === t2));
-        paintRail(key.key, ctx);
+        paintRail(key.key, ctx2);
       });
     });
     const ta = el.querySelector("[data-ed-textarea]");
@@ -11129,8 +11129,8 @@ ${text2}</tr>
         if (!cur) return;
         cur.working = ta.value;
         paintBadges(key.key);
-        paintRail(key.key, ctx);
-        scheduleSave(ctx, key);
+        paintRail(key.key, ctx2);
+        scheduleSave(ctx2, key);
       });
     }
     const dock = el.querySelector("[data-ed-apply]");
@@ -11141,7 +11141,7 @@ ${text2}</tr>
         const stats = diffStats(diffLines2(cur.base, cur.working));
         if (!window.confirm(t("Apply \u843D\u5E93 ") + cur.ref.kind + "/" + cur.ref.name + "\uFF08+" + stats.add + "/-" + stats.del + t("\uFF09\uFF1F\u4E50\u89C2\u9501\u57FA\u51C6 r") + cur.baseRV + "\u3002")) return;
         dock.disabled = true;
-        const r = await ctx.api.apply({
+        const r = await ctx2.api.apply({
           kind: cur.ref.kind,
           scope: cur.ref.scope,
           name: cur.ref.name,
@@ -11159,29 +11159,29 @@ ${text2}</tr>
         notice = t("Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=") + esc(String(r.data && r.data.rv || "?")) + "\uFF09\u3002";
         cur.base = cur.working;
         paintBadges(key.key);
-        paintRail(key.key, ctx);
+        paintRail(key.key, ctx2);
         paintNotice();
-        ctx.api.snapshot().then((s) => {
-          if (s.ok) ctx.store.init(s.data);
+        ctx2.api.snapshot().then((s) => {
+          if (s.ok) ctx2.store.init(s.data);
         });
       });
     }
   }
-  function render7(el, ctx) {
-    const ref = resolveRef(ctx);
+  function render7(el, ctx2) {
+    const ref = resolveRef(ctx2);
     if (!ref) {
       el.innerHTML = '<div class="view-inner">' + screenHead(t("\u6587\u6863\u7F16\u8F91\u5668"), "") + emptyBox(t("\u5BF9\u8C61\u89E3\u6790\u6B67\u4E49\u6216\u7F3A\u5E2D"), t("\u540C\u540D\u5BF9\u8C61\u8DE8 kind/scope \u4E0D\u552F\u4E00\u2014\u2014\u8BF7\u4ECE\u7CFB\u7EDF\u6811\u8FDB\u5165\u3002"), chipGo(t("\u6253\u5F00\u7CFB\u7EDF\u6811"), "tree", "primary", false)) + "</div>";
       return;
     }
     const key = { ref, key: keyOf(ref.kind, ref.scope, ref.name) };
-    editorScreen(el, ctx, key);
+    editorScreen(el, ctx2, key);
   }
 
   // src/screens/approvals.js
   var ignored = /* @__PURE__ */ new Set();
-  function pendingItems(ctx) {
-    const drafts = ctx.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
-    const evs = ctx.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
+  function pendingItems(ctx2) {
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
+    const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
     return drafts.filter((x) => !ignored.has(x.key)).concat(evs);
   }
   function apKeyOf(d) {
@@ -11198,11 +11198,11 @@ ${text2}</tr>
     const scope = d.scope || "global";
     return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip(t("\u7A3F: ") + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + t('"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="dh-actions" style="margin-top:10px"><button class="btn sm primary" data-ap-approve="' + esc(apKeyOf(d)) + t('">\u6279\u51C6\uFF08= Apply\uFF09</button> ') + '<button class="btn sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button> ') + '<button class="btn sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + t('">\u7F16\u8F91\u5668</button>') + "</div></div></div>";
   }
-  async function hydrateDiff(ctx, d) {
+  async function hydrateDiff(ctx2, d) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const [draftR, faceR] = await Promise.all([
-      ctx.api.draft(d.kind, d.name, d.scope || "global"),
-      ctx.api.object(d.kind, d.scope || "global", d.name)
+      ctx2.api.draft(d.kind, d.name, d.scope || "global"),
+      ctx2.api.object(d.kind, d.scope || "global", d.name)
     ]);
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
@@ -11225,10 +11225,10 @@ ${text2}</tr>
     const stats = diffStats(diffLines2(base, working));
     box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
   }
-  async function approve(ctx, d, btn) {
+  async function approve(ctx2, d, btn) {
     btn.disabled = true;
     btn.textContent = t("\u9884\u68C0\u4E2D\u2026");
-    const dry = await ctx.api.apply({
+    const dry = await ctx2.api.apply({
       kind: d.kind,
       scope: d.scope || "global",
       name: d.name,
@@ -11249,7 +11249,7 @@ ${text2}</tr>
     if (!window.confirm(t("\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09") + d.kind + "/" + d.name + t("\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=") + String(cur) + "\uFF09" + (lockNote ? "\uFF1B" + lockNote : "") + "\u3002")) return;
     btn.disabled = true;
     btn.textContent = t("\u843D\u5E93\u4E2D\u2026");
-    const r = await ctx.api.apply({
+    const r = await ctx2.api.apply({
       kind: d.kind,
       scope: d.scope || "global",
       name: d.name,
@@ -11266,15 +11266,15 @@ ${text2}</tr>
     ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
     const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
     if (cardEl) cardEl.remove();
-    ctx.api.snapshot().then((s) => {
-      if (s.ok) ctx.store.init(s.data);
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
     });
   }
-  async function hydrateLedger(ctx) {
+  async function hydrateLedger(ctx2) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const slot = document.querySelector("[data-ap-ledger]");
     if (!slot) return;
-    const r = await ctx.api.approvals(20);
+    const r = await ctx2.api.approvals(20);
     if (!el__isConnected(slot) || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
     if (!r.ok) {
       slot.innerHTML = t('<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u5224\u5B9A\u7559\u75D5\u6682\u53EA=apply_log\u3002</div>");
@@ -11290,8 +11290,8 @@ ${text2}</tr>
   function el__isConnected(x) {
     return !!(x && x.isConnected);
   }
-  function inboxHtml(ctx) {
-    const inbox = ctx.store.inbox();
+  function inboxHtml(ctx2) {
+    const inbox = ctx2.store.inbox();
     if (!inbox) return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u6295\u5F71\u7F3A\u5E2D\uFF08\u5FEB\u7167\u672A\u643A\u5E26 /v1/inbox \u805A\u5408\uFF09\u2014\u2014\u5F85\u4F60\u5904\u7406\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u88C5\u5047\u3002</div></div></div>');
     const items = Array.isArray(inbox.items) ? inbox.items : [];
     if (!items.length && !Number(inbox.total)) {
@@ -11303,20 +11303,20 @@ ${text2}</tr>
       return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(String(x && x.class || x && x.kind || ""), "mute") + '</div><div class="mr-sub small">' + esc(trunc(String(x && (x.note || x.detail) || ""), 90)) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo(t("\u53BB\u5904\u7406"), route, "acc", true) + "</span>" : "") + "</div>";
     }).join("") + "</div>";
   }
-  function approvalsScreen(el, ctx) {
-    const items = pendingItems(ctx);
+  function approvalsScreen(el, ctx2) {
+    const items = pendingItems(ctx2);
     const draftN = items.filter((x) => x.kind === "draft").length;
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u5BA1\u6279"),
       t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002"),
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
-    ) + (items.length ? items.map(itemHtml).join("") : emptyBox(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09"), "", chipGo(t("\u56DE Welcome"), "welcome", "primary", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx) + "</div>";
-    items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx, x.draft));
-    hydrateLedger(ctx);
+    ) + (items.length ? items.map(itemHtml).join("") : emptyBox(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09"), "", chipGo(t("\u56DE Welcome"), "welcome", "primary", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
+    items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
+    hydrateLedger(ctx2);
     el.querySelectorAll("[data-ap-approve]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const d = ctx.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
-        if (d) approve(ctx, d, btn);
+        const d = ctx2.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
+        if (d) approve(ctx2, d, btn);
       });
     });
     el.querySelectorAll("[data-ap-ignore]").forEach((btn) => {
@@ -11327,19 +11327,19 @@ ${text2}</tr>
       });
     });
     el.querySelectorAll("[data-go]").forEach((x) => {
-      x.addEventListener("click", () => ctx.go(x.dataset.go));
+      x.addEventListener("click", () => ctx2.go(x.dataset.go));
     });
   }
-  function render8(el, ctx) {
-    approvalsScreen(el, ctx);
+  function render8(el, ctx2) {
+    approvalsScreen(el, ctx2);
   }
 
   // src/screens/misc.js
   var treeOpen = /* @__PURE__ */ new Set();
   var docFilter = { kind: "", q: "" };
   var dd = { tree: null, sel: null, cache: /* @__PURE__ */ new Map() };
-  function treeScreen(el, ctx) {
-    const objs = ctx.store.objects();
+  function treeScreen(el, ctx2) {
+    const objs = ctx2.store.objects();
     const kinds = Array.from(new Set(objs.map((o) => o.kind))).sort();
     const scopeMap = {};
     objs.forEach((o) => {
@@ -11361,7 +11361,7 @@ ${text2}</tr>
         const k = row.dataset.treeToggle;
         if (treeOpen.has(k)) treeOpen.delete(k);
         else treeOpen.add(k);
-        treeScreen(el, ctx);
+        treeScreen(el, ctx2);
       });
     });
   }
@@ -11380,8 +11380,8 @@ ${text2}</tr>
     if (imp) importance = Number(imp[1]);
     return { tags, importance };
   }
-  function docsScreen(el, ctx) {
-    let objs = ctx.store.objects();
+  function docsScreen(el, ctx2) {
+    let objs = ctx2.store.objects();
     const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
     const docKinds = DOC_KINDS.filter((k) => presentKinds.includes(k));
     const pool = docKinds.length ? objs.filter((o) => docKinds.includes(o.kind)) : objs;
@@ -11394,49 +11394,49 @@ ${text2}</tr>
     if (docFilter.tag) {
       const tg = docFilter.tag.toLowerCase();
       rows = rows.filter((o) => {
-        const c = ctx.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
+        const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
         const meta = c ? fmMeta(c.content) : null;
         return !!(meta && meta.tags.some((x) => x.toLowerCase().includes(tg)));
       });
     }
-    const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + "|" + (d.scope || "global") + "|" + d.name));
+    const draftSet = new Set(ctx2.store.drafts().map((d) => d.kind + "|" + (d.scope || "global") + "|" + d.name));
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u6587\u6863\u5E93"),
       t("\u76EE\u5F55\u6811\u5F0F\u6587\u6863\u6E05\u5355\u2014\u2014tag \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863"),
       docKinds.length ? "" : chip(t("\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95"), "mute")
     ) + '<div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u7F13\u5B58\u6B63\u6587\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
-      const c = ctx.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
+      const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
       const meta = c ? fmMeta(c.content) : null;
       const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, "mute")).join("");
       const imp = meta && meta.importance != null ? chip("I:" + meta.importance, meta.importance >= 80 ? "acc" : "mute") : chip(t("\u91CD\u8981\u5EA6\u2014"), "mute");
-      const sync = syncBadge(ctx.store.runs(), o.name);
+      const sync = syncBadge(ctx2.store.runs(), o.name);
       return '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b>" + (draftSet.has(o.kind + "|" + o.scope + "|" + o.name) ? '<span class="draft-dot">\u25CF</span>' : "") + '</div><div class="mr-sub small mono">' + esc(o.kind + "/" + o.scope) + " \xB7 rv " + esc(String(o.rv != null ? o.rv : "\u2014")) + '</div><div class="mr-sub">' + tagChips + imp + sync + '</div></div><span class="ws-chip">' + chipGo(t("\u6253\u5F00"), docRoute(o.kind, o.scope, o.name), "acc", true, t("\u6E32\u67D3\u89C6\u56FE")) + "</span></div>";
     }).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u7A97\u53E3\u5185\u65E0\u6587\u6863"), t("\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + '<div class="small faint" style="margin-top:8px">' + esc(t("tag/\u91CD\u8981\u5EA6\u6765\u81EA\u7F13\u5B58\u6B63\u6587\u7684 frontmatter\uFF08\u9884\u53D6\u7A97\u53E3 24 \u7BC7\u2014\u2014\u672A\u7F13\u5B58\u7BC7\u663E\u793A \u2014\uFF0C\u73B0\u5F00\u5373\u8BFB\uFF09\u3002")) + "</div></div>";
     const inp = el.querySelector("#docs-q");
     if (inp) inp.addEventListener("input", () => {
       docFilter.q = inp.value;
-      docsScreen(el, ctx);
+      docsScreen(el, ctx2);
     });
     const tagInp = el.querySelector("#docs-tag");
     if (tagInp) tagInp.addEventListener("input", () => {
       docFilter.tag = tagInp.value;
-      docsScreen(el, ctx);
+      docsScreen(el, ctx2);
     });
     el.querySelectorAll("[data-docs-kind]").forEach((c) => {
       c.addEventListener("click", () => {
         docFilter.kind = c.dataset.docsKind;
-        docsScreen(el, ctx);
+        docsScreen(el, ctx2);
       });
     });
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx.go(row.dataset.go));
+      row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
   }
-  async function hydrateDesignDoc(el, ctx, repo, path) {
+  async function hydrateDesignDoc(el, ctx2, repo, path) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const cacheKey = repo + "|" + path;
     if (!dd.cache.has(cacheKey)) {
-      const r = await ctx.api.designDoc(repo, path);
+      const r = await ctx2.api.designDoc(repo, path);
       if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
       dd.cache.set(cacheKey, r);
     }
@@ -11451,15 +11451,15 @@ ${text2}</tr>
     const content = data.content != null ? String(data.content) : typeof res.data === "string" ? res.data : "";
     box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + "</div>" + rawDisclosure(t("\u539F\u6587\uFF08HEAD\uFF09"), content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc(String(data.sha).slice(0, 8)) : "HEAD") + t("\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>");
   }
-  function designDocScreen(el, ctx) {
-    const repo = ctx.params && ctx.params.repo;
-    const path = ctx.params && ctx.params.path;
+  function designDocScreen(el, ctx2) {
+    const repo = ctx2.params && ctx2.params.repo;
+    const path = ctx2.params && ctx2.params.path;
     if (repo && path) {
       dd.sel = { repo, path };
     }
     const sel = dd.sel;
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u8BBE\u8BA1\u6587\u6863"), t("\u767D\u540D\u5355\u4ED3\u6811\uFF08GET /v1/design-docs\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF09")) + t('<div class="dd-grid"><div data-dd-tree><div class="small faint">\u4ED3\u6811\u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="card"><div class="card-b" data-dd-body>' + (sel ? t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>') : emptyBox(t("\u672A\u9009\u6863"), t("\u5DE6\u4FA7\u9009\u62E9\u4ED3\u6587\u4EF6\uFF08\u9ED8\u8BA4\u9996\u4ED3\u9996\u6587\u4EF6\uFF09\u3002"))) + "</div></div></div></div>";
-    ctx.api.designDocs().then((r) => {
+    ctx2.api.designDocs().then((r) => {
       if (!el.isConnected) return;
       const treeBox = el.querySelector("[data-dd-tree]");
       if (!treeBox) return;
@@ -11483,31 +11483,31 @@ ${text2}</tr>
         row.addEventListener("click", () => {
           const [fr, ...rest] = row.dataset.ddFile.split("|");
           const fp = rest.join("|");
-          ctx.go("designdoc/" + encodeURIComponent(fr) + "/" + encodeURIComponent(fp));
+          ctx2.go("designdoc/" + encodeURIComponent(fr) + "/" + encodeURIComponent(fp));
         });
       });
       if (!sel && files.length) {
         const f0 = files[0];
-        ctx.go("designdoc/" + encodeURIComponent(String(f0.repo || r.data.repo || "")) + "/" + encodeURIComponent(String(f0.path || f0)));
+        ctx2.go("designdoc/" + encodeURIComponent(String(f0.repo || r.data.repo || "")) + "/" + encodeURIComponent(String(f0.path || f0)));
         return;
       }
-      if (sel) hydrateDesignDoc(el, ctx, sel.repo, sel.path);
+      if (sel) hydrateDesignDoc(el, ctx2, sel.repo, sel.path);
     }).catch(() => {
     });
   }
-  function connectorsScreen(el, ctx) {
+  function connectorsScreen(el, ctx2) {
     const kinds = ["ConnectorOps", "WorkService", "Provider", "Ref"];
     const secs = kinds.map((kind) => {
-      const rows = ctx.store.refs(kind);
+      const rows = ctx2.store.refs(kind);
       return '<section class="card"><div class="card-h"><span class="h-title">' + esc(kind) + '</span><span class="h-right">' + chip(rows.length + t(" \u4E2A"), rows.length ? "acc" : "mute") + '</span></div><div class="card-b">' + (rows.length ? rows.map((o) => '<div class="mini-row" data-go="' + esc(docRoute(kind, o.scope, o.name)) + '"><div class="mr-main"><div><b class="mono">' + esc(o.name) + '</b></div><div class="mr-sub small mono">' + esc(o.scope) + " \xB7 r" + esc(String(o.rv || 0)) + '</div></div><span class="ws-chip">' + chipGo(t("\u5DE5\u4F5C\u53F0"), objRoute(kind, o.scope, o.name), "mute", true) + "</span></div>").join("") : t('<div class="small faint">\u8BE5 kind \u6682\u65E0\u5728\u518C\u5BF9\u8C61\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div></section>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u8FDE\u63A5\u5C42"), t("ConnectorOps / WorkService / Provider / Ref \u56DB\u65CF\uFF08\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\uFF09")) + '<div class="grid cols-2">' + secs + "</div></div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx.go(row.dataset.go));
+      row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
   }
-  function proposalsScreen(el, ctx) {
-    const rows = ctx.store.proposals();
+  function proposalsScreen(el, ctx2) {
+    const rows = ctx2.store.proposals();
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u9700\u6C42\u63D0\u6848"), t("\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09")) + (rows.length ? '<div class="card">' + rows.map((p) => {
       const keys = p && typeof p === "object" ? Object.keys(p) : [];
       const known = ["title", "summary", "status", "proposer", "createdAt", "scope", "name"];
@@ -11515,30 +11515,30 @@ ${text2}</tr>
       return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(String(p.status || t("\u5F85\u5B9A")), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D\u2014\u2014\u4E0D\u7F16\u9020</span>')) + "</div></div></div>";
     }).join("") + "</div>" : emptyBox(t("\u6682\u65E0\u63D0\u6848"), t("\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + "</div>";
   }
-  function systemScreen(el, ctx) {
-    const scope = String(ctx.params.name || "");
-    const objs = ctx.store.objects().filter((o) => o.scope === scope);
-    const evs = ctx.store.events().filter((e) => String(e.involved || "").includes(scope)).slice(0, 10);
+  function systemScreen(el, ctx2) {
+    const scope = String(ctx2.params.name || "");
+    const objs = ctx2.store.objects().filter((o) => o.scope === scope);
+    const evs = ctx2.store.events().filter((e) => String(e.involved || "").includes(scope)).slice(0, 10);
     const byKind = {};
     objs.forEach((o) => {
       byKind[o.kind] = (byKind[o.kind] || 0) + 1;
     });
     el.innerHTML = '<div class="view-inner">' + screenHead(scope, "scope=" + scope + t(" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09"), chipGo(t("\u7CFB\u7EDF\u6811"), "tree", "mute", false)) + '<div class="statbar">' + Object.keys(byKind).sort().map((k) => '<div class="stat" data-go="' + esc("obj/" + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div><div class="st-label">' + esc(k) + "</div></div>").join("") + "</div>" + (objs.length ? t('<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">') + objs.map((o) => '<div class="mini-row" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b> " + kindBadge(o.kind) + '</div><div class="mr-sub small mono">r' + esc(String(o.rv || 0)) + "</div></div></div>").join("") + "</div>" : emptyBox(t("\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61"), t("\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002"))) + (evs.length ? t('<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">') + evs.map((e) => '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + "</div></div></div>").join("") + "</div>" : "") + "</div>";
     el.querySelectorAll("[data-go]").forEach((x) => {
-      x.addEventListener("click", () => ctx.go(x.dataset.go));
+      x.addEventListener("click", () => ctx2.go(x.dataset.go));
     });
   }
-  function render9(el, ctx) {
-    const r = ctx.route;
-    if (r === "tree") treeScreen(el, ctx);
-    else if (r === "docs") docsScreen(el, ctx);
-    else if (r === "designdoc") designDocScreen(el, ctx);
-    else if (r === "connectors") connectorsScreen(el, ctx);
-    else if (r === "proposals") proposalsScreen(el, ctx);
-    else if (r === "s") systemScreen(el, ctx);
+  function render9(el, ctx2) {
+    const r = ctx2.route;
+    if (r === "tree") treeScreen(el, ctx2);
+    else if (r === "docs") docsScreen(el, ctx2);
+    else if (r === "designdoc") designDocScreen(el, ctx2);
+    else if (r === "connectors") connectorsScreen(el, ctx2);
+    else if (r === "proposals") proposalsScreen(el, ctx2);
+    else if (r === "s") systemScreen(el, ctx2);
     else el.innerHTML = '<div class="view-inner">' + emptyBox(t("\u672A\u77E5\u8584\u5C4F"), String(r)) + "</div>";
   }
-  function renderBiz(el, ctx) {
+  function renderBiz(el, ctx2) {
     el.innerHTML = '<div class="view-inner"><div class="biz-hero"><div class="biz-hero-mark">B</div><h2 class="sec-title">' + esc(t("\u4E1A\u52A1\u63A7\u5236\u53F0")) + '</h2><div class="small faint">' + esc(t("\u4E1A\u52A1\u89C6\u89D2\u5360\u4F4D\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u540E\u5728\u6B64\u627F\u8F7D\u4E1A\u52A1\u5927\u5C4F\u4E0E\u64CD\u4F5C\u9762\uFF08\u5F53\u524D\u96F6\u5185\u5BB9\uFF0C\u663E\u5F0F\u5360\u4F4D\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div></div></div>";
   }
 
@@ -11547,6 +11547,7 @@ ${text2}</tr>
   var store = createStore();
   var api = createApi(BASES.api || "", { apply: BASES.apply, drafts: BASES.drafts });
   var router = createRouter({ defaultRoute: "welcome" });
+  var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
   var NAV_TREE = [
     {
       level: "sys",
@@ -11616,6 +11617,36 @@ ${text2}</tr>
   }
   function shellHtml() {
     return '<div class="app"><aside class="sidebar"><div class="side-logo"><span class="logo-mark">C</span><span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(t("web \u91CD\u6784\u8D77\u70B9")) + "</span></span></div><div data-nav-tree>" + sidebarHtml() + "</div>" + sideFootHtml() + '</aside><div class="main-wrap"><header class="topbar"><span class="topbar-crumb" data-topbar-crumb></span><span class="topbar-right"><span class="lamp off" data-conn-lamp-top></span><span class="small faint" data-conn-label-top>' + esc(t("\u8FDE\u63A5\u4E2D\u2026")) + "</span>" + langToggleHtml() + '</span></header><main class="main"><div class="view" id="view"></div></main></div></div>';
+  }
+  function paintNav(route) {
+    document.querySelectorAll("[data-nav]").forEach((n) => {
+      const r = String(n.dataset.nav || "");
+      const on = route === r || r === "tasks" && (route === "task" || route === "report") || r === "events" && route === "event" || r === "workflows" && route === "wf" || r === "docs" && (route === "doc" || route === "designdoc") || r === "welcome" && route === "service" || r === "chat" && (route === "session" || route.startsWith("chat"));
+      n.classList.toggle("active", on);
+      const section = n.closest(".nav-section");
+      if (on && section && section.dataset.section && section.dataset.section !== curLevel) {
+        curLevel = section.dataset.section;
+        try {
+          localStorage.setItem("cc.level", curLevel);
+        } catch {
+        }
+        const tree = document.querySelector("[data-nav-tree]");
+        if (tree) tree.innerHTML = sidebarHtml();
+      }
+    });
+  }
+  function screenOf(fn) {
+    return (el, params) => {
+      ctx.params = params;
+      ctx.route = router.current.route;
+      fn(el, ctx);
+      paintNav(router.current.route);
+      try {
+        const crumb = document.querySelector("[data-topbar-crumb]");
+        if (crumb) crumb.textContent = router.current.route;
+      } catch {
+      }
+    };
   }
   var hydrating = false;
   async function hydrateDocs() {
