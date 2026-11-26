@@ -11205,18 +11205,18 @@ ${text2}</tr>
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
   var NAV = [
     ["welcome", "Welcome"],
-    ["obj", t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0")],
-    ["tree", t("\u7CFB\u7EDF\u6811")],
-    ["docs", t("\u6587\u6863\u5E93")],
-    ["tasks", t("\u4EFB\u52A1\u4E2D\u5FC3")],
-    ["report", t("\u5173\u6CE8\u62A5\u544A")],
-    ["workflows", t("\u5DE5\u4F5C\u6D41")],
-    ["events", t("\u4E8B\u4EF6")],
-    ["approvals", t("\u5BA1\u6279")],
-    ["inbox", t("\u6536\u4EF6\u7BB1")],
-    ["proposals", t("\u63D0\u6848")],
-    ["connectors", t("\u8FDE\u63A5\u5C42")],
-    ["chat/root-agent", t("\u4E0E root \u5BF9\u8BDD")]
+    ["obj", "\u5BF9\u8C61\u5DE5\u4F5C\u53F0"],
+    ["tree", "\u7CFB\u7EDF\u6811"],
+    ["docs", "\u6587\u6863\u5E93"],
+    ["tasks", "\u4EFB\u52A1\u4E2D\u5FC3"],
+    ["report", "\u5173\u6CE8\u62A5\u544A"],
+    ["workflows", "\u5DE5\u4F5C\u6D41"],
+    ["events", "\u4E8B\u4EF6"],
+    ["approvals", "\u5BA1\u6279"],
+    ["inbox", "\u6536\u4EF6\u7BB1"],
+    ["proposals", "\u63D0\u6848"],
+    ["connectors", "\u8FDE\u63A5\u5C42"],
+    ["chat/root-agent", "\u4E0E root \u5BF9\u8BDD"]
   ];
   function langToggleHtml() {
     const cur = getLocale();

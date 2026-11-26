@@ -33,11 +33,13 @@ const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.draft
 const router = createRouter({ defaultRoute: 'welcome' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
 
+/* 导航标签存源词形（中文原文）——locale 切换靠 sidebarHtml 渲染期 tr(label) 现译；
+ * 构造期翻译会把加载时词形冻结进数组（往返切换暴露的双译 bug）。 */
 const NAV = [
-  ['welcome', 'Welcome'], ['obj', tr('对象工作台')], ['tree', tr('系统树')], ['docs', tr('文档库')],
-  ['tasks', tr('任务中心')], ['report', tr('关注报告')], ['workflows', tr('工作流')], ['events', tr('事件')],
-  ['approvals', tr('审批')], ['inbox', tr('收件箱')], ['proposals', tr('提案')], ['connectors', tr('连接层')],
-  ['chat/root-agent', tr('与 root 对话')],
+  ['welcome', 'Welcome'], ['obj', '对象工作台'], ['tree', '系统树'], ['docs', '文档库'],
+  ['tasks', '任务中心'], ['report', '关注报告'], ['workflows', '工作流'], ['events', '事件'],
+  ['approvals', '审批'], ['inbox', '收件箱'], ['proposals', '提案'], ['connectors', '连接层'],
+  ['chat/root-agent', '与 root 对话'],
 ];
 
 /* 语言切换钮（中文/EN——当前词形高亮；点击经 data-lang 委托进 setLocale）。 */
