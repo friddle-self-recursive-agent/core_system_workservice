@@ -9743,12 +9743,85 @@ ${text2}</tr>
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   var THREAD = { sessionId: "", msgs: [] };
+  var SESS_ROWS = null;
+  var SESS_AT = 0;
+  var SESS_TTL_MS = 6e4;
+  function sessIdOf(s) {
+    return String(s && (s.sessionId || s.id) || "").trim();
+  }
+  function sessionIdsOf(ctx2) {
+    const ids = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (s) => {
+      const id = sessIdOf(s);
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    };
+    (ctx2.store.sessions() || []).forEach(push);
+    (SESS_ROWS || []).forEach(push);
+    return ids;
+  }
   function sessionOptions(ctx2, cur) {
-    const rows = (ctx2.store.sessions() || []).map((s) => String(s && (s.id || s.sessionId) || "")).filter(Boolean);
-    const seen = new Set(rows);
-    const opts = rows.slice(0, 30).map((id) => '<option value="' + esc(id) + '"' + (id === cur ? " selected" : "") + ">" + esc(trunc(id, 30)) + "</option>").join("");
+    const ids = sessionIdsOf(ctx2);
+    const seen = new Set(ids);
+    const opts = ids.slice(0, 30).map((id) => '<option value="' + esc(id) + '"' + (id === cur ? " selected" : "") + ">" + esc(trunc(id, 30)) + "</option>").join("");
     const extra = cur && !seen.has(cur) ? '<option value="' + esc(cur) + '" selected>' + esc(trunc(cur, 30)) + "</option>" : "";
     return '<option value="">' + esc(t("\u2014 \u9009\u62E9 session\uFF08\u6216\u8F93\u5165\uFF09\u2014")) + "</option>" + extra + opts;
+  }
+  function sessStateCls(st) {
+    return st === "escalated" ? "esc" : st === "running" ? "acc" : st === "suspected-stall" ? "warn" : "mute";
+  }
+  function sessRowHtml(s) {
+    const id = sessIdOf(s);
+    if (!id) return "";
+    const st = String(s && s.state || "");
+    const sub = [
+      String(s && s.phase || ""),
+      trunc(String(s && s.lastAction || ""), 24),
+      s && s.lastBeat ? relAge(s.lastBeat) || "" : ""
+    ].filter(Boolean).join(" \xB7 ");
+    return '<div class="dash-row" data-go="session/' + encodeURIComponent(id) + '" role="link" style="display:block;padding:8px 12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b class="mono">' + esc(trunc(id, 22)) + "</b>" + (st ? chip(st, sessStateCls(st)) : "") + "</div>" + (sub ? '<div class="small faint mono" style="margin-top:2px">' + esc(sub) + "</div>" : "") + "</div>";
+  }
+  function sessListHtml(rows, errNote) {
+    if (!Array.isArray(rows)) {
+      return '<div class="card"><div class="ob-empty">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8FBE\uFF08") + String(errNote || "\u2014") + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u4F1A\u8BDD")) + "</div></div>";
+    }
+    if (!rows.length) {
+      return '<div class="card"><div class="ob-empty">' + esc(t("\u6682\u65E0\u5728\u518C\u4F1A\u8BDD\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09")) + "</div></div>";
+    }
+    const head = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border)"><b>' + esc(t("\u4F1A\u8BDD\u5217\u8868")) + '</b><span class="small faint">' + esc(String(rows.length)) + " " + esc(t("\u6761\u5728\u518C")) + "</span></div>";
+    return '<div class="card">' + head + rows.map(sessRowHtml).filter(Boolean).join("") + "</div>";
+  }
+  function sessListLoadingHtml() {
+    return '<div class="card"><div class="ob-empty">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>";
+  }
+  function refreshComposerSelect(el, ctx2) {
+    const sel = el.querySelector("[data-cc-sess]");
+    if (!sel) return;
+    const free = el.querySelector("[data-cc-sess-free]");
+    const cur = free && free.value && free.value.trim() || THREAD.sessionId || sel.value || "";
+    sel.innerHTML = sessionOptions(ctx2, cur);
+  }
+  async function hydrateSessionList(el, ctx2) {
+    const box = el.querySelector("[data-sess-list]");
+    if (!box) return;
+    if (SESS_ROWS && Date.now() - SESS_AT < SESS_TTL_MS) {
+      box.innerHTML = sessListHtml(SESS_ROWS, null);
+      refreshComposerSelect(el, ctx2);
+      return;
+    }
+    const r = await ctx2.api.sessions();
+    if (!el.isConnected || !box.isConnected) return;
+    if (r && r.ok) {
+      SESS_ROWS = Array.isArray(r.data && r.data.sessions) ? r.data.sessions : [];
+      SESS_AT = Date.now();
+      box.innerHTML = sessListHtml(SESS_ROWS, null);
+    } else {
+      box.innerHTML = sessListHtml(null, r && (r.error || r.status) || "\u2014");
+    }
+    refreshComposerSelect(el, ctx2);
   }
   function composerHtml(ctx2, curSession) {
     const f = faces();
@@ -9840,7 +9913,7 @@ ${text2}</tr>
     bindDocFull(box, ctx2);
   }
   function dialogScreen(el, ctx2, sessionId) {
-    const f = faces();
+    if (sessionId) THREAD.sessionId = sessionId;
     const native = expandBlock(
       '<iframe class="host-embed" src="' + esc((function() {
         try {
@@ -9856,12 +9929,8 @@ ${text2}</tr>
       t("\u5BF9\u8BDD"),
       t("rootAgent\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\uFF1Bref \u53EF\u70B9\uFF0C\u7ED3\u8BBA\u53EF\u5168\u6587\u6863\u89C2\u770B"),
       chipGo(t("\u65B0\u7A97\u53E3\u539F\u751F\u754C\u9762"), "", "mute", false)
-    ) + composerHtml(ctx2, sessionId) + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u5BF9\u8BDD\u7EBF\u7A0B")) + "</h2><div data-thread>" + threadHtml(THREAD.msgs, null) + '</div><div class="small faint" style="margin-top:8px">' + esc(t("\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002")) + "</div>" + native;
+    ) + '<div class="chat-grid"><div data-sess-list>' + sessListLoadingHtml() + "</div><div>" + composerHtml(ctx2, sessionId) + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u5BF9\u8BDD\u7EBF\u7A0B")) + "</h2><div data-thread>" + threadHtml(THREAD.msgs, null) + '</div><div class="small faint" style="margin-top:8px">' + esc(t("\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002")) + "</div>" + native + "</div></div></div>";
     if (sessionId) {
-      const sess = (ctx2.store.sessions() || []).find((s) => String(s && (s.id || s.sessionId) || "") === sessionId);
-      if (sess || true) {
-        el.insertAdjacentHTML("beforeend", "");
-      }
       el.insertAdjacentHTML(
         "beforeend",
         '<div class="view-inner"><h2 class="sec-title">' + esc(t("\u4E0A\u4E0B\u6587")) + '</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></div></div>"
@@ -9881,6 +9950,7 @@ ${text2}</tr>
     bindComposer(el, ctx2, el);
     bindDocFull(el, ctx2);
     paintThread(el, ctx2);
+    hydrateSessionList(el, ctx2);
   }
   function render(el, ctx2) {
     const id = ctx2.params && ctx2.params.id;
@@ -9901,7 +9971,36 @@ ${text2}</tr>
       [t("\u89E6\u53D1"), d.trigger || d.reason]
     ].filter(([, v]) => v != null && v !== "");
     const chips = fields.map(([k, v]) => chip(k + ": " + v, "mute")).join("");
-    return '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "acc") + chips + (d.eventId ? '<span class="report-loop-acts">' + chipGo(t("\u89E6\u53D1\u4E8B\u4EF6"), "event/" + encodeURIComponent(String(d.eventId)), "mute") + "</span>" : "") + "</div></div></div>";
+    return '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "acc") + chips + '<span class="report-loop-acts"><span data-ignite-note></span><button class="btn sm" data-ignite="1">' + esc(t("\u89E6\u53D1\u4E8B\u4EF6")) + "</button></span></div></div></div>";
+  }
+  function bindIgnite(el, ctx2) {
+    const btn = el.querySelector("[data-ignite]");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
+      const note = el.querySelector("[data-ignite-note]");
+      btn.disabled = true;
+      btn.textContent = t("\u70B9\u706B\u4E2D\u2026");
+      const r = await ctx2.api.eventPub({
+        type: "LoopRequested",
+        involved: "ServiceDesc/core/core_system",
+        dedupKey: "console-ignite-" + Date.now()
+      });
+      if (!el.isConnected) return;
+      if (r && r.ok) {
+        if (note) note.innerHTML = chip(t("\u5DF2\u6CE8\u5165 LoopRequested\uFF08queue \u8BED\u4E49\u2014\u2014\u6865\u63A5\u9762\u62C9\u8D77\u5FAA\u73AF\uFF09"), "ok");
+        setTimeout(() => {
+          if (el.isConnected) hydrateLoop(el, ctx2);
+        }, 3e3);
+      } else {
+        btn.disabled = false;
+        btn.textContent = t("\u89E6\u53D1\u4E8B\u4EF6");
+        if (note) note.innerHTML = chip(
+          t("\u70B9\u706B\u5931\u8D25\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014\u53EF\u91CD\u8BD5"),
+          "danger"
+        );
+      }
+    });
   }
   async function hydrateLoop(el, ctx2) {
     const box = el.querySelector("[data-loop-box]");
@@ -9917,6 +10016,7 @@ ${text2}</tr>
       return;
     }
     box.innerHTML = loopCardHtml(r.data);
+    bindIgnite(el, ctx2);
   }
   function zoneHead(label, route) {
     return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
@@ -9936,7 +10036,70 @@ ${text2}</tr>
     }).join("");
     return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
   }
+  function runOwnerScope(r) {
+    const inv = String(r && (r.involved || r.route || "") || "");
+    const m = /^Workflow\/([^/\s]+)\//.exec(inv);
+    if (m) return m[1];
+    return String(r && (r.scope || r.ownerScope) || "") || "global";
+  }
+  function pendingRunsOf(ctx2) {
+    return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval"));
+  }
+  function pendingRunRowHtml(x) {
+    const btnAttrs = (t2) => " data-appr-" + t2 + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) + '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
+    return '<div class="dash-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + '</div><div class="dr-side" style="display:flex;gap:6px;align-items:center"><button class="btn sm primary"' + btnAttrs("grant") + ">" + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button><button class="btn sm"' + btnAttrs("reject") + ">" + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div>";
+  }
+  function bindApprovalGates(el, ctx2) {
+    const act = async (btn, type2) => {
+      if (btn.disabled) return;
+      const wf = btn.getAttribute("data-appr-wf") || "";
+      const scope = btn.getAttribute("data-appr-scope") || "global";
+      const run2 = btn.getAttribute("data-appr-run") || "";
+      const key = btn.getAttribute("data-appr-key") || run2;
+      const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
+      if (!window.confirm(ask + wf + " #" + run2)) return;
+      btn.disabled = true;
+      const r = await ctx2.api.eventPub({
+        type: type2,
+        involved: "Workflow/" + (scope || "global") + "/" + wf,
+        dedupKey: "console-" + key
+      });
+      if (r && r.ok) {
+        const row = btn.closest("[data-appr-row]");
+        if (row) row.style.display = "none";
+        ctx2.api.snapshot().then((s) => {
+          if (s && s.ok) ctx2.store.init(s.data);
+        });
+      } else {
+        btn.disabled = false;
+        const verb = type2 === "ApprovalGranted" ? t("\u6279\u51C6\u5931\u8D25") : t("\u9A73\u56DE\u5931\u8D25");
+        window.alert(verb + t("\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014run \u4ECD\u5728\u7B49\u5BA1\u6279\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+      }
+    };
+    el.querySelectorAll("[data-appr-grant]").forEach((btn) => btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      act(btn, "ApprovalGranted");
+    }));
+    el.querySelectorAll("[data-appr-reject]").forEach((btn) => btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      act(btn, "ApprovalRejected");
+    }));
+  }
   function pendingApprovalsHtml(ctx2) {
+    const runRows = pendingRunsOf(ctx2).slice(0, 8).map((r) => {
+      const wf = String(r.workflow || r.wf || "");
+      if (!wf) return "";
+      const run2 = String(r.run != null ? r.run : "");
+      const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run2;
+      return pendingRunRowHtml({
+        wf,
+        run: run2,
+        key,
+        scope: runOwnerScope(r),
+        phase: String(r.phase || r.state || "AwaitingApproval"),
+        started: r.startedAt ? relAge(r.startedAt) || "" : ""
+      });
+    }).filter(Boolean);
     const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({
       src: "draft",
       t: d.updatedAt || d.ts || null,
@@ -9951,9 +10114,62 @@ ${text2}</tr>
       title: e.type + " \xB7 " + String(e.involved || ""),
       tag: e.type === "ApprovalNeeded" ? t("\u5F85\u5BA1") : t("\u5347\u7EA7")
     }));
-    const rows = drafts.concat(evs).sort((a, b) => String(b.t || "").localeCompare(String(a.t || ""))).slice(0, 8).map((x) => '<div class="dash-row" data-go="' + esc(x.go) + '" role="link"><div class="dr-main">' + chip(x.tag, x.src === "draft" ? "warn" : "esc") + '<b class="mono">' + esc(trunc(x.title, 34)) + "</b></div>" + (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || "") + "</span></div>" : "") + "</div>").join("");
+    const rest = drafts.concat(evs).sort((a, b) => String(b.t || "").localeCompare(String(a.t || ""))).slice(0, 8).map((x) => '<div class="dash-row" data-go="' + esc(x.go) + '" role="link"><div class="dr-main">' + chip(x.tag, x.src === "draft" ? "warn" : "esc") + '<b class="mono">' + esc(trunc(x.title, 34)) + "</b></div>" + (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || "") + "</span></div>" : "") + "</div>").join("");
+    const rows = runRows.join("") + rest;
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
+  }
+  var AG_SESS = { list: null, at: 0 };
+  var AG_SESS_TTL_MS = 6e4;
+  async function sessionsCached(ctx2) {
+    if (AG_SESS.list && Date.now() - AG_SESS.at < AG_SESS_TTL_MS) return AG_SESS.list;
+    const r = await ctx2.api.sessions();
+    if (r && r.ok && Array.isArray(r.data && r.data.sessions)) {
+      AG_SESS = { list: r.data.sessions, at: Date.now() };
+      return AG_SESS.list;
+    }
+    return null;
+  }
+  function sessStateCls2(st) {
+    return st === "escalated" ? "esc" : st === "running" ? "acc" : st === "suspected-stall" ? "warn" : "mute";
+  }
+  function sessHitOf(list2, name) {
+    const byId = list2.find((s) => String(s && s.sessionId || "").includes(name));
+    if (byId) return byId;
+    return list2.find((s) => {
+      try {
+        return JSON.stringify([s && s.involved, s && s.route, s && s.agent]).includes(name);
+      } catch {
+        return false;
+      }
+    });
+  }
+  function sessLiveHtml(hit) {
+    if (!hit) return chip(t("\u65E0\u4F1A\u8BDD"), "mute");
+    const st = String(hit.state || "");
+    const sub = [
+      String(hit.phase || ""),
+      trunc(String(hit.lastAction || ""), 18),
+      hit.lastBeat ? relAge(hit.lastBeat) || "" : ""
+    ].filter(Boolean).join(" \xB7 ");
+    return (st ? chip(st, sessStateCls2(st)) : "") + (sub ? '<span class="small faint">' + esc(sub) + "</span>" : "");
+  }
+  async function hydrateAgentLive(el, ctx2) {
+    const slots = el.querySelectorAll("[data-agent-live]");
+    if (!slots.length) return;
+    const list2 = await sessionsCached(ctx2);
+    if (!el.isConnected) return;
+    if (!list2) {
+      slots.forEach((slot) => {
+        slot.innerHTML = chip(t("\u4F1A\u8BDD\u6D3B\u6027\u6682\u4E0D\u53EF\u8BFB"), "mute");
+      });
+      return;
+    }
+    slots.forEach((slot) => {
+      const name = String(slot.getAttribute("data-agent-live") || "");
+      if (!name) return;
+      slot.innerHTML = sessLiveHtml(sessHitOf(list2, name));
+    });
   }
   function agentsHtml(ctx2, filterAgents) {
     const objs = ctx2.store.objects();
@@ -9963,15 +10179,23 @@ ${text2}</tr>
     const rows = agents.map((a) => {
       const sess = sessions.find((s) => String(s && (s.agent || s.route) || "").includes(a.name)) || sessions.find((s) => String(s && s.id || "") === a.name);
       const state = sess ? String(sess.state || sess.status || "") : "";
-      return '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(a.name)) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b><span class="small faint">' + esc(a.scope) + '</span></div><div class="dr-side">' + (state ? chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : chip(t("\u65E0\u4F1A\u8BDD"), "mute")) + "</div></div>";
+      return '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(a.name)) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b><span class="small faint">' + esc(a.scope) + '</span></div><div class="dr-side" data-agent-live="' + esc(a.name) + '">' + (state ? chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : chip(t("\u65E0\u4F1A\u8BDD"), "mute")) + "</div></div>";
     }).join("");
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
   }
   function dashLayout(ctx2, opts) {
     const store2 = ctx2.store;
-    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded").length, t("\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + statCard(t("\u6536\u4EF6\u7BB1"), (store2.inbox() || []).length, t("\u5F85\u4F60\u5904\u7406"), "inbox", "") + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(String(x && x.status && (x.status.phase || x.status) || ""))).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
-    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
+    const inbox = store2.inbox();
+    const inboxCard = inbox ? statCard(
+      t("\u6536\u4EF6\u7BB1"),
+      Array.isArray(inbox) ? inbox.length : inbox && inbox.items && inbox.items.length || 0,
+      t("\u5F85\u4F60\u5904\u7406"),
+      "inbox",
+      ""
+    ) : "";
+    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded").length, t("\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(String(x && x.status && (x.status.phase || x.status) || ""))).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
+    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats"' + (inboxCard ? "" : ' style="grid-template-columns:repeat(4,1fr)"') + ">" + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
   }
   function render2(el, ctx2) {
     el.innerHTML = dashLayout(ctx2, {
@@ -9980,6 +10204,8 @@ ${text2}</tr>
     });
     bindComposer(el, ctx2, el);
     hydrateLoop(el, ctx2);
+    bindApprovalGates(el, ctx2);
+    hydrateAgentLive(el, ctx2);
   }
   function renderService(el, ctx2) {
     const name = String(ctx2.params.name || "");
@@ -9994,6 +10220,8 @@ ${text2}</tr>
       foot: '<div class="card"><div class="card-b"><div class="small faint">' + (sd ? esc(t("ServiceDesc \u5728\u518C\u2014\u2014agents=")) + esc(agents.join(", ") || "\u2014") : esc(t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09"))) + "</div></div></div>"
     });
     hydrateLoop(el, ctx2);
+    bindApprovalGates(el, ctx2);
+    hydrateAgentLive(el, ctx2);
   }
 
   // src/screens/workflows.js
