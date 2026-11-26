@@ -59,10 +59,29 @@ func newShardCache(ix *Index, threshold int) *ShardCache {
 // Threshold 生效阈值（观测面）。
 func (c *ShardCache) Threshold() int { return c.threshold }
 
+// Peek 分片快照读（锁内拷贝——观测/测试面；与 Get 分立：不触发重建不改 stale 态）。
+func (c *ShardCache) Peek(tagType, tag string) (Shard, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sh, ok := c.shards[tagType+":"+tag]
+	if !ok {
+		return Shard{}, false
+	}
+	return *sh, true
+}
+
 // Invalidate DocApplied 阈值失效（B5）：只对 Relevance(更新文档, 分片虚对象) ≥ threshold
 // 的分片标 stale——分片虚对象=单 tag 文档（tags=[该 tag]、keywords=tag 切词），
 // 与全局公式同一标度。低相关分片零扰动（写放大抑制的机械落点）。
 func (c *ShardCache) Invalidate(updated *Doc) {
+	c.invalidate(updated, "DocApplied")
+}
+
+// invalidate 失效内实现（cause=溯源前缀：DocApplied 更新面 / DocRemoved 删除面——G-18）。
+func (c *ShardCache) invalidate(updated *Doc, cause string) {
+	if updated == nil {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for key, sh := range c.shards {
@@ -73,7 +92,7 @@ func (c *ShardCache) Invalidate(updated *Doc) {
 		score, _ := Relevance(updated, shardDoc)
 		if score >= float64(c.threshold) {
 			sh.Stale = true
-			sh.Reason = "DocApplied " + updated.Key() + " relevance=" + strconv.FormatFloat(Round1(score), 'f', -1, 64)
+			sh.Reason = cause + " " + updated.Key() + " relevance=" + strconv.FormatFloat(Round1(score), 'f', -1, 64)
 		}
 	}
 }
