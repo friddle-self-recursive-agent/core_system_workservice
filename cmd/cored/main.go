@@ -776,6 +776,8 @@ func run() error {
 		if permSys != nil {
 			opts = append(opts, apiserver.WithPerm(permSys))
 		}
+		// stream 变更感知（G-02）：注入事件总线=变更即推 patch；缺席=仅 5s 兜底重算（延迟可见）。
+		opts = append(opts, apiserver.WithEventBus(bus))
 		return opts
 	}
 	srv := &http.Server{Handler: apiserver.New(sch, store2, applier, drafts, triggers, runs, deliveries, wakes, publisher, apiserverOpts()...), ReadHeaderTimeout: 5 * time.Second}
