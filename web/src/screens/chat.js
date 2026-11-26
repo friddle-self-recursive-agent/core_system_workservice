@@ -53,13 +53,13 @@ async function hydrateSessLive(el, ctx) {
 }
 
 function sessionOptions(ctx, cur) {
+  /* 正常服务没有手填 session id（2026-11-26 用户裁决——id 是管道不是 UX）：
+   * 选项=root 会话（缺省）+ 活性账会话（GET /v1/sessions 双源）；选用即可，永不手打。 */
   const rows = sessAll(ctx).map((s) => String(s && (s.id || s.sessionId) || '')).filter(Boolean);
-  const seen = new Set(rows);
-  const opts = rows.slice(0, 30).map((id) =>
+  const seen = new Set(['root']);
+  const opts = rows.filter((id) => !seen.has(id)).slice(0, 30).map((id) =>
     '<option value="' + esc(id) + '"' + (id === cur ? ' selected' : '') + '>' + esc(trunc(id, 30)) + '</option>').join('');
-  const extra = cur && !seen.has(cur)
-    ? '<option value="' + esc(cur) + '" selected>' + esc(trunc(cur, 30)) + '</option>' : '';
-  return '<option value="">' + esc(tr('— 选择 session（或输入）—')) + '</option>' + extra + opts;
+  return '<option value="root"' + (cur === 'root' ? ' selected' : '') + '>' + esc(tr('root 会话（默认）')) + '</option>' + opts;
 }
 
 /* 对话 composer（session 可选 + 文本域 + 发送——总览大屏在用；会话屏本体已改原生主面）。 */
@@ -69,7 +69,6 @@ export function composerHtml(ctx, curSession) {
   return '<div class="cc-composer">' +
     '<div class="cc-comp-row">' +
     '<select class="inp cc-sess" data-cc-sess>' + sessionOptions(ctx, curSession) + '</select>' +
-    '<input class="inp cc-sess-free" data-cc-sess-free placeholder="' + esc(tr('或手填 session id')) + '" value="' + esc(curSession || '') + '">' +
     '</div>' +
     '<div class="cc-comp-row">' +
     '<textarea class="inp cc-text" data-cc-text rows="2" placeholder="' +
@@ -126,13 +125,12 @@ function bindDocFull(el, ctx) {
 export function bindComposer(el, ctx, rootEl) {
   const sendBtn = rootEl.querySelector('[data-cc-send]');
   const sessSel = rootEl.querySelector('[data-cc-sess]');
-  const sessFree = rootEl.querySelector('[data-cc-sess-free]');
   const textTa = rootEl.querySelector('[data-cc-text]');
   if (!sendBtn || !textTa) return;
   const doSend = async () => {
     const text = textTa.value.trim();
     if (!text) return;
-    const sessionId = (sessFree && sessFree.value.trim()) || (sessSel ? sessSel.value : '') || 'root';
+    const sessionId = (sessSel && sessSel.value) || 'root';
     THREAD.sessionId = sessionId;
     const f = faces();
     if (!f || typeof f.send !== 'function') return;

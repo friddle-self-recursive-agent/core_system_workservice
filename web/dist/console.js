@@ -10039,15 +10039,14 @@ ${text2}</tr>
   }
   function sessionOptions(ctx2, cur) {
     const rows = sessAll(ctx2).map((s) => String(s && (s.id || s.sessionId) || "")).filter(Boolean);
-    const seen = new Set(rows);
-    const opts = rows.slice(0, 30).map((id) => '<option value="' + esc(id) + '"' + (id === cur ? " selected" : "") + ">" + esc(trunc(id, 30)) + "</option>").join("");
-    const extra = cur && !seen.has(cur) ? '<option value="' + esc(cur) + '" selected>' + esc(trunc(cur, 30)) + "</option>" : "";
-    return '<option value="">' + esc(t("\u2014 \u9009\u62E9 session\uFF08\u6216\u8F93\u5165\uFF09\u2014")) + "</option>" + extra + opts;
+    const seen = /* @__PURE__ */ new Set(["root"]);
+    const opts = rows.filter((id) => !seen.has(id)).slice(0, 30).map((id) => '<option value="' + esc(id) + '"' + (id === cur ? " selected" : "") + ">" + esc(trunc(id, 30)) + "</option>").join("");
+    return '<option value="root"' + (cur === "root" ? " selected" : "") + ">" + esc(t("root \u4F1A\u8BDD\uFF08\u9ED8\u8BA4\uFF09")) + "</option>" + opts;
   }
   function composerHtml(ctx2, curSession) {
     const f = faces();
     const canSend = !!(f && typeof f.send === "function");
-    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions(ctx2, curSession) + '</select><input class="inp cc-sess-free" data-cc-sess-free placeholder="' + esc(t("\u6216\u624B\u586B session id")) + '" value="' + esc(curSession || "") + '"></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn primary cc-send" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
+    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions(ctx2, curSession) + '</select></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn primary cc-send" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
   }
   function threadHtml(msgs, names) {
     if (!msgs.length) {
@@ -10085,13 +10084,12 @@ ${text2}</tr>
   function bindComposer(el, ctx2, rootEl) {
     const sendBtn = rootEl.querySelector("[data-cc-send]");
     const sessSel = rootEl.querySelector("[data-cc-sess]");
-    const sessFree = rootEl.querySelector("[data-cc-sess-free]");
     const textTa = rootEl.querySelector("[data-cc-text]");
     if (!sendBtn || !textTa) return;
     const doSend = async () => {
       const text2 = textTa.value.trim();
       if (!text2) return;
-      const sessionId = sessFree && sessFree.value.trim() || (sessSel ? sessSel.value : "") || "root";
+      const sessionId = sessSel && sessSel.value || "root";
       THREAD.sessionId = sessionId;
       const f = faces();
       if (!f || typeof f.send !== "function") return;

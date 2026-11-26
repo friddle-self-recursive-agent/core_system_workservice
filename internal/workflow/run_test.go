@@ -615,3 +615,33 @@ spec:
 		t.Fatalf("human run 批准后续行 Executing: phase=%s status=%s", got.Phase, got.Status)
 	}
 }
+
+// TestResumeSignalScansPastTerminal —— 恢复信号寻径修正（2026-11-26 run#1 批不动实证）：
+// 同锚最新 run 已终态（failed）时，批准/驳回继续扫描更旧 run——最新终态 run 不再挡住
+// 更早挂起 run 的恢复（此前 return 语义=被终态 run 永久挡死）。
+func TestResumeSignalScansPastTerminal(t *testing.T) {
+	runs := NewRunLog(nil)
+	mk := func(seq int64, id string) {
+		runs.StartRun(TriggerRecord{Seq: seq, EventID: id, Type: "DocApplied", ReceivedAt: time.Now(),
+			Route: "owner-workflow", Owner: "global"}, ExecutorBinding{Executor: ExecWorkflow, Target: "owner"})
+	}
+	// run1：直接推到闸锚挂起（受理 Analyzing——提升事件落闸锚）。
+	mk(1, "ev-a")
+	runs.ResumeSignal(TriggerRecord{Seq: 2, EventID: "ev-b", Type: "ApprovalNeeded", Involved: "Workflow/global/core-workflow", ReceivedAt: time.Now()})
+	if got := runs.State().Runs[0]; got.Status != RunSuspended {
+		t.Fatalf("run1 应闸锚挂起: %+v", got)
+	}
+	// run2：再挂起再驳回（终态）。
+	mk(3, "ev-c")
+	runs.ResumeSignal(TriggerRecord{Seq: 4, EventID: "ev-d", Type: "ApprovalNeeded", Involved: "Workflow/global/core-workflow", ReceivedAt: time.Now()})
+	runs.ResumeSignal(TriggerRecord{Seq: 5, EventID: "ev-e", Type: "ApprovalRejected", Involved: "Workflow/global/core-workflow", ReceivedAt: time.Now()})
+	if got := runs.State().Runs[1]; got.Status != RunFailed {
+		t.Fatalf("run2 应驳回终态: %+v", got)
+	}
+	// 批准信号：run2 已终态不再挡 run1——run1 沿表续行 Executing。
+	runs.ResumeSignal(TriggerRecord{Seq: 6, EventID: "ev-f", Type: "ApprovalGranted", Involved: "Workflow/global/core-workflow", ReceivedAt: time.Now()})
+	got := runs.State().Runs[0]
+	if got.Status != RunRunning || got.Phase != string(Executing) {
+		t.Fatalf("终态后旧挂起 run 应可恢复: phase=%s status=%s", got.Phase, got.Status)
+	}
+}

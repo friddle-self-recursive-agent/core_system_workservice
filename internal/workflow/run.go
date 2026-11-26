@@ -402,9 +402,9 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 				return
 			}
 			run.Phase, run.Status = string(AwaitingApproval), RunSuspended
-		case "resume": // 批准：查表命中审批边（闸锚 on=ApprovalGranted）沿表续行（非闸锚挂起态=零动作；表无批准边=零动作防御）
+		case "resume": // 批准：查表命中审批边（闸锚 on=ApprovalGranted）沿表续行（非挂起态=继续扫描更旧 run——同锚最新 run 已终态时不挡旧挂起 run 的恢复；表无批准边=零动作防御）
 			if run.Status != RunSuspended || Phase(run.Phase) != AwaitingApproval {
-				return
+				continue
 			}
 			next, ok := stepByTable(run.Transitions, run.Phase, SignalResume)
 			if !ok {
@@ -415,9 +415,9 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			if Phase(next) == AwaitingApproval {
 				run.Status = RunSuspended
 			}
-		case "reject": // 驳回：查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，表的首处非相邻行）终态（非挂起态/表无驳回边=零动作）
+		case "reject": // 驳回：查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，表的首处非相邻行）终态（非挂起态=继续扫描更旧 run——同 resume 口径；表无驳回边=零动作）
 			if run.Status != RunSuspended {
-				return
+				continue
 			}
 			to, ok := stepByTable(run.Transitions, run.Phase, SignalReject)
 			if !ok {
