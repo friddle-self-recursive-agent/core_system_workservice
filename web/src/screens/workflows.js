@@ -185,12 +185,13 @@ function runScreen(el, ctx, name, no) {
     '<div class="foot-note">' + esc(tr('相位序列=Workflow 声明原样；推进由 patch 增量实时刷新；' + gateWord + '。')) + '</div>' +
     '</div>';
 
-  /* stepper 渲染+选中态 */
-  const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || tr('单节点')];
-  const curIdx = phases.indexOf(run.phase);
-  const sel = { idx: curIdx >= 0 ? curIdx : 0 };
+  /* stepper 渲染+选中态（phases 每次现读 run——注水后重绘全序列） */
+  const sel = { idx: 0 };
   const lineEl = el.querySelector('[data-step-line]');
   const paintLine = () => {
+    const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || tr('单节点')];
+    const curIdx = phases.indexOf(run.phase);
+    if (curIdx >= 0) sel.idx = curIdx;
     lineEl.innerHTML = phases.map((p, i) => {
       const done = st === 'done' || (curIdx >= 0 ? i < curIdx : false);
       const active = i === curIdx && st !== 'done';
@@ -246,9 +247,12 @@ function runScreen(el, ctx, name, no) {
     if (!r.ok || !el.isConnected) return;
     const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : (Array.isArray(r.data) ? r.data : []);
     const full = arr.find((x) => String(x && (x.run != null ? x.run : '')) === String(no));
-    if (!full || !Array.isArray(full.phases) || !full.phases.length) return;
-    const lineEl2 = el.querySelector('[data-step-line]');
-    if (lineEl2) { run.phases = full.phases; run.phase = full.phase; run.status = full.status || run.status; run.involved = full.involved || run.involved; }
+    if (!full) return;
+    run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
+    run.phase = full.phase || run.phase;
+    run.status = full.status || run.status;
+    run.involved = full.involved || run.involved;
+    paintLine(); paintNow(); paintTl();
   });
 }
 
