@@ -11728,7 +11728,7 @@ ${text2}</tr>
     else boot();
   }
   if (typeof window !== "undefined") {
-    window.CoreConsole = { mount, store, api, router, connectStream, wsUrlOf };
+    window.CoreConsoleV2 = { mount, store, api, router, connectStream, wsUrlOf };
   }
   return __toCommonJS(main_exports);
 })();

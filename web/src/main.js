@@ -1,8 +1,8 @@
 /* main.js —— 入口：装配 store+ws+router，挂载 app。
- * bundle 形态：IIFE + window.CoreConsole（dsh plugin 打包器消费——零模块加载器假设）。
+ * bundle 形态：IIFE + window.CoreConsoleV2（dsh plugin 打包器消费——零模块加载器假设；避开宿主原生 app 的 CoreConsole 全局——四次裁决期黑屏定位）。
  * 数据流（单向）：WS/轮询 → store → onChange → 当前屏整屏重绘（首版允许——编辑器
  * textarea 焦点态除外）；屏内异步注水以 location.hash 为 stamp，路由已变即丢弃。
- * 自动挂载：页面存在 [data-core-console] 或 #app 容器即引导；否则由宿主调 CoreConsole.mount。 */
+ * 自动挂载：页面存在 [data-core-console] 或 #app 容器即引导；否则由宿主调 CoreConsoleV2.mount。 */
 
 import '../styles/base.css';
 import '../styles/components.css';
@@ -251,5 +251,5 @@ if (typeof document !== 'undefined') {
 
 /* 全局形态（IIFE——dsh plugin 面向 window.CoreConsole 装配）。 */
 if (typeof window !== 'undefined') {
-  window.CoreConsole = { mount, store, api, router, connectStream, wsUrlOf };
+  window.CoreConsoleV2 = { mount, store, api, router, connectStream, wsUrlOf };
 }
