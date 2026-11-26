@@ -90,7 +90,7 @@ var CoreConsole = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -104,7 +104,7 @@ var CoreConsole = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -231,7 +231,7 @@ var CoreConsole = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -551,7 +551,7 @@ var CoreConsole = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -721,7 +721,7 @@ var CoreConsole = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -1334,7 +1334,7 @@ var CoreConsole = (() => {
     return active ? chip("Running", "acc") : chip("InSync", "ok");
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -3470,7 +3470,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -5619,7 +5619,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -10004,38 +10004,140 @@ ${text2}</tr>
     if (/-workflow$/.test(r)) return "core-workflow";
     return "";
   }
-  function phaseGraphHtml(run2, ctx2) {
-    const phases = Array.isArray(run2.phases) ? run2.phases : [];
-    const cur = String(run2.phase || "");
-    const st = String(run2.status || "");
+  function phaseGraphHtml(run, ctx2) {
+    const phases = Array.isArray(run.phases) ? run.phases : [];
+    const cur = String(run.phase || "");
+    const st = String(run.status || "");
     const nodeHtml = (p, i) => {
       const active = p === cur;
       const done = st === "done" || cur && phases.indexOf(cur) > i;
       const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
       return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
     };
-    const body = phases.length ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run2) + "</div>";
+    const body = phases.length ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run) + "</div>";
     return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u770B\u8BE5\u76F8\u4F4D\u7684\u4E8B\u4EF6\u94FE\u4E0E\u6D89\u53CA\u6587\u6863\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
   }
+  function bindPhaseGraph(el, ctx2, run) {
+    el.querySelectorAll("[data-pg-node]").forEach((n) => {
+      n.addEventListener("click", () => {
+        const ph = String(n.getAttribute("data-pg-node") || "");
+        const drawer = el.querySelector("[data-pg-drawer]");
+        if (!drawer) return;
+        const evs = ctx2.store.events().filter((e) => {
+          const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+          return hay.includes(String(run.workflow || "")) || hay.includes(ph);
+        }).slice(0, 10);
+        const involved = String(run.involved || "");
+        const evRows = evs.length ? evs.map((e) => '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(e.type || "")) + '</b></div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + '</div></div><span class="small faint">' + esc(relAge(e.ts) || "") + "</span></div>").join("") : '<div class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002")) + "</div>";
+        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' + (involved ? '<div class="mr-sub">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + involved.split(",").map((x) => {
+          const parts = x.trim().split("/");
+          return parts.length >= 3 ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + "/" + esc(parts[1]) + "/" + esc(parts[2]) + '">' + esc(x.trim()) + "</span>" : '<span class="small faint mono">' + esc(x.trim()) + "</span>";
+        }).join(" ") + "</div>" : "") + '<div class="small faint">' + esc(t("\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A")) + "</div>" + evRows + "</div></div>";
+      });
+    });
+  }
   var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
+  var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
+  var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
   function runChip(r) {
     const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
     return chip(st, RUN_CLS[st] || "mute");
   }
+  function phChip(ph) {
+    const p = String(ph || "");
+    return chip(p || "\u2014", PH_CLS[p.toLowerCase()] || "mute");
+  }
+  var WF_TEMPLATES = [
+    { name: "bug \u751F\u547D\u5468\u671F", desc: "\u7F3A\u9677\u4ECE\u53D1\u73B0\u5230\u6536\u655B\u7684\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\uFF08\u542B\u9A8C\u8BC1\u4E0E\u6279\u95F8\u4F4D\uFF09\u3002" },
+    { name: "dev-delivery", desc: "\u5F00\u53D1\u4EA4\u4ED8\u6D41\u6C34\uFF08\u5B9E\u73B0\u2192\u8BC4\u5BA1\u2192\u843D\u5E93\uFF09\u7684\u76F8\u4F4D\u5E8F\u5217\u4E0E\u6279\u95F8\u4F4D\u3002" },
+    { name: "\u6587\u6863\u6536\u655B", desc: "\u6587\u6863\u8349\u7A3F\u2192\u8BC4\u5BA1\u2192\u843D\u5E93\u7684\u6536\u655B\u76F8\u4F4D\u4E0E\u6279\u95F8\u4F4D\u3002" }
+  ];
+  function wfDesignRoute() {
+    return "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("concepts/workflow.md");
+  }
+  function tplCardHtml(tp) {
+    return '<div class="card"><div class="card-h"><span class="h-title">' + esc(tp.name) + '</span><span class="h-right">' + chip("Template", "mute") + '</span></div><div class="card-b"><div class="small">' + esc(t(tp.desc)) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + ' <button class="btn sm" disabled title="' + esc(t("Template kind \u843D\u518C\u540E\u5F00\u653E\uFF08\xA79b \u56DB\u5C42 appliesTo\uFF09")) + '">' + esc(t("\u5B9E\u4F8B\u5316")) + "</button></div></div></div>";
+  }
   function listScreen(el, ctx2) {
-    const wfs = ctx2.store.workflows();
-    const runs = ctx2.store.runs();
-    const rows = wfs.map((w) => {
-      const name = String(w && (w.name || w.workflow || ""));
-      if (!name) return "";
-      const myRuns = runs.filter((r) => String(r && (r.workflow || r.name || "")) === name);
-      const last = myRuns[0];
-      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(name) + '"><div class="mr-main"><div><b class="mono">' + esc(name) + "</b> " + (w.spec ? kindBadge("Workflow") : "") + '</div><div class="mr-sub small">' + esc(trunc(String(w.summary || w.desc || w.spec && w.spec.title || "\u2014"), 90)) + '</div></div><span class="ws-chip">' + chip(myRuns.length + t(" \u6B21\u8FD0\u884C"), myRuns.length ? "acc" : "mute") + (last ? runChip(last) : "") + "</span></div>";
-    }).filter(Boolean);
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5DE5\u4F5C\u6D41"), t("\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5")) + (rows.length ? '<div class="card">' + rows.join("") + "</div>" : emptyBox(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41"), t("\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002"))) + "</div>";
-    el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx2.go(row.dataset.go));
-    });
+    const state = { rows: [], filter: "", err: "" };
+    const snapRuns = ctx2.store.runs().slice(0, 8);
+    const runRowHtml = (r) => {
+      const wf = String(r && (r.workflow || r.name) || "");
+      const no = r && (r.run != null ? r.run : r.no != null ? r.no : "");
+      if (!wf && (no == null || no === "")) return "";
+      const started = r && (r.startedAt || r.at || r.ts);
+      const invChips = String(r && r.involved || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 3).map((x) => {
+        const rt = involvedRoute(x);
+        return rt ? chipGo(trunc(x, 36), rt, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : '<span class="chip mute tiny">' + esc(trunc(x, 36)) + "</span>";
+      }).join(" ");
+      const go = wf && no != null && no !== "" ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(no)) : "";
+      return "<tr" + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : "") + '><td class="mono small">#' + esc(String(no != null && no !== "" ? no : "\u2014")) + '</td><td class="mono small">' + esc(wf || "\u2014") + "</td><td>" + phChip(r && r.phase) + "</td><td>" + runChip(r) + '</td><td class="small mono">' + esc(relAge(started) || (started ? String(started).slice(0, 16) : "\u2014")) + '</td><td class="small">' + (invChips || '<span class="faint">\u2014</span>') + "</td></tr>";
+    };
+    const paintRuns = () => {
+      const slot = el.querySelector("[data-wf-runs]");
+      if (!slot) return;
+      const seen = /* @__PURE__ */ new Set();
+      const merged = [];
+      for (const r of state.rows.concat(snapRuns)) {
+        const k = String(r && (r.workflow || r.name) || "") + "#" + String(r && (r.run != null ? r.run : r.no != null ? r.no : ""));
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(r);
+      }
+      const shown = (state.filter ? merged.filter((r) => String(r && (r.workflow || r.name) || "") === state.filter) : merged).slice(0, 50);
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto"><div style="margin-bottom:6px">' + chip(merged.length + t(" \u6761\uFF08runs \u9762\u5168\u7A97\u53E3+\u5FEB\u7167\u805A\u5408\uFF0C\u6309 workflow+run \u53BB\u91CD\uFF09"), "mute") + " " + (state.filter ? chipGo(t("\u6E05\u9664\u8FC7\u6EE4\uFF1A") + state.filter, "workflows", "warn", true, t("\u6E05\u9664\u8FC7\u6EE4\u5E76\u56DE\u5168\u8868")) : "") + "</div>" + (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(state.err) + esc(t("\uFF09\u2014\u2014\u4E0B\u8868\u4EC5\u5FEB\u7167\u805A\u5408\u884C\uFF08\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div>" : "") + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(t("\u5DE5\u4F5C\u6D41")) + "</th><th>" + esc(t("\u76F8\u4F4D")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u5F00\u59CB")) + "</th><th>" + esc(t("\u6D89\u53CA")) + "</th></tr></thead><tbody>" + shown.map(runRowHtml).join("") + '</tbody></table><div class="small faint" style="margin-top:6px">' + esc(t("\u884C\u70B9\u51FB\u8FDB\u8FD0\u884C\u8BE6\u60C5\uFF1Binvolved chip=\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u6DF1\u94FE\u3002")) + "</div>" : '<div class="small faint">' + esc(state.filter ? t("\u8BE5 workflow \u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002") : t("\u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\uFF08runs \u9762\u4E0E\u5FEB\u7167\u805A\u5408\u5747\u7A7A\u2014\u2014\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002"))) + "</div></div>";
+    };
+    el.innerHTML = '<div class="view-inner">' + screenHead(
+      t("\u5DE5\u4F5C\u6D41"),
+      t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
+      chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
+    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + '</h2><div class="grid cols-2">' + WF_TEMPLATES.map(tplCardHtml).join("") + "</div></div>";
+    paintRuns();
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const slot = el.querySelector("[data-wf-reg]");
+      const r = await ctx2.api.workflows();
+      if (!slot || !slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(String(r.error || r.status)) + esc(t("\uFF09\u2014\u2014\u4E0D\u88C5\u5047\uFF0C\u5237\u65B0\u91CD\u8BD5\u3002")) + "</div></div></div>";
+        return;
+      }
+      const data = r.data && typeof r.data === "object" ? r.data : {};
+      const rows = Array.isArray(data.workflows) ? data.workflows : [];
+      if (!rows.length) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u4E3A\u7A7A\uFF08\u8BDA\u5B9E\u7A7A\u6001\u2014\u2014\u5F53\u524D\u65E0\u5728\u518C Workflow\uFF09\u3002")) + "</div></div></div>";
+        return;
+      }
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' + chip((data.count != null ? data.count : rows.length) + t(" \u6761\u5728\u518C"), "acc") + " " + (data.scanCapped ? chip(t("\u626B\u63CF\u622A\u65AD\uFF08\u7A97\u53E3\u5185 ") + String(data.scanned != null ? data.scanned : "?") + t(" \u6761\uFF09"), "warn") : "") + '<table class="tbl" style="margin-top:8px"><thead><tr><th>' + esc(t("\u540D\u79F0")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u8FDE\u63A5")) + "</th><th>" + esc(t("\u6700\u8FD1")) + "</th><th></th></tr></thead><tbody>" + rows.map((w) => {
+        const name = String(w && w.name || "");
+        const ex = w && w.execution || {};
+        const exState = String(ex.state || "");
+        const connTxt = String(ex.connector || "") + (ex.connectorScope ? "/" + String(ex.connectorScope) : "");
+        const latest = w && w.latest;
+        const latestTxt = typeof latest === "string" ? latest : String(latest && (latest.summary || latest.note || latest.status || latest.state) || "");
+        return '<tr><td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + "</span>" : "\u2014") + "</td><td>" + chip(exState || "\u2014", REG_CLS[exState.toLowerCase()] || "mute") + '</td><td class="mono small">' + esc(connTxt || "\u2014") + '</td><td class="small">' + esc(trunc(latestTxt || "\u2014", 60)) + '</td><td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(t("\u8FC7\u6EE4\u672C\u9875\u8FD0\u884C\u8BB0\u5F55")) + '">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + "</span>" : "") + "</td></tr>";
+      }).join("") + "</tbody></table></div></div>";
+      slot.querySelectorAll("[data-wf-runfilter]").forEach((c) => {
+        c.addEventListener("click", () => {
+          state.filter = String(c.getAttribute("data-wf-runfilter") || "");
+          paintRuns();
+          const rs = el.querySelector("[data-wf-runs]");
+          if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    })();
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const r = await ctx2.api.workflowRuns();
+      if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        state.err = String(r.error || r.status);
+      } else {
+        const data = r.data && typeof r.data === "object" ? r.data : {};
+        state.rows = Array.isArray(data.runs) ? data.runs : [];
+      }
+      paintRuns();
+    })();
   }
   function detailScreen(el, ctx2, name) {
     const wfs = ctx2.store.workflows();
@@ -10059,10 +10161,9 @@ ${text2}</tr>
       const no = r.no != null ? r.no : runs.length - i;
       return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
     }).join("");
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
-    el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
-      row.addEventListener("click", () => ctx2.go(row.dataset.go));
-    });
+    const run0 = runs[0] || { workflow: String(name), phases: [], phase: "", status: "" };
+    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run0, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
+    bindPhaseGraph(el, ctx2, run0);
   }
   function bindDocLinks(scopeEl, ctx2) {
     scopeEl.querySelectorAll("[data-go]").forEach((n) => {
@@ -10071,22 +10172,24 @@ ${text2}</tr>
   }
   function runScreen(el, ctx2, name, no) {
     const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const run2 = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
-    if (!run2) {
+    const run = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
+    if (!run) {
       el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002")) + "</div>";
       return;
     }
-    const st = String(run2.status || "");
+    const st = String(run.status || "");
     const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
-    const startedAt = run2.startedAt || run2.at || run2.ts;
+    const startedAt = run.startedAt || run.at || run.ts;
     const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st;
-    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run2.run != null ? run2.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run2.error ? '<span class="rh-err">' + esc(trunc(String(run2.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + '</div></div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u76F8\u4F4D\u5E8F\u5217=Workflow \u58F0\u660E\u539F\u6837\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\uFF1B" + gateWord + "\u3002")) + "</div></div>";
+    const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
+    const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
+    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn sm primary" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u76F8\u4F4D\u5E8F\u5217=Workflow \u58F0\u660E\u539F\u6837\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\uFF1B" + gateWord + "\u3002")) + "</div></div>";
     const sel = { idx: 0, phases: [] };
     const lineEl = el.querySelector("[data-step-line]");
     const paintLine = () => {
-      const phases = Array.isArray(run2.phases) && run2.phases.length ? run2.phases : [run2.phase || t("\u5355\u8282\u70B9")];
+      const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")];
       sel.phases = phases;
-      const curIdx = phases.indexOf(run2.phase);
+      const curIdx = phases.indexOf(run.phase);
       if (curIdx >= 0) sel.idx = curIdx;
       lineEl.innerHTML = phases.map((p, i) => {
         const done = st === "done" || (curIdx >= 0 ? i < curIdx : false);
@@ -10110,10 +10213,10 @@ ${text2}</tr>
     const nowEl = el.querySelector("[data-run-now]");
     const tlEl = el.querySelector("[data-run-tl]");
     const paintNow = () => {
-      const phases = sel.phases.length ? sel.phases : [run2.phase || t("\u5355\u8282\u70B9")];
-      const ph = phases[sel.idx] || run2.phase || t("\u5355\u8282\u70B9");
-      const isCur = ph === run2.phase;
-      const involved = String(run2.involved || "");
+      const phases = sel.phases.length ? sel.phases : [run.phase || t("\u5355\u8282\u70B9")];
+      const ph = phases[sel.idx] || run.phase || t("\u5355\u8282\u70B9");
+      const isCur = ph === run.phase;
+      const involved = String(run.involved || "");
       const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
         const p2 = x.split("/");
         return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
@@ -10122,27 +10225,56 @@ ${text2}</tr>
       bindDocLinks(nowEl, ctx2);
     };
     const paintTl = () => {
+      const trans = Array.isArray(run.transitions) ? run.transitions.filter(Boolean) : [];
+      const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u8FC1\u79FB\uFF08runs \u9762\u73B0\u8BFB\uFF09\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
+        const at = String(x && (x.at || x.ts || x.time) || "");
+        const from = String(x && (x.from || x.fromPhase) || "\u2014");
+        const to = String(x && (x.to || x.toPhase || x.phase) || "\u2014");
+        return '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(from) + " \u2192 " + esc(to) + '</b></div><div class="tl-time mono">' + esc(relAge(at) || (at ? at.slice(0, 16) : "")) + "</div></div>";
+      }).join("") + "</div>" : "";
       const evs = ctx2.store.events().filter((e) => {
         const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-        return hay.includes(String(run2.workflow || "")) || hay.includes(String(run2.phase || ""));
+        return hay.includes(String(run.workflow || "")) || hay.includes(String(run.phase || ""));
       }).slice(0, 12);
-      tlEl.innerHTML = evs.length ? '<div class="tl">' + evs.map((e) => '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>").join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002")) + "</div>";
+      tlEl.innerHTML = transHtml + (evs.length ? '<div class="tl">' + evs.map((e) => '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>").join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002")) + "</div>");
     };
     paintLine();
     paintNow();
     paintTl();
-    ctx2.api.workflowRuns().then((r) => {
+    const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
       if (!r.ok || !el.isConnected) return;
       const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
       const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
       if (!full) return;
-      run2.phases = Array.isArray(full.phases) ? full.phases : run2.phases;
-      run2.phase = full.phase || run2.phase;
-      run2.status = full.status || run2.status;
-      run2.involved = full.involved || run2.involved;
+      run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
+      run.phase = full.phase || run.phase;
+      run.status = full.status || run.status;
+      run.involved = full.involved || run.involved;
+      run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
       paintLine();
       paintNow();
       paintTl();
+    });
+    refreshFace();
+    el.querySelectorAll("[data-gate-act]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const grant = btn.getAttribute("data-gate-act") === "grant";
+        const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+        if (!confirmed) return;
+        btn.disabled = true;
+        btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
+        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor });
+        if (!r.ok) {
+          btn.disabled = false;
+          btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
+          window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+          return;
+        }
+        refreshFace();
+        ctx2.api.snapshot().then((s) => {
+          if (s.ok) ctx2.store.init(s.data);
+        });
+      });
     });
   }
   function render3(el, ctx2) {
@@ -10615,7 +10747,7 @@ ${text2}</tr>
     reportScreen(el, ctx2);
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -10817,7 +10949,7 @@ ${text2}</tr>
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -10945,6 +11077,7 @@ ${text2}</tr>
   var ED = /* @__PURE__ */ new Map();
   var saveTimers = /* @__PURE__ */ new Map();
   var notice = "";
+  var screenCtx = null;
   function keyOf(kind, scope, name) {
     return kind + "|" + (scope || "global") + "|" + (name || "");
   }
@@ -10978,6 +11111,7 @@ ${text2}</tr>
     let base = "";
     let faceRV = 0;
     let faceAbsent = false;
+    let faceFail = "";
     if (faceR.ok) {
       const data = faceR.data && typeof faceR.data === "object" ? faceR.data : {};
       base = data.content != null ? String(data.content) : typeof faceR.data === "string" ? faceR.data : JSON.stringify(faceR.data, null, 2);
@@ -10985,7 +11119,7 @@ ${text2}</tr>
     } else if (faceR.status === 404 && row) {
       faceAbsent = true;
     } else {
-      notice = t("\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08") + esc(String(faceR.error || faceR.status)) + t("\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB");
+      faceFail = String(faceR.error || faceR.status);
     }
     const working = draftR && draftR.ok && draftR.data && draftR.data.content != null ? String(draftR.data.content) : base;
     ED.set(key.key, {
@@ -10994,6 +11128,7 @@ ${text2}</tr>
       base,
       faceAbsent,
       faceRV,
+      faceFail,
       baseRV: draftR && draftR.ok && draftR.data ? Number(draftR.data.baseResourceVersion) || faceRV : faceRV,
       draftFM: draftR && draftR.ok && draftR.data ? String(draftR.data.fieldManager || "") : "",
       view: prev && prev.view || "render",
@@ -11003,11 +11138,43 @@ ${text2}</tr>
     paintBody(key.key);
     paintBadges(key.key);
     paintRail(key.key, ctx2);
+    paintMeta(key.key);
+  }
+  function bindRetry(keyStr) {
+    document.querySelectorAll("[data-ed-retry]").forEach((b) => {
+      if (b.getAttribute("data-ed-retry-bound")) return;
+      b.setAttribute("data-ed-retry-bound", "1");
+      b.addEventListener("click", () => {
+        const cur = ED.get(keyStr);
+        if (!cur || !screenCtx) return;
+        ED.delete(keyStr);
+        const body = document.querySelector("[data-ed-body]");
+        if (body) body.innerHTML = '<div class="small faint">' + esc(t("\u6CE8\u6C34\u4E2D\u2026")) + "</div>";
+        paintMeta(keyStr);
+        hydrate(screenCtx, { ref: cur.ref, key: keyStr });
+      });
+    });
+  }
+  function paintMeta(keyStr) {
+    const slot = document.querySelector("[data-ed-rv]");
+    const ed = ED.get(keyStr);
+    if (!slot) return;
+    if (!ed) slot.innerHTML = esc(t("\u6CE8\u6C34\u4E2D\u2026"));
+    else if (ed.faceFail) {
+      slot.innerHTML = '<span class="chip esc tiny">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</span> <button class="btn sm" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button>";
+      bindRetry(keyStr);
+    } else if (ed.faceAbsent) slot.innerHTML = esc(t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09"));
+    else slot.innerHTML = "r" + ed.faceRV + esc(t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09"));
   }
   function paintBody(key) {
     const el = document.querySelector("[data-ed-body]");
     const ed = ED.get(key);
     if (!el || !ed) return;
+    if (ed.faceFail) {
+      el.innerHTML = '<div class="empty"><div class="e-title">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</div><div class="small faint">' + esc(t("face \u73B0\u8BFB\u672A\u6210\u529F\u2014\u2014\u4E50\u89C2\u9501\u57FA\u51C6\u672A\u77E5\uFF0C\u7F16\u8F91/Apply \u5DF2\u505C\u7528\uFF08\u96F6\u88C5\u5047\uFF09\uFF1B\u70B9\u91CD\u8BD5\u91CD\u8DD1\u6CE8\u6C34\u3002")) + '</div><div class="e-act"><button class="btn sm primary" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button></div></div>";
+      bindRetry(key);
+      return;
+    }
     el.innerHTML = ed.view === "render" ? isMarkdownDoc(ed.ref.kind, ed.ref.name) ? (function() {
       const { fm, body } = splitFrontmatter(ed.working);
       const fmHtml = fm ? '<details class="scheme-fold"><summary class="ex-sum"><span class="ex-chev">\u25B8</span>' + esc(t("scheme\uFF08frontmatter \u58F0\u660E\u2014\u2014expand \u67E5\u770B\u5B8C\u6574\uFF09")) + '</summary><pre class="mono small scheme-pre">' + esc(fm) + "</pre></details>" : "";
@@ -11113,8 +11280,9 @@ ${text2}</tr>
   function editorScreen(el, ctx2, key) {
     const ed = ED.get(key.key);
     const view = ed ? ed.view : "render";
-    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09") : t("\u6CE8\u6C34\u4E2D\u2026")) + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
+    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small" data-ed-rv>' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09") : t("\u6CE8\u6C34\u4E2D\u2026")) + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
     paintNotice();
+    paintMeta(key.key);
     if (ed && ed.loaded) {
       paintBody(key.key);
       paintBadges(key.key);
@@ -11187,6 +11355,7 @@ ${text2}</tr>
     }
   }
   function render7(el, ctx2) {
+    screenCtx = ctx2;
     const ref = resolveRef(ctx2);
     if (!ref) {
       el.innerHTML = '<div class="view-inner">' + screenHead(t("\u6587\u6863\u7F16\u8F91\u5668"), "") + emptyBox(t("\u5BF9\u8C61\u89E3\u6790\u6B67\u4E49\u6216\u7F3A\u5E2D"), t("\u540C\u540D\u5BF9\u8C61\u8DE8 kind/scope \u4E0D\u552F\u4E00\u2014\u2014\u8BF7\u4ECE\u7CFB\u7EDF\u6811\u8FDB\u5165\u3002"), chipGo(t("\u6253\u5F00\u7CFB\u7EDF\u6811"), "tree", "primary", false)) + "</div>";
@@ -11206,12 +11375,18 @@ ${text2}</tr>
   function apKeyOf(d) {
     return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
   }
+  function wfAnchorOf(ev) {
+    const first = String(ev && ev.involved || "").split(",")[0].trim();
+    return /^Workflow\/[^/\s]+\/[^/\s]+$/.test(first) ? first : "";
+  }
   function itemHtml(it) {
     if (it.kind === "event") {
       const e = it.ev;
       const involved = String(e.involved || "");
+      const anchor = wfAnchorOf(e);
       const route = involvedRoute2(involved.split(",")[0] || "");
-      return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : chip(involved || "\u2014", "mute")) + ' <button class="btn sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button></div></div></div>');
+      const gateBtns = anchor ? '<button class="btn sm primary" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> " : '<button class="btn sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> ";
+      return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : chip(involved || "\u2014", "mute")) + '</div><div class="dh-actions" style="margin-top:10px">' + gateBtns + '<button class="btn sm" data-ap-ignore="' + esc(it.key) + '">' + esc(t("\u5FFD\u7565")) + "</button></div></div></div>";
     }
     const d = it.draft;
     const scope = d.scope || "global";
@@ -11289,6 +11464,31 @@ ${text2}</tr>
       if (s.ok) ctx2.store.init(s.data);
     });
   }
+  async function pubGateDecision(ctx2, btn, grant) {
+    const anchor = btn.getAttribute("data-ap-anchor") || "";
+    const key = btn.getAttribute(grant ? "data-ap-grant" : "data-ap-reject") || "";
+    const evId = btn.getAttribute("data-ap-ev") || "";
+    if (!anchor || !key) return;
+    const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalGranted \u540E run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalRejected \u540E run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+    if (!confirmed) return;
+    btn.disabled = true;
+    btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
+    const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor };
+    if (evId) payload.dedupKey = "console-" + evId;
+    const r = await ctx2.api.eventPub(payload);
+    if (!r.ok) {
+      btn.disabled = false;
+      btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
+      window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+      return;
+    }
+    ignored.add(key);
+    const card = btn.closest(".ap-item");
+    if (card) card.remove();
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
+    });
+  }
   async function hydrateLedger(ctx2) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const slot = document.querySelector("[data-ap-ledger]");
@@ -11327,7 +11527,7 @@ ${text2}</tr>
     const draftN = items.filter((x) => x.kind === "draft").length;
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u5BA1\u6279"),
-      t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002"),
+      t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\u3002\u4E8B\u4EF6\u884C\u6279\u51C6/\u9A73\u56DE=\u5BF9 Workflow \u951A\u53D1\u5E03 ApprovalGranted/ApprovalRejected\uFF08run \u7EED\u884C/\u7EC8\u6001 Failed\uFF09\uFF1B\u8349\u7A3F\u6279\u51C6=Apply\uFF1B\u5747=\u4EBA\u70B9\u786E\u8BA4\u3002"),
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
     ) + (items.length ? items.map(itemHtml).join("") : emptyBox(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09"), "", chipGo(t("\u56DE Welcome"), "welcome", "primary", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
@@ -11337,6 +11537,12 @@ ${text2}</tr>
         const d = ctx2.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
         if (d) approve(ctx2, d, btn);
       });
+    });
+    el.querySelectorAll("[data-ap-grant]").forEach((btn) => {
+      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, true));
+    });
+    el.querySelectorAll("[data-ap-reject]").forEach((btn) => {
+      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, false));
     });
     el.querySelectorAll("[data-ap-ignore]").forEach((btn) => {
       btn.addEventListener("click", () => {
