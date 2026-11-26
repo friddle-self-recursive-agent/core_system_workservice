@@ -6,11 +6,24 @@
  * 安全红线：一切动态文本 esc/或经 md 渲染管线；零原文直插。 */
 
 import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
 import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
-/* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ---------- */
+/* tagType 词表投影（V-16 联动——scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落「未分组」）。 */
+function tagVocabOf(ctx) {
+  const kinds = (ctx.store && ctx.store.kinds && ctx.store.kinds()) || [];
+  for (const k of kinds) {
+    const meta = k && k.spec && k.spec.metadata && typeof k.spec.metadata === 'object' ? k.spec.metadata : null;
+    const t = meta && meta.tagTypes;
+    if (t && typeof t === 'object' && !Array.isArray(t)) return t;
+    if (Array.isArray(t)) return t.reduce((m, x) => { m[String(x)] = String(x); return m; }, {});
+  }
+  return {};
+}
+
+/* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ----------
+ * V-16 联动：调用点喂真词表（scheme metadata.tagTypes——objects.tagVocabOf 同源）。 */
 export function tagGroups(tags, vocab) {
   const V = vocab || {};
   const m = {};
@@ -94,7 +107,7 @@ function tagPanel(groups) {
   }
   return groups.map((g) =>
     '<div class="ob-tagrow">' + chip(g.type, 'mute') + ' ' +
-    g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + tr('" title="看同 tag 对象">#') + esc(t) + '</span>').join(' ') + '</div>'
+    g.tags.map((t) => chipGo('#' + t, tagRoute(t), 'mute', true, tr('看同 tag 文档（docs/tag/') + t + '）')).join(' ') + '</div>'
   ).join('');
 }
 
@@ -202,7 +215,7 @@ function renderScreen(el, ctx, ref) {
     screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
     '<div class="obj-grid">' +
-    tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags)) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabOf(ctx))) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
     (ruleState ? rulePanel(ruleState) : tr('<div class="small faint">规则命中判定中…</div>')) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">') + ctxPanel(ref.rv) + '</div></section>' +
@@ -212,10 +225,8 @@ function renderScreen(el, ctx, ref) {
     '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + '</div></section>' +
     '</div></div>';
 
-  // tag 点选 → 对象清单过滤（同 tag 对象）
-  el.querySelectorAll('[data-obj-tag]').forEach((t) => {
-    t.addEventListener('click', () => ctx.go('docs'));
-  });
+  // tag 点选 → docs/tag/:tag 真链（V-01：跳 data-go 委托——不再丢过滤；点击词形=tagRoute）
+  // （chipGo 走全仓 data-go 委托，无本屏 listener——旧 data-obj-tag 丢弃过滤的死链退役）。
 
   if (!cached) {
     hydrateDoc(el, ctx, ref).then((c) => {

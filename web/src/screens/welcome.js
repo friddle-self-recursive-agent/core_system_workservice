@@ -153,6 +153,10 @@ function pendingRunRowHtml(x) {
     (x.started ? '<span class="small faint">' + esc(x.started) + '</span>' : '') +
     '</div>' +
     '<div class="dr-side" style="display:flex;gap:6px;align-items:center">' +
+    /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
+     * 人批准前看不到 run 全貌）。 */
+    (x.wf && x.run != null && x.run !== ''
+      ? '<button class="btn sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + '/r/' + encodeURIComponent(String(x.run)) + '">' + esc(tr('运行详情')) + '</button>' : '') +
     '<button class="btn sm primary"' + btnAttrs('grant') + '>' + esc(tr('批准继续')) + '</button>' +
     '<button class="btn sm"' + btnAttrs('reject') + '>' + esc(tr('驳回终止')) + '</button>' +
     '</div></div>';
@@ -178,7 +182,15 @@ function bindApprovalGates(el, ctx) {
     });
     if (r && r.ok) {
       const row = btn.closest('[data-appr-row]');
-      if (row) row.style.display = 'none';
+      // V-15（2026-11-26 概念可见性批）：就地批闸后指引——行消隐换指引词形（已决台账深链），
+      // 此前批闸行静默消失=人不知道判定落在哪。
+      if (row) {
+        row.innerHTML = '<div class="dr-main">' + chip(grant ? tr('已批准（ApprovalGranted 已发布）') : tr('已驳回（ApprovalRejected 已发布）'), 'ok') +
+          '<span class="small faint">' + esc(tr('判定已落审批台账——快照重基后行集刷新。')) + '</span></div>' +
+          '<div class="dr-side"><span class="chip mute tiny click" data-appr-goto-ledger="1">查看已决台账 →</span></div>';
+        const go = row.querySelector('[data-appr-goto-ledger]');
+        if (go) go.addEventListener('click', () => ctx.go('approvals'));
+      }
       ctx.api.snapshot().then((s) => { if (s && s.ok) ctx.store.init(s.data); });
     } else {
       btn.disabled = false;
@@ -258,6 +270,8 @@ function sessHitOf(list, name) {
   });
 }
 
+/* V-05（2026-11-26 概念可见性批）：会话活性 chip → session/:id（数据已在 sessHitOf——
+ * 此前 chip 纯展示死链；sessionId 可解析=真链，缺席=原词形不冒充）。 */
 function sessLiveHtml(hit) {
   if (!hit) return chip(tr('无会话'), 'mute');
   const st = String(hit.state || '');
@@ -266,7 +280,11 @@ function sessLiveHtml(hit) {
     trunc(String(hit.lastAction || ''), 18),
     (hit.lastBeat ? (relAge(hit.lastBeat) || '') : ''),
   ].filter(Boolean).join(' · ');
-  return (st ? chip(st, sessStateCls(st)) : '') +
+  const sid = String(hit.sessionId || hit.id || '');
+  const stChip = st ? (sid
+    ? chipGo(st, 'session/' + encodeURIComponent(sid), sessStateCls(st), true, tr('会话详情——活性账现读'))
+    : chip(st, sessStateCls(st))) : '';
+  return stChip +
     (sub ? '<span class="small faint">' + esc(sub) + '</span>' : '');
 }
 

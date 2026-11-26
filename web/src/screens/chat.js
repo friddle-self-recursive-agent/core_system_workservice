@@ -235,6 +235,34 @@ function ensureCtxBar(el, sessionId) {
 
 /* ---------- 屏主体 ---------- */
 
+/* V-10（2026-11-26 概念可见性批）：会话页回链 task/event——按 session id 反查快照三源。
+ * 机械键=Task.status.agentSession（调度器回写词形，与任务中心「对话」chip 同键反向）与
+ * 事件 agentSession/session 字段。缺席=诚实词形「无在册关联」（零编造）。 */
+export function sessBacklinksHtml(store, sessionId) {
+  const sid = String(sessionId || '');
+  if (!sid) return '';
+  const tasks = (store.tasks() || []).filter((t) => String((t && t.status && (t.status.agentSession || t.status.sessionId)) || '') === sid);
+  const evs = (store.events() || []).filter((e) => {
+    const s = String((e && (e.agentSession || e.session)) || '');
+    return s === sid;
+  }).slice(0, 4);
+  const taskChips = tasks.slice(0, 3).map((t) => {
+    const id = String((t && t.scope) || 'global') + '/' + String((t && t.name) || '');
+    const title = String((t && t.spec && t.spec.title) || (t && t.name) || id);
+    const ph = String((t && t.status && (t.status.phase || t.status)) || '');
+    return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + tr('——任务详情') + '">Task: ' +
+      esc(trunc(title, 22)) + (ph ? ' · ' + esc(ph) : '') + '</span>';
+  }).join(' ');
+  const evChips = evs.map((e) =>
+    '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(e.id ?? '')) + '" title="' + esc(tr('事件详情')) + '">' +
+    esc(trunc(String(e.type || ''), 26)) + '</span>').join(' ');
+  if (!taskChips && !evChips) {
+    return '<div class="small faint" data-sess-backlinks="1">' + esc(tr('快照三源（Task.agentSession ∪ 事件 agentSession）反查无在册关联——会话型独立会话（零编造）。')) + '</div>';
+  }
+  return '<div class="small" data-sess-backlinks="1" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+    '<span class="faint">' + esc(tr('关联：')) + '</span>' + taskChips + evChips + '</div>';
+}
+
 /** 会话屏 v3：自有 DeepSeek 式对话面（左清单+右转录+底部 composer）。 */
 function dialogScreen(el, ctx) {
   const f = faces();
@@ -244,6 +272,7 @@ function dialogScreen(el, ctx) {
       chip(tr('新会话'), 'acc', false, 'data-cc-new style="cursor:pointer"')) +
     (can ? '' : '<div class="card"><div class="card-b"><div class="small faint">' +
       esc(tr('对话通路未注入（chatfaces.js 缺席）——转录与发送面显式缺席，不冒充。')) + '</div></div></div>') +
+    '<div data-sess-backlinks-slot style="margin-bottom:6px">' + sessBacklinksHtml(ctx.store, CHAT.sessionId) + '</div>' +
     '<div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start">' +
     '<aside class="card" style="padding:8px;max-height:calc(100vh - 160px);overflow:auto">' +
     '<div class="small faint" style="padding:2px 6px 8px;font-weight:700">' + esc(tr('会话')) + '</div>' +
@@ -266,6 +295,17 @@ function dialogScreen(el, ctx) {
 
   if (!can) return;
   window.__CC_CONSOLE_CTX__ = ctx;
+  // V-10：回链块随会话切换重绘（快照在 WS 到账后也比初渲染丰富——订阅重绘兜底）
+  const paintLinks = () => {
+    const slot = el.querySelector('[data-sess-backlinks-slot]');
+    if (slot) slot.innerHTML = sessBacklinksHtml(ctx.store, CHAT.sessionId);
+    slot && slot.querySelectorAll('[data-go]').forEach((n) => {
+      n.addEventListener('click', () => ctx.go(n.getAttribute('data-go')));
+    });
+  };
+  paintLinks();
+  const unsubLinks = ctx.store.subscribe(paintLinks);
+  el.addEventListener('disconnected', () => { try { unsubLinks(); } catch { /* no-op */ } }, { once: true });
   const newBtn = el.querySelector('[data-cc-new]');
   if (newBtn) newBtn.addEventListener('click', async () => {
     newBtn.disabled = true;

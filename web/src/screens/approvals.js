@@ -49,7 +49,11 @@ function itemHtml(it) {
     return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span>' +
       '<span class="h-right">' + chip(String(e.level || 'warn'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ''), 160)) + '</div>' +
-      '<div style="margin-top:8px">' + (route ? chipGo(involved.split(',')[0], route, 'mute', true, tr('去对象工作台')) : chip(involved || '—', 'mute')) + '</div>' +
+      '<div style="margin-top:8px">' + (route ? chipGo(involved.split(',')[0], route, 'mute', true, tr('去对象工作台')) : chip(involved || '—', 'mute')) +
+      /* V-04（2026-11-26 概念可见性批）：批闸锚 chip→wf/:name 运行详情（锚已解析于 wfAnchorOf——
+       * 此前锚词形只在按钮 title 里，人看不到闸锚落点）。 */
+      (anchor ? chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(String(anchor.split('/')[2] || '')), 'acc', true, tr('Workflow 运行详情——批闸对象')) : '') +
+      '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + gateBtns +
       '<button class="btn sm" data-ap-ignore="' + esc(it.key) + '">' + esc(tr('忽略')) + '</button></div></div></div>';
   }

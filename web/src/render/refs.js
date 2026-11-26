@@ -5,8 +5,10 @@
 import { esc } from '../core/format.js';
 import { t as tr } from '../core/i18n.js';
 
-/** 已知 kind 词表（ref 识别用——与 snapshot schemeKinds 对齐的常用集）。 */
-const REF_KINDS = 'Rule|Goal|Desc|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event';
+/** 已知 kind 词表（ref 识别用——与 snapshot schemeKinds 对齐的常用集）。
+ * V-08（2026-11-26 概念可见性批）：补 Runbook/DriftReport/DocReview（docs 族在册 kind——
+ * 对话提到这三族 ref 之前不可链接化=死链词形）。 */
+const REF_KINDS = 'Rule|Goal|Desc|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|Runbook|DriftReport|DocReview|BugDoc|Template|Event';
 
 /** ref 深链词形（与 objRoute 同构——此处自带避免循环依赖）。 */
 export function refRoute(kind, scope, name) {
@@ -57,7 +59,7 @@ export function linkifyRefs(text, names) {
       const needle = esc(nm);
       if (!needle || !html.includes(needle)) continue;
       html = html.split(needle).join(
-        '<span class="ref-chip" data-go="' + esc(refRoute('Doc', 'global', nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + '</span>');
+        '<span class="ref-chip" data-go="' + esc('doc/' + encodeURIComponent(nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + '</span>');
     }
   }
   return html;
@@ -76,15 +78,20 @@ export function expandBlock(innerHtml, label, opts) {
 }
 
 /**
- * renderMessage(msg, names) —— 单条消息卡：
+ * renderMessage(msg, names) —— 单条消息卡（V-08 退役为导出核：chat v3 转录面用 nodeHtml
+ * 族渲染——本卡面词形留作 API 消费方与测试锚；data-doc-full 深链改 objRoute 工作台词形，
+ * 消除「点击无响应」死代码——原按钮无任何 listener 且目标面板不在本 bundle）。
  *   msg={role:'user'|'assistant'|'system', text, thinking?, tool?, refs?, kind?, ts?}
- *   kind='conclusion' → 结论卡（结论+涉及文档 ref+「完整文档模式」按钮 data-doc-full="Kind/scope/name"）。
+ *   kind='conclusion' → 结论卡（结论+涉及文档 ref+「对象工作台」按钮 data-go=objRoute）。
  */
 export function renderMessage(msg, names) {
   const m = msg || {};
   const role = String(m.role || 'assistant');
   const isUser = role === 'user';
   const text = String(m.text || '');
+  const ref0 = String((m.refs && m.refs[0]) || '');
+  const p0 = ref0.split('/');
+  const go0 = p0.length >= 3 ? refRoute(p0[0], p0[1], p0.slice(2).join('/')) : '';
   const html =
     '<div class="msg ' + (isUser ? 'msg-user' : 'msg-ai') + '">' +
     '<div class="msg-avatar">' + (isUser ? '👤' : '◆') + '</div>' +
@@ -100,11 +107,11 @@ export function renderMessage(msg, names) {
           ? '<div class="concl-refs">' + m.refs.map((r) => {
             const parts = String(r).split('/');
             return parts.length >= 3
-              ? '<span class="ref-chip" data-doc-full="' + esc(r) + '">' + esc(tr('完整文档模式：')) + esc(parts[2]) + '</span>'
+              ? '<span class="ref-chip" data-go="' + esc(refRoute(parts[0], parts[1], parts.slice(2).join('/'))) + '">' + esc(tr('对象工作台：')) + esc(parts[2]) + '</span>'
               : '';
           }).join('') : '') +
         '<div class="concl-acts">' +
-        '<button class="btn sm" data-doc-full="' + esc(String((m.refs && m.refs[0]) || '')) + '">' + esc(tr('完整文档模式')) + '</button>' +
+        (go0 ? '<button class="btn sm" data-go="' + esc(go0) + '">' + esc(tr('打开对象工作台')) + '</button>' : '') +
         '<button class="btn sm" data-go="chat/core-headless">' + esc(tr('写入草稿')) + '</button>' +
         '</div></div>'
       : '<div class="msg-text">' + linkifyRefs(text, names) + '</div>') +

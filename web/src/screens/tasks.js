@@ -16,6 +16,7 @@ const PHASE_VIEW = {
   verifying: { label: tr('验证中'), chip: 'acc' },
   queued: { label: tr('排队中'), chip: 'mute' },
   ready: { label: tr('待启动'), chip: 'mute' },
+  pending: { label: tr('等待拉起'), chip: 'mute' },
   blocked: { label: tr('受阻'), chip: 'warn' },
   failed: { label: tr('失败'), chip: 'esc' },
   done: { label: tr('已完成'), chip: 'ok' },
@@ -110,6 +111,24 @@ function requestCancel(el, ctx, t) {
   });
 }
 
+/* ---------- 依赖深链（V-03，2026-11-26 概念可见性批）：依赖 chip 可点——
+ * 'Task/<scope>/<name>' 三段=任务详情 task/:id；'Workflow/<scope>/<name>'=wf/:name；
+ * 已知词形外=纯文本 chip（不编造路由）。 */
+export function depRoute(d) {
+  const s = String(d || '').trim();
+  const m = /^(Task|Workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(s);
+  if (!m) return '';
+  return m[1] === 'Task'
+    ? 'task/' + encodeURIComponent(m[2] + '/' + m[3])
+    : 'wf/' + encodeURIComponent(m[3]);
+}
+function depChips(deps) {
+  return (deps || []).map((d) => {
+    const r = depRoute(d);
+    return r ? chipGo(String(d), r, 'mute', true, tr('依赖——点击进详情')) : chip(String(d), 'mute');
+  }).join(' ');
+}
+
 function taskRow(t) {
   const id = taskIdOf(t);
   const s = statusOf(t);
@@ -196,7 +215,7 @@ function taskDetailScreen(el, ctx, id) {
   if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
   if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
-  if (deps.length) rows.push([tr('依赖'), deps.map((d) => chip(String(d), 'mute')).join(' ')]);
+  if (deps.length) rows.push([tr('依赖'), depChips(deps)]);
   if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +
@@ -304,3 +323,4 @@ export function render(el, ctx) {
   else tasksScreen(el, ctx);
 }
 export function renderReport(el, ctx) { reportScreen(el, ctx); }
+export { depChips };

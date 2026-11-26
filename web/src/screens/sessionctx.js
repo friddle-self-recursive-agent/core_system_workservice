@@ -8,7 +8,7 @@
  * 依赖——node 单测机械直测口径；样式只用 styles/ 三件既有体系类，零新 CSS。 */
 
 import { esc, trunc, relAge, fmtNum } from '../core/format.js';
-import { chip, kv } from '../render/chips.js';
+import { chip, kv, objRoute, docRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
 /* 面板内存态：sessionId → {model}（store 触发的整屏重绘间复用——避免闪空）。 */
@@ -157,9 +157,15 @@ function chunksHtml(m) {
   if (!m.chunks.length) {
     return tr('<div class="small faint">无索引候选（tagSig 未装配或索引零命中——不冒充装配包内容）。</div>');
   }
+  // V-06（2026-11-26 概念可见性批）：chunk 行（kind/scope/name+score）可点——
+  // kind 在册词形=对象工作台深链；不匹配词形=纯文本（不编造路由）。
   return m.chunks.map((c) => {
     const key = [c.kind, c.scope, c.name].filter(Boolean).join('/');
-    return '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(trunc(key, 64)) + '</b> ' +
+    const route = (c.kind && c.name) ? objRoute(c.kind, c.scope || 'global', c.name) : '';
+    const keyHtml = route
+      ? '<span class="lk mono" data-go="' + esc(route) + '" title="' + esc(tr('对象工作台——索引候选深链')) + '">' + esc(trunc(key, 64)) + '</span>'
+      : '<b class="mono">' + esc(trunc(key, 64)) + '</b>';
+    return '<div class="mini-row"><div class="mr-main"><div>' + keyHtml + ' ' +
       chip(String(Math.round(c.score)), c.score >= 60 ? 'ok' : 'mute') + '</div>' +
       (c.why ? '<div class="mr-sub small">' + esc(trunc(c.why, 90)) + '</div>' : '') + '</div></div>';
   }).join('');
@@ -172,12 +178,23 @@ function shardsHtml(m) {
   if (!m.shards.length) {
     return tr('<div class="small faint">无生效 tag 分片（tagSig 未装配——编辑分叉后逐 tagKey 投影 TagCtxShard）。</div>');
   }
-  return m.shards.map((s) =>
-    '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(s.tagKey) + '</b> ' +
-    (s.stale ? chip('stale', 'warn') : chip('fresh', 'ok')) + '</div>' +
-    tr('<div class="mr-sub small">相关对象 ') + esc(fmtNum(s.docs)) + tr(' 个') +
-    (s.topDocs.length ? ' · ' + esc(trunc(s.topDocs.join(', '), 60)) : '') + '</div></div></div>'
-  ).join('');
+  // V-06（同批）：shards topDocs 词形可点——'Kind/scope/name' 三段=对象工作台、
+  // 单段=编辑器（doc/:name 名字解析）；不匹配=纯文本（chunkRoute 零编造）。
+  return m.shards.map((s) => {
+    const topHtml = s.topDocs.length
+      ? s.topDocs.slice(0, 4).map((d) => {
+        const p = String(d).split('/');
+        const go = p.length >= 3 ? objRoute(p[0], p[1], p.slice(2).join('/')) : (p.length === 1 && d ? docRoute('Doc', 'global', d) : '');
+        return go
+          ? '<span class="lk mono small" data-go="' + esc(go) + '">' + esc(trunc(String(d), 40)) + '</span>'
+          : '<span class="mono small faint">' + esc(trunc(String(d), 40)) + '</span>';
+      }).join(' · ')
+      : '';
+    return '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(s.tagKey) + '</b> ' +
+      (s.stale ? chip('stale', 'warn') : chip('fresh', 'ok')) + '</div>' +
+      tr('<div class="mr-sub small">相关对象 ') + esc(fmtNum(s.docs)) + tr(' 个') +
+      (topHtml ? ' · ' + topHtml : '') + '</div></div></div>';
+  }).join('');
 }
 
 function formHtml(m) {
@@ -235,6 +252,10 @@ function focusIn(box) {
 function paint(box, ctx, id, model) {
   PANEL.set(id, { model });
   box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(model) + '</div>';
+  // V-06：面板内 chunks/topDocs 深链走 data-go 委托（面板原本无全局 data-go 接线）。
+  box.querySelectorAll('[data-go]').forEach((n) => {
+    n.addEventListener('click', () => ctx.go(n.getAttribute('data-go')));
+  });
   wireSessionCtx(box, ctx, id);
 }
 

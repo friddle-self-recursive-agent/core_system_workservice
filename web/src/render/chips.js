@@ -4,6 +4,9 @@
 
 import { esc, safeHref } from '../core/format.js';
 
+/* esc 文本用；tr 词形经 i18n（延迟取避免初始化序耦合）。 */
+import { t as tr } from '../core/i18n.js';
+
 /** 状态 chip（cls: ok/warn/danger/esc/acc/llm/mute）。 */
 export function chip(label, cls = 'mute', tiny = true, attrs = '') {
   return '<span class="chip ' + esc(cls) + (tiny ? ' tiny' : '') + '"' + (attrs ? ' ' + attrs : '') + '>' + esc(label) + '</span>';
@@ -62,6 +65,12 @@ function encSeg(s) { return encodeURIComponent(String(s == null ? '' : s)); }
 /** 对象工作台深链：obj/:kind/:scope/:name。 */
 export function objRoute(kind, scope, name) {
   return 'obj/' + encSeg(kind) + '/' + encSeg(scope || 'global') + '/' + encSeg(name);
+}
+
+/** tag 深链（V-01，2026-11-26 概念可见性批）：docs/tag/:tag——docs 屏第三段=tag 过滤预填。
+ * 此前 objects.js tag 点击 `go('docs')` 丢过滤=伪链接；本词形即真链。 */
+export function tagRoute(tag) {
+  return 'docs/tag/' + encSeg(tag);
 }
 
 /** 编辑器深链：doc/:kind/:scope/:name。 */
@@ -144,14 +153,23 @@ export function repoLinkChip(ref, label) {
 function truncTxt(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
 /* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running，否则 InSync）。
- * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。 */
+ * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。
+ * V-07（2026-11-26 概念可见性批）：Running 徽可点——命中 run 可解析=运行详情深链
+ * wf/:name/r/:n；多 run 命中=取窗口内最近一条（不可解析=纯文本词形不冒充可点）。 */
 export function syncBadge(runs, name) {
-  const active = (runs || []).some((r) => {
+  const active = (runs || []).filter((r) => {
     const st = String((r && (r.status || r.state)) || '');
     if (!st || st === 'done' || st === 'failed' || st === 'canceled') return false;
     let hay = '';
     try { hay = JSON.stringify([r.involved, r.target, r.route, r.workflow]); } catch { hay = ''; }
     return hay.includes(name);
   });
-  return active ? chip('Running', 'acc') : chip('InSync', 'ok');
+  if (!active.length) return chip('InSync', 'ok');
+  const wf = String((active[0] && (active[0].workflow || active[0].name)) || '');
+  const no = active[0] && (active[0].run != null ? active[0].run : (active[0].no != null ? active[0].no : ''));
+  if (wf && no != null && no !== '') {
+    return chipGo('Running · #' + String(no), 'wf/' + encSeg(wf) + '/r/' + encSeg(String(no)), 'acc', true,
+      tr('触发它的 run——运行详情'));
+  }
+  return chip('Running', 'acc');
 }
