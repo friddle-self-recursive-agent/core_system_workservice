@@ -11547,6 +11547,36 @@ ${text2}</tr>
   var store = createStore();
   var api = createApi(BASES.api || "", { apply: BASES.apply, drafts: BASES.drafts });
   var router = createRouter({ defaultRoute: "welcome" });
+  var NAV_TREE = [
+    {
+      level: "sys",
+      label: "\u7CFB\u7EDF\u63A7\u5236\u53F0",
+      icon: "\u25A3",
+      items: [
+        ["welcome", "\u603B\u89C8", "\u2302"],
+        ["report", "\u5173\u6CE8\u62A5\u544A", "\u2248"],
+        ["tasks", "\u4EFB\u52A1\u4E2D\u5FC3", "\u229E"],
+        ["workflows", "Workflows", "\u27F3"],
+        ["events", "\u4E8B\u4EF6", "\u26A1"],
+        ["approvals", "\u5BA1\u6279", "\u2713"],
+        ["proposals", "\u9700\u6C42\u63D0\u6848", "\u2726"]
+      ],
+      sub: { label: "\u57FA\u7840\u8BBE\u65BD", items: [
+        ["chat/root-agent", "\u4F1A\u8BDD", "\u{1F4AC}"],
+        ["tree", "\u7CFB\u7EDF\u6811", "\u2443"],
+        ["docs", "\u6587\u6863\u5E93", "\u25A4"],
+        ["obj", "\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "\u25AD"],
+        ["connectors", "\u8FDE\u63A5", "\u2301"]
+      ] }
+    },
+    {
+      level: "biz",
+      label: "\u4E1A\u52A1\u63A7\u5236\u53F0",
+      icon: "\u25C6",
+      items: [["biz", "\u4E1A\u52A1\u603B\u89C8", "\u2302"]],
+      sub: null
+    }
+  ];
   var curLevel = "sys";
   try {
     curLevel = typeof localStorage !== "undefined" && localStorage.getItem("cc.level") || "sys";
@@ -11565,6 +11595,9 @@ ${text2}</tr>
     } catch {
       return "";
     }
+  }
+  function navTree() {
+    return NAV_TREE;
   }
   function sidebarHtml() {
     const sections = navTree().map((sec) => {

@@ -88,6 +88,8 @@ function approvalBadge() {
 }
 
 /* 侧栏：品牌行 + 三级分组树（一级 section 头=级别折叠；二级条目 icon+徽；三级缩进子组）。 */
+function navTree() { return NAV_TREE; }
+
 function sidebarHtml() {
   const sections = navTree().map((sec) => {
     const open = curLevel === sec.level;
