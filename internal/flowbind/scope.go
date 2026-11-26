@@ -61,8 +61,8 @@ func (b ScopeBlockedBlock) BlockedNote() string {
 
 // 拦截因由词汇（闭合集——闸内判定产物，测试锚定）。
 const (
-	BlockReasonNoAgent    = "no-agent"            // Agent 锚不在册（解析未命中）
-	BlockReasonUndeclared = "undeclared"          // 在册但未声明 eventScopes——保守缺省外
+	BlockReasonNoAgent          = "no-agent"           // Agent 锚不在册（解析未命中）
+	BlockReasonUndeclared       = "undeclared"         // 在册但未声明 eventScopes——保守缺省外
 	BlockReasonOutOfDeclaration = "out-of-declaration" // 已声明但事件 scope 在声明外
 	// FaceDispatch 派发闸（触发骨架唤醒投影投递前）。
 	FaceDispatch = "dispatch"

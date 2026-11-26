@@ -12,8 +12,8 @@
 // 诚实投影（wake.go 同构）：**派单受理 ≠ agent 会话已拉起**（真实拉起=dsh 会话挂载/
 // agent-session 域，declared-deferred）——本面只证明「骨架→agent 派单接口面已接线」。
 // 观测面非账本：持久态=骨架对象本体（聚合面 execution.skeleton=true）+ apply_log 审计
-// （workflow:bind 行）；本面=进程内受理投影（环有界，重启归零=幂等重入不重复派单的
-// 语义锚——重启后未落实现仍由 skeleton=true 持久可见，不因投影丢失而缺口静默）。
+// （workflow:bind 行）；本面=受理投影（环有界；挂接 Store 后写穿透 rt_dispatch_records
+// ——G-01 收口：投影重启恢复，恢复的是投影视图不是派发动作重放，幂等重入语义不变）。
 //
 // 解耦口径：本件只依赖 apply.Result 投影，零新写路径零旁路；sink 由装配层注入
 // （nil=静默不派单——headless 载体/旧装配零影响）。
@@ -22,6 +22,8 @@ package flowbind
 import (
 	"sync"
 	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/runtimestore"
 )
 
 // 派单锚与词汇（workflow-runtime.md §8：builtin 派单锚+AUTOLEVEL=ask 默认；扩展=Agent
@@ -39,15 +41,15 @@ const (
 // 受理留痕；v0.51 扩展=第二触发源 Proposal 批准派单（kind=proposal，载荷带提案名/目标/验收）。
 // 观测面非账本，账本=apply_log 归档+骨架对象本体+Proposal 对象状态机）。
 type DispatchRecord struct {
-	Seq       int64     // 派单序号（本 sink 进程内单调递增，1 起）
-	Agent     string    // 派单目标锚（apply-workflow）
-	Status    string    // 受理状态（v0.50 恒 DispatchAccepted）
-	AutoLevel string    // 派单 autoLevel（ask 默认——agent-session.md §2 级别数据面）
-	Action    string    // 触发动作（created|updated=骨架物化；approved=Proposal 批准——noop/skipped 不派单）
-	Kind      string    // 触发源种类（v0.51：workflow|proposal——恒投影，空值视为 workflow 兼容旧形）
-	Workflow  string    // workflow 锚名（kind=workflow：实现对象）
-	Scope     string    // 对象 scope
-	Connector string    // 骨架对象名（绑定 ConnectorOps——实现落点；kind=proposal 空）
+	Seq       int64  // 派单序号（本 sink 进程内单调递增，1 起）
+	Agent     string // 派单目标锚（apply-workflow）
+	Status    string // 受理状态（v0.50 恒 DispatchAccepted）
+	AutoLevel string // 派单 autoLevel（ask 默认——agent-session.md §2 级别数据面）
+	Action    string // 触发动作（created|updated=骨架物化；approved=Proposal 批准——noop/skipped 不派单）
+	Kind      string // 触发源种类（v0.51：workflow|proposal——恒投影，空值视为 workflow 兼容旧形）
+	Workflow  string // workflow 锚名（kind=workflow：实现对象）
+	Scope     string // 对象 scope
+	Connector string // 骨架对象名（绑定 ConnectorOps——实现落点；kind=proposal 空）
 	// v0.51 Proposal 派单载荷（kind=proposal：执行体输入随行——agent 面消费余量）。
 	Proposal   string   // proposal 锚名
 	Title      string   // 提案标题（spec.title）
@@ -80,6 +82,12 @@ type DispatchSink interface {
 type DispatchOptions struct {
 	// RingSize 派单环容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	RingSize int
+	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。挂接后
+	// 写穿透（受理同步 AppendDispatch——同 seq 重放 noop）+ 启动恢复（New 时装载历史行续接
+	// seq/accepted 与环内最近投影；rt_dispatch_records 权威续接，memory 空启动=零行）。
+	// 恢复面语义（perf-lint-baseline.md §2.3）：恢复的是投影视图不是派发动作重放——恢复后
+	// 骨架对象幂等重入照旧 noop 不重复派单，「进程内环有界、重启归零」口径由 rt_* 装载承接。
+	Store runtimestore.Store
 }
 
 // DispatchState 查询快照（DispatchLog.State() 返回值）。
@@ -105,7 +113,8 @@ type DispatchLog struct {
 	dropped  int64
 }
 
-// NewDispatchLog 构建派单投影落点。
+// NewDispatchLog 构建派单投影落点。挂有 Store 时先做启动恢复（R-ENG §1——装载历史行填
+// 环内最近 RingSize 条、seq/accepted 续接为行数口径；dropped=恢复前的环挤出不可考，诚实投影）。
 func NewDispatchLog(opts *DispatchOptions) *DispatchLog {
 	d := &DispatchLog{}
 	if opts != nil {
@@ -113,6 +122,25 @@ func NewDispatchLog(opts *DispatchOptions) *DispatchLog {
 	}
 	if d.opts.RingSize <= 0 {
 		d.opts.RingSize = 256
+	}
+	if d.opts.Store != nil {
+		rows := loadDispatchRows(d.opts.Store)
+		if len(rows) > 0 {
+			records := make([]DispatchRecord, len(rows))
+			maxSeq := int64(0)
+			for i, r := range rows {
+				records[i] = dispatchFromRow(r)
+				if r.Seq > maxSeq {
+					maxSeq = r.Seq
+				}
+			}
+			d.seq = maxSeq
+			d.accepted = int64(len(rows))
+			if excess := len(records) - d.opts.RingSize; excess > 0 {
+				records = records[excess:]
+			}
+			d.ring = records
+		}
 	}
 	return d
 }
@@ -130,6 +158,11 @@ func (d *DispatchLog) Dispatch(rec DispatchRecord) {
 	}
 	approvals := d.Approvals
 	d.ring = append(d.ring, rec)
+	// 写穿透（R-ENG §1）：受理词形同步 Append（受理即终态——同 seq 重放 noop；锁内同步
+	// 落库与投影同序，失败只注记不翻转投影行为——persistAppend）。
+	if d.opts.Store != nil {
+		persistAppend("派单受理", d.opts.Store.AppendDispatch(dispatchToRow(rec)))
+	}
 	d.mu.Unlock()
 	if approvals != nil {
 		approvals.Attach(rec) // ask 批准投影同拍（受理≠拉起；批准=Apply 判定）

@@ -33,7 +33,7 @@ spec:
 `
 
 // TestDocsSpecsParse 声明→投影纯映射：行集=spec 声明且顺序保留；非相邻行原样保留
-//（投影面不解释语义）；未命中/损坏/未声明=零投影。
+// （投影面不解释语义）；未命中/损坏/未声明=零投影。
 func TestDocsSpecsParse(t *testing.T) {
 	docs := map[string]string{
 		"obj-probe-wf": objSpecDoc,

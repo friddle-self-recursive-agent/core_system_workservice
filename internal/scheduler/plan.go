@@ -21,20 +21,20 @@ import (
 // TaskView 单个 Task 的调度视图（对象现势 + 排队起算——readySince 由 tick 层进程内观察，
 // 重启后从首拍起算：排队时长可见性以进程生命周期为准，v1 不落库）。
 type TaskView struct {
-	ID        string // "<scope>/<name>"（taskId 契约词形）
-	Scope     string
-	Name      string
-	Phase     string
-	Priority  string
-	DependsOn []string
-	Touches   Touches
-	Service   string // scopeRef 归一（perService 上限键；空=无影响域声明，键独立）
-	Attempts  int
-	Workspace Workspace
-	Agent     string
-	ReadySince time.Time // ready 起算（零值=当拍入队——排序兜底当拍，避免零值抢先）
-	MaxConcurrent int    // 单任务覆写（只收紧全局上限）
-	Timeout   time.Duration // 单任务租约覆写（只收紧）
+	ID            string // "<scope>/<name>"（taskId 契约词形）
+	Scope         string
+	Name          string
+	Phase         string
+	Priority      string
+	DependsOn     []string
+	Touches       Touches
+	Service       string // scopeRef 归一（perService 上限键；空=无影响域声明，键独立）
+	Attempts      int
+	Workspace     Workspace
+	Agent         string
+	ReadySince    time.Time     // ready 起算（零值=当拍入队——排序兜底当拍，避免零值抢先）
+	MaxConcurrent int           // 单任务覆写（只收紧全局上限）
+	Timeout       time.Duration // 单任务租约覆写（只收紧）
 }
 
 // Decision 单任务本拍处置（Phase 空=不写面；Start=本拍拉起；Reason=阻塞/排队原因——人看，

@@ -69,18 +69,18 @@ type Workspace struct {
 
 // Spec Task.spec 宽松投影（读面不放大声明形变）。
 type Spec struct {
-	Title          string
-	Summary        string
-	Source         string
-	SourceRef      string
-	ScopeRef       string // 影响域归一（perService 上限键）
-	DependsOn      []string
-	Touches        Touches
-	Priority       string
-	Agent          string
-	Workspace      Workspace
-	MaxConcurrent  int           // limits.maxConcurrent 单任务覆写（只收紧不放宽）
-	Timeout        time.Duration // limits.timeout 单任务覆写（只收紧租约）
+	Title         string
+	Summary       string
+	Source        string
+	SourceRef     string
+	ScopeRef      string // 影响域归一（perService 上限键）
+	DependsOn     []string
+	Touches       Touches
+	Priority      string
+	Agent         string
+	Workspace     Workspace
+	MaxConcurrent int           // limits.maxConcurrent 单任务覆写（只收紧不放宽）
+	Timeout       time.Duration // limits.timeout 单任务覆写（只收紧租约）
 }
 
 // Status Task.status 现势投影。
@@ -125,12 +125,12 @@ type taskDecl struct {
 		} `yaml:"limits"`
 	} `yaml:"spec"`
 	Status struct {
-		Phase        string   `yaml:"phase"`
-		Attempts     int      `yaml:"attempts"`
-		AgentSession string   `yaml:"agentSession"`
-		DependsOn    []any    `yaml:"dependsOn"`
-		LastAction   string   `yaml:"lastAction"`
-		LastError    string   `yaml:"lastError"`
+		Phase        string `yaml:"phase"`
+		Attempts     int    `yaml:"attempts"`
+		AgentSession string `yaml:"agentSession"`
+		DependsOn    []any  `yaml:"dependsOn"`
+		LastAction   string `yaml:"lastAction"`
+		LastError    string `yaml:"lastError"`
 	} `yaml:"status"`
 }
 
@@ -151,8 +151,8 @@ func Parse(content []byte) (Spec, Status, bool) {
 		Title: d.Spec.Title, Summary: d.Spec.Summary, Source: d.Spec.Source,
 		SourceRef: refID(d.Spec.SourceRef), ScopeRef: refID(d.Spec.ScopeRef),
 		DependsOn: refIDs(d.Spec.DependsOn), Priority: strings.TrimSpace(d.Spec.Priority),
-		Agent: refID(d.Spec.Agent),
-		Workspace: Workspace{Mode: d.Spec.Workspace.Mode, Base: d.Spec.Workspace.Base, Branch: d.Spec.Workspace.Branch},
+		Agent:         refID(d.Spec.Agent),
+		Workspace:     Workspace{Mode: d.Spec.Workspace.Mode, Base: d.Spec.Workspace.Base, Branch: d.Spec.Workspace.Branch},
 		MaxConcurrent: d.Spec.Limits.MaxConcurrent,
 	}
 	for _, p := range d.Spec.Touches.Paths {

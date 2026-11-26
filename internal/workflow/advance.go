@@ -16,6 +16,11 @@
 // suspended（挂起面不前进——审批信号之前相位机等待）、failed（终态不迁移）一律原样保留；
 // 每拍每 run 至多一步（逐段承接，不跳步不并发推进同 run）。缺省关断（interval=0）：缺省不改既有行为面，推进按部署显式开启
 // （受理首步同步推进不受关断影响——v0.23 口径恒在）。
+//
+// G-09/G-12 Verify 硬 gate（v0.67）：推进路径的新增闸——run 试图离开 Verifying 相位先过
+// VerifyGate（connectops-code-audit 接线，装配层恒挂接）：findings 非空/unbound=卡 Verify
+// 不放行 + Escalate 上报；审核执行两阶段（锁外）不阻塞订阅主干。gate 未挂接=既有行为面
+// 零翻转（能力增量不破既有推进语义——装配面收口在 cored）。
 package workflow
 
 import (
@@ -29,12 +34,22 @@ import (
 // 相位变更数受生效刹车值约束（变更单元=run 相位变更留痕；上限只计实际迁移，序列尾零动作
 // 不占额）；超限 run 本拍零动作、下拍续推（level-triggered 不丢拍；capped 计数可见）。
 // 未挂接=零刹车既有行为面零翻转（基线保护）。
+// G-09/G-12 Verify 硬 gate：run 试图**离开 Verifying 相位**（Verifying→后继 advance 行命中）
+// 先过 gate（RunOptions.VerifyGate；nil=既有行为面零翻转）。审核执行在锁外（checker 时长
+// 不持 run 锁——订阅主干/查询面不被阻塞）：两阶段推进=①锁内扫描即判类（无 gate 路径照旧
+// 即时迁移；Verifying 出行候选快照）→②锁外逐候选审核→③锁内复验（同 run∧同相位∧同状态
+// 才落迁移——竞态放弃本拍）+判定留痕写穿透。OK=false=卡 Verify（相位/状态原样保留，gated
+// 计数可见，判定投影随 run 留痕）+ OnVerifyBlocked 锁外上报（Escalate——cored 装配）。
 func (r *RunLog) Advance() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// 阶段①：锁内扫描分类（即时迁移路径照旧；Verifying 出行候选=快照待审）。
+	type gateCand struct {
+		run RunRecord // 快照（锁外审核输入）
+	}
+	var cands []gateCand
+	var touched []int // 阶段①已即时迁移的环内下标（写穿透 upsert）
 	advanced := 0
 	mutated := map[string]int{} // 本拍每锚已发生迁移数（刹车闸挂接时生效）
-	var touched []int           // 本拍迁移过的环内下标（写穿透 upsert——R-ENG §1）
+	r.mu.Lock()
 	for i := range r.ring {
 		run := &r.ring[i]
 		if len(run.Phases) == 0 || run.Status != RunRunning {
@@ -48,25 +63,105 @@ func (r *RunLog) Advance() int {
 		if !ok {
 			continue // 序列尾（无 advance 行命中）=零动作停（不冒充执行完毕；不占变更上限额）
 		}
-		run.Phase = next
-		switch Phase(next) {
-		case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
-			run.Status = RunSuspended
-		case Failed: // 落终点锚=终态（迁移终点语义——非引擎失败语义）
-			run.Status = RunFailed
+		if r.opts.VerifyGate != nil && Phase(run.Phase) == Verifying {
+			// Verify 硬 gate 候选：离开 Verifying 相位先过审（审核锁外——不持 run 锁）。
+			cands = append(cands, gateCand{run: *run})
+			continue
 		}
+		r.applyAdvanceLocked(run, next)
 		mutated[run.Workflow]++
 		advanced++
 		touched = append(touched, i)
 	}
-	// 写穿透（R-ENG §1）：本拍迁移过的 run 逐条 upsert（锁内同步与投影同序；失败只注记）。
+	// 写穿透（R-ENG §1）：本拍即时迁移过的 run 逐条 upsert（锁内同步与投影同序；失败只注记）。
 	if r.opts.Store != nil {
 		for _, i := range touched {
 			persistAppend("run 推进", r.opts.Store.AppendRun(runToRow(r.ring[i])))
 		}
 	}
 	r.advances += int64(advanced)
-	return advanced
+	r.mu.Unlock()
+
+	// 阶段②：锁外审核（checker 真实执行——audit 只读幂等；每拍重审=修复后下拍即过）。
+	type verdictCand struct {
+		run RunRecord
+		v   VerifyVerdict
+	}
+	var verdicts []verdictCand
+	if len(cands) > 0 {
+		for _, c := range cands {
+			verdicts = append(verdicts, verdictCand{run: c.run, v: r.opts.VerifyGate.Verify(c.run)})
+		}
+	}
+
+	// 阶段③：锁内复验落迁移（同 run∧同相位∧同状态才落——阶段②窗口内被审批信号/受理
+	// 改写过的候选放弃本拍，下拍重审重判）+判定留痕；blocked 计数与回调清单出锁后上报。
+	var blocked []verdictCand
+	gatedPassed := 0
+	if len(verdicts) > 0 {
+		r.mu.Lock()
+		for _, vc := range verdicts {
+			idx := r.indexOfRunLocked(vc.run.Run)
+			if idx < 0 || r.ring[idx].Phase != vc.run.Phase || r.ring[idx].Status != vc.run.Status {
+				continue // 竞态放弃本拍（run 已被改写——诚实投影不覆盖他拍迁移）
+			}
+			run := &r.ring[idx]
+			run.Verify = &vc.v // 判定随 run 留痕（放行/卡两词形都留——证据面）
+			if !vc.v.OK {
+				r.gated++ // 卡 Verify：相位/状态原样保留（本拍零迁移——硬 gate 不放行）
+				if r.opts.Store != nil {
+					persistAppend("run 卡 Verify 判定", r.opts.Store.AppendRun(runToRow(*run)))
+				}
+				blocked = append(blocked, vc)
+				continue
+			}
+			if r.opts.Brakes.Enabled && run.Brakes.MaxMutationsTick > 0 && mutated[run.Workflow] >= run.Brakes.MaxMutationsTick {
+				r.capped++ // 刹车超限：放行判定留痕、迁移让下拍（level-triggered 不丢拍）
+				continue
+			}
+			next, ok := stepByTable(run.Transitions, run.Phase, EdgeAdvance)
+			if !ok {
+				continue // 防御：表行在阶段②窗口被改写致 advance 行缺席——零动作
+			}
+			r.applyAdvanceLocked(run, next)
+			mutated[run.Workflow]++
+			gatedPassed++
+			if r.opts.Store != nil {
+				persistAppend("run Verify 放行", r.opts.Store.AppendRun(runToRow(*run)))
+			}
+		}
+		r.advances += int64(gatedPassed)
+		r.mu.Unlock()
+	}
+	// 锁外上报（Escalate 发布不持锁——回调侧可走总线/HTTP 面任意时长）。
+	if r.opts.OnVerifyBlocked != nil {
+		for _, vc := range blocked {
+			r.opts.OnVerifyBlocked(vc.run, vc.v)
+		}
+	}
+	return advanced + gatedPassed
+}
+
+// applyAdvanceLocked 单步迁移落环（调用方持 r.mu——阶段①/③共用同一落点语义：落闸锚挂起/
+// 落终点锚终态；其余相位 running 续行）。
+func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
+	run.Phase = next
+	switch Phase(next) {
+	case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
+		run.Status = RunSuspended
+	case Failed: // 落终点锚=终态（迁移终点语义——非引擎失败语义）
+		run.Status = RunFailed
+	}
+}
+
+// indexOfRunLocked 按 run 序号定位环内下标（-1=已被环挤出/不在册）。
+func (r *RunLog) indexOfRunLocked(id int64) int {
+	for i := range r.ring {
+		if r.ring[i].Run == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // EventAdvanceSink 事件驱动推进面（v0.29 事件驱动推进源首段——巡检拍与推进拍合一，

@@ -4,7 +4,7 @@
 // Append（sync 落库；落库失败只注记 stderr 不翻转投影行为——Store 是持久化面非权威，
 // 内存投影面仍是权威）；启动恢复=New 时装载历史行续接序号/游标（sqlite 为权威续接，
 // memory 空启动=零行）。行字段直投自内存结构：时间=RFC3339Nano 文本列，复杂字段
-//（执行绑定/相位序列/迁移表/刹车值）=JSON 文本列。
+// （执行绑定/相位序列/迁移表/刹车值）=JSON 文本列。
 package workflow
 
 import (
@@ -74,7 +74,8 @@ func triggerFromRow(r runtimestore.TriggerRow) TriggerRecord {
 	return rec
 }
 
-// runToRow 对账 run → 行（可演化投影——upsert 语义，恢复取最新词形）。
+// runToRow 对账 run → 行（可演化投影——upsert 语义，恢复取最新词形；会话锚/Verify 判定
+// 随演化词形同行覆写——G-08/G-09 写穿透面）。
 func runToRow(run RunRecord) runtimestore.RunRow {
 	return runtimestore.RunRow{
 		Run: run.Run, Workflow: run.Workflow, SpecSource: run.SpecSource,
@@ -83,10 +84,11 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 		TriggerSeq: run.TriggerSeq, EventID: run.EventID, Type: run.Type,
 		DedupKey: run.DedupKey, Route: run.Route, Owner: run.Owner, Target: run.Target,
 		Involved: run.Involved, StartedAt: stampNano(run.StartedAt),
+		SessionID: run.SessionID, VerifyJSON: verifyToJSON(run.Verify),
 	}
 }
 
-// runFromRow 行 → 对账 run（恢复装载）。
+// runFromRow 行 → 对账 run（恢复装载；Verify 列空=未审 nil——诚实降级不编造判定）。
 func runFromRow(r runtimestore.RunRow) RunRecord {
 	run := RunRecord{
 		Run: r.Run, Workflow: r.Workflow, SpecSource: r.SpecSource,
@@ -94,11 +96,32 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 		TriggerSeq: r.TriggerSeq, EventID: r.EventID, Type: r.Type,
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
 		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
+		SessionID: r.SessionID, Verify: verifyFromJSON(r.VerifyJSON),
 	}
 	_ = json.Unmarshal([]byte(r.PhasesJSON), &run.Phases)
 	_ = json.Unmarshal([]byte(r.TransitionsJSON), &run.Transitions)
 	_ = json.Unmarshal([]byte(r.BrakesJSON), &run.Brakes)
 	return run
+}
+
+// verifyToJSON Verify 判定 → JSON 文本列（nil=空列——未审词形）。
+func verifyToJSON(v *VerifyVerdict) string {
+	if v == nil {
+		return ""
+	}
+	return mustJSON(*v)
+}
+
+// verifyFromJSON JSON 文本列 → Verify 判定（空/不可解析=nil——未审词形，诚实降级不编造）。
+func verifyFromJSON(s string) *VerifyVerdict {
+	if s == "" {
+		return nil
+	}
+	var v VerifyVerdict
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil // 列不可解析=未审词形（诚实降级，不编造判定）
+	}
+	return &v
 }
 
 // deliveryToRow 送达投影 → 行（可演化投影——出站终态就地翻转，upsert 语义）。
@@ -123,21 +146,21 @@ func deliveryFromRow(r runtimestore.DeliveryRow) DeliveryRecord {
 	}
 }
 
-// wakeToRow 唤醒投影 → 行（受理即终态——INSERT OR IGNORE 幂等重放 noop）。
+// wakeToRow 唤醒投影 → 行（受理即终态——INSERT OR IGNORE 幂等重放 noop；会话锚空=受理词形）。
 func wakeToRow(w WakeRecord) runtimestore.WakeRow {
 	return runtimestore.WakeRow{
 		Wake: w.Wake, Agent: w.Agent, Origin: w.Origin, Status: w.Status, Level: w.Level,
 		TriggerSeq: w.TriggerSeq, EventID: w.EventID, Type: w.Type, DedupKey: w.DedupKey,
-		Route: w.Route, Owner: w.Owner, At: stampNano(w.At),
+		Route: w.Route, Owner: w.Owner, At: stampNano(w.At), SessionID: w.SessionID,
 	}
 }
 
-// wakeFromRow 行 → 唤醒投影（恢复装载）。
+// wakeFromRow 行 → 唤醒投影（恢复装载；session_id 列随行——G-08 loop 会话关联恢复面）。
 func wakeFromRow(r runtimestore.WakeRow) WakeRecord {
 	return WakeRecord{
 		Wake: r.Wake, Agent: r.Agent, Origin: r.Origin, Status: r.Status, Level: r.Level,
 		TriggerSeq: r.TriggerSeq, EventID: r.EventID, Type: r.Type, DedupKey: r.DedupKey,
-		Route: r.Route, Owner: r.Owner, At: parseNano(r.At),
+		Route: r.Route, Owner: r.Owner, At: parseNano(r.At), SessionID: r.SessionID,
 	}
 }
 

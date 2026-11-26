@@ -30,7 +30,7 @@ func TestWakeNotifierForwardsOnlyWhitelistedRoot(t *testing.T) {
 	defer ts.Close()
 
 	inner := &fakeWakeSink{}
-	n := newWakeNotifier(inner, ts.URL)
+	n := newWakeNotifier(inner, workflow.NewRunLog(nil), workflow.NewWakeLog(nil), ts.URL)
 	rec := workflow.TriggerRecord{Type: "LoopRequested", EventID: "evt-1", DedupKey: "d1", Level: "info"}
 	n.Wake(rec, workflow.ExecutorBinding{Executor: workflow.ExecAgent, Target: "root-agent"}, "route")
 

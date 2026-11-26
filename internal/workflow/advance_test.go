@@ -30,7 +30,7 @@ func runAt(runs *RunLog, n int) RunRecord { return runs.State().Runs[n] }
 
 // TestAdvanceSingleStep 序列尾前单步推进：查表命中 advance 行→前进一步（status 保持 running）；
 // 序列尾（watch-only Reporting 无 advance 出行）零动作停——status 保持 running
-//（诚实投影不冒充执行完毕，「run 出现≠对账执行完毕」口径）。
+// （诚实投影不冒充执行完毕，「run 出现≠对账执行完毕」口径）。
 func TestAdvanceSingleStep(t *testing.T) {
 	runs := NewRunLog(nil)
 	seedAdvance(t, runs, "workflows/watch-only", "watch-only", Analyzing, RunRunning)
@@ -88,7 +88,7 @@ func TestAdvanceTerminalLanding(t *testing.T) {
 }
 
 // TestAdvanceGuards 零动作防御面：object 源（相位不投影）/suspended（挂起面不前进）/failed
-//（终态不迁移）一律原样保留；空锚（无 phases）零作用。
+// （终态不迁移）一律原样保留；空锚（无 phases）零作用。
 func TestAdvanceGuards(t *testing.T) {
 	runs := NewRunLog(nil)
 	// object 源：受理即 triggered 且相位不投影——推进零动作。
@@ -115,7 +115,7 @@ func TestAdvanceGuards(t *testing.T) {
 // TestAdvanceMultiRun 多 run 独立推进：一拍内各 run 沿各自声明表前进一步（逐段承接不跳步）。
 func TestAdvanceMultiRun(t *testing.T) {
 	runs := NewRunLog(nil)
-	seedAdvance(t, runs, "workflows/watch-only", "watch-only", Analyzing, RunRunning)   // →Reporting
+	seedAdvance(t, runs, "workflows/watch-only", "watch-only", Analyzing, RunRunning)       // →Reporting
 	seedAdvance(t, runs, "workflows/core-workflow", "core-workflow", Analyzing, RunRunning) // →Planning
 	seedAdvance(t, runs, "workflows/dev-delivery", "dev-delivery", Analyzing, RunRunning)   // →AwaitingApproval（落闸锚）
 	if n := runs.Advance(); n != 3 {
@@ -182,5 +182,65 @@ func TestAdvanceConcurrent(t *testing.T) {
 	}
 	if st := runs.State(); st.Advances != 1 {
 		t.Fatalf("并发推进累计应=1（序列尾零动作不计），得 %d", st.Advances)
+	}
+}
+
+// TestAdvanceFullPhasePath G-13 相位表全路径锚：core-workflow run 自受理首步起随拍走完
+// 声明序列（Analyzing→Planning→AwaitingApproval 挂起→批准恢复→Executing→Verifying→gate
+// 放行→Reporting→Failed 终态），advances 随 tick 单调增长、落闸锚挂起面不前进、恢复续行、
+// 终点锚终态即停（「相位机走过 Analyzing→…→终态」判据的全路径覆盖）。
+func TestAdvanceFullPhasePath(t *testing.T) {
+	runs := NewRunLog(&RunOptions{VerifyGate: VerifyGateFunc(func(run RunRecord) VerifyVerdict {
+		return VerifyVerdict{OK: true, AuditID: "audit-full", Note: "audit ok"}
+	})})
+	runs.StartRun(TriggerRecord{
+		Seq: 1, EventID: "ev-full", Type: "DocApplied", DedupKey: "apply:full:1",
+		ReceivedAt: time.Now(), Route: "workflows/core-workflow", Owner: "global",
+	}, ExecutorBinding{Executor: ExecWorkflow, Target: "core-workflow"})
+	// 受理首步（同拍同步）：Idle→Analyzing，status=running。
+	if r := runAt(runs, 0); r.Phase != string(Analyzing) || r.Status != RunRunning {
+		t.Fatalf("受理首步应 {Analyzing, running}: {phase=%s, status=%s}", r.Phase, r.Status)
+	}
+	tick := func(wantPhase Phase, wantStatus string) {
+		t.Helper()
+		if n := runs.Advance(); n != 1 {
+			t.Fatalf("tick 应推进 1 步，得 %d", n)
+		}
+		r := runAt(runs, 0)
+		if r.Phase != string(wantPhase) || r.Status != wantStatus {
+			t.Fatalf("tick 后应 {%s, %s}: {phase=%s, status=%s}", wantPhase, wantStatus, r.Phase, r.Status)
+		}
+	}
+	tick(Planning, RunRunning)
+	tick(AwaitingApproval, RunSuspended) // 落闸锚=挂起
+	// 挂起面不前进：闸锚拍推进零动作（审批信号之前相位机等待）。
+	if n := runs.Advance(); n != 0 {
+		t.Fatalf("挂起面应零动作，得 %d", n)
+	}
+	// 批准恢复（ApprovalGranted——闸锚沿声明序列续行，status 翻回 running）。
+	runs.ResumeSignal(TriggerRecord{
+		Seq: 2, EventID: "ev-grant", Type: SignalResume, Involved: "Workflow/global/core-workflow",
+		ReceivedAt: time.Now(),
+	})
+	if r := runAt(runs, 0); r.Phase != string(Executing) || r.Status != RunRunning {
+		t.Fatalf("批准恢复应续行到 {Executing, running}: {phase=%s, status=%s}", r.Phase, r.Status)
+	}
+	tick(Verifying, RunRunning)
+	tick(Reporting, RunRunning) // gate 放行拍（Verifying→Reporting 过审）
+	tick(Failed, RunFailed)     // 序列尾前最后相邻行：Reporting→Failed=终点锚终态
+	// 终态不迁移：failed 后续拍零动作（终态制）。
+	if n := runs.Advance(); n != 0 {
+		t.Fatalf("终态后续拍应零动作，得 %d", n)
+	}
+	st := runs.State()
+	if st.Advances != 5 { // Planning/AwaitingApproval/Verifying/Reporting(gate 放行)/Failed 五拍步（挂起拍零动作、恢复走审批信号不计推进）
+		t.Fatalf("advances 累计应=5，得 %d", st.Advances)
+	}
+	r := runAt(runs, 0)
+	if r.Status != RunFailed || r.Phase != string(Failed) {
+		t.Fatalf("终态词形应 {Failed, failed}: %+v", r)
+	}
+	if r.Verify == nil || !r.Verify.OK {
+		t.Fatalf("Verify 放行判定应随 run 留痕：%+v", r.Verify)
 	}
 }

@@ -182,6 +182,70 @@ func TestRegistryOpen(t *testing.T) {
 	}
 }
 
+// TestSQLiteSessionAndVerifyColumns G-08/G-09 列往返：run 行 session_id/verify_json 与
+// wake 行 session_id 写入→重开→恢复无损（升列幂等——重复打开不炸）；唤醒会话锚回填
+// （AppendWakeSession 就地覆写，受理词形 IGNORE 幂等不覆盖回填）。
+func TestSQLiteSessionAndVerifyColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime.db")
+	s, err := Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendRun(RunRow{Run: 1, Workflow: "core-workflow", SessionID: "loop-sess-1",
+		VerifyJSON: `{"ok":false,"auditId":"audit-x","errorFindings":2,"note":"R-PUB-1 违规"}`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendWake(WakeRow{Wake: 1, Agent: "root", SessionID: "loop-sess-1"}); err != nil {
+		t.Fatal(err)
+	}
+	// 幂等重开（升列 duplicate column 容忍路径）。
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("升列后重开应无损: %v", err)
+	}
+	defer s2.Close()
+	runs, err := s2.ListRuns(0, 0)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("run 行恢复：%v %v", runs, err)
+	}
+	if runs[0].SessionID != "loop-sess-1" || runs[0].VerifyJSON == "" {
+		t.Fatalf("run session/verify 列应往返无损：%v", runs[0])
+	}
+	// 唤醒会话锚回填：受理词形（无 session）先落，回填后就地覆写。
+	if err := s2.AppendWake(WakeRow{Wake: 2, Agent: "root"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s2.AppendWakeSession(2, "loop-sess-2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s2.AppendWake(WakeRow{Wake: 2, Agent: "root"}); err != nil { // 同 wake 重放=IGNORE noop，不得覆盖回填
+		t.Fatal(err)
+	}
+	wks, err := s2.ListWakes(0, 0)
+	if err != nil || len(wks) != 2 {
+		t.Fatalf("唤醒行恢复：%v %v", wks, err)
+	}
+	if wks[0].SessionID != "loop-sess-1" || wks[1].SessionID != "loop-sess-2" {
+		t.Fatalf("唤醒 session_id 应往返/回填无损：%v", wks)
+	}
+	// memory 驱动同语义（AppendWakeSession 回填 + AppendWake 重放不覆盖）。
+	ms, err := Open("memory", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ms.Close()
+	_ = ms.AppendWake(WakeRow{Wake: 7, Agent: "root"})
+	_ = ms.AppendWakeSession(7, "sess-mem")
+	_ = ms.AppendWake(WakeRow{Wake: 7, Agent: "root"})
+	mw, _ := ms.ListWakes(0, 0)
+	if len(mw) != 1 || mw[0].SessionID != "sess-mem" {
+		t.Fatalf("memory 回填应就地覆写且重放不覆盖：%v", mw)
+	}
+}
+
 // mustAppendAll 六类行各追加一条（seq n——五类流水同号不同 kind；会话 id=sess-<n>）。
 func mustAppendAll(t *testing.T, s Store, seqs ...int64) {
 	t.Helper()

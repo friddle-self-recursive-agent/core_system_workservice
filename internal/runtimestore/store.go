@@ -54,6 +54,8 @@ type RunRow struct {
 	Target          string
 	Involved        string
 	StartedAt       string // RFC3339Nano
+	SessionID       string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执回填；空=未回填）
+	VerifyJSON      string // Verify 相位硬 gate 判定投影 JSON（workflow.VerifyVerdict；空=未审——G-09/G-12）
 
 	Cursor int64 // 不透明游标（=Run）
 }
@@ -94,6 +96,7 @@ type WakeRow struct {
 	Route      string
 	Owner      string
 	At         string // RFC3339Nano
+	SessionID  string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执回填；空=未回填）
 
 	Cursor int64 // 不透明游标（=Wake）
 }
@@ -156,6 +159,7 @@ type Store interface {
 	AppendRun(r RunRow) error
 	AppendDelivery(r DeliveryRow) error
 	AppendWake(r WakeRow) error
+	AppendWakeSession(wake int64, sessionID string) error // G-08：唤醒会话锚回填（演化态就地覆写）
 	AppendDispatch(r DispatchRow) error
 	AppendIntakeSession(r IntakeSessionRow) error
 
