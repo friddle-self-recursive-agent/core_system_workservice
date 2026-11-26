@@ -226,9 +226,10 @@ func (a *app) request(method, path string, body any) ([]byte, error) {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
-		if sub, err := json.Marshal(a.subject); err == nil {
-			req.Header.Set("X-Core-Subject", string(sub))
-		}
+	}
+	// 主体头随行不限 body（DELETE 无 body 但删除是写面动作——主体判定必需，匿名照判拒绝）。
+	if sub, err := json.Marshal(a.subject); err == nil {
+		req.Header.Set("X-Core-Subject", string(sub))
 	}
 	resp, err := a.hc.Do(req)
 	if err != nil {
