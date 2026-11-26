@@ -12,6 +12,9 @@ const filter = { level: '', q: '' };
 
 const LEVEL_CLS = { critical: 'esc', error: 'esc', warn: 'warn', warning: 'warn', info: 'mute', debug: 'mute' };
 
+/** raw 引号清理：只去首尾成对引号（'"session-…"' → 'session-…'——词形面不漏存储器噪声）。 */
+function clean(x) { return String(x == null ? '' : x).replace(/^"+|"+$/g, ''); }
+
 function levelChip(e) {
   const lv = String((e && e.level) || 'info');
   return chip(lv, LEVEL_CLS[lv] || 'mute');
@@ -19,11 +22,12 @@ function levelChip(e) {
 
 /** involved → 可点 chip 串（Kind/scope/name 与 '#/' 词形可点，其余纯文本）。 */
 function involvedHtml(e) {
-  const s = String((e && e.involved) || '');
+  const s = clean(e && e.involved);
   if (!s) return chip('involved：—', 'mute');
   return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
-    const route = involvedRoute(part.trim());
-    return route ? chipGo(part.trim(), route, 'mute', true, tr('查看 ') + part.trim()) : chip(part.trim(), 'mute');
+    const p = part.trim();
+    const route = involvedRoute(p);
+    return route ? chipGo(p, route, 'mute', true, tr('查看 ') + p) : chip(p, 'mute');
   }).join(' ');
 }
 
@@ -34,7 +38,7 @@ function linksHtml(e) {
   const wf = wfAnchorOfRoute(route);
   if (wf) out.push(chipGo(tr('workflow 锚 ') + wf, 'wf/' + encodeURIComponent(wf), 'acc', true, 'route ' + route + tr(' → 工作流')));
   if (e && e.run) out.push(chipGo('run #' + e.run, route && wf ? 'wf/' + encodeURIComponent(wf) + '/r/' + encodeURIComponent(String(e.run)) : 'workflows', 'mute', true, tr('关联运行')));
-  const sess = String((e && (e.agentSession || e.session)) || '');
+  const sess = clean(e && (e.agentSession || e.session));
   if (sess) out.push(chipGo(tr('会话 ') + trunc(sess, 18), 'session/' + encodeURIComponent(sess), 'mute', true, tr('会话详情')));
   const wake = e && (e.wake != null ? e.wake : (e.loopId != null ? e.loopId : null));
   if (wake != null) out.push(chip(tr('循环唤醒 #') + wake, 'mute'));
@@ -43,11 +47,23 @@ function linksHtml(e) {
 
 function eventRow(e) {
   const id = e && (e.id != null ? e.id : (e.eventId != null ? e.eventId : ''));
+  const involved = clean(e && e.involved);
+  const parts = involved.split(/[,;]\s*/).filter(Boolean);
+  const invHtml = parts.length
+    ? parts.map((part) => {
+      const p = part.trim();
+      const route = involvedRoute(p);
+      return route ? chipGo(p, route, 'mute', true, tr('查看 ') + p) : '<span class="mono">' + esc(p) + '</span>';
+    }).join(' ')
+    : '<span class="mono">—</span>';
+  const hasClipboard = typeof navigator !== 'undefined' && !!(navigator.clipboard && navigator.clipboard.writeText);
   return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '">' +
     '<span class="w-ev-dot" data-level="' + esc(String(e && e.level || 'info')) + '"></span>' +
     '<div class="mr-main"><div>' + esc(String(e && e.type || tr('未命名事件'))) + ' ' + levelChip(e) + '</div>' +
-    '<div class="mr-sub mono">' + esc(trunc(String(e && e.involved || '—'), 60)) + '</div></div>' +
+    '<div class="mr-sub mono">' + invHtml + '</div></div>' +
     '<span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || '—') + '</span>' +
+    '<button class="btn sm" data-copy-id="' + esc(String(id)) + '"' +
+    (hasClipboard ? '' : ' disabled title="' + esc(tr('剪贴板不可用')) + '"') + '>' + esc(tr('复制 id')) + '</button>' +
     '</div>';
 }
 
@@ -82,6 +98,21 @@ function listScreen(el, ctx) {
   el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
     c.addEventListener('click', () => { filter.level = c.dataset.lv || ''; listScreen(el, ctx); });
   });
+  // copy-id：行内按钮 stopPropagation——不触发行深链；clipboard 缺席（非安全上下文）=按钮置灰（title 注记）
+  el.querySelectorAll('[data-copy-id]').forEach((btn) => {
+    if (btn.disabled) return;
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const raw = String(btn.dataset.copyId || '');
+      navigator.clipboard.writeText(raw).then(() => {
+        btn.textContent = tr('已复制');
+        setTimeout(() => { btn.textContent = tr('复制 id'); }, 1200);
+      }).catch(() => {
+        btn.textContent = tr('复制失败');
+        setTimeout(() => { btn.textContent = tr('复制 id'); }, 1200);
+      });
+    });
+  });
 }
 
 /** 事件详情（全文现读——GET /v1/events/{id}）。 */
@@ -101,7 +132,10 @@ async function detailScreen(el, ctx, id) {
   }
   const e = r.data && typeof r.data === 'object' ? r.data : { raw: r.data };
   const known = ['type', 'level', 'ts', 'at', 'time', 'involved', 'dedupKey', 'routedTo', 'summary', 'message', 'route', 'run', 'agentSession', 'session', 'wake'];
-  const rows = known.filter((k) => e[k] != null && e[k] !== '').map((k) => [k, k === 'ts' || k === 'at' || k === 'time' ? timeHtml(e[k]) : esc(trunc(String(e[k]), 200))]);
+  const rows = known.filter((k) => e[k] != null && e[k] !== '').map((k) => {
+    const v = (k === 'involved' || k === 'summary' || k === 'message' || k === 'agentSession' || k === 'session') ? clean(e[k]) : String(e[k]);
+    return [k, k === 'ts' || k === 'at' || k === 'time' ? timeHtml(e[k]) : esc(trunc(v, 200))];
+  });
   box.innerHTML =
     '<div class="ev-head">' + esc(String(e.type || tr('未命名事件'))) + ' ' + levelChip(e) + ' ' + linksHtml(e) + '</div>' +
     (rows.length ? kv(rows) : '') +
