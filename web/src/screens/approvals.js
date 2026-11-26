@@ -27,17 +27,31 @@ function apKeyOf(d) {
   return (d.kind + '/' + (d.scope || 'global') + '/' + d.name).replace(/[^A-Za-z0-9]/g, '_');
 }
 
-/** 待审行（对象键 + 稿来源 + diff 容器 + 批准/忽略）。 */
+/** 事件行→Workflow 锚（§19 R3 批闸语义：run 恢复唯一人工通路=对 Workflow 锚发
+ * ApprovalGranted/ApprovalRejected——involved 首段非 Workflow 词形=无锚，按钮置灰诚实注记）。 */
+function wfAnchorOf(ev) {
+  const first = String((ev && ev.involved) || '').split(',')[0].trim();
+  return /^Workflow\/[^/\s]+\/[^/\s]+$/.test(first) ? first : '';
+}
+
+/** 待审行（对象键 + 稿来源 + diff 容器 + 批准/忽略；事件行同构=摘要+锚 chips+按钮组）。 */
 function itemHtml(it) {
   if (it.kind === 'event') {
     const e = it.ev;
     const involved = String(e.involved || '');
+    const anchor = wfAnchorOf(e);
     const route = involvedRoute(involved.split(',')[0] || '');
+    const gateBtns = anchor
+      ? '<button class="btn sm primary" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('批准继续')) + '</button> ' +
+        '<button class="btn sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('驳回终止')) + '</button> '
+      : '<button class="btn sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('批准继续')) + '</button> ' +
+        '<button class="btn sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('驳回终止')) + '</button> ';
     return '<div class="card ap-item"><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span>' +
       '<span class="h-right">' + chip(String(e.level || 'warn'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ''), 160)) + '</div>' +
-      '<div style="margin-top:8px">' + (route ? chipGo(involved.split(',')[0], route, 'mute', true, tr('去对象工作台')) : chip(involved || '—', 'mute')) +
-      ' <button class="btn sm" data-ap-ignore="' + esc(it.key) + tr('">忽略</button></div></div></div>');
+      '<div style="margin-top:8px">' + (route ? chipGo(involved.split(',')[0], route, 'mute', true, tr('去对象工作台')) : chip(involved || '—', 'mute')) + '</div>' +
+      '<div class="dh-actions" style="margin-top:10px">' + gateBtns +
+      '<button class="btn sm" data-ap-ignore="' + esc(it.key) + '">' + esc(tr('忽略')) + '</button></div></div></div>';
   }
   const d = it.draft;
   const scope = d.scope || 'global';
@@ -120,6 +134,35 @@ async function approve(ctx, d, btn) {
   ctx.api.snapshot().then((s) => { if (s.ok) ctx.store.init(s.data); });
 }
 
+/** 批闸事件发布（§19 R3——run 在 AwaitingApproval 闸锚挂起后恢复的唯一人工通路：
+ * 发布 ApprovalGranted（run 沿声明相位序列续行）/ ApprovalRejected（run 终态 Failed）。
+ * involved=事件携带的 Workflow 锚；dedupKey=console-<eventId>；失败=显式 alert 不装成功）。 */
+async function pubGateDecision(ctx, btn, grant) {
+  const anchor = btn.getAttribute('data-ap-anchor') || '';
+  const key = btn.getAttribute(grant ? 'data-ap-grant' : 'data-ap-reject') || '';
+  const evId = btn.getAttribute('data-ap-ev') || '';
+  if (!anchor || !key) return;
+  const confirmed = grant
+    ? window.confirm(tr('确认批准继续？') + anchor + tr('：发布 ApprovalGranted 后 run 沿声明相位序列续行。'))
+    : window.confirm(tr('确认驳回终止？') + anchor + tr('：发布 ApprovalRejected 后 run 将进入终态 Failed（不可恢复）。'));
+  if (!confirmed) return;
+  btn.disabled = true;
+  btn.textContent = tr('发布中…');
+  const payload = { type: grant ? 'ApprovalGranted' : 'ApprovalRejected', involved: anchor };
+  if (evId) payload.dedupKey = 'console-' + evId;
+  const r = await ctx.api.eventPub(payload);
+  if (!r.ok) {
+    btn.disabled = false;
+    btn.textContent = grant ? tr('批准继续') : tr('驳回终止');
+    window.alert(tr('事件发布失败（') + String(r.error || r.status) + tr('）——run 仍挂原相位，未装成功。'));
+    return;
+  }
+  ignored.add(key);
+  const card = btn.closest('.ap-item');
+  if (card) card.remove();
+  ctx.api.snapshot().then((s) => { if (s.ok) ctx.store.init(s.data); });
+}
+
 /** 已决记录（现读不缓存；缺席=诚实降级）。 */
 async function hydrateLedger(ctx) {
   const stamp = typeof location !== 'undefined' ? location.hash : '';
@@ -170,7 +213,7 @@ function approvalsScreen(el, ctx) {
   const items = pendingItems(ctx);
   const draftN = items.filter((x) => x.kind === 'draft').length;
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('审批'), tr('待审区=草稿缓存（DocReview 类同源）∪ ApprovalNeeded 归档行（已批的不出现）。批准/驳回均=人点；diff=稿 vs 文档现值现读。'),
+    screenHead(tr('审批'), tr('待审区=草稿缓存（DocReview 类同源）∪ ApprovalNeeded 归档行。事件行批准/驳回=对 Workflow 锚发布 ApprovalGranted/ApprovalRejected（run 续行/终态 Failed）；草稿批准=Apply；均=人点确认。'),
       chip(tr('批量批准通路待后端词形——逐条批准（诚实注记）'), 'mute')) +
     (items.length
       ? items.map(itemHtml).join('')
@@ -187,6 +230,12 @@ function approvalsScreen(el, ctx) {
       const d = ctx.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
       if (d) approve(ctx, d, btn);
     });
+  });
+  el.querySelectorAll('[data-ap-grant]').forEach((btn) => {
+    btn.addEventListener('click', () => pubGateDecision(ctx, btn, true));
+  });
+  el.querySelectorAll('[data-ap-reject]').forEach((btn) => {
+    btn.addEventListener('click', () => pubGateDecision(ctx, btn, false));
   });
   el.querySelectorAll('[data-ap-ignore]').forEach((btn) => {
     btn.addEventListener('click', () => {

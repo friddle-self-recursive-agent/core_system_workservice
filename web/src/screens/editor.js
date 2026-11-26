@@ -32,10 +32,11 @@ function aiFaces() {
 import { isMarkdownDoc } from './objects.js';
 import { t as tr } from '../core/i18n.js';
 
-/* 工作副本（key='kind|scope|name' → {working, base, loaded, faceRV, baseRV, faceAbsent, view, tab}）。 */
+/* 工作副本（key='kind|scope|name' → {working, base, loaded, faceRV, baseRV, faceAbsent, faceFail, view, tab}）。 */
 const ED = new Map();
 const saveTimers = new Map(); // 草稿写穿 debounce
 let notice = '';              // 本次会话操作回执（Apply/草稿保存结果——内存态）
+let screenCtx = null;         // 当前屏 ctx（重试按钮重跑注水用——render 期注入）
 
 function keyOf(kind, scope, name) { return kind + '|' + (scope || 'global') + '|' + (name || ''); }
 function hasDiff(ed) { return !!ed && ed.loaded && ed.working !== ed.base; }
@@ -57,7 +58,8 @@ function resolveRef(ctx) {
   return null;
 }
 
-/** 注水：面正文（乐观锁基准）+ 草稿缓存（工作副本来源；无稿零请求）。 */
+/** 注水：面正文（乐观锁基准）+ 草稿缓存（工作副本来源；无稿零请求）。
+ * face 读失败=终态词形+重试按钮（§19.3——不再恒「注水中…」无终态）。 */
 async function hydrate(ctx, key) {
   const { kind, scope, name, rv } = key.ref;
   const stamp = typeof location !== 'undefined' ? location.hash : '';
@@ -70,6 +72,7 @@ async function hydrate(ctx, key) {
   let base = '';
   let faceRV = 0;
   let faceAbsent = false;
+  let faceFail = '';
   if (faceR.ok) {
     const data = faceR.data && typeof faceR.data === 'object' ? faceR.data : {};
     base = data.content != null ? String(data.content) : (typeof faceR.data === 'string' ? faceR.data : JSON.stringify(faceR.data, null, 2));
@@ -77,13 +80,13 @@ async function hydrate(ctx, key) {
   } else if (faceR.status === 404 && row) {
     faceAbsent = true; // 在册稿×面缺席=草稿基座窗（Apply=创建通路语义）
   } else {
-    notice = tr('正文暂不可达（') + esc(String(faceR.error || faceR.status)) + tr('）——恢复后重进即现读');
+    faceFail = String(faceR.error || faceR.status); // 读失败=终态（乐观锁基准未知——编辑/Apply 停用，重试重跑注水）
   }
   const working = draftR && draftR.ok && draftR.data && draftR.data.content != null ? String(draftR.data.content) : base;
   ED.set(key.key, {
     ref: key.ref,
     working, base,
-    faceAbsent, faceRV,
+    faceAbsent, faceRV, faceFail,
     baseRV: draftR && draftR.ok && draftR.data ? Number(draftR.data.baseResourceVersion) || faceRV : faceRV,
     draftFM: draftR && draftR.ok && draftR.data ? String(draftR.data.fieldManager || '') : '',
     view: (prev && prev.view) || 'render',
@@ -93,13 +96,53 @@ async function hydrate(ctx, key) {
   paintBody(key.key);
   paintBadges(key.key);
   paintRail(key.key, ctx);
+  paintMeta(key.key);
 }
 
-/** 渲染正文绘制（markdown 文档类=markdown 渲染；对象正文(YAML spec)=结构化字段卡）。 */
+/** 重试绑定（faceFail 终态词形的动作位——重跑注水函数；data-ed-retry-bound 防重复绑定）。 */
+function bindRetry(keyStr) {
+  document.querySelectorAll('[data-ed-retry]').forEach((b) => {
+    if (b.getAttribute('data-ed-retry-bound')) return;
+    b.setAttribute('data-ed-retry-bound', '1');
+    b.addEventListener('click', () => {
+      const cur = ED.get(keyStr);
+      if (!cur || !screenCtx) return;
+      ED.delete(keyStr);
+      const body = document.querySelector('[data-ed-body]');
+      if (body) body.innerHTML = '<div class="small faint">' + esc(tr('注水中…')) + '</div>';
+      paintMeta(keyStr);
+      hydrate(screenCtx, { ref: cur.ref, key: keyStr });
+    });
+  });
+}
+
+/** 基准位（meta 行 rv 词形原位更新——faceFail=终态词形+重试按钮）。 */
+function paintMeta(keyStr) {
+  const slot = document.querySelector('[data-ed-rv]');
+  const ed = ED.get(keyStr);
+  if (!slot) return;
+  if (!ed) slot.innerHTML = esc(tr('注水中…'));
+  else if (ed.faceFail) {
+    slot.innerHTML = '<span class="chip esc tiny">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</span> ' +
+      '<button class="btn sm" data-ed-retry>' + esc(tr('重试')) + '</button>';
+    bindRetry(keyStr);
+  } else if (ed.faceAbsent) slot.innerHTML = esc(tr('文档缺席（在册稿基座——Apply=创建通路）'));
+  else slot.innerHTML = 'r' + ed.faceRV + esc(tr('（乐观锁基准）'));
+}
+
+/** 渲染正文绘制（markdown 文档类=markdown 渲染；对象正文(YAML spec)=结构化字段卡；
+ * face 读失败=终态词形+重试（不渲染空正文冒充）。 */
 function paintBody(key) {
   const el = document.querySelector('[data-ed-body]');
   const ed = ED.get(key);
   if (!el || !ed) return;
+  if (ed.faceFail) {
+    el.innerHTML = '<div class="empty"><div class="e-title">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</div>' +
+      '<div class="small faint">' + esc(tr('face 现读未成功——乐观锁基准未知，编辑/Apply 已停用（零装假）；点重试重跑注水。')) + '</div>' +
+      '<div class="e-act"><button class="btn sm primary" data-ed-retry>' + esc(tr('重试')) + '</button></div></div>';
+    bindRetry(key);
+    return;
+  }
   el.innerHTML = ed.view === 'render'
     ? (isMarkdownDoc(ed.ref.kind, ed.ref.name)
       ? (function () {
@@ -249,7 +292,7 @@ function editorScreen(el, ctx, key) {
     '<span class="chip click small' + (view === 'raw' ? ' acc' : ' mute') + tr('" data-ed-view-btn="raw">原文</span>') +
     '</div></div>' +
     '<div class="doc-meta-row">' + chip('scope', 'mute') + chipGo(key.ref.scope, 's/' + encodeURIComponent(key.ref.scope), 'mute') +
-    '<span class="mono small">' + (ed ? (ed.faceAbsent ? tr('文档缺席（在册稿基座——Apply=创建通路）') : 'r' + ed.faceRV + tr('（乐观锁基准）')) : tr('注水中…')) + '</span></div>' +
+    '<span class="mono small" data-ed-rv>' + (ed ? (ed.faceAbsent ? tr('文档缺席（在册稿基座——Apply=创建通路）') : 'r' + ed.faceRV + tr('（乐观锁基准）')) : tr('注水中…')) + '</span></div>' +
     '<div data-ed-notice></div>' +
     '<div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === 'render' ? '' : ' hidden') + '></div>' +
     tr('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="原文编辑——变更即累积草稿"') + (view === 'raw' ? '' : ' hidden') + '></textarea>' +
@@ -265,6 +308,7 @@ function editorScreen(el, ctx, key) {
     tr('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply（无变更）</button></div>') +
     '</div></div></div>';
   paintNotice();
+  paintMeta(key.key);
   if (ed && ed.loaded) { paintBody(key.key); paintBadges(key.key); paintRail(key.key, ctx); }
   else hydrate(ctx, key);
 
@@ -334,6 +378,7 @@ function editorScreen(el, ctx, key) {
 }
 
 export function render(el, ctx) {
+  screenCtx = ctx; // 重试按钮依赖（bindRetry→hydrate 重跑注水）
   const ref = resolveRef(ctx);
   if (!ref) {
     el.innerHTML = '<div class="view-inner">' + screenHead(tr('文档编辑器'), '') +
