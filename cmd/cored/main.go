@@ -38,6 +38,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/proposal"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheduler"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
@@ -687,6 +688,31 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("监听 %s: %w", *addr, err)
 	}
+	// 任务调度器（多任务并发调度首段——concepts/task-scheduler.md，runtime/task-scheduler.md §1-§4）：
+	// 装配层 tick goroutine 每拍读全部 Task（跨 scope）→ 取消/租约/Apply 关口冲突链 → 依赖/冲突/
+	// 上限（plan 纯函数）→ 写 status=running（repository 系统写 fieldManager=task-scheduler——P2
+	// status 单一写者）+ TaskStateChanged（source=core，dedup=task:<id>:<phase>）→ POST 宿主
+	// /task/spawn（CORE_SYSTEM_TASK_SPAWN_ADDR 回填；缺席=spawn 关断保持 ready，lastError 可见
+	// 退避重试不热循环）。租约回收/取消迁移/applyConflictGate 裁决两路同拍。配置=scheme
+	// runtime.taskScheduler 每拍热读（Apply 即时生效）；enabled=false 或未挂文档库=不启动。
+	schedCfg := scheduler.ConfigOf(sch)
+	schedState := "off（scheme runtime.taskScheduler.enabled=false 或未挂文档库）"
+	if schedCfg.Enabled && repo != nil {
+		sched := scheduler.New(repo, bus, sch, store, store, scheduler.Options{
+			SpawnAddr: strings.TrimSpace(os.Getenv(scheduler.EnvSpawnAddr)),
+		})
+		schedCtx, cancelSched := context.WithCancel(context.Background())
+		defer cancelSched()
+		go sched.Run(schedCtx)
+		spawnWord := "off（CORE_SYSTEM_TASK_SPAWN_ADDR 缺席——保持 ready，lastError 可见退避重试）"
+		if sched.SpawnEnabled() {
+			spawnWord = "on(" + strings.TrimSpace(os.Getenv(scheduler.EnvSpawnAddr)) + "/task/spawn)"
+		}
+		schedState = fmt.Sprintf("on(tick=%s maxConcurrent=%d perService=%d perRepo=%d leaseTtl=%s maxAttempts=%d spawn=%s conflictGate=%s)",
+			sched.Interval(), schedCfg.MaxConcurrent, schedCfg.PerService, schedCfg.PerRepo,
+			schedCfg.LeaseTTL, schedCfg.MaxAttempts, spawnWord, schedCfg.ApplyConflictGate)
+	}
+	fmt.Fprintf(os.Stderr, "cored: 任务调度器=%s（runtime.taskScheduler 每拍热读——无关任务并发/相关任务串行；status 写面=task-scheduler；事件=TaskStateChanged source=core；spawn 桥与 wake 桥同族固定载荷不进 shell；applyConflictGate=ask(pause-first|abort-current) 裁决事件 TaskConflictResolved dedup 尾段判别）\n", schedState)
 	apiserverOpts := func() []apiserver.Option {
 		opts := apiserverOpts(metricsFace, secrets, store, dispLog, approvalSync, designDocs)
 		if sessionState != "off" && sessionState != "unregistered" {
