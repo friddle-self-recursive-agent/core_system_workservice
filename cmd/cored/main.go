@@ -37,6 +37,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/patrol"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/proposal"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/contextidx"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
@@ -215,8 +216,31 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())
 	}
 
+	// 上下文索引（v0.65 context P0）：启动全量构建 + repository Watch 增量更新（BUG-005
+	// 仅增量更新自身 chunk；分片按 Relevance≥rebuildThreshold 标 stale）。读侧派生不落库。
+	var ctxIndex *contextidx.Index
+	if store2 != nil {
+		ctxIndex = contextidx.New(store2, func() []string {
+			kinds := sch.ListKinds()
+			out := make([]string, 0, len(kinds))
+			for _, k := range kinds {
+				out = append(out, k.Name)
+			}
+			return out
+		})
+		if err := ctxIndex.Build(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "cored: 上下文索引构建失败（读面降级不崩——只读派生）: %v\n", err)
+		}
+		fmt.Fprintf(os.Stderr, "cored: 上下文索引=on（/v1/context/index|find|relevance 与 /v1/trace 读面——读侧派生零落库；分片 stale 阈值 env CORE_SYSTEM_CTX_REBUILD_THRESHOLD 缺省 75）\n")
+	}
+
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
+	// 上下文索引事件跟随（BUG-005：DocApplied→单对象 chunk 增量重切 + 分片按 Relevance≥
+	// rebuildThreshold 标 stale，不全量重建——写放大抑制的机械落点）。
+	if ctxIndex != nil {
+		go ctxIndex.Start(ctx, bus)
+	}
 	// 触发骨架（dispatch 接线：第二段 v0.12 订阅面动态化 → 第三段 v0.13 引擎主体第一段
 	// → 第四段 v0.14 引擎主体第二段：派发执行投影 → 第五段 v0.15 引擎主体第三段
 	// 真实拉起第一子段：workflow 触发面接线 → 第六段 v0.16 引擎主体第四段
@@ -696,6 +720,11 @@ func run() error {
 		// git 后端恒装配（git=内容版本权威）；sqlite 后端缺席=面 503 诚实降级（防御面词形）。
 		if gr, ok := store2.(*repository.GitRepo); ok {
 			opts = append(opts, apiserver.WithRevContent(gr))
+		}
+		// 上下文读面（v0.65 context P0 数据面 + trace 1:N 追踪——/v1/context/* 与 /v1/trace/*）：
+		// 索引=读侧派生内存结构（零 DocType/零落库/零写路径）；挂文档库即装配，face 缺席=503。
+		if store2 != nil {
+			opts = append(opts, apiserver.WithContextIdx(ctxIndex))
 		}
 		return opts
 	}
