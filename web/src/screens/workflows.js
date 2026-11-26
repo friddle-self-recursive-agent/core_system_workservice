@@ -341,8 +341,8 @@ function runScreen(el, ctx, name, no) {
     '</div>' +
     (canGate
       ? '<div class="dh-actions" style="margin-top:10px">' +
-        '<button class="btn sm primary" data-gate-act="grant">' + esc(tr('批准继续')) + '</button> ' +
-        '<button class="btn sm" data-gate-act="reject">' + esc(tr('驳回终止')) + '</button> ' +
+        '<button class="btn btn-primary sm" data-gate-act="grant">' + esc(tr('批准继续')) + '</button> ' +
+        '<button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(tr('驳回终止')) + '</button> ' +
         '<span class="small faint mono">' + esc(tr('批闸锚：')) + esc(gateAnchor) + '</span></div>'
       : '') +
     '</div>' +

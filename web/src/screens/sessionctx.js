@@ -211,8 +211,8 @@ function formHtml(m) {
     '<input class="inp" data-ctx-budget type="number" min="' + m.policy.minTakeBudget + '" max="' + m.policy.maxTakeBudget + '" step="500" value="' + m.takeBudget + tr('" title="提取预算（token 数）">') +
     tr('<input class="inp" data-ctx-tags placeholder="tag 集：tagType:tag 逗号/空格分隔（每类≤') + m.policy.maxTagsPerType + tr(' 总≤') + m.policy.maxTagsTotal + '）">' +
     tr('<input class="inp" data-ctx-note placeholder="分叉备注（可选）">') +
-    tr('<button class="btn primary sm" data-ctx-save>保存分叉</button>') +
-    '<button class="btn sm" data-ctx-revert' + (m.canRevert ? '' : ' disabled') + tr('>撤销上次</button>') +
+    tr('<button class="btn btn-secondary sm" data-ctx-save>保存分叉</button>') +
+    '<button class="btn btn-ghost sm" data-ctx-revert' + (m.canRevert ? '' : ' disabled') + tr('>撤销上次</button>') +
     '</div>';
 }
 

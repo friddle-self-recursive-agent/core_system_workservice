@@ -51,7 +51,8 @@ export function matchesApprovalFocus(it, focus) {
 }
 
 /** 待审行（对象键 + 稿来源 + diff 容器 + 批准/忽略；事件行同构=摘要+锚 chips+按钮组）。 */
-function itemHtml(it, focused = false) {
+function itemHtml(it, idx, focused = false) {
+  const approveCls = idx === 0 ? 'btn btn-primary sm' : 'btn btn-secondary sm';
   const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : '';
   if (it.kind === 'event') {
     const e = it.ev;
@@ -60,10 +61,10 @@ function itemHtml(it, focused = false) {
     const wfName = anchor ? String(anchor.split('/')[2] || '') : '';
     const route = involvedRoute(involved.split(',')[0] || '');
     const gateBtns = anchor
-      ? '<button class="btn sm primary" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('批准继续')) + '</button> ' +
-        '<button class="btn sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('驳回终止')) + '</button> '
-      : '<button class="btn sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('批准继续')) + '</button> ' +
-        '<button class="btn sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('驳回终止')) + '</button> ';
+      ? '<button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('批准继续')) + '</button> ' +
+        '<button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? '' : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('驳回终止')) + '</button> '
+      : '<button class="btn btn-secondary sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('批准继续')) + '</button> ' +
+        '<button class="btn btn-ghost btn-danger sm" disabled title="' + esc(tr('事件未携带 Workflow 锚')) + '">' + esc(tr('驳回终止')) + '</button> ';
     return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span>' +
       '<span class="h-right">' + chip(String(e.level || 'warn'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ''), 160)) + '</div>' +
@@ -72,7 +73,7 @@ function itemHtml(it, focused = false) {
       (wfName ? chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(wfName), 'acc', true, tr('Workflow 详情——批闸锚')) : '') +
       '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + gateBtns +
-      '<button class="btn sm" data-ap-ignore="' + esc(it.key) + '">' + esc(tr('忽略')) + '</button></div></div></div>';
+      '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + '">' + esc(tr('忽略')) + '</button></div></div></div>';
   }
   const d = it.draft;
   const scope = d.scope || 'global';
@@ -82,9 +83,9 @@ function itemHtml(it, focused = false) {
     '<span class="h-right">' + kindBadge(d.kind) + ' ' + chip(tr('稿: ') + (d.fieldManager || '—'), 'mute') + '</span></div>' +
     '<div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + tr('"><div class="small faint">diff 现读中…</div></div>') +
     '<div class="dh-actions" style="margin-top:10px">' +
-    '<button class="btn sm primary" data-ap-approve="' + esc(apKeyOf(d)) + tr('">批准（= Apply）</button> ') +
-    '<button class="btn sm" data-ap-ignore="' + esc(it.key) + tr('">忽略</button> ') +
-    '<button class="btn sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + tr('">编辑器</button>') +
+    '<button class="' + approveCls + '" data-ap-approve="' + esc(apKeyOf(d)) + tr('">批准（= Apply）</button> ') +
+    '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + tr('">忽略</button> ') +
+    '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + tr('">编辑器</button>') +
     '</div></div></div>';
 }
 
@@ -249,8 +250,8 @@ function approvalsScreen(el, ctx) {
       chip(tr('批量批准通路待后端词形——逐条批准（诚实注记）'), 'mute')) +
     focusBanner +
     (items.length
-      ? items.map((it) => itemHtml(it, !!focus && matchesApprovalFocus(it, focus))).join('')
-      : emptyBox(tr('待审区为空（草稿缓存与 ApprovalNeeded 归档均空）'), '', chipGo(tr('回 Welcome'), 'welcome', 'primary', false))) +
+      ? items.map((it, idx) => itemHtml(it, idx, !!focus && matchesApprovalFocus(it, focus))).join('')
+      : emptyBox(tr('待审区为空（草稿缓存与 ApprovalNeeded 归档均空）'), '', chipGo(tr('回 Welcome'), 'welcome', 'acc', false))) +
     tr('<div data-ap-ledger style="margin-top:20px"><div class="small faint">已决记录现读中…</div></div>') +
     tr('<h2 class="sec-title">收件箱（待你处理）</h2>') + inboxHtml(ctx) +
     '</div>';

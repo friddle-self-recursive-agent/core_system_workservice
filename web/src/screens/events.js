@@ -62,7 +62,7 @@ function eventRow(e) {
     '<div class="mr-main"><div>' + esc(String(e && e.type || tr('未命名事件'))) + ' ' + levelChip(e) + '</div>' +
     '<div class="mr-sub mono">' + invHtml + '</div></div>' +
     '<span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || '—') + '</span>' +
-    '<button class="btn sm" data-copy-id="' + esc(String(id)) + '"' +
+    '<button class="btn btn-ghost sm" data-copy-id="' + esc(String(id)) + '"' +
     (hasClipboard ? '' : ' disabled title="' + esc(tr('剪贴板不可用')) + '"') + '>' + esc(tr('复制 id')) + '</button>' +
     '</div>';
 }

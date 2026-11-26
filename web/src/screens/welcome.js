@@ -40,7 +40,7 @@ function loopCardHtml(data) {
   return '<div class="card report-loop"><div class="card-b">' +
     '<div class="report-loop-top">' + chip(tr('当前循环'), 'acc') + chips +
     '<span class="report-loop-acts"><span data-ignite-note></span>' +
-    '<button class="btn sm" data-ignite="1">' + esc(tr('触发事件')) + '</button></span>' +
+    '<button class="btn btn-secondary sm" data-ignite="1">' + esc(tr('触发事件')) + '</button></span>' +
     '</div></div></div>';
 }
 
@@ -152,11 +152,14 @@ function pendingRunRowHtml(x) {
     chip(x.phase, 'warn') +
     (x.started ? '<span class="small faint">' + esc(x.started) + '</span>' : '') +
     '</div>' +
-    '<div class="dr-side" style="display:flex;gap:6px;align-items:center">' +
-    (x.wf && x.run !== '' && x.run != null
-      ? '<button class="btn sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + '/r/' + encodeURIComponent(String(x.run)) + '">' + esc(tr('运行详情')) + '</button>' : '') +
-    '<button class="btn sm primary"' + btnAttrs('grant') + '>' + esc(tr('批准继续')) + '</button>' +
-    '<button class="btn sm"' + btnAttrs('reject') + '>' + esc(tr('驳回终止')) + '</button>' +
+    '<div class="dr-side">' +
+    /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
+     * 人批准前看不到 run 全貌）。 */
+    (x.wf && x.run != null && x.run !== ''
+      ? '<button class="btn btn-ghost sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + '/r/' + encodeURIComponent(String(x.run)) + '">' + esc(tr('运行详情')) + '</button>' : '') +
+    '<button class="btn btn-chip sm"' + btnAttrs('grant') + '>' + esc(tr('批准继续')) + '</button>' +
+    '<button class="btn btn-ghost btn-danger sm"' + btnAttrs('reject') + '>' + esc(tr('驳回终止')) + '</button>' +
+    '</div></div>';
     '</div></div>';
 }
 
@@ -344,7 +347,7 @@ function dashLayout(ctx, opts) {
   return '<div class="view-inner">' + (opts.head || '') +
     (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx, '') +
       '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(tr('打开对话线程')) + '</span></div></div>' : '') +
-    '<div class="dash-stats"' + (inboxCard ? '' : ' style="grid-template-columns:repeat(4,1fr)"') + '>' + stats + '</div>' +
+    '<div class="dash-stats' + (inboxCard ? '' : ' cols-4') + '">' + stats + '</div>' +
     '<div data-loop-box>' +
     '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(tr('当前循环'), 'mute') +
     tr('<span class="small faint">循环状态现读中…</span>') + '</div></div></div></div>' +

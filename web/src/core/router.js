@@ -47,7 +47,7 @@ export function createRouter(opts = {}) {
     return '<div class="view-inner">' +
       '<div class="empty"><div class="e-title">未知路径（' + segs.map((s) => s).join('/') + '）</div>' +
       '<div class="small faint">路由词形见控制台导航——或从 Welcome 进入。</div>' +
-      '<div class="e-act"><button class="btn primary" data-go="welcome">回 Welcome</button></div></div></div>';
+      '<div class="e-act"><button class="btn btn-primary" data-go="welcome">回 Welcome</button></div></div></div>';
   }
 
   const api = {
