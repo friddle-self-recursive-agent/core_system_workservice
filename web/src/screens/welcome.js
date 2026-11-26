@@ -327,7 +327,7 @@ function dashLayout(ctx, opts) {
     statCard(tr('进行中任务'), (store.tasks() || []).filter((x) => ['running', 'verifying'].includes(String((x && x.status && (x.status.phase || x.status)) || ''))).length, tr('任务中心'), 'tasks', '');
   return '<div class="view-inner">' + (opts.head || '') +
     (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx, '') +
-      '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(tr('打开对话线程')) + '</span></div></div>' : '') +
+      '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(tr('打开对话线程')) + '</span></div></div>' : '') +
     '<div class="dash-stats"' + (inboxCard ? '' : ' style="grid-template-columns:repeat(4,1fr)"') + '>' + stats + '</div>' +
     '<div data-loop-box>' +
     '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(tr('当前循环'), 'mute') +

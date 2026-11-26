@@ -53,7 +53,7 @@ const NAV_TREE = [
       ['proposals', '需求提案', '✦'],
     ],
     sub: { label: '基础设施', items: [
-      ['chat/root-agent', '会话', '💬'],
+      ['chat/core-headless', '会话', '💬'],
       ['tree', '系统树', '⑃'],
       ['docs', '文档库', '▤'],
       ['obj', '对象工作台', '▭'],

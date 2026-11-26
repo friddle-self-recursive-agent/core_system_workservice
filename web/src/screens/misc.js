@@ -104,7 +104,7 @@ function docsScreen(el, ctx) {
       docKinds.length ? '' : chip(tr('未注册声明 kind——全量枚举兜底'), 'mute')) +
     '<div class="card" style="margin-bottom:10px"><div class="card-b small">' +
     esc(tr('新建文档：对话提交需求（总览或会话屏）→ agent 起草 → Apply 落库——文档创建走对话+Apply，无独立表单。')) + ' ' +
-    chipGo(tr('打开对话'), 'chat/root-agent', 'acc', true, tr('在会话屏提交需求——agent 起草后 Apply 落库')) +
+    chipGo(tr('打开对话'), 'chat/core-headless', 'acc', true, tr('在会话屏提交需求——agent 起草后 Apply 落库')) +
     '</div></div>' +
     '<div class="filter-bar">' +
     tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +

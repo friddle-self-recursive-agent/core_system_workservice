@@ -105,7 +105,7 @@ export function renderMessage(msg, names) {
           }).join('') : '') +
         '<div class="concl-acts">' +
         '<button class="btn sm" data-doc-full="' + esc(String((m.refs && m.refs[0]) || '')) + '">' + esc(tr('完整文档模式')) + '</button>' +
-        '<button class="btn sm" data-go="chat/root-agent">' + esc(tr('写入草稿')) + '</button>' +
+        '<button class="btn sm" data-go="chat/core-headless">' + esc(tr('写入草稿')) + '</button>' +
         '</div></div>'
       : '<div class="msg-text">' + linkifyRefs(text, names) + '</div>') +
     (m.thinking ? expandBlock('<div class="msg-text faint">' + linkifyRefs(m.thinking, names) + '</div>', tr('思考过程')) : '') +
