@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventscope"
 	_ "modernc.org/sqlite" // 纯 Go sqlite 驱动（无 cgo；Core 单写者串行，吞吐足够）
 )
 
@@ -40,6 +41,7 @@ type EventLog struct {
 	DedupKey string
 	Severity string // event.md：log 式等级（debug/info/warn/error/fatal）
 	RoutedTo string // 命中的订阅方（空=死信）
+	Scope    string // metadata.scope 四层词（BUG-010，event.md 规则 19；旧行空=读侧按 involved 推导兜底）
 }
 
 // 审批判定闭合集（ops-log.md §2 v0.46：decision 扩展走迁移行不重写语义）。
@@ -215,6 +217,13 @@ CREATE INDEX IF NOT EXISTS session_heartbeat_updated ON session_heartbeat(update
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("opslog: session_heartbeat 升列 state: %w", err)
 	}
+	// 既有 DB 升级：event_log 补 scope 列（BUG-010，event.md 规则 19——Event 必带
+	// metadata.scope 的归档投影；幂等：duplicate column 容忍与既有升列同款口径）。
+	// 历史行 scope 缺省空=读侧按 involved 推导兜底（旧事件无损，不炸不回填写面）。
+	if _, err := s.db.Exec(`ALTER TABLE event_log ADD COLUMN scope TEXT NOT NULL DEFAULT ''`); err != nil &&
+		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("opslog: event_log 升列 scope: %w", err)
+	}
 	return nil
 }
 
@@ -247,12 +256,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 // AppendEvent 归档一条事件（event.md：归档=审计素材；debug 默认不入库只进内存队列，见 Bus）。
 func (s *SQLiteStore) AppendEvent(l EventLog) error {
-	const q = `INSERT INTO event_log (ts, event_id, type, source, involved, dedup_key, severity, routed_to)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO event_log (ts, event_id, type, source, involved, dedup_key, severity, routed_to, scope)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	if l.EventID == "" || l.Type == "" {
 		return errors.New("opslog: event_log 需要 event_id 与 type")
 	}
-	_, err := s.db.Exec(q, stamp(l.Ts), l.EventID, l.Type, l.Source, l.Involved, l.DedupKey, l.Severity, l.RoutedTo)
+	_, err := s.db.Exec(q, stamp(l.Ts), l.EventID, l.Type, l.Source, l.Involved, l.DedupKey, l.Severity, l.RoutedTo, l.Scope)
 	if err != nil {
 		return fmt.Errorf("opslog: 落 event_log: %w", err)
 	}
@@ -438,6 +447,12 @@ type EventQuery struct {
 	Until    time.Time // 时间上界严格不含（零值=不限）——v0.39 E7：向后分页游标（上一页最旧行 ts，
 	//  取 strictly-earlier 行实现翻页；与 Since 组合=半开窗 [since, until)）
 	Limit int // ≤0=缺省 50；>MaxEventLimit 收敛（读面防拖库——归档全量走重建/导出面）
+	// HiddenTypes 默认隐藏类型集（BUG-010 visibility 过滤——event.md 规则 18）：非 nil 且
+	// 行 type 命中集内=默认视窗剔除，仅 ShowInfra=true（调试显式展开）放行。集合由调用方
+	// 按 scheme 注册表现取（type→tier/visibility 唯一权威；未注册类型不在集内=按
+	// domain/default-visible 处理不误伤）。nil=不过滤（口径可关断，既有调用零迁移）。
+	HiddenTypes map[string]bool
+	ShowInfra   bool // true=HiddenTypes 过滤旁路（调试视图显式勾选 showInfra——规则 18②）
 }
 
 // MaxEventLimit 读面单次返回行数上限（防拖库；归档全量不属于查询面职责）。
@@ -453,9 +468,11 @@ const (
 )
 
 // QueryEvents event_log 归档行查询（最新优先：ts 降序，同刻按 rowid 降序——机械对账可复现）。
-// 不属于冻结 Store 接口，扩展走新方法（ops-log.md §2：具体实现方法不占冻结签名）。
+// visibility 过滤（BUG-010）：q.HiddenTypes 非空且 !q.ShowInfra 时，命中集内类型的行默认
+// 视窗剔除（event.md 规则 18——tier=infra 缺省 default-hidden 不混入默认事件流）。不属于
+// 冻结 Store 接口，扩展走新方法（ops-log.md §2：具体实现方法不占冻结签名）。
 func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
-	const q0 = `SELECT ts, event_id, type, source, involved, dedup_key, severity, routed_to FROM event_log`
+	const q0 = `SELECT ts, event_id, type, source, involved, dedup_key, severity, routed_to, scope FROM event_log`
 	rows, err := s.db.Query(q0)
 	if err != nil {
 		return nil, fmt.Errorf("opslog: 查询 event_log: %w", err)
@@ -472,11 +489,16 @@ func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
 	for rows.Next() {
 		var l EventLog
 		var ts string
-		if err := rows.Scan(&ts, &l.EventID, &l.Type, &l.Source, &l.Involved, &l.DedupKey, &l.Severity, &l.RoutedTo); err != nil {
+		if err := rows.Scan(&ts, &l.EventID, &l.Type, &l.Source, &l.Involved, &l.DedupKey, &l.Severity, &l.RoutedTo, &l.Scope); err != nil {
 			return nil, fmt.Errorf("opslog: 读 event_log 行: %w", err)
 		}
 		if l.Ts, err = time.Parse(time.RFC3339Nano, ts); err != nil {
 			return nil, fmt.Errorf("opslog: event_log.ts 解析 %q: %w", ts, err)
+		}
+		if l.Scope == "" {
+			// 旧行兜底（BUG-010 迁移口径）：升列前落的历史行 scope 空——读侧按 involved
+			// 推导回填投影，不炸不回写（DB 非权威，投影即可）。
+			l.Scope = eventscope.FromInvolved(l.Involved)
 		}
 		if q.Type != "" && l.Type != q.Type {
 			continue
@@ -492,6 +514,9 @@ func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
 		}
 		if !q.Until.IsZero() && !l.Ts.Before(q.Until) {
 			continue
+		}
+		if !q.ShowInfra && q.HiddenTypes[l.Type] {
+			continue // 默认视窗剔除（规则 18）：default-hidden 类型不混入，showInfra 显式展开
 		}
 		all = append(all, l)
 	}

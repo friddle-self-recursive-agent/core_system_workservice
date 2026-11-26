@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventscope"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
@@ -28,6 +29,10 @@ var (
 	// ErrDenied 发布权限域拒绝（publish × events；与 apply 写权限域分立——
 	// 对象 write 不产生发布权，发布权不产生对象 write）。
 	ErrDenied = errors.New("eventpub: 发布权限拒绝（动作=publish × 域=events）")
+	// ErrScope 显式声明的 scope 越出四层词汇（BUG-010，event.md 规则 19——事件必带
+	// 精确四层词 builtin|global|systems/<s>|systems/<s>/instances/<i>，野 scope 拒绝；
+	// 缺席不是错误——走 involved 派生回填）。
+	ErrScope = errors.New("eventpub: scope 不在四层词汇（builtin|global|systems/<s>|systems/<s>/instances/<i>）")
 )
 
 // SourceHuman 注入通道的来源标注（服务侧判定，载荷声明不采纳——event.md 规则 8）。
@@ -43,6 +48,9 @@ type Request struct {
 	Involved string // involvedRef 投影 kind/scope/name（可缺省：路由按类型照走，owner 解析为空）
 	Level    string // 可缺省：空=注册表 defaultLevel 投影；越词=拒绝
 	DedupKey string // 可缺省：空=ID（永不聚合，eventbus 既有口径）
+	Scope    string // 可缺省：metadata.scope 四层词显式声明（BUG-010，event.md 规则 19）；
+	// 空=按 involved 所属 scope 服务侧推导回填（FromInvolved——派生不出合法词=兜底 global）；
+	// 显式给出但越出四层词汇=拒绝（ErrScope，400）
 }
 
 // Publisher 事件发布面引擎（进程内单例，cored 装配；测试零值注入假总线）。
@@ -83,9 +91,19 @@ func (p *Publisher) Publish(req Request, sub *permission.Subject) (*eventbus.Eve
 	if !LevelVocabulary[level] {
 		return nil, fmt.Errorf("%w: %q", ErrLevel, level)
 	}
+	// metadata.scope（BUG-010，event.md 规则 19①）：显式声明先校验四层词汇（越词=拒绝
+	// 不静默归一）；缺席=服务侧按 involved 所属 scope 推导回填（总线 Publish 内同口径兜底，
+	// 这里先定形使回执 scope 与归档行一致——回执可回指）。
+	if req.Scope != "" && !eventscope.Valid(req.Scope) {
+		return nil, fmt.Errorf("%w: %q", ErrScope, req.Scope)
+	}
 	e := &eventbus.Event{
 		Type: req.Type, Source: SourceHuman, Involved: req.Involved,
 		Level: level, DedupKey: req.DedupKey,
+		Scope: req.Scope,
+	}
+	if e.Scope == "" {
+		e.Scope = eventscope.FromInvolved(e.Involved)
 	}
 	if err := p.Bus.Publish(e); err != nil {
 		return nil, err // ErrRejected（缺 type 已前置拦截，防御性透传）

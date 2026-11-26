@@ -192,6 +192,7 @@ type options struct {
 	inbox           InboxFace
 	designDocs      DesignDocs
 	sessionLiveness SessionLivenessFace
+	agentScopes     flowbind.AgentEventScopes // Agent 事件 scope 声明解析（BUG-010 消费闸——GET /v1/events?agent=）
 }
 
 // ProposalsSource 提案枚举源（v0.56 /v1/inbox 组装输入——读面走 ObjectSource.List 现读 +
@@ -248,6 +249,14 @@ func WithInboxFace(f InboxFace) Option {
 // docrepo.Set 满足。装配=--design-repo；写面随 --allow-apply 同开关）。
 func WithDesignDocs(d DesignDocs) Option {
 	return func(o *options) { o.designDocs = d }
+}
+
+// WithAgentEventScopes 注入 Agent 事件 scope 声明解析面（BUG-010 消费闸——
+// `GET /v1/events?agent=<锚>` 逐行过 flowbind.AgentScopeGate 同一判定；flowbind 派发闸
+// 与本面共用同一 Resolver 实例零双源）。nil=消费闸缺席：agent 参数 503（面注册但能力
+// 缺席，与事件归档面缺席同口径词形）。
+func WithAgentEventScopes(r flowbind.AgentEventScopes) Option {
+	return func(o *options) { o.agentScopes = r }
 }
 
 // compile 期校验：git 后端满足读半边，apply 引擎满足写口面，draft.Store 满足草稿口面，
@@ -345,6 +354,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	docHistory := o.docHistory
 	dispatch := o.dispatch
 	designDocs := o.designDocs
+	agentScopes := o.agentScopes
 	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
 	logApproval := func(l opslog.ApprovalLog) {
 		if approval == nil {
@@ -577,6 +587,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		ev, err := publisher.Publish(eventpub.Request{
 			Type: req.Type, Involved: req.Involved, Level: req.Level, DedupKey: req.DedupKey,
+			Scope: req.Scope,
 		}, subjectFrom(r, req.Subject))
 		if err != nil {
 			writePublishErr(w, err)
@@ -585,6 +596,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": ev.ID, "type": ev.Type, "dedupKey": ev.DedupKey,
 			"level": ev.Level, "source": ev.Source, "involved": ev.Involved,
+			"scope": ev.Scope, // metadata.scope 回执（BUG-010——显式声明或 involved 推导回填后的生效词）
 		})
 	})
 
@@ -979,7 +991,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 证据链；v1 规则版（generatedBy=rules，LLM 叙述/缓存/权限指纹后续段）。数据源=objects+
 	// runs+eventLog+inbox；face 缺席=degraded 报告（不 405，不空白）。只读 GET。
 	mux.HandleFunc("GET /v1/attention", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, attentionReport(r.Context(), objects, runs, o))
+		writeJSON(w, http.StatusOK, attentionReport(r.Context(), objects, runs, o, sch.HiddenEventTypes()))
 	})
 	// 通知中心收件箱投影面（v0.56 R-10——console-adoption.md §1.25「待你处理收件箱」页面兜底
 	// 首段 + notification.md 规则 6「未配置通知通道=仅页面展示」的机读落点）。四类判定分类
@@ -1158,16 +1170,25 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 只读投影恒开（face 随 ops DB 装配恒在）；旧构建（face 缺席路由未注册）经兜底 handler
 	// 返回 405=代际判别器。数据来源=归档（event.md：审计素材）， Welcome 最近重要事件与
 	// 事件流页（E6）共用本面——渲染数据无双源红线（console-adoption.md §5 规则 2）。
+	// visibility 过滤（BUG-010，event.md 规则 18）：默认视窗只出 tier≠infra（生效词形
+	// default-hidden）的类型——type→tier/visibility 映射以 scheme 注册表为唯一权威逐请求
+	// 现取（热刷新跟随；未注册类型不在隐藏集=按 domain/default-visible 处理不误伤）；
+	// `?showInfra=true` 显式展开（调试视图勾选）。`?agent=<锚>` 消费闸（BUG-010 规则 19③）：
+	// 逐行过 flowbind.AgentScopeGate 同一判定（与派发闸共用 Resolver）——Agent 会话取事件
+	// 越界行服务侧过滤（不可见即不可消费），行级拦截不逐条告警（请求级注记一次）。
 	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		if eventLog == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "事件归档查询面未接线（装配缺 ops DB 口面）"})
 			return
 		}
+		hidden := sch.HiddenEventTypes() // 注册表现取（type→tier/visibility 唯一权威；未注册不误伤）
 		q := opslog.EventQuery{
-			Type:     r.URL.Query().Get("type"),
-			Level:    r.URL.Query().Get("level"),
-			Involved: r.URL.Query().Get("involved"),
-			Limit:    atoiDefault(r.URL.Query().Get("limit"), 0),
+			Type:        r.URL.Query().Get("type"),
+			Level:       r.URL.Query().Get("level"),
+			Involved:    r.URL.Query().Get("involved"),
+			Limit:       atoiDefault(r.URL.Query().Get("limit"), 0),
+			HiddenTypes: hidden,
+			ShowInfra:   r.URL.Query().Get("showInfra") == "true",
 		}
 		if raw := r.URL.Query().Get("since"); raw != "" {
 			t, err := time.Parse(time.RFC3339, raw)
@@ -1185,20 +1206,47 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 			}
 			q.Until = t
 		}
+		// 消费闸（BUG-010 规则 19③）：agent 参数给出=Agent 取事件视窗，行级过闸过滤。
+		var consumer string
+		if raw := r.URL.Query().Get("agent"); raw != "" {
+			if agentScopes == nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "消费闸未接线（装配缺 Agent scope 解析面——cored 缺文档库）"})
+				return
+			}
+			consumer = raw
+		}
 		rows, err := eventLog.QueryEvents(q)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		gate := &flowbind.AgentScopeGate{Resolver: agentScopes}
+		blocked := 0
 		items := make([]map[string]any, 0, len(rows))
 		for _, e := range rows {
+			if consumer != "" {
+				ok, blk := gate.JudgeConsume(e.Scope, consumer)
+				if !ok {
+					blocked++ // 越界行不投毒给消费面：服务侧过滤（不可见即不可消费——规则 19③）
+					log.Printf("apiserver: %s\n", blk.BlockedNote())
+					continue
+				}
+			}
+			tier, visibility := eventTierOf(sch, e.Type)
 			items = append(items, map[string]any{
 				"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
 				"type": e.Type, "source": e.Source, "involved": e.Involved,
 				"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
+				"scope": e.Scope, // metadata.scope 投影（BUG-010——归档行强制携带，旧行读侧推导兜底）
+				"tier": tier, "visibility": visibility, // 分层/展示词形随行（规则 18——机读判据）
 			})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "events": items})
+		resp := map[string]any{"count": len(items), "events": items}
+		if consumer != "" {
+			resp["agent"] = consumer
+			resp["scopeBlocked"] = blocked // 请求级拦截注记（可见不静默；行级不逐条刷屏）
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 	// workflow 运行管理聚合面（v0.37 console 读面第二段，E3——cored-bridge.md §2
 	// `GET /v1/workflows`）：三源同投（① 声明=builtin 注册表+文档库 Workflow 对象；
@@ -1601,6 +1649,7 @@ type eventsRequest struct {
 	Involved string          `json:"involved"`
 	Level    string          `json:"level"`
 	DedupKey string          `json:"dedupKey"`
+	Scope    string          `json:"scope"` // 可选：metadata.scope 四层词显式声明（BUG-010；越词 400，缺席按 involved 推导）
 	Source   string          `json:"source"` // 载荷声明不采纳：非 human 值直接拒绝（来源=服务侧判定）
 	Subject  *subjectRequest `json:"subject"`
 }
@@ -1613,11 +1662,20 @@ func writePublishErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, eventpub.ErrDenied):
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
 	case errors.Is(err, eventpub.ErrNoType), errors.Is(err, eventpub.ErrLevel),
-		errors.Is(err, eventbus.ErrRejected):
+		errors.Is(err, eventpub.ErrScope), errors.Is(err, eventbus.ErrRejected):
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
+}
+
+// eventTierOf type→(tier, visibility) 投影（BUG-010，event.md 规则 18——注册表唯一权威；
+// 未注册类型=domain/default-visible 缺省词形，不误伤野类型/旧类型行）。
+func eventTierOf(sch *scheme.Scheme, typ string) (string, string) {
+	if et, err := sch.LookupEventType(typ); err == nil {
+		return et.EffectiveTier(), et.EffectiveVisibility()
+	}
+	return scheme.TierDomain, scheme.VisibilityDefaultVisible
 }
 
 // draftRequest POST /v1/drafts 请求体（cored-bridge.md §2.2）。

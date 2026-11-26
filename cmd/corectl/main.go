@@ -459,6 +459,7 @@ func (a *app) cmdEvents(args []string) int {
 	level := fs.String("level", "", "等级 debug|info|warn|error|fatal")
 	limit := fs.Int("limit", 50, "条数上限（≤500）")
 	since := fs.String("since", "", "起始时间 RFC3339")
+	showInfra := fs.Bool("show-infra", false, "展开 tier=infra/default-hidden 底层节拍事件（Heartbeat/ReconcileTick 缺省不展示——BUG-010）")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -471,6 +472,9 @@ func (a *app) cmdEvents(args []string) int {
 	}
 	if *since != "" {
 		q.Set("since", *since)
+	}
+	if *showInfra {
+		q.Set("showInfra", "true")
 	}
 	q.Set("limit", fmt.Sprint(*limit))
 	raw, err := a.request(http.MethodGet, "/v1/events?"+q.Encode(), nil)
@@ -912,6 +916,7 @@ type eventBody struct {
 	Involved string   `json:"involved,omitempty"`
 	Level    string   `json:"level,omitempty"`
 	DedupKey string   `json:"dedupKey,omitempty"`
+	Scope    string   `json:"scope,omitempty"` // metadata.scope 四层词显式声明（BUG-010；空=服务端按 involved 派生）
 	Subject  *subject `json:"subject,omitempty"`
 }
 
@@ -938,6 +943,7 @@ func (a *app) cmdEventPublish(args []string) int {
 	involved := fs.String("involved", "", "involvedRef kind/scope/name")
 	level := fs.String("level", "", "level（缺省=注册表 defaultLevel）")
 	dedup := fs.String("dedup", "", "去重键（缺省=事件 id）")
+	scope := fs.String("scope", "", "metadata.scope 四层词（builtin|global|systems/<s>|systems/<s>/instances/<i>；缺省按 involved 派生）")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -946,7 +952,7 @@ func (a *app) cmdEventPublish(args []string) int {
 		return 2
 	}
 	raw, err := a.request(http.MethodPost, "/v1/events", eventBody{
-		Type: *typ, Involved: *involved, Level: *level, DedupKey: *dedup, Subject: &a.subject,
+		Type: *typ, Involved: *involved, Level: *level, DedupKey: *dedup, Scope: *scope, Subject: &a.subject,
 	})
 	if err != nil {
 		return fail(a, err)

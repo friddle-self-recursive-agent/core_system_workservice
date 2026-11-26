@@ -42,13 +42,48 @@ type DocType struct {
 	Admission string   `yaml:"admission,omitempty" json:"admission,omitempty"`
 }
 
-// EventType 事件类型注册项。
+// EventType 事件类型注册项（v0.5x 事件分诊 + BUG-010 分层/展示词形：tier/visibility
+// 行可选字段——concepts/event.md 规则 18；core/scheme.yaml eventTypes 行同构）。
 type EventType struct {
 	Type         string `yaml:"type" json:"type"`
 	Source       string `yaml:"source" json:"source"`
 	DefaultLevel string `yaml:"defaultLevel,omitempty" json:"defaultLevel,omitempty"`
 	Dedup        string `yaml:"dedup,omitempty" json:"dedup,omitempty"`
 	Route        string `yaml:"route" json:"route"`
+	Tier         string `yaml:"tier,omitempty" json:"tier,omitempty"`             // infra|domain|attention（缺省 domain）
+	Visibility   string `yaml:"visibility,omitempty" json:"visibility,omitempty"` // default-visible|default-hidden（tier=infra 缺省 default-hidden）
+}
+
+// 事件分层与展示词汇（event.md 规则 18：凡 tier=infra 缺省 default-hidden——默认在
+// 事件流/关注报告/第一段侦察中隐藏，仅调试显式开启 showInfra 展开；attention 异常族
+// （HeartbeatLost/SessionStalled/Escalate）恒默认上屏）。
+const (
+	TierInfra     = "infra"
+	TierDomain    = "domain"
+	TierAttention = "attention"
+
+	VisibilityDefaultVisible = "default-visible"
+	VisibilityDefaultHidden  = "default-hidden"
+)
+
+// EffectiveTier 分层生效词（注册行缺省词形=domain，与 scheme.yaml 行注释同源）。
+func (e EventType) EffectiveTier() string {
+	if e.Tier == "" {
+		return TierDomain
+	}
+	return e.Tier
+}
+
+// EffectiveVisibility 展示生效词：显式声明优先；缺席按 tier 投影（tier=infra→
+// default-hidden，其余→default-visible——event.md 规则 18② 的缺省词形）。
+func (e EventType) EffectiveVisibility() string {
+	if e.Visibility != "" {
+		return e.Visibility
+	}
+	if e.EffectiveTier() == TierInfra {
+		return VisibilityDefaultHidden
+	}
+	return VisibilityDefaultVisible
 }
 
 // DispatchRule 事件路由规则（穷举缺省 + 死信兜底，concepts/event.md）。
@@ -164,6 +199,18 @@ func (s *Scheme) validate() error {
 			return fmt.Errorf("scheme: eventType %q 重复注册", e.Type)
 		}
 		seenEvent[e.Type] = true
+		// tier/visibility 行可选词形校验（BUG-010，event.md 规则 18——出现即校验枚举，
+		// 未知词拒绝启动；缺席=缺省词形投影见 EffectiveTier/EffectiveVisibility）。
+		switch e.Tier {
+		case "", TierInfra, TierDomain, TierAttention:
+		default:
+			return fmt.Errorf("scheme: eventType %q tier %q 不在词汇表（infra|domain|attention）", e.Type, e.Tier)
+		}
+		switch e.Visibility {
+		case "", VisibilityDefaultVisible, VisibilityDefaultHidden:
+		default:
+			return fmt.Errorf("scheme: eventType %q visibility %q 不在词汇表（default-visible|default-hidden）", e.Type, e.Visibility)
+		}
 	}
 	for i, r := range s.Spec.Dispatch {
 		if r.On == "" || r.Dispatch == "" {
@@ -218,6 +265,23 @@ func (s *Scheme) LookupEventType(typ string) (*EventType, error) {
 		}
 	}
 	return nil, fmt.Errorf("scheme: 事件类型 %q 未注册", typ)
+}
+
+// HiddenEventTypes 默认隐藏事件类型集（BUG-010 visibility 过滤投影——event.md 规则 18）：
+// 注册表内生效词形为 default-hidden 的类型集合（tier=infra 缺省词形随行）。读面过滤用：
+// 事件行只存 type 字符串，type→tier/visibility 映射以本表为唯一权威；**未注册类型不在
+// 集内=按 domain/default-visible 处理（不误伤）**。scheme 热刷新（Replace）后下次调用
+// 反映新表——调用方逐请求现取，零缓存。
+func (s *Scheme) HiddenEventTypes() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := map[string]bool{}
+	for _, e := range s.Spec.EventTypes {
+		if e.EffectiveVisibility() == VisibilityDefaultHidden {
+			out[e.Type] = true
+		}
+	}
+	return out
 }
 
 // ListKinds 返回全部已注册对象类型（只读清单，含 R-UX-2 widgets 投影）。
