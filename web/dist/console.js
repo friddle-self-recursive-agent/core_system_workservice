@@ -1826,14 +1826,6 @@ var CoreConsole = (() => {
   function statCard(label, num, sub, route, cls) {
     return '<div class="stat ' + esc(cls || "") + '" data-go="' + esc(route) + '" role="link"><div class="st-num">' + esc(fmtNum(num)) + '</div><div class="st-label">' + esc(label) + '<span class="small faint">' + esc(sub || "") + "</span></div></div>";
   }
-  function kindCard(kindRow, refs) {
-    const k = kindRow && (kindRow.name || kindRow.kind);
-    if (!k) return "";
-    const rows = refs.filter((r) => r.kind === k);
-    const first = rows[0];
-    const firstHtml = first ? chipGo(first.name, objRoute(first.kind, first.scope, first.name), "mute", true, first.kind + "/" + first.scope + "/" + first.name) : chip(t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61"), "mute");
-    return '<div class="w-svc" data-go="' + esc(rows.length ? objRoute(k, rows[0].scope, rows[0].name) : "docs") + '" role="link"><div class="ws-main"><div class="ws-title">' + esc(k) + '</div><div class="ws-desc">' + esc(rows.length ? t("\u9996\u4E2A\uFF1A") + (first ? first.scope + "/" + first.name : "\u2014") : t("\u8BE5 kind \u6682\u65E0\u5BF9\u8C61")) + '</div></div><span class="ws-chip">' + chip(String(rows.length) + t(" \u4E2A"), rows.length ? "acc" : "mute") + "</span></div>";
-  }
   function loopCardHtml(data) {
     const d = data && typeof data === "object" ? data : {};
     const fields = [
@@ -1861,25 +1853,79 @@ var CoreConsole = (() => {
     }
     box.innerHTML = loopCardHtml(r.data);
   }
+  function zoneHead(label, route) {
+    return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
+  }
+  function runningWorkflowsHtml(ctx2) {
+    const runs = ctx2.store.runs().filter((r) => {
+      const st = String(r && (r.status || r.state) || "");
+      return st && st !== "done" && st !== "failed" && st !== "canceled";
+    }).slice(0, 8);
+    const rows = runs.map((r) => {
+      const wf = String(r.workflow || r.wf || "\u2014");
+      const phase = String(r.phase || r.state || "\u2014");
+      const st = String(r.status || "");
+      const started = r.startedAt ? relAge(r.startedAt) || "" : "";
+      const route = r.workflow ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(r.run != null ? r.run : "")) : "workflows";
+      return '<div class="dash-row" data-go="' + esc(route) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b><span class="small faint">#' + esc(String(r.run != null ? r.run : "\u2014")) + '</span></div><div class="dr-side">' + chip(phase, st === "running" ? "acc" : "mute") + (started ? '<span class="small faint">' + esc(started) + "</span>" : "") + "</div></div>";
+    }).join("");
+    return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
+  }
+  function pendingApprovalsHtml(ctx2) {
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({
+      src: "draft",
+      t: d.updatedAt || d.ts || null,
+      go: "doc/" + encodeURIComponent(d.kind) + "/" + encodeURIComponent(d.scope || "global") + "/" + encodeURIComponent(d.name),
+      title: d.kind + "/" + (d.scope || "global") + "/" + d.name,
+      tag: t("\u7A3F")
+    }));
+    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).slice(0, 8).map((e) => ({
+      src: "ev",
+      t: e.ts || null,
+      go: "event/" + encodeURIComponent(String(e.id ?? "")),
+      title: e.type + " \xB7 " + String(e.involved || ""),
+      tag: e.type === "ApprovalNeeded" ? t("\u5F85\u5BA1") : t("\u5347\u7EA7")
+    }));
+    const rows = drafts.concat(evs).sort((a, b) => String(b.t || "").localeCompare(String(a.t || ""))).slice(0, 8).map((x) => '<div class="dash-row" data-go="' + esc(x.go) + '" role="link"><div class="dr-main">' + chip(x.tag, x.src === "draft" ? "warn" : "esc") + '<b class="mono">' + esc(trunc(x.title, 34)) + "</b></div>" + (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || "") + "</span></div>" : "") + "</div>").join("");
+    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09")) + "</div></div>";
+    return '<div class="card">' + rows + "</div>";
+  }
+  function agentsHtml(ctx2, filterAgents) {
+    const objs = ctx2.store.objects();
+    let agents = objs.filter((o) => o.kind === "Agent").map((o) => ({ name: o.name, scope: o.scope || "global", route: objRoute("Agent", o.scope || "global", o.name) }));
+    if (filterAgents && filterAgents.length) agents = agents.filter((a) => filterAgents.includes(a.name));
+    const sessions = ctx2.store.sessions();
+    const rows = agents.map((a) => {
+      const sess = sessions.find((s) => String(s && (s.agent || s.route) || "").includes(a.name)) || sessions.find((s) => String(s && s.id || "") === a.name);
+      const state = sess ? String(sess.state || sess.status || "") : "";
+      return '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(a.name)) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b><span class="small faint">' + esc(a.scope) + '</span></div><div class="dr-side">' + (state ? chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : chip(t("\u65E0\u4F1A\u8BDD"), "mute")) + "</div></div>";
+    }).join("");
+    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E")) + "</div></div>";
+    return '<div class="card">' + rows + "</div>";
+  }
+  function dashLayout(ctx2, opts) {
+    const store2 = ctx2.store;
+    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded").length, t("\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + statCard(t("\u6536\u4EF6\u7BB1"), (store2.inbox() || []).length, t("\u5F85\u4F60\u5904\u7406"), "inbox", "") + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(String(x && x.status && (x.status.phase || x.status) || ""))).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
+    return '<div class="view-inner">' + (opts.head || "") + '<div class="dash-stats">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
+  }
   function render(el, ctx2) {
-    const st = ctx2.store;
-    if (!st.isReady) {
-      el.innerHTML = '<div class="view-inner welcome"><div class="w-hello"><h1>Welcome</h1></div>' + emptyBox(t("\u5FEB\u7167\u88C5\u8F7D\u4E2D\u2026"), t("\u6B63\u5728\u5EFA\u7ACB /v1/snapshot \u57FA\u7EBF\uFF08\u8FDE\u63A5\u5EFA\u7ACB\u5373\u63A8\u5168\u91CF\uFF09")) + "</div>";
-      return;
+    el.innerHTML = dashLayout(ctx2, {
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>"
+    });
+    hydrateLoop(el, ctx2);
+  }
+  function renderService(el, ctx2) {
+    const name = String(ctx2.params.name || "");
+    const sd = ctx2.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
+    let agents = [];
+    if (sd && typeof sd.content === "string") {
+      agents = [...String(sd.content).matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
     }
-    const objs = st.objects();
-    const kinds = st.kinds();
-    const kindsList = kinds.length ? kinds : Array.from(new Set(objs.map((o) => o.kind))).map((k) => ({ name: k }));
-    const drafts = st.drafts();
-    const events = st.events();
-    const tasks = st.tasks();
-    const inbox = st.inbox();
-    const inboxN = inbox ? Array.isArray(inbox.items) ? inbox.items.length : Number(inbox.total) || 0 : 0;
-    const approvalN = drafts.length + events.filter((e) => e && e.type === "ApprovalNeeded").length;
-    const runningN = tasks.filter((t2) => t2 && t2.status && t2.status.phase === "running").length;
-    const kindCards = kindsList.slice(0, 12).map((k) => kindCard(k, objs)).join("");
-    const kindMore = kindsList.length > 12 ? t('<div class="small faint" style="grid-column:1/-1">\u2026\u53E6\u6709 ') + (kindsList.length - 12) + t(" \u4E2A kind\u2014\u2014\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u5DE6\u4FA7\u6E05\u5355\u3002</div>") : "";
-    el.innerHTML = '<div class="view-inner welcome"><div class="w-hello"><h1>Welcome</h1><span class="w-date mono">' + esc((/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) + '</span><span class="w-conn" data-conn-slot></span></div><div class="statbar">' + statCard(t("\u5728\u518C\u5BF9\u8C61"), objs.length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj") + statCard("kinds", kindsList.length, t("scheme \u6CE8\u518C"), "docs") + statCard(t("\u4E8B\u4EF6\uFF08\u7A97\u53E3\u5185\uFF09"), events.length, t("\u5F52\u6863\u884C"), "events") + statCard(t("\u5F85\u5BA1"), approvalN, approvalN ? t("\u8349\u7A3F\u222A\u5BA1\u6279\u4E8B\u4EF6\u2014\u2014\u70B9\u51FB\u5904\u7406") : t("\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09"), "approvals", approvalN ? "alert" : "") + statCard(t("\u6536\u4EF6\u7BB1"), inboxN, inboxN ? t("\u5F85\u4F60\u5904\u7406") : t("\u6682\u65E0\u5F85\u529E"), "inbox", inboxN ? "alert" : "") + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), runningN, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks") + "</div>" + t('<h2 class="sec-title">kinds \u6458\u8981</h2>') + (objs.length || kindsList.length ? '<div class="w-services">' + kindCards + kindMore + "</div>" : emptyBox(t("\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E"), t("\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u6216 patch \u589E\u91CF"))) + t('<h2 class="sec-title">\u5F53\u524D\u5FAA\u73AF</h2>') + '<div data-loop-box="pending">' + emptyBox(t("\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026")) + "</div>" + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\u5BF9\u8C61\u6B63\u6587\u6309 resourceVersion \u7F13\u5B58\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\uFF09\u3002</div>") + "</div>";
+    el.innerHTML = dashLayout(ctx2, {
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u5373\u843D\u6B64\u89C6\u56FE\uFF09")) + "</span></div>",
+      coreAgents: agents.length ? agents : null,
+      foot: '<div class="card"><div class="card-b"><div class="small faint">' + (sd ? esc(t("ServiceDesc \u5728\u518C\u2014\u2014agents=")) + esc(agents.join(", ") || "\u2014") : esc(t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09"))) + "</div></div></div>"
+    });
     hydrateLoop(el, ctx2);
   }
 
@@ -10338,6 +10384,9 @@ ${text2}</tr>
   }
 
   // src/screens/editor.js
+  function aiFaces() {
+    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
+  }
   var ED = /* @__PURE__ */ new Map();
   var saveTimers = /* @__PURE__ */ new Map();
   var notice = "";
@@ -10433,6 +10482,38 @@ ${text2}</tr>
     const box = document.querySelector("[data-ed-rail]");
     const ed = ED.get(key);
     if (!box || !ed) return;
+    if (ed.tab === "ai") {
+      const f = aiFaces();
+      const canAi = !!(f && typeof f.docFix === "function");
+      box.innerHTML = t('<div class="card-h"><span class="h-title">AI \u4FEE\u6587\u6863</span></div><div class="card-b">') + '<div class="small faint">' + esc(t("\u6D41\u7A0B\uFF1A\u5199\u4FEE\u6539\u610F\u56FE \u2192 AI \u51FA\u5168\u6587\u5EFA\u8BAE \u2192 \u5199\u5165\u8349\u7A3F \u2192 \u53F3\u4E0B Apply\uFF08\u4E50\u89C2\u9501+\u9884\u68C0\u7167\u8D70\u2014\u2014AI \u65E0\u7279\u6743\uFF09\u3002")) + '</div><textarea class="inp" data-ai-prompt rows="3" style="width:100%;margin-top:8px" placeholder="' + esc(t("\u4FEE\u6539\u610F\u56FE\uFF0C\u5982\uFF1A\u8865\u5145 X \u8282\uFF1B\u4FEE\u6B63 Y \u5904\u53E3\u5F84\u2026")) + '"></textarea><button class="btn primary sm" data-ai-ask style="margin-top:8px"' + (canAi ? "" : " disabled") + ">" + esc(t("\u8BF7\u6C42 AI \u5EFA\u8BAE")) + '</button><div data-ai-out style="margin-top:10px">' + (canAi ? '<div class="small faint">' + esc(t("\u5EFA\u8BAE\u5C06\u73B0\u8BFB\u4E8E\u6B64\u2014\u2014\u5199\u5165\u8349\u7A3F\u540E\u8D70\u65E2\u6709 Apply \u901A\u8DEF\u3002")) + "</div>" : '<div class="small faint">' + esc(t("AI \u901A\u9053\u672A\u6CE8\u5165\uFF08__CC.chatFaces.docFix \u7F3A\u5E2D\uFF09\u2014\u2014\u53EF\u5728\u300C\u539F\u6587\u300D\u89C6\u56FE\u624B\u7F16\uFF0C\u6216\u7ECF\u4F1A\u8BDD\u5C4F\u5BF9\u8BDD\u540E\u4EBA\u5DE5\u8D34\u56DE\u3002"))) + "</div></div>";
+      const askBtn = box.querySelector("[data-ai-ask]");
+      if (askBtn) askBtn.addEventListener("click", async () => {
+        const promptTa = box.querySelector("[data-ai-prompt]");
+        const out = box.querySelector("[data-ai-out]");
+        if (!promptTa || !out) return;
+        const intent = promptTa.value.trim();
+        if (!intent) return;
+        askBtn.disabled = true;
+        out.innerHTML = '<div class="small faint">' + esc(t("AI \u73B0\u8BFB\u4E2D\u2026")) + "</div>";
+        try {
+          const sug = await f.docFix(intent, { kind: ed.ref.kind, scope: ed.ref.scope, name: ed.ref.name, base: ed.working });
+          const text2 = String(sug == null ? "" : sug);
+          if (!text2.trim()) throw new Error(t("\u7A7A\u5EFA\u8BAE"));
+          out.innerHTML = '<div class="small faint">' + esc(t("AI \u5EFA\u8BAE\u5DF2\u5230\uFF08")) + text2.length + ' B\uFF09</div><pre class="mono small" style="max-height:220px;overflow:auto;border:1px solid var(--bd,#2a2f3a);padding:8px;border-radius:8px">' + esc(trunc(text2, 4e3)) + '</pre><button class="btn primary sm" data-ai-apply style="margin-top:8px">' + esc(t("\u5199\u5165\u8349\u7A3F")) + "</button>";
+          out.querySelector("[data-ai-apply]").addEventListener("click", () => {
+            ed.working = text2;
+            paintBody(ed.ref.kind + "/" + (ed.ref.scope || "global") + "/" + ed.ref.name);
+            paintBadges(ed.ref.kind + "/" + (ed.ref.scope || "global") + "/" + ed.ref.name);
+            out.innerHTML = '<div class="small faint">' + esc(t("\u5DF2\u5199\u5165\u8349\u7A3F\u2014\u2014\u53F3\u4E0B Apply \u843D\u5E93\uFF08\u4E50\u89C2\u9501\u7167\u8D70\uFF09\u3002")) + "</div>";
+          });
+        } catch (e) {
+          out.innerHTML = '<div class="small faint">' + esc(t("AI \u5EFA\u8BAE\u5931\u8D25\uFF08")) + esc(String(e && e.message || e)) + "\uFF09</div>";
+        } finally {
+          askBtn.disabled = false;
+        }
+      });
+      return;
+    }
     if (ed.tab === "history") {
       const rows = ctx2.store.events().filter((e) => e && String(e.involved || "").includes(ed.ref.name));
       box.innerHTML = t('<div class="card-h"><span class="h-title">\u5386\u53F2</span></div><div class="card-b">') + (rows.length ? rows.slice(0, 30).map((e) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 50)) + '</div></div><span class="w-ev-time mono">' + esc(String((e.ts || e.at || e.time || "").slice(0, 16))) + "</span></div>").join("") : t('<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
@@ -10473,7 +10554,7 @@ ${text2}</tr>
   function editorScreen(el, ctx2, key) {
     const ed = ED.get(key.key);
     const view = ed ? ed.view : "render";
-    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09") : t("\u6CE8\u6C34\u4E2D\u2026")) + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
+    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small">' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09") : t("\u6CE8\u6C34\u4E2D\u2026")) + '</span></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
     paintNotice();
     if (ed && ed.loaded) {
       paintBody(key.key);
@@ -10803,14 +10884,21 @@ ${text2}</tr>
   function faces() {
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
+  function hostUiUrl() {
+    try {
+      return location.origin + "/?embedded=1";
+    } catch {
+      return "/";
+    }
+  }
   function sessionRow(s, activeId) {
     const id = String(s && (s.id || s.sessionId || ""));
     if (!id) return "";
     const state = String(s && (s.state || s.status) || "");
     const cls = state === "suspected-stall" || state === "escalated" ? "esc" : state ? "acc" : "mute";
-    return '<div class="mini-row' + (id === String(activeId || "") ? " sel" : "") + '" data-sess="' + esc(id) + '"><div class="mr-main"><div><b class="mono">' + esc(trunc(id, 34)) + "</b> " + (state ? chip(state, cls) : "") + '</div><div class="mr-sub small">' + esc(String(s && (s.agent || s.route) || "\u2014")) + (s && s.startedAt ? " \xB7 " + esc(relAge(s.startedAt) || "") : "") + "</div></div></div>";
+    return '<div class="mini-row' + (id === String(activeId || "") ? " sel" : "") + '" data-sess="' + esc(id) + '"><div class="mr-main"><div><b class="mono">' + esc(trunc(id, 30)) + "</b> " + (state ? chip(state, cls) : "") + '</div><div class="mr-sub small">' + esc(String(s && (s.agent || s.route) || "\u2014")) + (s && s.startedAt ? " \xB7 " + esc(relAge(s.startedAt) || "") : "") + "</div></div></div>";
   }
-  function sessionList(ctx2, activeId) {
+  function sessionList(ctx2, activeId, agent) {
     const f = faces();
     let rows = null;
     if (f && typeof f.sessions === "function") {
@@ -10821,45 +10909,44 @@ ${text2}</tr>
       }
     }
     if (!Array.isArray(rows)) rows = ctx2.store.sessions();
+    if (agent) rows = rows.filter((s) => !s || !s.agent || String(s.agent) === agent);
     const list2 = rows.map((s) => sessionRow(s, activeId)).filter(Boolean);
     if (!list2.length) {
-      return t('<div class="card"><div class="card-b"><div class="small faint">\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u5F97') + (f ? "" : t("\uFF08faces \u672A\u6CE8\u5165\u4E14\u5FEB\u7167 sessions \u7F3A\u5E2D\uFF09")) + t("\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\u4F1A\u8BDD\u3002</div></div></div>");
+      return '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u5F97")) + (f ? "" : esc(t("\uFF08faces \u672A\u6CE8\u5165\u4E14\u5FEB\u7167 sessions \u7F3A\u5E2D\uFF09"))) + esc(t("\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\u4F1A\u8BDD\u3002")) + "</div></div></div>";
     }
-    return '<div class="card">' + list2.join("") + "</div>";
+    return '<div class="card sess-list">' + list2.join("") + "</div>";
   }
-  function transcript(ctx2, id) {
-    const f = faces();
-    if (f && typeof f.transcript === "function") {
+  function hostEmbedHtml(agent) {
+    return '<div class="host-embed-wrap"><div class="host-embed-bar">' + chip(t("\u5BBF\u4E3B\u539F\u751F\u754C\u9762"), "acc") + '<span class="small faint">' + esc(t("\u6D88\u606F\u6D41/tool \u6298\u53E0/composer \u5168\u5957\u590D\u7528\u5BBF\u4E3B DeepSeek \u98CE\u683C\u754C\u9762\uFF08\u540C\u6E90\u5D4C\u5165\u95E8\u724C\u5DF2\u5171\u4EAB\uFF09")) + '</span><button class="btn sm" data-host-open>' + esc(t("\u65B0\u7A97\u53E3\u6253\u5F00")) + '</button></div><iframe class="host-embed" src="' + esc(hostUiUrl()) + '" data-host-frame referrerpolicy="same-origin" allow="clipboard-write"></iframe>' + (agent ? '<div class="small faint" style="margin-top:6px">' + esc(t("agent=")) + '<code class="mono">' + esc(agent) + "</code> \xB7 " + esc(t("\u5728\u539F\u751F\u754C\u9762\u4FA7\u680F\u9009\u62E9\u8BE5 agent \u7684\u4F1A\u8BDD\uFF1BCLI \u901A\u8DEF\uFF1A")) + '<code class="mono">corectl chat ' + esc(agent) + "</code></div>" : "") + "</div>";
+  }
+  function bindHostOpen(el) {
+    const btn = el.querySelector("[data-host-open]");
+    if (btn) btn.addEventListener("click", () => {
       try {
-        const html3 = f.transcript(id, ctx2);
-        if (html3) return String(html3);
+        window.open(hostUiUrl(), "_blank");
       } catch {
       }
-    }
-    return t('<div class="ob-empty">\u8F6C\u5F55\u9762\u672A\u88C5\u914D\u2014\u2014\u5BBF\u4E3B\u6CE8\u5165 window.__CC.chatFaces \u540E\u73B0\u8BFB\uFF1B') + t("\u4F1A\u8BDD\u539F\u6587\u4E0D\u5165\u516C\u5171\u5E93\uFF08intake \u7559\u75D5\u9762\u4E3A\u51C6\uFF09\u3002</div>");
+    });
   }
   function chatScreen(el, ctx2) {
     const agent = String(ctx2.params.agent || "root-agent");
-    const sessions = ctx2.store.sessions().filter((s) => !s || !s.agent || String(s.agent) === agent);
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u4F1A\u8BDD"),
       "agent=" + agent + t("\uFF08\u5BF9\u8BDD\u662F\u4E00\u7B49\u9762\u2014\u2014\u540C\u4E00 dsh \u4F1A\u8BDD\u673A\u5236\u6295\u5F71\uFF09"),
       chipGo(t("\u770B root \u4F1A\u8BDD"), "chat/root-agent", "acc", false)
-    ) + '<div class="chat-grid"><div>' + t('<h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>') + sessionList(ctx2) + "</div><div>" + t('<h2 class="sec-title">\u5165\u53E3</h2>') + '<div class="card"><div class="card-b">' + kv([
-      ["agent", esc(agent)],
-      [t("\u4F1A\u8BDD"), chip(sessions.length + t(" \u4E2A\u76F8\u5173"), sessions.length ? "acc" : "mute")],
-      ["CLI", '<code class="mono">corectl chat ' + esc(agent) + "</code>"]
-    ]) + t('<div class="small faint" style="margin-top:8px">\u8F6C\u5F55\u4E0E\u7EC8\u7AEF\u9762\u7531\u5BBF\u4E3B faces \u6CE8\u5165\uFF08__CC.chatFaces / __CC.termFaces\uFF09\uFF1B') + t("\u672A\u6CE8\u5165=\u6E05\u5355\u964D\u7EA7\u5FEB\u7167\u6295\u5F71\uFF0C\u8F6C\u5F55\u9762\u663E\u5F0F\u7F3A\u5E2D\u8BCD\u5F62\u3002</div>") + "</div></div></div></div></div>";
+    ) + '<div class="chat-grid chat-grid-new"><div class="chat-side"><h2 class="sec-title">' + esc(t("\u4F1A\u8BDD\u6E05\u5355")) + "</h2>" + sessionList(ctx2, "", agent) + '</div><div class="chat-main">' + hostEmbedHtml(agent) + "</div></div></div>";
     el.querySelectorAll("[data-sess]").forEach((row) => {
       row.addEventListener("click", () => ctx2.go("session/" + encodeURIComponent(row.dataset.sess)));
     });
+    bindHostOpen(el);
   }
   function sessionScreen(el, ctx2) {
     const id = String(ctx2.params.id || "");
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4F1A\u8BDD\u8F6C\u5F55"), "id=" + id, chipGo(t("\u2190 \u4F1A\u8BDD"), "chat/root-agent", "mute", false)) + t('<div class="chat-grid"><div><h2 class="sec-title">\u4F1A\u8BDD\u6E05\u5355</h2>') + sessionList(ctx2, id) + "</div>" + t('<div><h2 class="sec-title">\u8F6C\u5F55</h2><div class="card"><div class="card-b transcript">') + transcript(ctx2, id) + "</div></div>" + t('<h2 class="sec-title" style="margin-top:14px">\u4E0A\u4E0B\u6587</h2>') + t('<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/') + esc(encodeURIComponent(id)) + "/context\uFF09</div></div></div></div></div></div></div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4F1A\u8BDD\u8F6C\u5F55"), "id=" + id, chipGo(t("\u2190 \u4F1A\u8BDD"), "chat/root-agent", "mute", false)) + '<div class="chat-grid chat-grid-new"><div class="chat-side"><h2 class="sec-title">' + esc(t("\u4F1A\u8BDD\u6E05\u5355")) + "</h2>" + sessionList(ctx2, id) + '</div><div class="chat-main">' + hostEmbedHtml("") + '<h2 class="sec-title" style="margin-top:14px">' + esc(t("\u4E0A\u4E0B\u6587")) + '</h2><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(id)) + "/context\uFF09</div></div></div></div></div></div></div>";
     el.querySelectorAll("[data-sess]").forEach((row) => {
       row.addEventListener("click", () => ctx2.go("session/" + encodeURIComponent(row.dataset.sess)));
     });
+    bindHostOpen(el);
     mountSessionCtx(el, ctx2, id);
   }
   function render7(el, ctx2) {
@@ -11056,6 +11143,20 @@ ${text2}</tr>
     });
   }
   var DOC_KINDS = ["Goal", "Rule", "Runbook", "DesignDoc", "DriftReport", "DocReview", "Agent", "WorkService"];
+  function fmMeta(content) {
+    if (typeof content !== "string" || !content.slice(0, 4e3).includes("tags:")) return null;
+    const head = content.slice(0, 4e3);
+    const tags = [];
+    let importance = null;
+    const flat = head.match(/tags:\s*\[([^\]]*)\]/);
+    if (flat) flat[1].split(",").forEach((x) => {
+      const v = x.trim().replace(/^['"]|['"]$/g, "");
+      if (v) tags.push(v);
+    });
+    const imp = head.match(/^importance:\s*(\d{1,3})\s*$/m);
+    if (imp) importance = Number(imp[1]);
+    return { tags, importance };
+  }
   function docsScreen(el, ctx2) {
     let objs = ctx2.store.objects();
     const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
@@ -11067,17 +11168,34 @@ ${text2}</tr>
       const q = docFilter.q.toLowerCase();
       rows = rows.filter((o) => (o.kind + "/" + o.scope + "/" + o.name).toLowerCase().includes(q));
     }
+    if (docFilter.tag) {
+      const tg = docFilter.tag.toLowerCase();
+      rows = rows.filter((o) => {
+        const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
+        const meta = c ? fmMeta(c.content) : null;
+        return !!(meta && meta.tags.some((x) => x.toLowerCase().includes(tg)));
+      });
+    }
     const draftSet = new Set(ctx2.store.drafts().map((d) => d.kind + "|" + (d.scope || "global") + "|" + d.name));
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u6587\u6863\u5E93"),
-      t("\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\u2014\u2014\u540C\u4E00\u6E32\u67D3\u6838\uFF1B\u25CF=\u6709\u672A Apply \u8349\u7A3F"),
+      t("\u76EE\u5F55\u6811\u5F0F\u6587\u6863\u6E05\u5355\u2014\u2014tag \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863"),
       docKinds.length ? "" : chip(t("\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95"), "mute")
-    ) + '<div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(
-      (o) => '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b>" + (draftSet.has(o.kind + "|" + o.scope + "|" + o.name) ? '<span class="draft-dot">\u25CF</span>' : "") + '</div><div class="mr-sub small mono">' + esc(o.kind + "/" + o.scope) + '</div></div><span class="ws-chip">' + chipGo(t("\u5DE5\u4F5C\u53F0"), objRoute(o.kind, o.scope, o.name), "mute", true, t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + "</span></div>"
-    ).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u7A97\u53E3\u5185\u65E0\u6587\u6863"), t("\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + "</div>";
+    ) + '<div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u7F13\u5B58\u6B63\u6587\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
+      const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
+      const meta = c ? fmMeta(c.content) : null;
+      const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, "mute")).join("");
+      const imp = meta && meta.importance != null ? chip("I:" + meta.importance, meta.importance >= 80 ? "acc" : "mute") : chip(t("\u91CD\u8981\u5EA6\u2014"), "mute");
+      return '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b>" + (draftSet.has(o.kind + "|" + o.scope + "|" + o.name) ? '<span class="draft-dot">\u25CF</span>' : "") + '</div><div class="mr-sub small mono">' + esc(o.kind + "/" + o.scope) + " \xB7 rv " + esc(String(o.rv != null ? o.rv : "\u2014")) + '</div><div class="mr-sub">' + tagChips + imp + '</div></div><span class="ws-chip">' + chipGo(t("\u6253\u5F00"), docRoute(o.kind, o.scope, o.name), "acc", true, t("\u6E32\u67D3\u89C6\u56FE")) + "</span></div>";
+    }).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u7A97\u53E3\u5185\u65E0\u6587\u6863"), t("\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002"))) + '<div class="small faint" style="margin-top:8px">' + esc(t("tag/\u91CD\u8981\u5EA6\u6765\u81EA\u7F13\u5B58\u6B63\u6587\u7684 frontmatter\uFF08\u9884\u53D6\u7A97\u53E3 24 \u7BC7\u2014\u2014\u672A\u7F13\u5B58\u7BC7\u663E\u793A \u2014\uFF0C\u73B0\u5F00\u5373\u8BFB\uFF09\u3002")) + "</div></div>";
     const inp = el.querySelector("#docs-q");
     if (inp) inp.addEventListener("input", () => {
       docFilter.q = inp.value;
+      docsScreen(el, ctx2);
+    });
+    const tagInp = el.querySelector("#docs-tag");
+    if (tagInp) tagInp.addEventListener("input", () => {
+      docFilter.tag = tagInp.value;
       docsScreen(el, ctx2);
     });
     el.querySelectorAll("[data-docs-kind]").forEach((c) => {
@@ -11196,6 +11314,9 @@ ${text2}</tr>
     else if (r === "s") systemScreen(el, ctx2);
     else el.innerHTML = '<div class="view-inner">' + emptyBox(t("\u672A\u77E5\u8584\u5C4F"), String(r)) + "</div>";
   }
+  function renderBiz(el, ctx2) {
+    el.innerHTML = '<div class="view-inner"><div class="biz-hero"><div class="biz-hero-mark">B</div><h2 class="sec-title">' + esc(t("\u4E1A\u52A1\u63A7\u5236\u53F0")) + '</h2><div class="small faint">' + esc(t("\u4E1A\u52A1\u89C6\u89D2\u5360\u4F4D\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u540E\u5728\u6B64\u627F\u8F7D\u4E1A\u52A1\u5927\u5C4F\u4E0E\u64CD\u4F5C\u9762\uFF08\u5F53\u524D\u96F6\u5185\u5BB9\uFF0C\u663E\u5F0F\u5360\u4F4D\u4E0D\u88C5\u5047\uFF09\u3002")) + "</div></div></div>";
+  }
 
   // src/main.js
   var BASES = typeof window !== "undefined" && window.__CORE_CONSOLE_BASES__ || {};
@@ -11203,21 +11324,25 @@ ${text2}</tr>
   var api = createApi(BASES.api || "", { apply: BASES.apply, drafts: BASES.drafts });
   var router = createRouter({ defaultRoute: "welcome" });
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
-  var NAV = [
-    ["welcome", "Welcome"],
-    ["obj", "\u5BF9\u8C61\u5DE5\u4F5C\u53F0"],
-    ["tree", "\u7CFB\u7EDF\u6811"],
-    ["docs", "\u6587\u6863\u5E93"],
-    ["tasks", "\u4EFB\u52A1\u4E2D\u5FC3"],
-    ["report", "\u5173\u6CE8\u62A5\u544A"],
-    ["workflows", "\u5DE5\u4F5C\u6D41"],
-    ["events", "\u4E8B\u4EF6"],
-    ["approvals", "\u5BA1\u6279"],
-    ["inbox", "\u6536\u4EF6\u7BB1"],
-    ["proposals", "\u63D0\u6848"],
-    ["connectors", "\u8FDE\u63A5\u5C42"],
-    ["chat/root-agent", "\u4E0E root \u5BF9\u8BDD"]
+  var LEVELS = [
+    { id: "sys", label: "\u7CFB\u7EDF\u63A7\u5236\u53F0" },
+    { id: "biz", label: "\u4E1A\u52A1\u63A7\u5236\u53F0" }
   ];
+  var curLevel = "sys";
+  try {
+    curLevel = typeof localStorage !== "undefined" && localStorage.getItem("cc.level") || "sys";
+  } catch {
+  }
+  var NAV_SYS = [
+    { group: null, items: [["welcome", "\u603B\u89C8"], ["report", "\u5173\u6CE8\u62A5\u544A"], ["tasks", "\u4EFB\u52A1\u4E2D\u5FC3"], ["workflows", "Workflows"], ["events", "\u4E8B\u4EF6"], ["approvals", "\u5BA1\u6279"], ["proposals", "\u9700\u6C42\u63D0\u6848"]] },
+    { group: "\u57FA\u7840\u8BBE\u65BD", fold: true, items: [["chat/root-agent", "\u4F1A\u8BDD"], ["tree", "\u7CFB\u7EDF\u6811"], ["docs", "\u6587\u6863\u5E93"], ["obj", "\u5BF9\u8C61\u5DE5\u4F5C\u53F0"], ["connectors", "\u8FDE\u63A5"]] }
+  ];
+  var NAV_BIZ = [
+    { group: null, items: [["biz", "\u4E1A\u52A1\u603B\u89C8"]] }
+  ];
+  function navGroups() {
+    return curLevel === "biz" ? NAV_BIZ : NAV_SYS;
+  }
   function langToggleHtml() {
     const cur = getLocale();
     const btn = (id, label) => '<button class="lang-btn' + (cur === id ? " active" : "") + '" data-lang="' + id + '">' + label + "</button>";
@@ -11226,8 +11351,16 @@ ${text2}</tr>
   function sideFootHtml() {
     return '<div class="side-foot">' + langToggleHtml() + '<span class="lamp off" data-conn-lamp></span><span class="small faint" data-conn-label>' + esc(t("\u8FDE\u63A5\u4E2D\u2026")) + "</span></div>";
   }
+  var foldState = {};
   function sidebarHtml() {
-    return '<div class="side-logo"><span class="logo-mark">C</span><span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(t("web \u91CD\u6784\u8D77\u70B9")) + '</span></span></div><nav class="side-nav">' + NAV.map(([r, label]) => '<div class="nav-item" data-nav="' + esc(r) + '" data-go="' + esc(r) + '">' + esc(t(label)) + "</div>").join("") + "</nav>" + sideFootHtml();
+    const levelTabs = '<div class="level-tabs">' + LEVELS.map((l) => '<button class="level-tab' + (curLevel === l.id ? " active" : "") + '" data-level="' + l.id + '">' + esc(t(l.label)) + "</button>").join("") + "</div>";
+    const groups = navGroups().map((g) => {
+      const rows = g.items.map(([r, label]) => '<div class="nav-item" data-nav="' + esc(r.split("/")[0]) + '" data-go="' + esc(r) + '">' + esc(t(label)) + "</div>").join("");
+      if (!g.group) return '<nav class="side-nav">' + rows + "</nav>";
+      const folded = !!foldState[g.group];
+      return '<div class="nav-group' + (folded ? " folded" : "") + '"><div class="nav-group-h" data-fold="' + esc(g.group) + '">' + esc(t(g.group)) + '<span class="fold-chev">' + (folded ? "\u203A" : "\u2304") + "</span></div>" + (folded ? "" : '<nav class="side-nav sub">' + rows + "</nav>") + "</div>";
+    }).join("");
+    return '<div class="side-logo"><span class="logo-mark">C</span><span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(t("web \u91CD\u6784\u8D77\u70B9")) + "</span></span></div>" + levelTabs + groups + sideFootHtml();
   }
   function shellHtml() {
     return '<div class="app"><aside class="sidebar">' + sidebarHtml() + '</aside><main class="main"><div class="view" id="view"></div></main></div>';
@@ -11244,7 +11377,8 @@ ${text2}</tr>
   }
   function paintNav(route) {
     document.querySelectorAll("[data-nav]").forEach((n) => {
-      const on = n.dataset.nav === route || route === "task" && n.dataset.nav === "tasks" || route === "event" && n.dataset.nav === "events" || route === "wf" && n.dataset.nav === "workflows" || route === "doc" && n.dataset.nav === "docs" || route === "chat" && String(n.dataset.nav).startsWith("chat/");
+      const r = String(n.dataset.nav || "");
+      const on = route === r || r === "tasks" && (route === "task" || route === "report") || r === "events" && route === "event" || r === "workflows" && route === "wf" || r === "docs" && (route === "doc" || route === "designdoc") || r === "welcome" && route === "service" || r === "chat" && (route === "session" || route.startsWith("chat"));
       n.classList.toggle("active", on);
     });
   }
@@ -11288,6 +11422,28 @@ ${text2}</tr>
       if (view.isConnected) router.render();
     });
     root.addEventListener("click", (ev) => {
+      const lv = ev.target.closest("[data-level]");
+      if (lv) {
+        ev.preventDefault();
+        curLevel = lv.dataset.level;
+        try {
+          localStorage.setItem("cc.level", curLevel);
+        } catch {
+        }
+        const aside = root.querySelector(".sidebar");
+        if (aside) aside.innerHTML = sidebarHtml();
+        router.go(curLevel === "biz" ? "biz" : "welcome");
+        return;
+      }
+      const fold = ev.target.closest("[data-fold]");
+      if (fold) {
+        ev.preventDefault();
+        const g = fold.dataset.fold;
+        foldState[g] = !foldState[g];
+        const aside = root.querySelector(".sidebar");
+        if (aside) aside.innerHTML = sidebarHtml();
+        return;
+      }
       const langBtn = ev.target.closest("[data-lang]");
       if (langBtn) {
         ev.preventDefault();
@@ -11310,7 +11466,7 @@ ${text2}</tr>
       } catch {
       }
     });
-    router.route("welcome", screenOf(render)).route("obj", screenOf(render4)).route("obj/:kind", screenOf(render4)).route("obj/:kind/:scope/:name", screenOf(render4)).route("events", screenOf(render3)).route("event/:id", screenOf(render3)).route("tasks", screenOf(render5)).route("task/:id", screenOf(render5)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render6)).route("doc/:kind/:scope/:name", screenOf(render6)).route("chat/:agent", screenOf(render7)).route("session/:id", screenOf(render7)).route("approvals", screenOf(render8)).route("inbox", screenOf(render8)).route("proposals", screenOf(render9)).route("workflows", screenOf(render2)).route("wf/:name", screenOf(render2)).route("wf/:name/r/:n", screenOf(render2)).route("tree", screenOf(render9)).route("docs", screenOf(render9)).route("designdoc", screenOf(render9)).route("designdoc/:repo/:path", screenOf(render9)).route("connectors", screenOf(render9)).route("s/:name", screenOf(render9));
+    router.route("welcome", screenOf(render)).route("obj", screenOf(render4)).route("obj/:kind", screenOf(render4)).route("obj/:kind/:scope/:name", screenOf(render4)).route("events", screenOf(render3)).route("event/:id", screenOf(render3)).route("tasks", screenOf(render5)).route("task/:id", screenOf(render5)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render6)).route("doc/:kind/:scope/:name", screenOf(render6)).route("chat/:agent", screenOf(render7)).route("session/:id", screenOf(render7)).route("approvals", screenOf(render8)).route("inbox", screenOf(render8)).route("proposals", screenOf(render9)).route("workflows", screenOf(render2)).route("wf/:name", screenOf(render2)).route("wf/:name/r/:n", screenOf(render2)).route("tree", screenOf(render9)).route("docs", screenOf(render9)).route("designdoc", screenOf(render9)).route("designdoc/:repo/:path", screenOf(render9)).route("connectors", screenOf(render9)).route("s/:name", screenOf(render9)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
     router.mount(view);
     const stream = connectStream({
       url: BASES.ws || wsUrlOf(opts.location || (typeof location !== "undefined" ? location : null)),

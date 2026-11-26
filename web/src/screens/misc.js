@@ -52,6 +52,21 @@ function treeScreen(el, ctx) {
 
 /* ---------- 文档库（#/docs） ---------- */
 const DOC_KINDS = ['Goal', 'Rule', 'Runbook', 'DesignDoc', 'DriftReport', 'DocReview', 'Agent', 'WorkService'];
+
+/* frontmatter 元数据小解析（tags 列表 + importance 数值）——数据源=docCache 缓存正文
+ * （main.js hydrateDocs 预取）；未缓存=返回 null（列显示 —，不冒充）。 */
+function fmMeta(content) {
+  if (typeof content !== 'string' || !content.slice(0, 4000).includes('tags:')) return null;
+  const head = content.slice(0, 4000);
+  const tags = [];
+  let importance = null;
+  const flat = head.match(/tags:\s*\[([^\]]*)\]/);
+  if (flat) flat[1].split(',').forEach((x) => { const v = x.trim().replace(/^['"]|['"]$/g, ''); if (v) tags.push(v); });
+  const imp = head.match(/^importance:\s*(\d{1,3})\s*$/m);
+  if (imp) importance = Number(imp[1]);
+  return { tags, importance };
+}
+
 function docsScreen(el, ctx) {
   let objs = ctx.store.objects();
   const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
@@ -63,26 +78,43 @@ function docsScreen(el, ctx) {
     const q = docFilter.q.toLowerCase();
     rows = rows.filter((o) => (o.kind + '/' + o.scope + '/' + o.name).toLowerCase().includes(q));
   }
+  if (docFilter.tag) {
+    const tg = docFilter.tag.toLowerCase();
+    rows = rows.filter((o) => {
+      const c = ctx.store.cachedDoc(o.kind, o.scope || 'global', o.name, o.rv);
+      const meta = c ? fmMeta(c.content) : null;
+      return !!(meta && meta.tags.some((x) => x.toLowerCase().includes(tg)));
+    });
+  }
   const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + '|' + (d.scope || 'global') + '|' + d.name));
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('文档库'), tr('文档与资源同规则——同一渲染核；●=有未 Apply 草稿'),
+    screenHead(tr('文档库'), tr('目录树式文档清单——tag 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
       docKinds.length ? '' : chip(tr('未注册声明 kind——全量枚举兜底'), 'mute')) +
     '<div class="filter-bar">' +
     tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +
+    tr('<input class="inp" id="docs-tag" placeholder="tag 过滤（缓存正文现匹配）…" value="') + esc(docFilter.tag || '') + '" style="max-width:220px">' +
     '<span class="fchip' + (!docFilter.kind ? ' on' : '') + tr('" data-docs-kind="">全部</span>') +
     docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? ' on' : '') + '" data-docs-kind="' + esc(k) + '">' + esc(k) + '</span>').join('') +
     '</div>' +
     (rows.length
-      ? '<div class="card">' + rows.slice(0, 300).map((o) =>
-        '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '">' +
-        '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + (draftSet.has(o.kind + '|' + o.scope + '|' + o.name) ? '<span class="draft-dot">●</span>' : '') + '</div>' +
-        '<div class="mr-sub small mono">' + esc(o.kind + '/' + o.scope) + '</div></div>' +
-        '<span class="ws-chip">' + chipGo(tr('工作台'), objRoute(o.kind, o.scope, o.name), 'mute', true, tr('对象工作台')) + '</span></div>'
-      ).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
+      ? '<div class="card">' + rows.slice(0, 300).map((o) => {
+        const c = ctx.store.cachedDoc(o.kind, o.scope || 'global', o.name, o.rv);
+        const meta = c ? fmMeta(c.content) : null;
+        const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, 'mute')).join('');
+        const imp = meta && meta.importance != null ? chip('I:' + meta.importance, meta.importance >= 80 ? 'acc' : 'mute') : chip(tr('重要度—'), 'mute');
+        return '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '">' +
+          '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + (draftSet.has(o.kind + '|' + o.scope + '|' + o.name) ? '<span class="draft-dot">●</span>' : '') + '</div>' +
+          '<div class="mr-sub small mono">' + esc(o.kind + '/' + o.scope) + ' · rv ' + esc(String(o.rv != null ? o.rv : '—')) + '</div>' +
+          '<div class="mr-sub">' + tagChips + imp + '</div></div>' +
+          '<span class="ws-chip">' + chipGo(tr('打开'), docRoute(o.kind, o.scope, o.name), 'acc', true, tr('渲染视图')) + '</span></div>';
+      }).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
       : emptyBox(tr('窗口内无文档'), tr('过滤零命中或快照为空（空态显式）。'))) +
+    '<div class="small faint" style="margin-top:8px">' + esc(tr('tag/重要度来自缓存正文的 frontmatter（预取窗口 24 篇——未缓存篇显示 —，现开即读）。')) + '</div>' +
     '</div>';
   const inp = el.querySelector('#docs-q');
   if (inp) inp.addEventListener('input', () => { docFilter.q = inp.value; docsScreen(el, ctx); });
+  const tagInp = el.querySelector('#docs-tag');
+  if (tagInp) tagInp.addEventListener('input', () => { docFilter.tag = tagInp.value; docsScreen(el, ctx); });
   el.querySelectorAll('[data-docs-kind]').forEach((c) => {
     c.addEventListener('click', () => { docFilter.kind = c.dataset.docsKind; docsScreen(el, ctx); });
   });
@@ -234,4 +266,15 @@ export function render(el, ctx) {
   else if (r === 'proposals') proposalsScreen(el, ctx);
   else if (r === 's') systemScreen(el, ctx);
   else el.innerHTML = '<div class="view-inner">' + emptyBox(tr('未知薄屏'), String(r)) + '</div>';
+}
+
+/* 业务控制台占位屏（2026-11-26 用户裁决：先不加东西——显式占位词形，不装内容）。
+ * 后续 ServiceAgent 登录后此级承载业务视角（Service 维度的业务大屏与操作面）。 */
+export function renderBiz(el, ctx) {
+  el.innerHTML = '<div class="view-inner">' +
+    '<div class="biz-hero">' +
+    '<div class="biz-hero-mark">B</div>' +
+    '<h2 class="sec-title">' + esc(tr('业务控制台')) + '</h2>' +
+    '<div class="small faint">' + esc(tr('业务视角占位——后续 ServiceAgent 登录后在此承载业务大屏与操作面（当前零内容，显式占位不装假）。')) + '</div>' +
+    '</div></div>';
 }

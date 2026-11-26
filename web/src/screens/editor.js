@@ -11,6 +11,14 @@ import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute } from '../render/chips.js';
 import { renderMarkdown, yamlToCards, rawDisclosure } from '../render/md.js';
 import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
+
+/* AI 修文档通道契约（2026-11-26 用户裁决：文档不再手编——对话框经 LLM 修文档然后 Apply）：
+ * window.__CC.chatFaces.docFix(prompt, ref) => Promise<string>|string——返回建议全文；
+ * 未注入=面板显式缺席（人仍可在「原文」视图手编——零旁路）。 */
+
+function aiFaces() {
+  return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
+}
 import { isMarkdownDoc } from './objects.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -119,6 +127,49 @@ function paintRail(key, ctx) {
   const box = document.querySelector('[data-ed-rail]');
   const ed = ED.get(key);
   if (!box || !ed) return;
+  if (ed.tab === 'ai') {
+    const f = aiFaces();
+    const canAi = !!(f && typeof f.docFix === 'function');
+    box.innerHTML = tr('<div class="card-h"><span class="h-title">AI 修文档</span></div><div class="card-b">') +
+      '<div class="small faint">' + esc(tr('流程：写修改意图 → AI 出全文建议 → 写入草稿 → 右下 Apply（乐观锁+预检照走——AI 无特权）。')) + '</div>' +
+      '<textarea class="inp" data-ai-prompt rows="3" style="width:100%;margin-top:8px" placeholder="' +
+      esc(tr('修改意图，如：补充 X 节；修正 Y 处口径…')) + '"></textarea>' +
+      '<button class="btn primary sm" data-ai-ask style="margin-top:8px"' + (canAi ? '' : ' disabled') + '>' + esc(tr('请求 AI 建议')) + '</button>' +
+      '<div data-ai-out style="margin-top:10px">' +
+      (canAi
+        ? '<div class="small faint">' + esc(tr('建议将现读于此——写入草稿后走既有 Apply 通路。')) + '</div>'
+        : '<div class="small faint">' + esc(tr('AI 通道未注入（__CC.chatFaces.docFix 缺席）——可在「原文」视图手编，或经会话屏对话后人工贴回。'))) + '</div>' +
+      '</div>';
+    const askBtn = box.querySelector('[data-ai-ask]');
+    if (askBtn) askBtn.addEventListener('click', async () => {
+      const promptTa = box.querySelector('[data-ai-prompt]');
+      const out = box.querySelector('[data-ai-out]');
+      if (!promptTa || !out) return;
+      const intent = promptTa.value.trim();
+      if (!intent) return;
+      askBtn.disabled = true;
+      out.innerHTML = '<div class="small faint">' + esc(tr('AI 现读中…')) + '</div>';
+      try {
+        const sug = await f.docFix(intent, { kind: ed.ref.kind, scope: ed.ref.scope, name: ed.ref.name, base: ed.working });
+        const text = String(sug == null ? '' : sug);
+        if (!text.trim()) throw new Error(tr('空建议'));
+        out.innerHTML = '<div class="small faint">' + esc(tr('AI 建议已到（')) + text.length + ' B）</div>' +
+          '<pre class="mono small" style="max-height:220px;overflow:auto;border:1px solid var(--bd,#2a2f3a);padding:8px;border-radius:8px">' + esc(trunc(text, 4000)) + '</pre>' +
+          '<button class="btn primary sm" data-ai-apply style="margin-top:8px">' + esc(tr('写入草稿')) + '</button>';
+        out.querySelector('[data-ai-apply]').addEventListener('click', () => {
+          ed.working = text;
+          paintBody(ed.ref.kind + '/' + (ed.ref.scope || 'global') + '/' + ed.ref.name);
+          paintBadges(ed.ref.kind + '/' + (ed.ref.scope || 'global') + '/' + ed.ref.name);
+          out.innerHTML = '<div class="small faint">' + esc(tr('已写入草稿——右下 Apply 落库（乐观锁照走）。')) + '</div>';
+        });
+      } catch (e) {
+        out.innerHTML = '<div class="small faint">' + esc(tr('AI 建议失败（')) + esc(String((e && e.message) || e)) + '）</div>';
+      } finally {
+        askBtn.disabled = false;
+      }
+    });
+    return;
+  }
   if (ed.tab === 'history') {
     const rows = ctx.store.events()
       .filter((e) => e && String(e.involved || '').includes(ed.ref.name));
@@ -192,6 +243,7 @@ function editorScreen(el, ctx, key) {
     '<div class="collab-tabs">' +
     '<div class="collab-tab' + ((ed && ed.tab) === 'draft' ? ' active' : '') + tr('" data-ed-tab="draft">草稿</div>') +
     '<div class="collab-tab' + ((ed && ed.tab) === 'history' ? ' active' : '') + tr('" data-ed-tab="history">历史</div>') +
+    '<div class="collab-tab' + ((ed && ed.tab) === 'ai' ? ' active' : '') + tr('" data-ed-tab="ai">AI 修文档</div>') +
     '</div>' +
     '<div class="collab-body" data-ed-rail></div>' +
     tr('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply（无变更）</button></div>') +

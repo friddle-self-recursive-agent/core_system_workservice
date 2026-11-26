@@ -33,14 +33,25 @@ const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.draft
 const router = createRouter({ defaultRoute: 'welcome' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
 
-/* 导航标签存源词形（中文原文）——locale 切换靠 sidebarHtml 渲染期 tr(label) 现译；
- * 构造期翻译会把加载时词形冻结进数组（往返切换暴露的双译 bug）。 */
-const NAV = [
-  ['welcome', 'Welcome'], ['obj', '对象工作台'], ['tree', '系统树'], ['docs', '文档库'],
-  ['tasks', '任务中心'], ['report', '关注报告'], ['workflows', '工作流'], ['events', '事件'],
-  ['approvals', '审批'], ['inbox', '收件箱'], ['proposals', '提案'], ['connectors', '连接层'],
-  ['chat/root-agent', '与 root 对话'],
+/* 两级控制台（2026-11-26 用户裁决）：系统控制台=系统视角（总览大屏+操作面）；
+ * 业务控制台=占位级（后续 ServiceAgent 登录的业务面，先不加东西）。
+ * 连接/会话/系统树/文档/对象工作台收进二级「基础设施」折叠组。
+ * 标签存源词形（中文原文）——locale 切换靠 sidebarHtml 渲染期 tr(label) 现译。 */
+const LEVELS = [
+  { id: 'sys', label: '系统控制台' },
+  { id: 'biz', label: '业务控制台' },
 ];
+let curLevel = 'sys';
+try { curLevel = (typeof localStorage !== 'undefined' && localStorage.getItem('cc.level')) || 'sys'; } catch { /* ignore */ }
+
+const NAV_SYS = [
+  { group: null, items: [['welcome', '总览'], ['report', '关注报告'], ['tasks', '任务中心'], ['workflows', 'Workflows'], ['events', '事件'], ['approvals', '审批'], ['proposals', '需求提案']] },
+  { group: '基础设施', fold: true, items: [['chat/root-agent', '会话'], ['tree', '系统树'], ['docs', '文档库'], ['obj', '对象工作台'], ['connectors', '连接']] },
+];
+const NAV_BIZ = [
+  { group: null, items: [['biz', '业务总览']] },
+];
+function navGroups() { return curLevel === 'biz' ? NAV_BIZ : NAV_SYS; }
 
 /* 语言切换钮（中文/EN——当前词形高亮；点击经 data-lang 委托进 setLocale）。 */
 function langToggleHtml() {
@@ -55,13 +66,28 @@ function sideFootHtml() {
     '<span class="small faint" data-conn-label>' + esc(tr('连接中…')) + '</span></div>';
 }
 
-/* 侧栏整体（locale 切换=整段重渲染——NAV 标签/文案全部经 tr 现译）。 */
+/* 二级折叠态（会话级内存——默认展开；点组头切换）。 */
+const foldState = {};
+
+/* 侧栏整体：级别 tabs（系统/业务）+分组导航（二级折叠）。
+ * locale 切换与级别切换=整段重渲染——标签/文案全部渲染期 tr 现译。 */
 function sidebarHtml() {
+  const levelTabs = '<div class="level-tabs">' + LEVELS.map((l) =>
+    '<button class="level-tab' + (curLevel === l.id ? ' active' : '') + '" data-level="' + l.id + '">' + esc(tr(l.label)) + '</button>').join('') + '</div>';
+  const groups = navGroups().map((g) => {
+    const rows = g.items.map(([r, label]) =>
+      '<div class="nav-item" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' + esc(tr(label)) + '</div>').join('');
+    if (!g.group) return '<nav class="side-nav">' + rows + '</nav>';
+    const folded = !!foldState[g.group];
+    return '<div class="nav-group' + (folded ? ' folded' : '') + '">' +
+      '<div class="nav-group-h" data-fold="' + esc(g.group) + '">' + esc(tr(g.group)) +
+      '<span class="fold-chev">' + (folded ? '›' : '⌄') + '</span></div>' +
+      (folded ? '' : '<nav class="side-nav sub">' + rows + '</nav>') +
+      '</div>';
+  }).join('');
   return '<div class="side-logo"><span class="logo-mark">C</span>' +
     '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('web 重构起点')) + '</span></span></div>' +
-    '<nav class="side-nav">' + NAV.map(([r, label]) =>
-      '<div class="nav-item" data-nav="' + esc(r) + '" data-go="' + esc(r) + '">' + esc(tr(label)) + '</div>').join('') +
-    '</nav>' + sideFootHtml();
+    levelTabs + groups + sideFootHtml();
 }
 
 function shellHtml() {
@@ -82,9 +108,12 @@ function paintConn(state) {
 
 function paintNav(route) {
   document.querySelectorAll('[data-nav]').forEach((n) => {
-    const on = n.dataset.nav === route || (route === 'task' && n.dataset.nav === 'tasks') ||
-      (route === 'event' && n.dataset.nav === 'events') || (route === 'wf' && n.dataset.nav === 'workflows') ||
-      (route === 'doc' && n.dataset.nav === 'docs') || (route === 'chat' && String(n.dataset.nav).startsWith('chat/'));
+    const r = String(n.dataset.nav || '');
+    const on = route === r || (r === 'tasks' && (route === 'task' || route === 'report')) ||
+      (r === 'events' && route === 'event') || (r === 'workflows' && (route === 'wf')) ||
+      (r === 'docs' && (route === 'doc' || route === 'designdoc')) ||
+      (r === 'welcome' && (route === 'service')) ||
+      (r === 'chat' && (route === 'session' || route.startsWith('chat')));
     n.classList.toggle('active', on);
   });
 }
@@ -132,6 +161,13 @@ export function mount(root, opts = {}) {
 
   // 点击路由委托（data-go 全仓统一入口——chip/行/按钮共用）
   root.addEventListener('click', (ev) => {
+    const lv = ev.target.closest('[data-level]');
+    if (lv) { ev.preventDefault(); curLevel = lv.dataset.level; try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
+      const aside = root.querySelector('.sidebar'); if (aside) aside.innerHTML = sidebarHtml();
+      router.go(curLevel === 'biz' ? 'biz' : 'welcome'); return; }
+    const fold = ev.target.closest('[data-fold]');
+    if (fold) { ev.preventDefault(); const g = fold.dataset.fold; foldState[g] = !foldState[g];
+      const aside = root.querySelector('.sidebar'); if (aside) aside.innerHTML = sidebarHtml(); return; }
     const langBtn = ev.target.closest('[data-lang]');
     if (langBtn) { ev.preventDefault(); setLocale(langBtn.dataset.lang); return; }
     const t = ev.target.closest('[data-go]');
@@ -172,7 +208,9 @@ export function mount(root, opts = {}) {
     .route('designdoc', screenOf(misc.render))
     .route('designdoc/:repo/:path', screenOf(misc.render))
     .route('connectors', screenOf(misc.render))
-    .route('s/:name', screenOf(misc.render));
+    .route('s/:name', screenOf(misc.render))
+    .route('service/:name', screenOf(welcome.renderService))
+    .route('biz', screenOf(misc.renderBiz));
   router.mount(view);
 
   // WS 主通路（patch 失败=整段 re-fetch 回退）；onState 经 store 广播（同帧触发重绘）
