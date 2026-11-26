@@ -186,10 +186,11 @@ function runScreen(el, ctx, name, no) {
     '</div>';
 
   /* stepper 渲染+选中态（phases 每次现读 run——注水后重绘全序列） */
-  const sel = { idx: 0 };
+  const sel = { idx: 0, phases: [] };
   const lineEl = el.querySelector('[data-step-line]');
   const paintLine = () => {
     const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || tr('单节点')];
+    sel.phases = phases;
     const curIdx = phases.indexOf(run.phase);
     if (curIdx >= 0) sel.idx = curIdx;
     lineEl.innerHTML = phases.map((p, i) => {
@@ -215,7 +216,8 @@ function runScreen(el, ctx, name, no) {
   const nowEl = el.querySelector('[data-run-now]');
   const tlEl = el.querySelector('[data-run-tl]');
   const paintNow = () => {
-    const ph = phases[sel.idx];
+    const phases = sel.phases.length ? sel.phases : [run.phase || tr('单节点')];
+    const ph = phases[sel.idx] || run.phase || tr('单节点');
     const isCur = ph === run.phase;
     const involved = String(run.involved || '');
     const refs = involved.split(',').map((x) => x.trim()).filter((x) => x.split('/').length >= 3)

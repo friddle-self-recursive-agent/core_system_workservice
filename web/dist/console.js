@@ -9986,16 +9986,16 @@ ${text2}</tr>
     return "";
   }
   function phaseGraphHtml(run2, ctx2) {
-    const phases2 = Array.isArray(run2.phases) ? run2.phases : [];
+    const phases = Array.isArray(run2.phases) ? run2.phases : [];
     const cur = String(run2.phase || "");
     const st = String(run2.status || "");
     const nodeHtml = (p, i) => {
       const active = p === cur;
-      const done = st === "done" || cur && phases2.indexOf(cur) > i;
+      const done = st === "done" || cur && phases.indexOf(cur) > i;
       const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
       return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
     };
-    const body = phases2.length ? phases2.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run2) + "</div>";
+    const body = phases.length ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run2) + "</div>";
     return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u770B\u8BE5\u76F8\u4F4D\u7684\u4E8B\u4EF6\u94FE\u4E0E\u6D89\u53CA\u6587\u6863\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
   }
   var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
@@ -10062,17 +10062,18 @@ ${text2}</tr>
     const startedAt = run2.startedAt || run2.at || run2.ts;
     const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st;
     el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run2.run != null ? run2.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run2.error ? '<span class="rh-err">' + esc(trunc(String(run2.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + '</div></div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u76F8\u4F4D\u5E8F\u5217=Workflow \u58F0\u660E\u539F\u6837\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\uFF1B" + gateWord + "\u3002")) + "</div></div>";
-    const sel = { idx: 0 };
+    const sel = { idx: 0, phases: [] };
     const lineEl = el.querySelector("[data-step-line]");
     const paintLine = () => {
-      const phases2 = Array.isArray(run2.phases) && run2.phases.length ? run2.phases : [run2.phase || t("\u5355\u8282\u70B9")];
-      const curIdx = phases2.indexOf(run2.phase);
+      const phases = Array.isArray(run2.phases) && run2.phases.length ? run2.phases : [run2.phase || t("\u5355\u8282\u70B9")];
+      sel.phases = phases;
+      const curIdx = phases.indexOf(run2.phase);
       if (curIdx >= 0) sel.idx = curIdx;
-      lineEl.innerHTML = phases2.map((p, i) => {
+      lineEl.innerHTML = phases.map((p, i) => {
         const done = st === "done" || (curIdx >= 0 ? i < curIdx : false);
         const active = i === curIdx && st !== "done";
         const dot = done ? "\u2713" : active ? "" : String(i + 1);
-        const conn = i < phases2.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
+        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
         return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
       }).join("");
       el.querySelectorAll("[data-step]").forEach((n) => {
@@ -10090,7 +10091,8 @@ ${text2}</tr>
     const nowEl = el.querySelector("[data-run-now]");
     const tlEl = el.querySelector("[data-run-tl]");
     const paintNow = () => {
-      const ph = phases[sel.idx];
+      const phases = sel.phases.length ? sel.phases : [run2.phase || t("\u5355\u8282\u70B9")];
+      const ph = phases[sel.idx] || run2.phase || t("\u5355\u8282\u70B9");
       const isCur = ph === run2.phase;
       const involved = String(run2.involved || "");
       const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
