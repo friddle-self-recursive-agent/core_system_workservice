@@ -57,7 +57,8 @@ export function mapTranscript(events) {
       const b = blocksOf(data.content);
       nodes.push({ kind: 'user', seq, time: ev.time, text: b.text, injected: src !== 'user' });
     } else if (type === 'assistant/message') {
-      const b = blocksOf(data.content);
+      // 词形（CT116 活体实证）：{turn, step, message:{role, content:[blocks]}}——块在 message.content
+      const b = blocksOf(data.message && Array.isArray(data.message.content) ? data.message.content : data.content);
       for (const tc of b.toolCalls) order.push(tc.id);
       nodes.push({ kind: 'assistant', seq, time: ev.time, text: b.text, reasoning: b.reasoning });
     } else if (type === 'tool/call') {

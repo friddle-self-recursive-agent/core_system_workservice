@@ -10066,7 +10066,7 @@ ${text2}</tr>
         const b = blocksOf(data.content);
         nodes.push({ kind: "user", seq: seq2, time: ev.time, text: b.text, injected: src !== "user" });
       } else if (type2 === "assistant/message") {
-        const b = blocksOf(data.content);
+        const b = blocksOf(data.message && Array.isArray(data.message.content) ? data.message.content : data.content);
         for (const tc of b.toolCalls) order.push(tc.id);
         nodes.push({ kind: "assistant", seq: seq2, time: ev.time, text: b.text, reasoning: b.reasoning });
       } else if (type2 === "tool/call") {
