@@ -112,6 +112,28 @@ func TestPublishHTTPError(t *testing.T) {
 	}
 }
 
+func TestLoopPublishesLoopRequested(t *testing.T) {
+	var got map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		io.WriteString(w, `{"id":"evt-loop","type":"LoopRequested","level":"info","source":"human"}`)
+	}))
+	defer ts.Close()
+
+	code, out, errOut := runCLI(t, "--server", ts.URL, "loop", "--dedup", "cli-loop-test")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errOut)
+	}
+	if got["type"] != "LoopRequested" || got["dedupKey"] != "cli-loop-test" {
+		t.Fatalf("payload=%+v", got)
+	}
+	if !strings.Contains(out, "LoopRequested") {
+		t.Fatalf("output=%s", out)
+	}
+}
+
 func TestParseDocHeader(t *testing.T) {
 	kind, scope, name := parseDocHeader("---\nname: x\nscope: s\ndocType: Rule\n---\n")
 	if kind != "Rule" || scope != "s" || name != "x" {

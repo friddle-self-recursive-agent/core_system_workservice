@@ -120,6 +120,7 @@ func usage(w io.Writer) {
   apply -f <file> [--kind K] [--scope S] [--name N] [--rv N] [--dry-run] [--field-manager M]
   event publish --type T [--involved k/s/n] [--level L] [--dedup K]
   tick [--involved k/s/n] [--dedup K]  发布 ReconcileTick（系统事件触发 core-workflow）
+  loop [--dedup K]                     发布 LoopRequested（事件→wake 桥→拉起自循环）
 
 其他：
   version                              CLI + cored 版本
@@ -160,6 +161,8 @@ func (a *app) dispatch(cmd string, args []string) int {
 		return a.cmdProposals(args)
 	case "tick":
 		return a.cmdTick(args)
+	case "loop":
+		return a.cmdLoop(args)
 	case "version":
 		return a.cmdVersion(args)
 	case "help", "-h", "--help":
@@ -804,6 +807,32 @@ func (a *app) cmdTick(args []string) int {
 	fmt.Fprintln(a.out, "已发布系统事件 ReconcileTick（触发 core-workflow 对账 run）")
 	fmt.Fprintln(a.out, strings.TrimSpace(string(raw)))
 	fmt.Fprintln(a.out, "查看：corectl runs / corectl events --type ReconcileTick")
+	return 0
+}
+
+func (a *app) cmdLoop(args []string) int {
+	fs := flag.NewFlagSet("loop", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	dedup := fs.String("dedup", "", "去重键（缺省 cli-loop:<unixnano>）")
+	level := fs.String("level", "info", "level")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *dedup == "" {
+		*dedup = fmt.Sprintf("cli-loop:%d", time.Now().UnixNano())
+	}
+	raw, err := a.request(http.MethodPost, "/v1/events", eventBody{
+		Type: "LoopRequested", Level: *level, DedupKey: *dedup, Subject: &a.subject,
+	})
+	if err != nil {
+		return fail(a, err)
+	}
+	if a.jsonOut {
+		return a.emit(raw)
+	}
+	fmt.Fprintln(a.out, "已发布系统事件 LoopRequested（事件→wake 桥→宿主拉起自循环）")
+	fmt.Fprintln(a.out, strings.TrimSpace(string(raw)))
+	fmt.Fprintln(a.out, "查看：corectl wakes | corectl events --type LoopRequested")
 	return 0
 }
 

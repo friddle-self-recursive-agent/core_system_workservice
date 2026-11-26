@@ -290,6 +290,13 @@ func run() error {
 	dlOpts.MinLevel = *notifyMinLevel
 	deliveries := workflow.NewDeliveryLog(dlOpts)
 	wakes := workflow.NewWakeLog(nil)
+	wakeSink := workflow.WakeSink(wakes)
+	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_WAKE_ADDR")); addr != "" {
+		wakeSink = newWakeNotifier(wakes, addr)
+		fmt.Fprintf(os.Stderr, "cored: wake 桥=on(%s)（白名单事件→宿主 /wake/spawn，显式事件拉起自循环）\n", addr)
+	} else {
+		fmt.Fprintln(os.Stderr, "cored: wake 桥=off（纯投影；CORE_SYSTEM_WAKE_ADDR 缺席）")
+	}
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
 	outboundState := "off（送达止于受理投影）"
 	if dlOpts.Outbound != nil {
@@ -305,7 +312,7 @@ func run() error {
 	triggers := workflow.NewTriggerHub(nil)
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
-	triggers.BindAgents(wakes)
+	triggers.BindAgents(wakeSink)
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：
 	// **只在推进总闸开启时挂接**（推进总闸旗标 interval>0）——总闸关断=事件拍缺席，事件驱动源
