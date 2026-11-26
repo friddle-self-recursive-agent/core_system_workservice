@@ -153,3 +153,9 @@
 .cc-app .md-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
 .cc-app .md-chip { line-height: 18px; }
 .cc-app .md-lk { cursor: pointer; }
+
+/* 语言切换钮（侧栏底部——locale 现译切换） */
+.lang-toggle { display: inline-flex; gap: 4px; margin-right: 8px; }
+.lang-btn { border: 1px solid var(--bd, #2a2f3a); background: transparent; color: var(--fg-dim, #8b93a7);
+  font-size: 11px; padding: 2px 8px; border-radius: 8px; cursor: pointer; }
+.lang-btn.active { color: var(--fg, #e6e9f2); border-color: var(--accent, #5b8cff); background: rgba(91, 140, 255, .12); }

@@ -10,6 +10,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import yaml from 'js-yaml';
 import { esc, safeHref, trunc } from '../core/format.js';
+import { t as tr } from '../core/i18n.js';
 
 marked.setOptions({ gfm: true, breaks: true, async: false });
 
@@ -156,25 +157,25 @@ export function loadYaml(src) {
 
 /** 常用字段人话释义（缺省=无释义行不冒充）。 */
 const FIELD_GLOSS = {
-  name: '名称', scope: '作用域', resourceVersion: '版本号', goalRef: '目标文档', descRef: '说明文档',
-  docs: '相关文档', externalRefs: '外部依赖', instances: '服务实例', builtinServices: '内置服务',
-  agentRefs: '对话入口（Agent）', phase: '运行状态', observedGeneration: '已应用的版本', labels: '标签',
-  mounts: '已挂载连接', connectorOps: '已挂载连接', provider: '凭据源', session: '当前会话',
-  tags: '标签', title: '标题', dependsOn: '依赖', agent: '负责',
+  name: tr('名称'), scope: tr('作用域'), resourceVersion: tr('版本号'), goalRef: tr('目标文档'), descRef: tr('说明文档'),
+  docs: tr('相关文档'), externalRefs: tr('外部依赖'), instances: tr('服务实例'), builtinServices: tr('内置服务'),
+  agentRefs: tr('对话入口（Agent）'), phase: tr('运行状态'), observedGeneration: tr('已应用的版本'), labels: tr('标签'),
+  mounts: tr('已挂载连接'), connectorOps: tr('已挂载连接'), provider: tr('凭据源'), session: tr('当前会话'),
+  tags: tr('标签'), title: tr('标题'), dependsOn: tr('依赖'), agent: tr('负责'),
 };
 
 /** 值渲染：标量=esc 文本（链接白名单）；列表=逐项 chip（≤24）；映射=子卡递归（深度 ≤4）。 */
 function cardVal(v, depth) {
   if (v == null) return '<span class="faint">—</span>';
   if (Array.isArray(v)) {
-    if (!v.length) return '<span class="faint">（空）</span>';
+    if (!v.length) return tr('<span class="faint">（空）</span>');
     return '<div class="md-chips">' + v.slice(0, 24).map((x) => '<span class="chip mute small md-chip">' + cardVal(x, depth + 1) + '</span>').join('') +
-      (v.length > 24 ? '<span class="faint small">…共 ' + v.length + ' 项</span>' : '') + '</div>';
+      (v.length > 24 ? tr('<span class="faint small">…共 ') + v.length + tr(' 项</span>') : '') + '</div>';
   }
   if (typeof v === 'object') {
-    if (depth >= 4) return '<span class="mono faint small">（嵌套结构见「YAML」）</span>';
+    if (depth >= 4) return tr('<span class="mono faint small">（嵌套结构见「YAML」）</span>');
     const keys = Object.keys(v);
-    if (!keys.length) return '<span class="faint">（空）</span>';
+    if (!keys.length) return tr('<span class="faint">（空）</span>');
     return '<div class="md-subcards">' + keys.map((k) =>
       '<div class="md-subcard"><div class="md-subcard-k">' + esc(k) + '</div><div class="md-subcard-v">' + cardVal(v[k], depth + 1) + '</div></div>'
     ).join('') + '</div>';
@@ -204,6 +205,6 @@ export function yamlToCards(src) {
 
 /** 折叠次级（裸原文恒折叠——首屏禁裸转储；内容 esc）。 */
 export function rawDisclosure(title, content) {
-  return '<details class="md-raw"><summary>' + esc(title || '原文') + '</summary>' +
+  return '<details class="md-raw"><summary>' + esc(title || tr('原文')) + '</summary>' +
     '<pre class="mono md-raw-pre">' + esc(content == null ? '' : content) + '</pre></details>';
 }

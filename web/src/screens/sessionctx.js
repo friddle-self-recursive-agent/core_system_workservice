@@ -9,6 +9,7 @@
 
 import { esc, trunc, relAge, fmtNum } from '../core/format.js';
 import { chip, kv } from '../render/chips.js';
+import { t as tr } from '../core/i18n.js';
 
 /* 面板内存态：sessionId → {model}（store 触发的整屏重绘间复用——避免闪空）。 */
 const PANEL = new Map();
@@ -118,7 +119,7 @@ export function buildSavePayload(model, input) {
   const max = Number(pol.maxTakeBudget) || 0;
   const budget = Number(input && input.takeBudget);
   if (!Number.isFinite(budget) || budget < min || budget > max) {
-    return { ok: false, error: 'takeBudget 须为 ' + min + '–' + max + ' 的数值（ContextPolicy 预算域）' };
+    return { ok: false, error: tr('takeBudget 须为 ') + min + '–' + max + tr(' 的数值（ContextPolicy 预算域）') };
   }
   const { kept, dropped } = capTags(
     parseTagInput(input && input.tagList),
@@ -140,21 +141,21 @@ export function buildSavePayload(model, input) {
 
 function sessionRowHtml(m) {
   if (!m.session) {
-    return '<div class="small faint">会话不在活性账（无心跳行）——契约面仍可查看/编辑本会话上下文覆盖（不冒充在册）。</div>';
+    return tr('<div class="small faint">会话不在活性账（无心跳行）——契约面仍可查看/编辑本会话上下文覆盖（不冒充在册）。</div>');
   }
   const s = m.session;
   const cls = s.state === 'suspected-stall' || s.state === 'escalated' ? 'esc' : s.state ? 'acc' : 'mute';
   return kv([
     ['state', s.state ? chip(s.state, cls) : '<span class="faint">—</span>'],
     ['phase', esc(s.phase || '—')],
-    ['心跳', esc(fmtNum(s.heartbeats)) + ' 次' + (s.lastBeat ? ' · 最近 ' + esc(relAge(s.lastBeat) || '时间未知') : '')],
-    ['动作', esc(trunc(s.lastAction || '—', 80))],
+    [tr('心跳'), esc(fmtNum(s.heartbeats)) + tr(' 次') + (s.lastBeat ? tr(' · 最近 ') + esc(relAge(s.lastBeat) || tr('时间未知')) : '')],
+    [tr('动作'), esc(trunc(s.lastAction || '—', 80))],
   ]);
 }
 
 function chunksHtml(m) {
   if (!m.chunks.length) {
-    return '<div class="small faint">无索引候选（tagSig 未装配或索引零命中——不冒充装配包内容）。</div>';
+    return tr('<div class="small faint">无索引候选（tagSig 未装配或索引零命中——不冒充装配包内容）。</div>');
   }
   return m.chunks.map((c) => {
     const key = [c.kind, c.scope, c.name].filter(Boolean).join('/');
@@ -166,61 +167,61 @@ function chunksHtml(m) {
 
 function shardsHtml(m) {
   if (!m.shardsFacePresent) {
-    return '<div class="small faint">分片缓存面缺席（contextidx 未暴露 Shards——诚实降级，不冒充空缓存）。</div>';
+    return tr('<div class="small faint">分片缓存面缺席（contextidx 未暴露 Shards——诚实降级，不冒充空缓存）。</div>');
   }
   if (!m.shards.length) {
-    return '<div class="small faint">无生效 tag 分片（tagSig 未装配——编辑分叉后逐 tagKey 投影 TagCtxShard）。</div>';
+    return tr('<div class="small faint">无生效 tag 分片（tagSig 未装配——编辑分叉后逐 tagKey 投影 TagCtxShard）。</div>');
   }
   return m.shards.map((s) =>
     '<div class="mini-row"><div class="mr-main"><div><b class="mono">' + esc(s.tagKey) + '</b> ' +
     (s.stale ? chip('stale', 'warn') : chip('fresh', 'ok')) + '</div>' +
-    '<div class="mr-sub small">相关对象 ' + esc(fmtNum(s.docs)) + ' 个' +
+    tr('<div class="mr-sub small">相关对象 ') + esc(fmtNum(s.docs)) + tr(' 个') +
     (s.topDocs.length ? ' · ' + esc(trunc(s.topDocs.join(', '), 60)) : '') + '</div></div></div>'
   ).join('');
 }
 
 function formHtml(m) {
   if (!m.writeOpen) {
-    return '<div class="small faint">写面关断（--allow-apply 未开启）——编辑分叉不可用（与心跳注册面同开关，不冒充可编辑）。</div>';
+    return tr('<div class="small faint">写面关断（--allow-apply 未开启）——编辑分叉不可用（与心跳注册面同开关，不冒充可编辑）。</div>');
   }
   return '<div class="filter-bar" data-ctx-form>' +
-    '<input class="inp" data-ctx-budget type="number" min="' + m.policy.minTakeBudget + '" max="' + m.policy.maxTakeBudget + '" step="500" value="' + m.takeBudget + '" title="提取预算（token 数）">' +
-    '<input class="inp" data-ctx-tags placeholder="tag 集：tagType:tag 逗号/空格分隔（每类≤' + m.policy.maxTagsPerType + ' 总≤' + m.policy.maxTagsTotal + '）">' +
-    '<input class="inp" data-ctx-note placeholder="分叉备注（可选）">' +
-    '<button class="btn primary sm" data-ctx-save>保存分叉</button>' +
-    '<button class="btn sm" data-ctx-revert' + (m.canRevert ? '' : ' disabled') + '>撤销上次</button>' +
+    '<input class="inp" data-ctx-budget type="number" min="' + m.policy.minTakeBudget + '" max="' + m.policy.maxTakeBudget + '" step="500" value="' + m.takeBudget + tr('" title="提取预算（token 数）">') +
+    tr('<input class="inp" data-ctx-tags placeholder="tag 集：tagType:tag 逗号/空格分隔（每类≤') + m.policy.maxTagsPerType + tr(' 总≤') + m.policy.maxTagsTotal + '）">' +
+    tr('<input class="inp" data-ctx-note placeholder="分叉备注（可选）">') +
+    tr('<button class="btn primary sm" data-ctx-save>保存分叉</button>') +
+    '<button class="btn sm" data-ctx-revert' + (m.canRevert ? '' : ' disabled') + tr('>撤销上次</button>') +
     '</div>';
 }
 
 /** 面板整卡渲染（纯函数——输入模型 → HTML 词形）。 */
 export function renderSessionCtx(m) {
   const headChips =
-    (m.degraded ? chip('索引候选投影', 'warn') : '') +
-    (m.writeOpen ? chip('写面开', 'ok') : chip('写面关断', 'esc')) +
-    (m.canRevert ? chip('可撤销', 'acc') : '');
+    (m.degraded ? chip(tr('索引候选投影'), 'warn') : '') +
+    (m.writeOpen ? chip(tr('写面开'), 'ok') : chip(tr('写面关断'), 'esc')) +
+    (m.canRevert ? chip(tr('可撤销'), 'acc') : '');
   const ovLine = m.override
-    ? '<div class="small faint" style="margin-top:6px">现行覆盖：revision ' + esc(fmtNum(m.override.revision)) +
+    ? tr('<div class="small faint" style="margin-top:6px">现行覆盖：revision ') + esc(fmtNum(m.override.revision)) +
       ' · takeBudget ' + esc(fmtNum(m.override.takeBudget)) + ' · by ' + esc(m.override.by || '—') +
-      (m.override.note ? ' · 备注 ' + esc(trunc(m.override.note, 60)) : '') +
+      (m.override.note ? tr(' · 备注 ') + esc(trunc(m.override.note, 60)) : '') +
       (m.override.updatedAt ? ' · ' + esc(relAge(m.override.updatedAt) || '') : '') + '</div>'
-    : '<div class="small faint" style="margin-top:6px">无覆盖（生效值=ContextPolicy 缺省——PUT 后此处现读覆盖行）。</div>';
-  return '<div class="card-h"><span class="h-title">上下文（ContextPack 契约面）</span><span class="h-right">' + headChips + '</span></div>' +
+    : tr('<div class="small faint" style="margin-top:6px">无覆盖（生效值=ContextPolicy 缺省——PUT 后此处现读覆盖行）。</div>');
+  return tr('<div class="card-h"><span class="h-title">上下文（ContextPack 契约面）</span><span class="h-right">') + headChips + '</span></div>' +
     '<div class="card-b">' +
     sessionRowHtml(m) +
     '<div style="margin-top:10px">' + kv([
-      ['takeBudget', '<b class="mono">' + esc(fmtNum(m.takeBudget)) + '</b> <span class="small faint">（缺省 ' + esc(fmtNum(m.takeBudgetDefault)) + ' · 域 ' + m.policy.minTakeBudget + '–' + m.policy.maxTakeBudget + '）</span>'],
+      ['takeBudget', '<b class="mono">' + esc(fmtNum(m.takeBudget)) + tr('</b> <span class="small faint">（缺省 ') + esc(fmtNum(m.takeBudgetDefault)) + tr(' · 域 ') + m.policy.minTakeBudget + '–' + m.policy.maxTakeBudget + '）</span>'],
       ['tagSig', m.tags.length
         ? m.tags.map((t) => chip(t, 'mute')).join(' ')
-        : '<span class="faint small">未装配（tagSigSource=' + esc(m.tagSigSource) + '）</span>'],
-      ['分片缓存', m.stats
-        ? '共 ' + esc(fmtNum(m.stats.total)) + ' 片 · stale ' + esc(fmtNum(m.stats.stale)) + ' · 重建阈值 ' + esc(fmtNum(m.stats.threshold))
+        : tr('<span class="faint small">未装配（tagSigSource=') + esc(m.tagSigSource) + '）</span>'],
+      [tr('分片缓存'), m.stats
+        ? tr('共 ') + esc(fmtNum(m.stats.total)) + tr(' 片 · stale ') + esc(fmtNum(m.stats.stale)) + tr(' · 重建阈值 ') + esc(fmtNum(m.stats.threshold))
         : '<span class="faint">—</span>'],
       ['shardMaxTokens', '<span class="mono">' + esc(fmtNum(m.policy.shardMaxTokens)) + '</span>'],
     ]) + '</div>' +
     ovLine + '<div data-ctx-notice></div>' +
     '<div style="margin:10px 0 4px">' + formHtml(m) + '</div>' +
-    '<h3 class="sec-title" style="margin:10px 0 6px">chunks（索引 TopK 候选）</h3>' + chunksHtml(m) +
-    '<h3 class="sec-title" style="margin:10px 0 6px">相关 Tag 分片（TagCtxShard）</h3>' + shardsHtml(m) +
+    tr('<h3 class="sec-title" style="margin:10px 0 6px">chunks（索引 TopK 候选）</h3>') + chunksHtml(m) +
+    tr('<h3 class="sec-title" style="margin:10px 0 6px">相关 Tag 分片（TagCtxShard）</h3>') + shardsHtml(m) +
     (m.degraded && m.degradedReason ? '<div class="small faint" style="margin-top:8px">' + esc(m.degradedReason) + '</div>' : '') +
     '</div>';
 }
@@ -260,23 +261,23 @@ function wireSessionCtx(box, ctx, id) {
     const r = await ctx.api.saveSessionContext(id, built.payload);
     saveBtn.disabled = false;
     if (!r.ok) {
-      notice('<div class="small faint">保存失败（' + esc(String(r.error || r.status)) + '）' +
-        (r.status === 409 ? '——乐观锁冲突：请重进面板对齐 revision 后重试（稿不覆盖，不静默重基）' : '') + '</div>');
+      notice(tr('<div class="small faint">保存失败（') + esc(String(r.error || r.status)) + '）' +
+        (r.status === 409 ? tr('——乐观锁冲突：请重进面板对齐 revision 后重试（稿不覆盖，不静默重基）') : '') + '</div>');
       return;
     }
-    notice('<div class="small faint">已保存（revision ' +
+    notice(tr('<div class="small faint">已保存（revision ') +
       esc(String((r.data && r.data.override && r.data.override.revision) || '?')) + '）' +
-      (built.dropped.length ? '；超限 tag 收敛 ' + built.dropped.length + ' 个：' + esc(trunc(built.dropped.join(', '), 80)) : '') + '。</div>');
+      (built.dropped.length ? tr('；超限 tag 收敛 ') + built.dropped.length + tr(' 个：') + esc(trunc(built.dropped.join(', '), 80)) : '') + '。</div>');
     refresh(ctx, id, box);
   });
   const revertBtn = q('[data-ctx-revert]');
   if (revertBtn) revertBtn.addEventListener('click', async () => {
-    if (!window.confirm('撤销最近一次上下文分叉（恢复服务端写前快照）？')) return;
+    if (!window.confirm(tr('撤销最近一次上下文分叉（恢复服务端写前快照）？'))) return;
     revertBtn.disabled = true;
     const r = await ctx.api.revertSessionContext(id);
     revertBtn.disabled = false;
-    if (!r.ok) { notice('<div class="small faint">撤销失败（' + esc(String(r.error || r.status)) + '）——栈空不可撤（不冒充撤销成功）。</div>'); return; }
-    notice('<div class="small faint">已撤销——写前快照已恢复。</div>');
+    if (!r.ok) { notice(tr('<div class="small faint">撤销失败（') + esc(String(r.error || r.status)) + tr('）——栈空不可撤（不冒充撤销成功）。</div>')); return; }
+    notice(tr('<div class="small faint">已撤销——写前快照已恢复。</div>'));
     refresh(ctx, id, box);
   });
 }
@@ -293,9 +294,9 @@ export async function mountSessionCtx(el, ctx, id) {
   if ((typeof location !== 'undefined' ? location.hash : '') !== stamp) return; // 路由已变=丢弃
   if (!r.ok) {
     if (!focusIn(box)) {
-      box.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">上下文面暂不可达（' +
-        esc(String(r.error || r.status)) + (r.status === 503 ? '——contextidx 未装配（防御面）' : '') +
-        '）。恢复后重进即现读。</div></div></div>';
+      box.innerHTML = tr('<div class="card"><div class="card-b"><div class="small faint">上下文面暂不可达（') +
+        esc(String(r.error || r.status)) + (r.status === 503 ? tr('——contextidx 未装配（防御面）') : '') +
+        tr('）。恢复后重进即现读。</div></div></div>');
     }
     return;
   }

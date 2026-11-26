@@ -5,6 +5,7 @@
 
 import { diffLines as libDiffLines } from 'diff';
 import { esc, trunc } from '../core/format.js';
+import { t as tr } from '../core/i18n.js';
 
 /**
  * 行级 diff：返回 [{t:'+'|'-'|' ' , s:行文本}, …]（含 gap 折行 {t:'gap'}）。
@@ -38,7 +39,7 @@ function compress(rows) {
     out.push(r);
     last = i;
   });
-  if (!out.length) out.push({ t: 'ctx', s: '（无差异）' });
+  if (!out.length) out.push({ t: 'ctx', s: tr('（无差异）') });
   return out;
 }
 
@@ -51,7 +52,7 @@ export function renderDiff(lines, maxLines = 200) {
     const cls = l.t === '+' ? 'add' : l.t === '-' ? 'del' : 'ctx';
     return '<div class="diff-line ' + cls + '"><span class="d-sign">' + sign + '</span>' + esc(trunc(l.s, 500)) + '</div>';
   }).join('');
-  const tail = lines.length > cap ? '<div class="diff-line ctx">… 共 ' + lines.length + ' 行差异</div>' : '';
+  const tail = lines.length > cap ? tr('<div class="diff-line ctx">… 共 ') + lines.length + tr(' 行差异</div>') : '';
   return '<div class="diff">' + html + tail + '</div>';
 }
 

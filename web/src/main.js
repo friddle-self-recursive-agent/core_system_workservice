@@ -23,6 +23,7 @@ import * as chat from './screens/chat.js';
 import * as approvals from './screens/approvals.js';
 import * as workflows from './screens/workflows.js';
 import * as misc from './screens/misc.js';
+import { getLocale, onLocaleChange, setLocale, t as tr } from './core/i18n.js';
 
 /* 部署基路径注入（window.__CORE_CONSOLE_BASES__: api/ws/apply/drafts——直连同源部署缺省
  * 全空=内置词位不变；dsh 插件代理部署由 v2 壳页预置代理词位，见 plugin routes/console-v2.ts）。 */
@@ -33,27 +34,45 @@ const router = createRouter({ defaultRoute: 'welcome' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
 
 const NAV = [
-  ['welcome', 'Welcome'], ['obj', '对象工作台'], ['tree', '系统树'], ['docs', '文档库'],
-  ['tasks', '任务中心'], ['report', '关注报告'], ['workflows', '工作流'], ['events', '事件'],
-  ['approvals', '审批'], ['inbox', '收件箱'], ['proposals', '提案'], ['connectors', '连接层'],
-  ['chat/root-agent', '与 root 对话'],
+  ['welcome', 'Welcome'], ['obj', tr('对象工作台')], ['tree', tr('系统树')], ['docs', tr('文档库')],
+  ['tasks', tr('任务中心')], ['report', tr('关注报告')], ['workflows', tr('工作流')], ['events', tr('事件')],
+  ['approvals', tr('审批')], ['inbox', tr('收件箱')], ['proposals', tr('提案')], ['connectors', tr('连接层')],
+  ['chat/root-agent', tr('与 root 对话')],
 ];
 
-function shellHtml() {
-  return '<div class="app">' +
-    '<aside class="sidebar"><div class="side-logo"><span class="logo-mark">C</span>' +
-    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">web 重构起点</span></span></div>' +
-    '<nav class="side-nav">' + NAV.map(([r, label]) =>
-      '<div class="nav-item" data-nav="' + esc(r) + '" data-go="' + esc(r) + '">' + esc(label) + '</div>').join('') +
-    '</nav><div class="side-foot"><span class="lamp off" data-conn-lamp></span>' +
-    '<span class="small faint" data-conn-label>连接中…</span></div></aside>' +
-    '<main class="main"><div class="view" id="view"></div></main></div>';
+/* 语言切换钮（中文/EN——当前词形高亮；点击经 data-lang 委托进 setLocale）。 */
+function langToggleHtml() {
+  const cur = getLocale();
+  const btn = (id, label) => '<button class="lang-btn' + (cur === id ? ' active' : '') + '" data-lang="' + id + '">' + label + '</button>';
+  return '<span class="lang-toggle">' + btn('zh', '中文') + btn('en', 'EN') + '</span>';
 }
 
+function sideFootHtml() {
+  return '<div class="side-foot">' + langToggleHtml() +
+    '<span class="lamp off" data-conn-lamp></span>' +
+    '<span class="small faint" data-conn-label>' + esc(tr('连接中…')) + '</span></div>';
+}
+
+/* 侧栏整体（locale 切换=整段重渲染——NAV 标签/文案全部经 tr 现译）。 */
+function sidebarHtml() {
+  return '<div class="side-logo"><span class="logo-mark">C</span>' +
+    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('web 重构起点')) + '</span></span></div>' +
+    '<nav class="side-nav">' + NAV.map(([r, label]) =>
+      '<div class="nav-item" data-nav="' + esc(r) + '" data-go="' + esc(r) + '">' + esc(tr(label)) + '</div>').join('') +
+    '</nav>' + sideFootHtml();
+}
+
+function shellHtml() {
+  return '<div class="app"><aside class="sidebar">' + sidebarHtml() +
+    '</aside><main class="main"><div class="view" id="view"></div></main></div>';
+}
+
+let lastConnState = 'connecting';
 function paintConn(state) {
+  lastConnState = state;
   const lamp = document.querySelector('[data-conn-lamp]');
   const label = document.querySelector('[data-conn-label]');
-  const text = { connected: '实时（WS patch）', reconnecting: '重连中…', degraded: '降级轮询（30s）', connecting: '连接中…' }[state] || state;
+  const text = { connected: tr('实时（WS patch）'), reconnecting: tr('重连中…'), degraded: tr('降级轮询（30s）'), connecting: tr('连接中…') }[state] || state;
   const cls = { connected: 'ok', reconnecting: 'warn', degraded: 'warn', connecting: 'off' }[state] || 'off';
   if (lamp) lamp.className = 'lamp ' + cls + (state === 'connected' ? ' pulse-ok' : '');
   if (label) label.textContent = text;
@@ -111,8 +130,19 @@ export function mount(root, opts = {}) {
 
   // 点击路由委托（data-go 全仓统一入口——chip/行/按钮共用）
   root.addEventListener('click', (ev) => {
+    const langBtn = ev.target.closest('[data-lang]');
+    if (langBtn) { ev.preventDefault(); setLocale(langBtn.dataset.lang); return; }
     const t = ev.target.closest('[data-go]');
     if (t) { ev.preventDefault(); router.go(t.dataset.go); }
+  });
+
+  // locale 变更：侧栏整段重渲染（NAV/文案现译）+连接灯恢复+当前屏重绘+标题
+  onLocaleChange(() => {
+    const aside = root.querySelector('.sidebar');
+    if (aside) aside.innerHTML = sidebarHtml();
+    paintConn(lastConnState);
+    if (view.isConnected) router.render();
+    try { document.title = getLocale() === 'en' ? 'Core Console v2' : 'Core Console v2（web 重构载体·并行验收面）'; } catch { /* 无 document 环境 */ }
   });
 
   router

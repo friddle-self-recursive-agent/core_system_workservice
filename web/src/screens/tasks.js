@@ -8,17 +8,18 @@
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute } from '../render/chips.js';
 import { hydrateLoop } from './welcome.js';
+import { t as tr } from '../core/i18n.js';
 
 /* ---------- 相位人话词形（禁 run #N/session id 当主标题——标题取 spec.title/name） ---------- */
 const PHASE_VIEW = {
-  running: { label: '正在做', chip: 'acc' },
-  verifying: { label: '验证中', chip: 'acc' },
-  queued: { label: '排队中', chip: 'mute' },
-  ready: { label: '待启动', chip: 'mute' },
-  blocked: { label: '受阻', chip: 'warn' },
-  failed: { label: '失败', chip: 'esc' },
-  done: { label: '已完成', chip: 'ok' },
-  canceled: { label: '已取消', chip: 'mute' },
+  running: { label: tr('正在做'), chip: 'acc' },
+  verifying: { label: tr('验证中'), chip: 'acc' },
+  queued: { label: tr('排队中'), chip: 'mute' },
+  ready: { label: tr('待启动'), chip: 'mute' },
+  blocked: { label: tr('受阻'), chip: 'warn' },
+  failed: { label: tr('失败'), chip: 'esc' },
+  done: { label: tr('已完成'), chip: 'ok' },
+  canceled: { label: tr('已取消'), chip: 'mute' },
 };
 export function statusOf(t) { return (t && t.status) || {}; }
 export function specOf(t) { return (t && t.spec) || {}; }
@@ -26,7 +27,7 @@ export function specOf(t) { return (t && t.spec) || {}; }
 export function phaseChip(t) {
   const phase = String(statusOf(t).phase || '');
   const v = PHASE_VIEW[phase];
-  if (!v) return chip(phase || '状态未知', 'mute'); // 未知相位不冒充人话——原词如实显示
+  if (!v) return chip(phase || tr('状态未知'), 'mute'); // 未知相位不冒充人话——原词如实显示
   return chip(v.label, v.chip);
 }
 
@@ -45,11 +46,11 @@ export function groupOf(t) {
   return 'queued';
 }
 export const GROUPS = [
-  { id: 'doing', label: '正在做' },
-  { id: 'waiting', label: '等人' },
-  { id: 'stuck', label: '卡住' },
-  { id: 'done', label: '完成' },
-  { id: 'queued', label: '排队' },
+  { id: 'doing', label: tr('正在做') },
+  { id: 'waiting', label: tr('等人') },
+  { id: 'stuck', label: tr('卡住') },
+  { id: 'done', label: tr('完成') },
+  { id: 'queued', label: tr('排队') },
 ];
 export function groupTasks(tasks) {
   const out = { doing: [], waiting: [], stuck: [], done: [], queued: [] };
@@ -65,7 +66,7 @@ export function taskIdOf(t) {
 }
 export function taskTitle(t) {
   const spec = specOf(t);
-  return String(spec.title || (t && t.title) || (t && t.name) || '未命名任务');
+  return String(spec.title || (t && t.title) || (t && t.name) || tr('未命名任务'));
 }
 
 function taskRow(t) {
@@ -79,12 +80,12 @@ function taskRow(t) {
   return '<div class="task-row">' +
     '<div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t)) + '</b>' + phaseChip(t) +
     chip(id, 'mute') +
-    (deps ? chip('依赖 ' + deps, 'mute') : '') +
-    (agent ? chip('负责 ' + agent, 'mute') : '') + '</div>' +
-    '<div class="task-sub small">' + esc(last || '最近动作：—') +
+    (deps ? chip(tr('依赖 ') + deps, 'mute') : '') +
+    (agent ? chip(tr('负责 ') + agent, 'mute') : '') + '</div>' +
+    '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
     '</div></div>' +
-    '<div class="task-acts">' + (sess ? chipGo('对话', 'session/' + encodeURIComponent(sess), 'mute', true, '关联会话') : '') + '</div>' +
+    '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') + '</div>' +
     '</div>';
 }
 
@@ -94,12 +95,12 @@ function tasksScreen(el, ctx) {
   const g = groupTasks(tasks);
   const body = GROUPS.map((grp) => {
     const rows = g[grp.id] || [];
-    return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + '</span>' + chip(String(rows.length) + ' 项', rows.length ? 'acc' : 'mute') + '</div>' +
-      (rows.length ? '<div class="card-b">' + rows.map(taskRow).join('') + '</div>' : '<div class="card-b small faint">' + esc(grp.label) + '：暂无（空态显式）。</div>') +
+    return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + '</span>' + chip(String(rows.length) + tr(' 项'), rows.length ? 'acc' : 'mute') + '</div>' +
+      (rows.length ? '<div class="card-b">' + rows.map(taskRow).join('') + '</div>' : '<div class="card-b small faint">' + esc(grp.label) + tr('：暂无（空态显式）。</div>')) +
       '</div>';
   }).join('');
   el.innerHTML = '<div class="view-inner">' +
-    screenHead('任务中心', '分组=确定性投影（状态单一写者=调度器）；点击行进详情', chipGo('关注报告', 'report', 'acc', false)) +
+    screenHead(tr('任务中心'), tr('分组=确定性投影（状态单一写者=调度器）；点击行进详情'), chipGo(tr('关注报告'), 'report', 'acc', false)) +
     '<div class="grid cols-2">' + body + '</div></div>';
 
   el.querySelectorAll('.task-row').forEach((row, i) => {
@@ -121,32 +122,32 @@ function tasksScreen(el, ctx) {
 function taskDetailScreen(el, ctx, id) {
   const tasks = ctx.store.tasks();
   const t = tasks.find((x) => taskIdOf(x) === String(id));
-  const head = screenHead('任务详情', 'id=' + String(id), chipGo('← 任务中心', 'tasks', 'mute', false));
+  const head = screenHead(tr('任务详情'), 'id=' + String(id), chipGo(tr('← 任务中心'), 'tasks', 'mute', false));
   if (!t) {
-    el.innerHTML = '<div class="view-inner">' + head + emptyBox('任务不在册', '快照任务清单无此 id（可能已完成出窗或 id 有误）。') + '</div>';
+    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('任务不在册'), tr('快照任务清单无此 id（可能已完成出窗或 id 有误）。')) + '</div>';
     return;
   }
   const s = statusOf(t);
   const spec = specOf(t);
   const rows = [
-    ['相位', phaseChip(t)],
-    ['标题', esc(taskTitle(t))],
+    [tr('相位'), phaseChip(t)],
+    [tr('标题'), esc(taskTitle(t))],
     ['id', esc(taskIdOf(t))],
   ];
-  if (spec.agent || s.agent) rows.push(['负责', esc(String(s.agent || spec.agent))]);
-  if (s.agentSession) rows.push(['会话', chipGo(trunc(String(s.agentSession), 24), 'session/' + encodeURIComponent(String(s.agentSession)), 'acc', true, '关联会话')]);
-  if (s.lastAction) rows.push(['最近动作', esc(trunc(String(s.lastAction), 200))]);
-  if (s.lastError) rows.push(['最近错误', chip(trunc(String(s.lastError), 120), 'esc')]);
+  if (spec.agent || s.agent) rows.push([tr('负责'), esc(String(s.agent || spec.agent))]);
+  if (s.agentSession) rows.push([tr('会话'), chipGo(trunc(String(s.agentSession), 24), 'session/' + encodeURIComponent(String(s.agentSession)), 'acc', true, tr('关联会话'))]);
+  if (s.lastAction) rows.push([tr('最近动作'), esc(trunc(String(s.lastAction), 200))]);
+  if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
   const deps = spec.dependsOn || s.dependsOn || [];
-  if (deps.length) rows.push(['依赖', deps.map((d) => chip(String(d), 'mute')).join(' ')]);
+  if (deps.length) rows.push([tr('依赖'), deps.map((d) => chip(String(d), 'mute')).join(' ')]);
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +
     '</div></div></div>';
 }
 
 /* ---------- 关注报告（R-UX-6：attention 排序 + 证据路由 + 循环卡 + 可信度注脚） ---------- */
-const SEV_VIEW = { critical: { label: '严重', chip: 'esc' }, high: { label: '重要', chip: 'warn' }, medium: { label: '一般', chip: 'mute' } };
-function sevView(sev) { return SEV_VIEW[String(sev || '')] || { label: String(sev || '未分级'), chip: 'mute' }; }
+const SEV_VIEW = { critical: { label: tr('严重'), chip: 'esc' }, high: { label: tr('重要'), chip: 'warn' }, medium: { label: tr('一般'), chip: 'mute' } };
+function sevView(sev) { return SEV_VIEW[String(sev || '')] || { label: String(sev || tr('未分级')), chip: 'mute' }; }
 function sevRank(sev) { const s = String(sev || ''); return s === 'critical' ? 0 : s === 'high' ? 1 : s === 'medium' ? 2 : 3; }
 export function sortAttention(list) { return (list || []).slice().sort((a, b) => sevRank(a && a.severity) - sevRank(b && b.severity)); }
 
@@ -174,17 +175,17 @@ function attentionCard(a) {
   const evs = (a.evidence || []).map((ev) => {
     const ref = String(ev && ev.ref || '');
     const route = evidenceRoute(ref);
-    return route ? chipGo(ref, route, 'mute', true, '证据——点击进入') : chip(ref || (ev && ev.kind) || '证据', 'mute');
+    return route ? chipGo(ref, route, 'mute', true, tr('证据——点击进入')) : chip(ref || (ev && ev.kind) || tr('证据'), 'mute');
   }).filter(Boolean);
   const action = a.action || {};
   const route = action.target ? String(action.target).replace(/^#\/?/, '') : '';
   return '<div class="att-card sev-' + esc(String(a.severity || 'unknown')) + '">' +
     '<div class="att-h">' + chip(sev.label, sev.chip) +
     (a.category ? chip(a.category, 'mute') : '') +
-    '<b>' + esc(String(a.title || '未命名关注项')) + '</b></div>' +
+    '<b>' + esc(String(a.title || tr('未命名关注项'))) + '</b></div>' +
     (a.why ? '<div class="att-why small">' + esc(String(a.why)) + '</div>' : '') +
-    '<div class="att-ev">' + (evs.length ? evs.join(' ') : '<span class="small faint">证据：—</span>') + '</div>' +
-    (route ? '<div class="att-acts"><button class="btn sm" data-go="' + esc(route) + '">' + esc(String(action.label || '去处理')) + '</button></div>' : '') +
+    '<div class="att-ev">' + (evs.length ? evs.join(' ') : tr('<span class="small faint">证据：—</span>')) + '</div>' +
+    (route ? '<div class="att-acts"><button class="btn sm" data-go="' + esc(route) + '">' + esc(String(action.label || tr('去处理'))) + '</button></div>' : '') +
     '</div>';
 }
 
@@ -195,12 +196,12 @@ export function reportFooter(body) {
   const missing = dq.missing;
   const missText = Array.isArray(missing) ? missing.map((m) => String(m)).join('、') : String(missing || '');
   const gb = String(b.generatedBy || '');
-  const gbLabel = gb === 'llm' ? '智能归纳' : gb === 'rules' ? '基础汇总' : (gb || '未注明生成方式');
-  return '<div class="report-foot small faint">数据可信度：' + esc(gbLabel) +
-    ' · 检查范围 ' + esc(String(b.scope || 'global')) +
-    (b.asOf ? ' · 截至 ' + esc(String(b.asOf)) : '') +
-    (missText ? ' · 缺席数据：' + esc(missText) : '') +
-    ' · 报告为派生视图可随时重建，不落对象账。</div>';
+  const gbLabel = gb === 'llm' ? tr('智能归纳') : gb === 'rules' ? tr('基础汇总') : (gb || tr('未注明生成方式'));
+  return tr('<div class="report-foot small faint">数据可信度：') + esc(gbLabel) +
+    tr(' · 检查范围 ') + esc(String(b.scope || 'global')) +
+    (b.asOf ? tr(' · 截至 ') + esc(String(b.asOf)) : '') +
+    (missText ? tr(' · 缺席数据：') + esc(missText) : '') +
+    tr(' · 报告为派生视图可随时重建，不落对象账。</div>');
 }
 
 /** 报告屏（attention=快照聚合；缺席=ApprovalNeeded/Escalate 事件兜底 + 诚实注记）。 */
@@ -216,17 +217,17 @@ function reportScreen(el, ctx) {
       title: String(e.summary || e.type),
       evidence: e.involved ? [{ ref: String(e.involved) }] : [],
     }));
-    if (!evs.length) degradedNote = '<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合，事件归档亦无审批/升级行——本轮报告按在册事实收敛为零命中（不装假）。</div>';
-    else degradedNote = '<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合——本卡由事件归档行（ApprovalNeeded/Escalate）投影生成。</div>';
+    if (!evs.length) degradedNote = tr('<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合，事件归档亦无审批/升级行——本轮报告按在册事实收敛为零命中（不装假）。</div>');
+    else degradedNote = tr('<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合——本卡由事件归档行（ApprovalNeeded/Escalate）投影生成。</div>');
   }
   const sorted = sortAttention(att);
   el.innerHTML = '<div class="view-inner">' +
-    screenHead('关注报告', 'severity 排序 · 证据可点 · 数据可信度显式', chipGo('任务中心', 'tasks', 'mute', false)) +
+    screenHead(tr('关注报告'), tr('severity 排序 · 证据可点 · 数据可信度显式'), chipGo(tr('任务中心'), 'tasks', 'mute', false)) +
     degradedNote +
     '<div data-loop-box="pending"></div>' +
     (sorted.length
       ? '<div class="att-list">' + sorted.map(attentionCard).join('') + '</div>'
-      : emptyBox('本窗口无关注项', 'attention 聚合零命中（空态显式——不冒充有风险）。')) +
+      : emptyBox(tr('本窗口无关注项'), tr('attention 聚合零命中（空态显式——不冒充有风险）。'))) +
     reportFooter(st.get('attention') && st.get('attention').dataQuality) +
     '</div>';
   // 循环卡注水（复用 welcome 的现读通路——data-loop-box 同槽位约定）

@@ -6,6 +6,7 @@
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute } from '../render/chips.js';
 import { renderMarkdown, rawDisclosure } from '../render/md.js';
+import { t as tr } from '../core/i18n.js';
 
 /* ---------- 视图态 ---------- */
 const treeOpen = new Set();      // tree 已展开 kind 集合
@@ -33,12 +34,12 @@ function treeScreen(el, ctx) {
       }).join('')
       : '';
     return '<div class="tree-node">' +
-      '<div class="tree-row grp" data-tree-toggle="' + esc(kind) + '"><b>' + esc(kind) + '</b>' + chip(n + ' 个', n ? 'acc' : 'mute') +
+      '<div class="tree-row grp" data-tree-toggle="' + esc(kind) + '"><b>' + esc(kind) + '</b>' + chip(n + tr(' 个'), n ? 'acc' : 'mute') +
       '<span class="faint">' + (open ? '▾' : '▸') + '</span></div>' + rows + '</div>';
   }).join('');
   el.innerHTML = '<div class="view-inner">' +
-    screenHead('系统树', 'kinds → scope → 对象（快照聚合投影；对象名可点进工作台）') +
-    (kinds.length ? '<div class="tree-box">' + body + '</div>' : emptyBox('快照暂无对象枚举', '等待首个快照聚合。')) +
+    screenHead(tr('系统树'), tr('kinds → scope → 对象（快照聚合投影；对象名可点进工作台）')) +
+    (kinds.length ? '<div class="tree-box">' + body + '</div>' : emptyBox(tr('快照暂无对象枚举'), tr('等待首个快照聚合。'))) +
     '</div>';
   el.querySelectorAll('[data-tree-toggle]').forEach((row) => {
     row.addEventListener('click', () => {
@@ -64,11 +65,11 @@ function docsScreen(el, ctx) {
   }
   const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + '|' + (d.scope || 'global') + '|' + d.name));
   el.innerHTML = '<div class="view-inner">' +
-    screenHead('文档库', '文档与资源同规则——同一渲染核；●=有未 Apply 草稿',
-      docKinds.length ? '' : chip('未注册声明 kind——全量枚举兜底', 'mute')) +
+    screenHead(tr('文档库'), tr('文档与资源同规则——同一渲染核；●=有未 Apply 草稿'),
+      docKinds.length ? '' : chip(tr('未注册声明 kind——全量枚举兜底'), 'mute')) +
     '<div class="filter-bar">' +
-    '<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="' + esc(docFilter.q) + '">' +
-    '<span class="fchip' + (!docFilter.kind ? ' on' : '') + '" data-docs-kind="">全部</span>' +
+    tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +
+    '<span class="fchip' + (!docFilter.kind ? ' on' : '') + tr('" data-docs-kind="">全部</span>') +
     docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? ' on' : '') + '" data-docs-kind="' + esc(k) + '">' + esc(k) + '</span>').join('') +
     '</div>' +
     (rows.length
@@ -76,9 +77,9 @@ function docsScreen(el, ctx) {
         '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '">' +
         '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + (draftSet.has(o.kind + '|' + o.scope + '|' + o.name) ? '<span class="draft-dot">●</span>' : '') + '</div>' +
         '<div class="mr-sub small mono">' + esc(o.kind + '/' + o.scope) + '</div></div>' +
-        '<span class="ws-chip">' + chipGo('工作台', objRoute(o.kind, o.scope, o.name), 'mute', true, '对象工作台') + '</span></div>'
-      ).join('') + (rows.length > 300 ? '<div class="small faint" style="padding:8px 14px">…共 ' + rows.length + ' 行——用过滤收窄。</div>' : '') + '</div>'
-      : emptyBox('窗口内无文档', '过滤零命中或快照为空（空态显式）。')) +
+        '<span class="ws-chip">' + chipGo(tr('工作台'), objRoute(o.kind, o.scope, o.name), 'mute', true, tr('对象工作台')) + '</span></div>'
+      ).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
+      : emptyBox(tr('窗口内无文档'), tr('过滤零命中或快照为空（空态显式）。'))) +
     '</div>';
   const inp = el.querySelector('#docs-q');
   if (inp) inp.addEventListener('input', () => { docFilter.q = inp.value; docsScreen(el, ctx); });
@@ -103,14 +104,14 @@ async function hydrateDesignDoc(el, ctx, repo, path) {
   const box = document.querySelector('[data-dd-body]');
   if (!box) return;
   if (!res || !res.ok) {
-    box.innerHTML = '<div class="ob-empty">正文暂不可读（' + esc(String(res && res.error || res && res.status || '网络')) + '）——HEAD 权威零缓存，重进即现读。</div>';
+    box.innerHTML = tr('<div class="ob-empty">正文暂不可读（') + esc(String(res && res.error || res && res.status || tr('网络'))) + tr('）——HEAD 权威零缓存，重进即现读。</div>');
     return;
   }
   const data = res.data && typeof res.data === 'object' ? res.data : {};
   const content = data.content != null ? String(data.content) : (typeof res.data === 'string' ? res.data : '');
-  box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure('原文（HEAD）', content) +
+  box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
     '<div class="small faint" style="margin-top:6px">' + (data.sha ? 'HEAD ' + esc(String(data.sha).slice(0, 8)) : 'HEAD') +
-    '（git 权威零缓存） · 草稿/Apply 通路经编辑器屏（doc/…）。</div>';
+    tr('（git 权威零缓存） · 草稿/Apply 通路经编辑器屏（doc/…）。</div>');
 }
 
 function designDocScreen(el, ctx) {
@@ -119,21 +120,21 @@ function designDocScreen(el, ctx) {
   if (repo && path) { dd.sel = { repo, path }; }
   const sel = dd.sel;
   el.innerHTML = '<div class="view-inner">' +
-    screenHead('设计文档', '白名单仓树（GET /v1/design-docs——HEAD 权威零缓存）') +
-    '<div class="dd-grid"><div data-dd-tree><div class="small faint">仓树现读中…</div></div>' +
-    '<div class="card"><div class="card-b" data-dd-body>' + (sel ? '<div class="small faint">正文现读中…</div>' : emptyBox('未选档', '左侧选择仓文件（默认首仓首文件）。')) + '</div></div></div></div>';
+    screenHead(tr('设计文档'), tr('白名单仓树（GET /v1/design-docs——HEAD 权威零缓存）')) +
+    tr('<div class="dd-grid"><div data-dd-tree><div class="small faint">仓树现读中…</div></div>') +
+    '<div class="card"><div class="card-b" data-dd-body>' + (sel ? tr('<div class="small faint">正文现读中…</div>') : emptyBox(tr('未选档'), tr('左侧选择仓文件（默认首仓首文件）。'))) + '</div></div></div></div>';
 
   ctx.api.designDocs().then((r) => {
     if (!el.isConnected) return;
     const treeBox = el.querySelector('[data-dd-tree]');
     if (!treeBox) return;
     if (!r.ok) {
-      treeBox.innerHTML = '<div class="ob-empty">仓树暂不可读（' + esc(String(r.error || r.status)) + '）。</div>';
+      treeBox.innerHTML = tr('<div class="ob-empty">仓树暂不可读（') + esc(String(r.error || r.status)) + '）。</div>';
       return;
     }
     dd.tree = r.data;
     const files = Array.isArray(r.data) ? r.data : (r.data && r.data.files) || [];
-    if (!files.length) { treeBox.innerHTML = '<div class="ob-empty">仓树为空（诚实空态）。</div>'; return; }
+    if (!files.length) { treeBox.innerHTML = tr('<div class="ob-empty">仓树为空（诚实空态）。</div>'); return; }
     treeBox.innerHTML = files.map((f) => {
       const fr = f.repo || (r.data.repo || '');
       const fp = f.path || String(f);
@@ -163,15 +164,15 @@ function connectorsScreen(el, ctx) {
   const secs = kinds.map((kind) => {
     const rows = ctx.store.refs(kind);
     return '<section class="card"><div class="card-h"><span class="h-title">' + esc(kind) + '</span>' +
-      '<span class="h-right">' + chip(rows.length + ' 个', rows.length ? 'acc' : 'mute') + '</span></div>' +
+      '<span class="h-right">' + chip(rows.length + tr(' 个'), rows.length ? 'acc' : 'mute') + '</span></div>' +
       '<div class="card-b">' + (rows.length
         ? rows.map((o) => '<div class="mini-row" data-go="' + esc(docRoute(kind, o.scope, o.name)) + '">' +
           '<div class="mr-main"><div><b class="mono">' + esc(o.name) + '</b></div>' +
           '<div class="mr-sub small mono">' + esc(o.scope) + ' · r' + esc(String(o.rv || 0)) + '</div></div>' +
-          '<span class="ws-chip">' + chipGo('工作台', objRoute(kind, o.scope, o.name), 'mute', true) + '</span></div>').join('')
-        : '<div class="small faint">该 kind 暂无在册对象（空态显式）。</div>') + '</div></section>';
+          '<span class="ws-chip">' + chipGo(tr('工作台'), objRoute(kind, o.scope, o.name), 'mute', true) + '</span></div>').join('')
+        : tr('<div class="small faint">该 kind 暂无在册对象（空态显式）。</div>')) + '</div></section>';
   }).join('');
-  el.innerHTML = '<div class="view-inner">' + screenHead('连接层', 'ConnectorOps / WorkService / Provider / Ref 四族（文档与资源同规则）') +
+  el.innerHTML = '<div class="view-inner">' + screenHead(tr('连接层'), tr('ConnectorOps / WorkService / Provider / Ref 四族（文档与资源同规则）')) +
     '<div class="grid cols-2">' + secs + '</div></div>';
   el.querySelectorAll('.mini-row[data-go]').forEach((row) => {
     row.addEventListener('click', () => ctx.go(row.dataset.go));
@@ -181,16 +182,16 @@ function connectorsScreen(el, ctx) {
 /* ---------- 需求提案（#/proposals） ---------- */
 function proposalsScreen(el, ctx) {
   const rows = ctx.store.proposals();
-  el.innerHTML = '<div class="view-inner">' + screenHead('需求提案', '提案面（列表+要素现读）——批准/驳回走审批与 Apply（LLM 无 Apply 权）') +
+  el.innerHTML = '<div class="view-inner">' + screenHead(tr('需求提案'), tr('提案面（列表+要素现读）——批准/驳回走审批与 Apply（LLM 无 Apply 权）')) +
     (rows.length
       ? '<div class="card">' + rows.map((p) => {
         const keys = p && typeof p === 'object' ? Object.keys(p) : [];
         const known = ['title', 'summary', 'status', 'proposer', 'createdAt', 'scope', 'name'];
         const sub = known.filter((k) => p[k] != null && k !== 'title').map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
-        return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || '未命名提案')) + '</b> ' + chip(String(p.status || '待定'), 'mute') + '</div>' +
-          '<div class="mr-sub small">' + (sub || '<span class="faint">要素字段缺席——不编造</span>') + '</div></div></div>';
+        return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
+          '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席——不编造</span>')) + '</div></div></div>';
       }).join('') + '</div>'
-      : emptyBox('暂无提案', '快照 proposals 聚合为空（空态显式）。')) +
+      : emptyBox(tr('暂无提案'), tr('快照 proposals 聚合为空（空态显式）。'))) +
     '</div>';
 }
 
@@ -202,19 +203,19 @@ function systemScreen(el, ctx) {
   const byKind = {};
   objs.forEach((o) => { byKind[o.kind] = (byKind[o.kind] || 0) + 1; });
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(scope, 'scope=' + scope + ' 的对象与事件（快照聚合投影）', chipGo('系统树', 'tree', 'mute', false)) +
+    screenHead(scope, 'scope=' + scope + tr(' 的对象与事件（快照聚合投影）'), chipGo(tr('系统树'), 'tree', 'mute', false)) +
     '<div class="statbar">' +
     Object.keys(byKind).sort().map((k) =>
       '<div class="stat" data-go="' + esc('obj/' + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div>' +
       '<div class="st-label">' + esc(k) + '</div></div>').join('') +
     '</div>' +
     (objs.length
-      ? '<h2 class="sec-title">对象</h2><div class="card">' + objs.map((o) =>
+      ? tr('<h2 class="sec-title">对象</h2><div class="card">') + objs.map((o) =>
         '<div class="mini-row" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' +
         '<div class="mr-main"><div><b>' + esc(o.name) + '</b> ' + kindBadge(o.kind) + '</div>' +
         '<div class="mr-sub small mono">r' + esc(String(o.rv || 0)) + '</div></div></div>').join('') + '</div>'
-      : emptyBox('该 scope 暂无在册对象', '不装假——scope 词形可能为实例桶（树内可见）。')) +
-    (evs.length ? '<h2 class="sec-title">最近相关事件</h2><div class="card">' + evs.map((e) =>
+      : emptyBox(tr('该 scope 暂无在册对象'), tr('不装假——scope 词形可能为实例桶（树内可见）。'))) +
+    (evs.length ? tr('<h2 class="sec-title">最近相关事件</h2><div class="card">') + evs.map((e) =>
       '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? '')) + '">' +
       '<div class="mr-main"><div>' + esc(String(e.type || '')) + '</div>' +
       '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div></div>').join('') + '</div>' : '') +
@@ -232,5 +233,5 @@ export function render(el, ctx) {
   else if (r === 'connectors') connectorsScreen(el, ctx);
   else if (r === 'proposals') proposalsScreen(el, ctx);
   else if (r === 's') systemScreen(el, ctx);
-  else el.innerHTML = '<div class="view-inner">' + emptyBox('未知薄屏', String(r)) + '</div>';
+  else el.innerHTML = '<div class="view-inner">' + emptyBox(tr('未知薄屏'), String(r)) + '</div>';
 }

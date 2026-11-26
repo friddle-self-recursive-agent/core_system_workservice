@@ -8,25 +8,26 @@
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute } from '../render/chips.js';
 import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
+import { t as tr } from '../core/i18n.js';
 
 /* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ---------- */
 export function tagGroups(tags, vocab) {
   const V = vocab || {};
   const m = {};
   (tags || []).forEach((t) => {
-    const type = V[t] || '未分组';
+    const type = V[t] || tr('未分组');
     (m[type] = m[type] || []).push(t);
   });
   return Object.keys(m).sort((a, b) => {
-    if (a === '未分组') return 1;
-    if (b === '未分组') return -1;
+    if (a === tr('未分组')) return 1;
+    if (b === tr('未分组')) return -1;
     return a < b ? -1 : 1;
   }).map((type) => ({ type, tags: m[type].sort() }));
 }
 
 /* ---------- 规则命中（确定性纯函数——四路显式来源；≥1 路命中即列；上限 8） ---------- */
 export function rulesFor(obj, rules) {
-  if (!rules) return { hits: [], degraded: true, reason: '规则文档族索引暂不可达——命中判定暂缺（不冒充无适用）。', scanned: 0 };
+  if (!rules) return { hits: [], degraded: true, reason: tr('规则文档族索引暂不可达——命中判定暂缺（不冒充无适用）。'), scanned: 0 };
   const o = obj || {};
   const text = String(o.content || '');
   const low = text.toLowerCase();
@@ -42,12 +43,12 @@ export function rulesFor(obj, rules) {
     const rtags = r.tags || [];
     const why = [];
     const tagHit = objTags.filter((t) => rtags.includes(t));
-    if (tagHit.length) why.push('标签「' + tagHit.join('、') + '」同组');
-    if (kindLow && rlow.includes(kindLow)) why.push('规则原文提及 ' + o.kind);
-    if (scopeLow && scopeLow !== 'global' && scopeLow !== 'builtin' && rlow.includes(scopeLow)) why.push('规则原文提及 ' + o.scope);
+    if (tagHit.length) why.push(tr('标签「') + tagHit.join('、') + tr('」同组'));
+    if (kindLow && rlow.includes(kindLow)) why.push(tr('规则原文提及 ') + o.kind);
+    if (scopeLow && scopeLow !== 'global' && scopeLow !== 'builtin' && rlow.includes(scopeLow)) why.push(tr('规则原文提及 ') + o.scope);
     const nameStem = nameLow.replace(/[-_].*$/, '');
-    if (nameStem && nameStem.length >= 3 && rlow.includes(nameStem)) why.push('规则原文提及 ' + nameStem);
-    if (base && low && low.includes(base.toLowerCase())) why.push('对象正文引用 ' + base);
+    if (nameStem && nameStem.length >= 3 && rlow.includes(nameStem)) why.push(tr('规则原文提及 ') + nameStem);
+    if (base && low && low.includes(base.toLowerCase())) why.push(tr('对象正文引用 ') + base);
     if (!why.length) return;
     out.push({ ref: (r.repo || 'core_design') + '/' + r.path + '#' + base, name: base, why });
   });
@@ -89,18 +90,18 @@ export function isMarkdownDoc(kind, name) {
 /* ---------- 六片渲染 ---------- */
 function tagPanel(groups) {
   if (!groups || !groups.length) {
-    return '<div class="ob-empty">暂无标签——对象正文未声明 spec.metadata.tags（声明经 Apply 落库后此处现读）。</div>';
+    return tr('<div class="ob-empty">暂无标签——对象正文未声明 spec.metadata.tags（声明经 Apply 落库后此处现读）。</div>');
   }
   return groups.map((g) =>
     '<div class="ob-tagrow">' + chip(g.type, 'mute') + ' ' +
-    g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + '" title="看同 tag 对象">#' + esc(t) + '</span>').join(' ') + '</div>'
+    g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + tr('" title="看同 tag 对象">#') + esc(t) + '</span>').join(' ') + '</div>'
   ).join('');
 }
 
 function rulePanel(res) {
   if (res.degraded) return '<div class="ob-empty">' + esc(res.reason) + '</div>';
   if (!res.hits.length) {
-    return '<div class="ob-empty">无适用规则——按 kind/scope/tag/正文引用四路检查零命中（检查范围=' + res.scanned + ' 份规则文档）。</div>';
+    return tr('<div class="ob-empty">无适用规则——按 kind/scope/tag/正文引用四路检查零命中（检查范围=') + res.scanned + tr(' 份规则文档）。</div>');
   }
   return res.hits.map((h, i) =>
     '<details class="ob-rule"><summary>' +
@@ -110,39 +111,39 @@ function rulePanel(res) {
 }
 
 function ctxPanel(rv) {
-  return '<div class="ob-ctx">' + chip('已入快照', 'ok') +
-    ' <span class="small">resourceVersion r' + esc(String(rv || 0)) + '（rv 未变不重读正文——降级轮询路径同样生效）</span>' +
-    ' ' + chipGo('在文档库中打开', 'docs', 'mute', true) + '</div>';
+  return '<div class="ob-ctx">' + chip(tr('已入快照'), 'ok') +
+    ' <span class="small">resourceVersion r' + esc(String(rv || 0)) + tr('（rv 未变不重读正文——降级轮询路径同样生效）</span>') +
+    ' ' + chipGo(tr('在文档库中打开'), 'docs', 'mute', true) + '</div>';
 }
 
 function opsPanel(ref) {
   return '<div>' +
-    '<button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + '">编辑器</button> ' +
-    '<button class="btn sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + '">所属 scope</button> ' +
+    '<button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + tr('">编辑器</button> ') +
+    '<button class="btn sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + tr('">所属 scope</button> ') +
     '</div>';
 }
 
 function schemePanel(kindReg, content) {
-  if (!kindReg) return '<div class="ob-empty">scheme 暂不可达（kinds 聚合缺席）。</div>';
+  if (!kindReg) return tr('<div class="ob-empty">scheme 暂不可达（kinds 聚合缺席）。</div>');
   const spec = kindReg.spec || {};
   const keys = Object.keys(spec);
   const cards = keys.length
     ? yamlToCards(Object.keys(spec).map((f) => f + ': ' + JSON.stringify(spec[f])).join('\n'))
     : '';
   const comp = sectionCompletion(content, (kindReg.requiredSections || [])).map((c) =>
-    chip(c.name + (c.done ? ' ✓' : ' 缺'), c.done ? 'ok' : 'mute')
+    chip(c.name + (c.done ? ' ✓' : tr(' 缺')), c.done ? 'ok' : 'mute')
   ).join(' ');
   if (!cards && !comp) return '';
   return (comp ? '<div class="ob-seccomp">' + comp + '</div>' : '') +
-    (cards ? '<div data-md-cards="1">' + cards + '</div>' : '<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>');
+    (cards ? '<div data-md-cards="1">' + cards + '</div>' : tr('<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>'));
 }
 
 function contentPanel(kind, name, content) {
-  if (!String(content || '').trim()) return '<div class="ob-empty">本文档暂无正文。</div>';
+  if (!String(content || '').trim()) return tr('<div class="ob-empty">本文档暂无正文。</div>');
   if (isMarkdownDoc(kind, name)) {
-    return '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure('原文', content);
+    return '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure(tr('原文'), content);
   }
-  return '<div data-md-cards="1">' + (yamlToCards(content) || '<div class="ob-empty">（空声明）</div>') + '</div>' + rawDisclosure('YAML', content);
+  return '<div data-md-cards="1">' + (yamlToCards(content) || tr('<div class="ob-empty">（空声明）</div>')) + '</div>' + rawDisclosure('YAML', content);
 }
 
 /* ---------- 正文懒取（docCache(rv) 命中=复用；未命中=现读后入缓存并重绘） ---------- */
@@ -193,16 +194,16 @@ function renderScreen(el, ctx, ref) {
   const ruleState = rulesPending.get(ref.kind + '|' + ref.name) || null;
 
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(ref.name, '对象工作台（六片：标签/规则/上下文/操作/内容/scheme）',
+    screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
     '<div class="obj-grid">' +
-    '<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">' + tagPanel(tagGroups(tags)) + '</div></section>' +
-    '<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">' +
-    (ruleState ? rulePanel(ruleState) : '<div class="small faint">规则命中判定中…</div>') + '</div></section>' +
-    '<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">' + ctxPanel(ref.rv) + '</div></section>' +
-    '<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">' + opsPanel(ref) + '</div></section>' +
-    '<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">' + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
-    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : '<div class="small faint">正文现读中…</div>') + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags)) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
+    (ruleState ? rulePanel(ruleState) : tr('<div class="small faint">规则命中判定中…</div>')) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">') + ctxPanel(ref.rv) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">') + opsPanel(ref) + '</div></section>' +
+    tr('<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
+    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
     '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + '</div></section>' +
     '</div></div>';
 
@@ -244,9 +245,9 @@ export function render(el, ctx) {
     ref = objs[0] || null;
   }
   if (!ref) {
-    const hint = p.kind ? 'kind「' + p.kind + '」' : '快照';
-    el.innerHTML = '<div class="view-inner">' + screenHead('对象工作台', '六片固定：标签/规则/上下文/操作/内容/scheme') +
-      emptyBox(hint + '暂无在册对象', '快照 objects 聚合为空或该 kind 无对象（不装假）。') + '</div>';
+    const hint = p.kind ? 'kind「' + p.kind + '」' : tr('快照');
+    el.innerHTML = '<div class="view-inner">' + screenHead(tr('对象工作台'), tr('六片固定：标签/规则/上下文/操作/内容/scheme')) +
+      emptyBox(hint + tr('暂无在册对象'), tr('快照 objects 聚合为空或该 kind 无对象（不装假）。')) + '</div>';
     return;
   }
   renderScreen(el, ctx, ref);

@@ -4,6 +4,7 @@
 
 import { esc, relAge, fmtNum } from '../core/format.js';
 import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
+import { t as tr } from '../core/i18n.js';
 
 /** 摘要统计卡（点击深链）。 */
 function statCard(label, num, sub, route, cls) {
@@ -21,11 +22,11 @@ function kindCard(kindRow, refs) {
   const first = rows[0];
   const firstHtml = first
     ? chipGo(first.name, objRoute(first.kind, first.scope, first.name), 'mute', true, first.kind + '/' + first.scope + '/' + first.name)
-    : chip('暂无在册对象', 'mute');
+    : chip(tr('暂无在册对象'), 'mute');
   return '<div class="w-svc" data-go="' + esc(rows.length ? objRoute(k, rows[0].scope, rows[0].name) : 'docs') + '" role="link">' +
     '<div class="ws-main"><div class="ws-title">' + esc(k) + '</div>' +
-    '<div class="ws-desc">' + esc(rows.length ? '首个：' + (first ? first.scope + '/' + first.name : '—') : '该 kind 暂无对象') + '</div></div>' +
-    '<span class="ws-chip">' + chip(String(rows.length) + ' 个', rows.length ? 'acc' : 'mute') + '</span>' +
+    '<div class="ws-desc">' + esc(rows.length ? tr('首个：') + (first ? first.scope + '/' + first.name : '—') : tr('该 kind 暂无对象')) + '</div></div>' +
+    '<span class="ws-chip">' + chip(String(rows.length) + tr(' 个'), rows.length ? 'acc' : 'mute') + '</span>' +
     '</div>';
 }
 
@@ -33,16 +34,16 @@ function kindCard(kindRow, refs) {
 function loopCardHtml(data) {
   const d = data && typeof data === 'object' ? data : {};
   const fields = [
-    ['循环', d.loop != null ? d.loop : d.id],
-    ['相位', d.phase || d.state],
-    ['负责', d.agent || d.route],
-    ['开始于', d.startedAt ? (relAge(d.startedAt) || String(d.startedAt)) : (d.started_at ? (relAge(d.started_at) || String(d.started_at)) : null)],
-    ['触发', d.trigger || d.reason],
+    [tr('循环'), d.loop != null ? d.loop : d.id],
+    [tr('相位'), d.phase || d.state],
+    [tr('负责'), d.agent || d.route],
+    [tr('开始于'), d.startedAt ? (relAge(d.startedAt) || String(d.startedAt)) : (d.started_at ? (relAge(d.started_at) || String(d.started_at)) : null)],
+    [tr('触发'), d.trigger || d.reason],
   ].filter(([, v]) => v != null && v !== '');
   const chips = fields.map(([k, v]) => chip(k + ': ' + v, 'mute')).join('');
   return '<div class="card report-loop"><div class="card-b">' +
-    '<div class="report-loop-top">' + chip('当前循环', 'acc') + chips +
-    (d.eventId ? '<span class="report-loop-acts">' + chipGo('触发事件', 'event/' + encodeURIComponent(String(d.eventId)), 'mute') + '</span>' : '') +
+    '<div class="report-loop-top">' + chip(tr('当前循环'), 'acc') + chips +
+    (d.eventId ? '<span class="report-loop-acts">' + chipGo(tr('触发事件'), 'event/' + encodeURIComponent(String(d.eventId)), 'mute') + '</span>' : '') +
     '</div></div></div>';
 }
 
@@ -54,14 +55,14 @@ export async function hydrateLoop(el, ctx) {
   if (!el.isConnected || box.getAttribute('data-loop-box') === 'stale') return;
   if (!r.ok) {
     box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b">' +
-      '<div class="report-loop-top">' + chip('当前循环', 'mute') +
-      '<span class="small faint">循环状态暂不可达（' + esc(String(r.error || r.status)) + '）——不冒充无循环。</span></div></div></div>';
+      '<div class="report-loop-top">' + chip(tr('当前循环'), 'mute') +
+      tr('<span class="small faint">循环状态暂不可达（') + esc(String(r.error || r.status)) + tr('）——不冒充无循环。</span></div></div></div>');
     return;
   }
   if (!r.data || (!r.data.loop && !r.data.id && !r.data.phase)) {
     box.innerHTML = '<div class="card report-loop" data-report-loop="idle"><div class="card-b">' +
-      '<div class="report-loop-top">' + chip('当前无进行中循环', 'mute') +
-      '<span class="small faint">本周期暂无循环记录。点火下一轮：<code class="mono">corectl loop</code></span></div></div></div>';
+      '<div class="report-loop-top">' + chip(tr('当前无进行中循环'), 'mute') +
+      tr('<span class="small faint">本周期暂无循环记录。点火下一轮：<code class="mono">corectl loop</code></span></div></div></div>');
     return;
   }
   box.innerHTML = loopCardHtml(r.data);
@@ -72,7 +73,7 @@ export function render(el, ctx) {
   const st = ctx.store;
   if (!st.isReady) {
     el.innerHTML = '<div class="view-inner welcome"><div class="w-hello"><h1>Welcome</h1></div>' +
-      emptyBox('快照装载中…', '正在建立 /v1/snapshot 基线（连接建立即推全量）') + '</div>';
+      emptyBox(tr('快照装载中…'), tr('正在建立 /v1/snapshot 基线（连接建立即推全量）')) + '</div>';
     return;
   }
   const objs = st.objects();
@@ -90,28 +91,28 @@ export function render(el, ctx) {
 
   const kindCards = kindsList.slice(0, 12).map((k) => kindCard(k, objs)).join('');
   const kindMore = kindsList.length > 12
-    ? '<div class="small faint" style="grid-column:1/-1">…另有 ' + (kindsList.length - 12) + ' 个 kind——见对象工作台左侧清单。</div>'
+    ? tr('<div class="small faint" style="grid-column:1/-1">…另有 ') + (kindsList.length - 12) + tr(' 个 kind——见对象工作台左侧清单。</div>')
     : '';
 
   el.innerHTML = '<div class="view-inner welcome">' +
     '<div class="w-hello"><h1>Welcome</h1><span class="w-date mono">' + esc(new Date().toISOString().slice(0, 10)) + '</span>' +
     '<span class="w-conn" data-conn-slot></span></div>' +
     '<div class="statbar">' +
-    statCard('在册对象', objs.length, '全部 kind 合计', 'obj') +
-    statCard('kinds', kindsList.length, 'scheme 注册', 'docs') +
-    statCard('事件（窗口内）', events.length, '归档行', 'events') +
-    statCard('待审', approvalN, approvalN ? '草稿∪审批事件——点击处理' : '待审区为空（空态显式）', 'approvals', approvalN ? 'alert' : '') +
-    statCard('收件箱', inboxN, inboxN ? '待你处理' : '暂无待办', 'inbox', inboxN ? 'alert' : '') +
-    statCard('进行中任务', runningN, '任务中心', 'tasks') +
+    statCard(tr('在册对象'), objs.length, tr('全部 kind 合计'), 'obj') +
+    statCard('kinds', kindsList.length, tr('scheme 注册'), 'docs') +
+    statCard(tr('事件（窗口内）'), events.length, tr('归档行'), 'events') +
+    statCard(tr('待审'), approvalN, approvalN ? tr('草稿∪审批事件——点击处理') : tr('待审区为空（空态显式）'), 'approvals', approvalN ? 'alert' : '') +
+    statCard(tr('收件箱'), inboxN, inboxN ? tr('待你处理') : tr('暂无待办'), 'inbox', inboxN ? 'alert' : '') +
+    statCard(tr('进行中任务'), runningN, tr('任务中心'), 'tasks') +
     '</div>' +
-    '<h2 class="sec-title">kinds 摘要</h2>' +
+    tr('<h2 class="sec-title">kinds 摘要</h2>') +
     (objs.length || kindsList.length
       ? '<div class="w-services">' + kindCards + kindMore + '</div>'
-      : emptyBox('快照暂无对象枚举', '等待首个快照聚合或 patch 增量')) +
-    '<h2 class="sec-title">当前循环</h2>' +
-    '<div data-loop-box="pending">' + emptyBox('循环状态现读中…') + '</div>' +
-    '<div class="w-foot small faint">数据面：GET /v1/snapshot 基线 + /v1/stream patch 增量（WS 断线自动降级轮询）；' +
-    '对象正文按 resourceVersion 缓存（rv 未变不重读）。</div>' +
+      : emptyBox(tr('快照暂无对象枚举'), tr('等待首个快照聚合或 patch 增量'))) +
+    tr('<h2 class="sec-title">当前循环</h2>') +
+    '<div data-loop-box="pending">' + emptyBox(tr('循环状态现读中…')) + '</div>' +
+    tr('<div class="w-foot small faint">数据面：GET /v1/snapshot 基线 + /v1/stream patch 增量（WS 断线自动降级轮询）；') +
+    tr('对象正文按 resourceVersion 缓存（rv 未变不重读）。</div>') +
     '</div>';
 
   hydrateLoop(el, ctx);
