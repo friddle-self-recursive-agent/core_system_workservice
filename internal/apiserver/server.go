@@ -194,7 +194,8 @@ type options struct {
 	sessionLiveness SessionLivenessFace
 	agentScopes     flowbind.AgentEventScopes // Agent 事件 scope 声明解析（BUG-010 消费闸——GET /v1/events?agent=）
 	contextIdx      contextIdxFace
-	bus             *eventbus.Bus // stream 面变更感知源（v0.66 WithEventBus；nil=仅 5s 兜底重算）
+	perm            *permission.System // 权限判定权威（G-03 connectops 权限门；nil=零值系统 fail-closed）
+	bus             *eventbus.Bus      // stream 面变更感知源（v0.66 WithEventBus；nil=仅 5s 兜底重算）
 }
 
 // WithContextIdx 注入上下文索引读面（v0.65 context P0 数据面 + trace 1:N 追踪——
@@ -321,8 +322,9 @@ type deps struct {
 //	                                     404=不在归档）
 //	GET /v1/loop/current                 当前/最近一轮自循环投影（v0.66 R-ENG §3：wakes face
 //	                                     最近 LoopRequested 行直投；只读聚合不发明状态机）
-//	GET /v1/snapshot                     console 首屏聚合快照（v0.66 R-ENG §2：13 键载荷——
-//	                                     face 缺席=null 不冒充）
+//	GET /v1/snapshot                     console 首屏聚合快照（v0.66 R-ENG §2：14 键载荷——
+//	                                     objects/events/tasks/runs 关键聚合在位（G-02）；face
+//	                                     缺席=null 不冒充）
 //	GET /v1/stream                       WebSocket 推送面（v0.66 R-ENG §2：连接即推 snapshot，
 //	                                     变更推 RFC6902 patch（保守 diff 器）；30s ping）
 //	GET /v1/history/{kind}/{name}?scope=s 对象应用史投影（v0.38 console 读面第三段：apply_log
@@ -357,7 +359,9 @@ type deps struct {
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //	POST /v1/events                     事件注入面（v0.20 发布面；--allow-apply 门控；未开启=405；event.md 规则 8）
 //	POST /v1/connectops/{name}/{op}     ops 调试面（R-TYPE-3：connectops-code-audit audit/findings；
-//	                                    正式通路=workflow Verify 接线待接入——connectops_face.go §头注）
+//	                                    subject 权限门 fail-closed——域=ops/<name> × call，无效/无权
+//	                                    subject=403 且 Invoke 不达；正式通路=workflow Verify 接线待
+//	                                    接入——connectops_face.go §头注）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
 // applier 为 nil（未开启 --allow-apply）时 POST /v1/apply 与草稿写操作返回 405（缺省只读面不变；
@@ -437,6 +441,19 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 
 func objRef(o *repository.Object) map[string]any {
 	return map[string]any{"kind": o.Kind, "name": o.Name, "scope": o.Scope, "resourceVersion": o.ResourceVersion}
+}
+
+// listMetaOrList 元数据直读优先（G-15 读侧高性能——列表投影只需键/rv 时走 ListMeta：
+// sqlite 后端不 SELECT content 列、零逐行 YAML 解析，正文仅单读路径 Get 拉；其余后端
+// 无元数据面=回退 List 全量，行为兼容回退不改变行集语义）。可选能力接口（非 ObjectSource
+// 硬约束）：ObjectSource 各实现按能力渐进接入，既有假体/装配零迁移。
+func listMetaOrList(objects ObjectSource, ctx context.Context, kind, scope string) ([]*repository.Object, error) {
+	if lm, ok := objects.(interface {
+		ListMeta(ctx context.Context, kind, scope string) ([]*repository.Object, error)
+	}); ok {
+		return lm.ListMeta(ctx, kind, scope)
+	}
+	return objects.List(ctx, kind, scope)
 }
 
 // draftRef 草稿瘦身引用（清单载荷：无正文；bytes 供容量观察）。

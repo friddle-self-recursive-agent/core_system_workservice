@@ -1,17 +1,18 @@
 // snapshot.go —— console 首屏聚合快照（v0.66：GET /v1/snapshot + /v1/stream 推送共用）。
 // 设计依据：cored-bridge.md §2 读面最小集扩展（R-ENG 任务书 §2）——一次返回 console
-// 首屏聚合载荷 {schemeKinds, objects:{kind:[refs]}, inbox, runs摘要, tasks, sessions,
+// 首屏聚合载荷 {schemeKinds, objects:{kind:[refs]}, inbox, events, runs摘要, tasks, sessions,
 // deliveries, wakes, dispatches, proposals, drafts, metrics, generatedAt}。组装纪律：
 // 内部直接复用 apiserver 现有各 face 的查询函数与各路由 handler 的既有载荷构造器
-//（triggersPayload/runsPayload/deliveriesPayload/wakesPayload/dispatchesPayload/inboxPayload
-// ——routes_*.go 与本件共用同一构造器零双源），不发明新查询；face 缺席的字段=null
-//（不冒充——与各路由 503 防御面同口径词形）。本面只读零副作用。
+// （triggersPayload/runsPayload/deliveriesPayload/wakesPayload/dispatchesPayload/inboxPayload/
+// eventRowOf——routes_*.go 与本件共用同一构造器零双源），不发明新查询；face 缺席的字段=null
+// （不冒充——与各路由 503 防御面同口径词形）。本面只读零副作用。
 package apiserver
 
 import (
 	"context"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 )
@@ -34,6 +35,12 @@ func snapshotPayload(d *deps) map[string]any {
 	// inbox：通知中心收件箱投影（face 缺席=null）。
 	out["inbox"] = faceOrNil(o.inbox != nil, func() any {
 		return inboxPayload(d.objects, d.drafts, o.inbox, o.eventLog)
+	})
+	// events：事件归档最近窗投影（G-02 聚合完整性——console 事件流页快照聚合源，前端 store
+	// events() 直读；face 缺席=null。GET /v1/events 同一行投影构造器零双源：默认视窗
+	// tier≠infra + 有界窗——快照聚合面不冒充全量清单，全量走 GET /v1/events 翻页面）。
+	out["events"] = faceOrNil(o.eventLog != nil, func() any {
+		return eventsRowsSnapshot(o.eventLog, d.sch)
 	})
 	// runs 摘要（face 缺席=null；State() 同一查询——摘要=行集有界不冒充全量清单，
 	// 全量走 GET /v1/workflows/runs）。
@@ -73,6 +80,20 @@ func snapshotPayload(d *deps) map[string]any {
 	return out
 }
 
+// eventsRowsSnapshot 事件归档最近窗投影（G-02 聚合完整性——GET /v1/events 同一行投影
+// 构造器 eventRowOf 零双源；默认视窗隐藏 infra 分层、50 行有界窗；读失败=空清单不冒充）。
+func eventsRowsSnapshot(eventLog EventLogFace, sch *scheme.Scheme) []map[string]any {
+	rows, err := eventLog.QueryEvents(opslog.EventQuery{Limit: 50, HiddenTypes: sch.HiddenEventTypes()})
+	if err != nil {
+		return []map[string]any{}
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, e := range rows {
+		items = append(items, eventRowOf(sch, e))
+	}
+	return items
+}
+
 // faceOrNil face 缺席→nil（JSON null）的兜底器（face 在=构造器求值）。
 func faceOrNil(present bool, build func() any) any {
 	if !present {
@@ -92,14 +113,15 @@ func schemeKindNames(sch *scheme.Scheme) []string {
 }
 
 // objectsByKind {kind:[refs]} 跨 kind 现读（List 跨 scope 通配——GET /v1/objects/{kind}
-// 同一查询语义；读失败=该 kind 跳过；空清单 kind 不占键——载荷瘦身）。
+// 同一查询语义；G-15：refs 投影只需键/rv——元数据直读优先，读失败=该 kind 跳过；空清单
+// kind 不占键——载荷瘦身）。
 func objectsByKind(objects ObjectSource, sch *scheme.Scheme) map[string][]map[string]any {
 	if objects == nil {
 		return nil
 	}
 	out := map[string][]map[string]any{}
 	for _, name := range schemeKindNames(sch) {
-		objs, err := objects.List(context.Background(), name, "")
+		objs, err := listMetaOrList(objects, context.Background(), name, "")
 		if err != nil {
 			continue // 读面降级：单 kind 缺席不冒充空清单
 		}

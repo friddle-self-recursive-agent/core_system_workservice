@@ -325,9 +325,9 @@ func registerReadRoutes(d *deps, mux *http.ServeMux) {
 	// ops 调试面（R-TYPE-3 rule-verification.md——POST /v1/connectops/{name}/{op}）：
 	// 正式通路=workflow Verify 接线（dev-delivery Verifying 相位硬 gate 经 ConnectorOps 调
 	// connectops-code-audit audit/findings），待 workflow 侧接入；本路由=通路建成前的最小
-	// 调试暴露面（JSON body，subject 记录审计行；只读语义由实现侧契约保证，handler 体见
-	// connectops_face.go）。
-	registerConnectOpsRoutes(mux)
+	// 调试暴露面（JSON body，subject 过权限门 fail-closed 后才 Invoke——域=ops/<name> ×
+	// call，无效/无权 subject=403；handler 体见 connectops_face.go）。
+	registerConnectOpsRoutes(mux, o.perm)
 	// 上下文读面（v0.65 context P0 数据面 + trace 1:N 追踪——context_face.go）：四路由全 GET
 	// 恒开（/v1/context/index|find|relevance + /v1/trace/{kind}/{scope}/{name}）；face 缺席=503
 	// 防御面；旧构建（路由未注册）经兜底 handler 405=代际判别器。
