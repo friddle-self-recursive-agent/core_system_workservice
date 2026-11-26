@@ -140,8 +140,12 @@ func Parse(content []byte) (Spec, Status, bool) {
 	if err := yaml.Unmarshal(content, &d); err != nil {
 		return Spec{}, Status{}, false
 	}
-	if d.Status.Phase == "" {
-		return Spec{}, Status{}, false
+	// 新建 Task 的 status 为空=合法初始态（P2：status 只由调度器写，用户不写 status）——
+	// 归一为 queued 参选；空相位不跳过（跳过=新任务永不被调度的死锁，2026-11-26 活体实证）。
+	// 非 Task 内容已由 scheme 准入挡住，此处宽松读面不承担 kind 判别。
+	phase := strings.TrimSpace(d.Status.Phase)
+	if phase == "" {
+		phase = PhaseQueued
 	}
 	spec := Spec{
 		Title: d.Spec.Title, Summary: d.Spec.Summary, Source: d.Spec.Source,
@@ -163,7 +167,7 @@ func Parse(content []byte) (Spec, Status, bool) {
 		spec.Timeout = v
 	}
 	st := Status{
-		Phase: d.Status.Phase, Attempts: d.Status.Attempts, AgentSession: d.Status.AgentSession,
+		Phase: phase, Attempts: d.Status.Attempts, AgentSession: d.Status.AgentSession,
 		LastAction: d.Status.LastAction, LastError: d.Status.LastError,
 		DependsOn: refIDs(d.Status.DependsOn),
 	}
