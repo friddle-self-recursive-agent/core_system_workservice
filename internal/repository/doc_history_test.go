@@ -121,3 +121,45 @@ func TestSQLiteRevContentFromDocHistory(t *testing.T) {
 		t.Fatalf("Source 应 sqlite-doc-history，得 %q", got)
 	}
 }
+
+// TestSQLiteDelete —— ObjectDeleter 删除通路（2026-11-26 假数据清理批）：
+// 删除=现行行移除+doc_history 终态行（rev=被删 rv）+乐观锁期望闸+缺席=ErrNotFound+重建从 rv1。
+func TestSQLiteDelete(t *testing.T) {
+	r, _ := newSQLiteRepo(t)
+	ctx := context.Background()
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "d1", Content: agentYAML("d1", "")}, "fm-1", ""); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "d1", ResourceVersion: 1, Content: agentYAML("d1", "\n  extra: 1")}, "fm-2", ""); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	// 乐观锁期望不符 → ConflictError，对象仍在册。
+	if _, err := r.Delete("Agent", "global", "d1", 1, "fm-del", ""); err == nil {
+		t.Fatal("expectRV=1（现 rv=2）应冲突")
+	}
+	if _, err := r.Get(ctx, "Agent", "global", "d1"); err != nil {
+		t.Fatalf("冲突删后对象应在册: %v", err)
+	}
+	// 正删：rv=2 返回；Get=ErrNotFound；history 终态行 rev=2（删除前现行留账）。
+	rv, err := r.Delete("Agent", "global", "d1", 2, "fm-del", "cleanup")
+	if err != nil || rv != 2 {
+		t.Fatalf("delete: rv=%d err=%v", rv, err)
+	}
+	if _, err := r.Get(ctx, "Agent", "global", "d1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("删除后 Get 应 ErrNotFound，得 %v", err)
+	}
+	hs, err := r.DocHistory("Agent", "global", "d1")
+	if err != nil || len(hs) == 0 {
+		t.Fatalf("删除应留终态历史行: n=%d err=%v", len(hs), err)
+	}
+	if hs[0].Rev != 2 {
+		t.Fatalf("终态行 rev 应=2（被删版本），得 %d", hs[0].Rev)
+	}
+	// 再删=缺席显式；重建从 rv=1（全新生命周期）。
+	if _, err := r.Delete("Agent", "global", "d1", 0, "fm-del", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("缺席删应 ErrNotFound，得 %v", err)
+	}
+	if rv2, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "d1", Content: agentYAML("d1", "")}, "fm-3", ""); err != nil || action != "create" || rv2 != 1 {
+		t.Fatalf("重建应 create rv=1: rv=%d action=%s err=%v", rv2, action, err)
+	}
+}

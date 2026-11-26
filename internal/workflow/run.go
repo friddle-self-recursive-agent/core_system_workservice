@@ -136,6 +136,7 @@ type RunRecord struct {
 	SpecSource  string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
 	Phases      []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
 	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
+	ApprovalMode string         // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
 	Phase       string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
 	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
 	Brakes      BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
@@ -280,6 +281,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	// 生效（判定器零改动——stepByTable 纯查表落点通用，推进器已完全表驱动，接表即得全量
 	// 推进语义）；未声明 phases 的对象=零投影（phases 恒空），三条判定路径零动作防御面
 	// 原样生效，既有行为面零翻转。
+	approvalMode := "" // 空=human 缺省（builtin 源恒缺省——审批策略声明走对象 spec）
 	if source == SpecObject && r.opts.Specs != nil {
 		view := r.opts.Specs.ResolveSpec(wf)
 		if len(view.Transitions) > 0 {
@@ -288,6 +290,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		if len(view.Phases) > 0 {
 			phases = view.Phases
 		}
+		approvalMode = view.ApprovalMode // spec.approval.mode=auto 投影（Agent 节点自动级别）
 	}
 	// 刹车首段（v0.32，workflows 规则 17）：每锚生效刹车值（表驱动——spec.brakes → 强制
 	// 默认钳定 → 生效值；声明→留痕面投影不依赖挂接态）。冷却门只在刹车闸挂接时生效（未挂
@@ -338,8 +341,8 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
 		// workflows 规则 13 第一层判定；builtin 序列受理首步不落闸锚=防御性通用规则，
 		// 单测以闸锚邻位序列覆盖）。
-		if status == RunRunning && Phase(phase) == AwaitingApproval {
-			status = RunSuspended
+		if status == RunRunning && Phase(phase) == AwaitingApproval && approvalMode != "auto" {
+			status = RunSuspended // auto 模式闸锚自动通过（不挂起直续行——「Agent 节点自动级别」）
 		}
 	}
 	if phases == nil {
@@ -350,6 +353,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
+		ApprovalMode: approvalMode,
 		Phase: phase, Status: status, Brakes: brk,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
@@ -389,7 +393,10 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			continue // 锚不符 / 相位未投影（未声明 phases 的 object 源）无从迁移
 		}
 		switch action {
-		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作）
+		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作；auto 模式=提升不挂起——闸锚自动通过）
+			if run.ApprovalMode == "auto" {
+				return
+			}
 			if run.Status == RunFailed || run.Status == RunSuspended ||
 				!containsPhase(run.Phases, string(AwaitingApproval)) {
 				return

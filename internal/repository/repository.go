@@ -31,3 +31,12 @@ type Repository interface {
 	// Close 关停后端（写队列排空后退出；幂等）。
 	Close() error
 }
+
+// ObjectDeleter 对象删除能力接口（可选能力——实现方才挂 DELETE /v1/objects 面；
+// sqlite docs DB 后端实现：删除=现行行移除 + doc_history 终态行留账 + ops apply_log
+// "deleted" 行。git 后端未实现前删除面显式缺席（501）——不静默降级。
+// expectRV>0=乐观锁期望（不符=ConflictError）；返回被删的 resourceVersion。
+// bug 生命周期（workflow.md §9a）的「修复后删临时 BugDoc」即走此面——删除也是账面动作。）
+type ObjectDeleter interface {
+	Delete(kind, scope, name string, expectRV int64, fieldManager, reasonRef string) (int64, error)
+}

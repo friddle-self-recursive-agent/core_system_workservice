@@ -385,6 +385,13 @@ type writeReq struct {
 	reason string
 	ctx    context.Context
 	resp   chan writeResp
+	del    *deleteReq // 非空=删除请求（ObjectDeleter——串行队列同通道复用；sqlite 后端消费）
+}
+
+// deleteReq 删除请求载荷（键+乐观锁期望——经同一串行队列与写事务边界）。
+type deleteReq struct {
+	kind, scope, name string
+	expectRV          int64
 }
 
 type writeResp struct {

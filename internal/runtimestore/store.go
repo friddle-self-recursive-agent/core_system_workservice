@@ -56,6 +56,7 @@ type RunRow struct {
 	StartedAt       string // RFC3339Nano
 	SessionID       string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执回填；空=未回填）
 	VerifyJSON      string // Verify 相位硬 gate 判定投影 JSON（workflow.VerifyVerdict；空=未审——G-09/G-12）
+	SpecJSON        string // spec 侧车投影 JSON（2026-11-26 approvalMode——spec.approval.mode=auto 的 run 域策略随行；空=human 缺省）
 
 	Cursor int64 // 不透明游标（=Run）
 }

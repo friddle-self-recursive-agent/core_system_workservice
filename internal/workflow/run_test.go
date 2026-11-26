@@ -538,3 +538,80 @@ func TestEnabledOfPrecedence(t *testing.T) {
 		t.Fatalf("零对象=缺省启用且判定缺席: v=%v ok=%v", v, ok)
 	}
 }
+
+// TestApprovalModeAuto —— 审批策略投影（2026-11-26「Workflow 可设置 Agent 节点是否自动级别」）：
+// spec.approval.mode=auto 的对象源 run——(1) ApprovalMode 投影随行；(2) 受理首步落闸锚不挂起
+// （auto=闸锚自动通过）；(3) ApprovalNeeded 提升对 auto run 零动作；(4) 词形白名单——非 auto
+// 词形一律 human 缺省（挂起语义保持）。
+func TestApprovalModeAuto(t *testing.T) {
+	const seq = `apiVersion: core/v1
+kind: Workflow
+metadata: {name: auto-wf, scope: global}
+spec:
+  approval: {mode: auto}
+  phases: [Idle, AwaitingApproval, Executing, Reporting]
+  transitions:
+    - {from: Idle, on: advance, to: AwaitingApproval}
+    - {from: AwaitingApproval, on: advance, to: Executing}
+    - {from: AwaitingApproval, on: ApprovalGranted, to: Executing}
+    - {from: AwaitingApproval, on: ApprovalRejected, to: Reporting}
+    - {from: Executing, on: advance, to: Reporting}
+`
+	const seqHuman = `apiVersion: core/v1
+kind: Workflow
+metadata: {name: human-wf, scope: global}
+spec:
+  approval: {mode: manual}
+  phases: [Idle, AwaitingApproval, Executing, Reporting]
+  transitions:
+    - {from: Idle, on: advance, to: AwaitingApproval}
+    - {from: AwaitingApproval, on: advance, to: Executing}
+    - {from: AwaitingApproval, on: ApprovalGranted, to: Executing}
+    - {from: AwaitingApproval, on: ApprovalRejected, to: Reporting}
+    - {from: Executing, on: advance, to: Reporting}
+`
+	lookup := func(name string) ([]byte, bool) {
+		switch name {
+		case "auto-wf":
+			return []byte(seq), true
+		case "human-wf":
+			return []byte(seqHuman), true
+		}
+		return nil, false
+	}
+	mk := func(docs DocsSpecs) *RunLog {
+		return NewRunLog(&RunOptions{RingSize: 8, Specs: docs})
+	}
+	// auto：受理首步 Idle→AwaitingApproval——不挂起（running 直续）。
+	auto := mk(DocsSpecs{Lookup: lookup})
+	auto.StartRun(TriggerRecord{Seq: 1, EventID: "e1", Type: "DocApplied", ReceivedAt: time.Now(),
+		Route: "workflows/auto-wf"}, ExecutorBinding{Executor: ExecWorkflow, Target: "auto-wf"})
+	r := auto.State().Runs[0]
+	if r.ApprovalMode != "auto" {
+		t.Fatalf("ApprovalMode 应投影 auto: %+v", r)
+	}
+	if r.Phase != string(AwaitingApproval) || r.Status != RunRunning {
+		t.Fatalf("auto run 落闸锚应 running 续行（不挂起）: phase=%s status=%s", r.Phase, r.Status)
+	}
+	// 审批提升对 auto run=零动作（闸锚自动通过——ApprovalNeeded 不挂起）。
+	auto.ResumeSignal(TriggerRecord{Seq: 2, EventID: "e2", Type: "ApprovalNeeded", Involved: "Workflow/global/auto-wf", ReceivedAt: time.Now()})
+	if got := auto.State().Runs[0]; got.Status != RunRunning {
+		t.Fatalf("auto run 提升后应保持 running: %+v", got)
+	}
+	// 词形白名单：mode=manual（非 auto 词形）→ human 缺省——落闸锚挂起。
+	human := mk(DocsSpecs{Lookup: lookup})
+	human.StartRun(TriggerRecord{Seq: 3, EventID: "e3", Type: "DocApplied", ReceivedAt: time.Now(),
+		Route: "workflows/human-wf"}, ExecutorBinding{Executor: ExecWorkflow, Target: "human-wf"})
+	h := human.State().Runs[0]
+	if h.ApprovalMode != "" {
+		t.Fatalf("非 auto 词形应缺省空（human）: %+v", h.ApprovalMode)
+	}
+	if h.Phase != string(AwaitingApproval) || h.Status != RunSuspended {
+		t.Fatalf("human run 落闸锚应挂起: phase=%s status=%s", h.Phase, h.Status)
+	}
+	// 挂起后批准恢复（表行审批边）仍可达——auto 不削减人工兜底通路。
+	human.ResumeSignal(TriggerRecord{Seq: 4, EventID: "e4", Type: "ApprovalGranted", Involved: "Workflow/global/human-wf", ReceivedAt: time.Now()})
+	if got := human.State().Runs[0]; got.Status != RunRunning || got.Phase != string(Executing) {
+		t.Fatalf("human run 批准后续行 Executing: phase=%s status=%s", got.Phase, got.Status)
+	}
+}

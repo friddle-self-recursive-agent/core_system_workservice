@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
@@ -73,6 +74,70 @@ func registerObjectRoutes(d *deps, mux *http.ServeMux) {
 			"kind": o.Kind, "name": o.Name, "scope": o.Scope,
 			"resourceVersion": o.ResourceVersion, "content": string(o.Content),
 		})
+	})
+	// 删除面（2026-11-26 假数据清理批）：DELETE /v1/objects/{kind}/{name}?scope=s——
+	// 写面同门（--allow-apply 关=405）；能力面（后端未实现 ObjectDeleter=501 显式缺席，
+	// git 后端现况）；主体=X-Core-Subject 头（同 apply），权限=write×对象 scope（与 apply
+	// 同域判定）；expectRV 查询参数=乐观锁期望（0=不设防）。删除落三账：doc_history 终态行
+	// +ops apply_log "deleted"+DocDeleted 事件（类型未注册=best-effort 记日志不回滚——
+	// 删除已成事实，账面缺口可见但不阻塞）。
+	mux.HandleFunc("DELETE /v1/objects/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if applier == nil {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "删除写路径未开启（cored 缺 --allow-apply；缺省只读）"})
+			return
+		}
+		if objects == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "对象存储未配置（cored 缺 --docs）"})
+			return
+		}
+		del, ok := objects.(repository.ObjectDeleter)
+		if !ok {
+			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "存储后端未实现删除能力（git 后端缺席——sqlite docs DB 后端在册）"})
+			return
+		}
+		kind, name := r.PathValue("kind"), r.PathValue("name")
+		scope := r.URL.Query().Get("scope")
+		if scope == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "repository: scope 与 storage 模板不相容: 写入/读取需显式 scope"})
+			return
+		}
+		if _, err := sch.Lookup(kind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		sub := subjectFrom(r, nil)
+		if o.perm != nil {
+			if err := o.perm.Check(*sub, scope, "write", permission.ByRole); err != nil {
+				writeJSON(w, http.StatusForbidden, map[string]any{"error": "删除被权限判定拒绝: " + err.Error()})
+				return
+			}
+		}
+		var expectRV int64
+		if v := r.URL.Query().Get("expectRV"); v != "" {
+			if n, perr := strconv.ParseInt(v, 10, 64); perr == nil && n > 0 {
+				expectRV = n
+			}
+		}
+		fm := r.URL.Query().Get("fieldManager")
+		if fm == "" {
+			fm = "console:delete"
+		}
+		rv, err := del.Delete(kind, scope, name, expectRV, fm, r.URL.Query().Get("reasonRef"))
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		// DocDeleted 事件（best-effort）：involved=被删对象锚；publisher 缺席/类型未注册只记
+		// 日志——删除已落账（doc_history+apply_log），事件缺口经日志可见。
+		if d.publisher != nil {
+			if _, perr := d.publisher.Publish(eventpub.Request{
+				Type: "DocDeleted", Involved: fmt.Sprintf("%s/%s/%s", kind, scope, name),
+				DedupKey: fmt.Sprintf("doc-deleted:%s/%s/%s", kind, scope, name),
+			}, sub); perr != nil {
+				log.Printf("[apiserver] DocDeleted 事件发布失败（%s/%s/%s）: %v", kind, scope, name, perr)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "kind": kind, "scope": scope, "name": name, "resourceVersion": rv})
 	})
 	// 写入口（缺省关闭）：POST /v1/apply——收敛到 apply 管线三步闸门，不旁路存储。
 	// 未开启（applier=nil）时恒 405，缺省只读面语义不变。

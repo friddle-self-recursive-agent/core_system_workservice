@@ -139,6 +139,7 @@ func usage(w io.Writer) {
 
 写入（与桌面同一条 Apply/Event/权限链）：
   apply -f <file> [--kind K] [--scope S] [--name N] [--rv N] [--dry-run] [--field-manager M]
+  delete <kind>/<scope>/<name> [--rv N] --yes   对象删除（写面闸门同 apply；三账留痕）
   event publish --type T [--involved k/s/n] [--level L] [--dedup K]
   tick [--involved k/s/n] [--dedup K]  发布 ReconcileTick（系统事件触发 core-workflow）
   loop [--dedup K]                     发布 LoopRequested（事件→wake 桥→拉起自循环）
@@ -162,6 +163,8 @@ func (a *app) dispatch(cmd string, args []string) int {
 		return a.cmdCat(args)
 	case "apply":
 		return a.cmdApply(args)
+	case "delete":
+		return a.cmdDelete(args)
 	case "workflows":
 		return a.cmdWorkflows(args)
 	case "runs":

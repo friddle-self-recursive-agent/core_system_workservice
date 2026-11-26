@@ -23,8 +23,9 @@ import (
 // +声明迁移表）。两个字段同口径：nil/空=未声明=零投影（不冒充空声明）；非空=声明投影
 // （顺序保留，原样不解释语义——判定是查表落点的事）。
 type SpecView struct {
-	Phases      []string        // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
-	Transitions []TransitionRow // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
+	Phases       []string        // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
+	Transitions  []TransitionRow // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
+	ApprovalMode string          // 审批策略投影（2026-11-26「Agent 节点自动级别」用户裁决：spec.approval.mode=auto 时闸锚自动通过——落 AwaitingApproval 不挂起、ApprovalNeeded 提升不挂起；空=未声明=human 缺省（现状闸锚挂起）。驳回边表行保留——手动驳回仍可达）
 }
 
 // SpecResolver 对象 spec 解析面（对象声明表解析 v0.27 首段+相位投影 v0.28，workflows
@@ -55,6 +56,9 @@ type docsSpecDecl struct {
 			On   string `yaml:"on"`
 			To   string `yaml:"to"`
 		} `yaml:"transitions"`
+		Approval struct {
+			Mode string `yaml:"mode"` // auto|human（其余词形=未声明，human 缺省）
+		} `yaml:"approval"`
 	} `yaml:"spec"`
 }
 
@@ -81,6 +85,9 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 		return SpecView{} // 损坏文档不投影（防御性——scheme 校验是写路径权威闸门）
 	}
 	var view SpecView
+	if doc.Spec.Approval.Mode == "auto" {
+		view.ApprovalMode = "auto" // 词汇白名单：仅 auto 投影（其余词形一律 human 缺省——宽松词不冒充自动）
+	}
 	if len(doc.Spec.Phases) > 0 {
 		view.Phases = doc.Spec.Phases // 声明序列原样（顺序保留——投影面不解释语义）
 	}

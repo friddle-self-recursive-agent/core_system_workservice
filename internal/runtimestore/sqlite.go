@@ -182,6 +182,7 @@ CREATE INDEX IF NOT EXISTS rt_intake_sessions_updated ON rt_intake_sessions(upda
 	for _, col := range []struct{ table, name, ddl string }{
 		{"rt_run_records", "session_id", `ALTER TABLE rt_run_records ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`},
 		{"rt_run_records", "verify_json", `ALTER TABLE rt_run_records ADD COLUMN verify_json TEXT NOT NULL DEFAULT ''`},
+		{"rt_run_records", "spec_json", `ALTER TABLE rt_run_records ADD COLUMN spec_json TEXT NOT NULL DEFAULT ''`},
 		{"rt_wake_records", "session_id", `ALTER TABLE rt_wake_records ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`},
 	} {
 		if _, err := s.db.Exec(col.ddl); err != nil &&
@@ -213,11 +214,11 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 // 词形，恢复取终态）。
 func (s *SQLiteStore) AppendRun(r RunRow) error {
 	const q = `INSERT OR REPLACE INTO rt_run_records
-(run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+(run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json, spec_json)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	_, err := s.db.Exec(q, r.Run, r.Workflow, r.SpecSource, r.PhasesJSON, r.TransitionsJSON,
 		r.Phase, r.Status, r.BrakesJSON, r.TriggerSeq, r.EventID, r.Type, r.DedupKey,
-		r.Route, r.Owner, r.Target, r.Involved, r.StartedAt, r.SessionID, r.VerifyJSON)
+		r.Route, r.Owner, r.Target, r.Involved, r.StartedAt, r.SessionID, r.VerifyJSON, r.SpecJSON)
 	if err != nil {
 		return fmt.Errorf("runtimestore: rt_run_records 追加: %w", err)
 	}
@@ -315,7 +316,7 @@ func (s *SQLiteStore) ListTriggers(limit int, since int64) ([]TriggerRow, error)
 
 // ListRuns run 行集（run 升序；since=游标）。
 func (s *SQLiteStore) ListRuns(limit int, since int64) ([]RunRow, error) {
-	rows, err := s.db.Query(`SELECT run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json FROM rt_run_records WHERE run > ? ORDER BY run ASC LIMIT ?`, since, listLimit(limit))
+	rows, err := s.db.Query(`SELECT run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json, spec_json FROM rt_run_records WHERE run > ? ORDER BY run ASC LIMIT ?`, since, listLimit(limit))
 	if err != nil {
 		return nil, fmt.Errorf("runtimestore: rt_run_records 列举: %w", err)
 	}
@@ -326,7 +327,7 @@ func (s *SQLiteStore) ListRuns(limit int, since int64) ([]RunRow, error) {
 		if err := rows.Scan(&r.Run, &r.Workflow, &r.SpecSource, &r.PhasesJSON, &r.TransitionsJSON,
 			&r.Phase, &r.Status, &r.BrakesJSON, &r.TriggerSeq, &r.EventID, &r.Type,
 			&r.DedupKey, &r.Route, &r.Owner, &r.Target, &r.Involved, &r.StartedAt,
-			&r.SessionID, &r.VerifyJSON); err != nil {
+			&r.SessionID, &r.VerifyJSON, &r.SpecJSON); err != nil {
 			return nil, fmt.Errorf("runtimestore: 读 rt_run_records 行: %w", err)
 		}
 		r.Cursor = r.Run

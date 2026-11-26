@@ -182,11 +182,91 @@ func (r *SQLiteRepo) processWrites() {
 }
 
 func (r *SQLiteRepo) serve(req *writeReq) {
-	rv, action, err := r.applyWrite(req)
+	var rv int64
+	var action string
+	var err error
+	if req.del != nil {
+		rv, err = r.applyDelete(req)
+		action = "delete"
+	} else {
+		rv, action, err = r.applyWrite(req)
+	}
 	select {
 	case req.resp <- writeResp{rv: rv, action: action, err: err}:
 	case <-req.ctx.Done():
 	}
+}
+
+// Delete 实现 ObjectDeleter（串行队列同通道；expectRV>0=乐观锁期望）。
+// 删除=现行行移除 + doc_history 终态行（rev=被删 rv、正文=库内原文）留账 +
+// ops apply_log "deleted" 行 + watch 广播——删除也是账面动作（R-DOC-7 规则 4；
+// workflow.md §9a bug 文档修复后删除即走此通路）。
+func (r *SQLiteRepo) Delete(kind, scope, name string, expectRV int64, fieldManager, reasonRef string) (int64, error) {
+	if fieldManager == "" {
+		return 0, ErrNoFieldManager
+	}
+	req := &writeReq{
+		del:  &deleteReq{kind: kind, scope: scope, name: name, expectRV: expectRV},
+		fm:   fieldManager,
+		reason: reasonRef,
+		ctx:    context.Background(),
+		resp:   make(chan writeResp, 1),
+	}
+	select {
+	case r.reqs <- req:
+	case <-r.stop:
+		return 0, ErrClosed
+	}
+	resp := <-req.resp
+	return resp.rv, resp.err
+}
+
+// applyDelete 删除事务（串行队列内）：键校验→现行行读取（缺席=ErrNotFound；期望 rv 不符=
+// ConflictError）→doc_history 终态行+现行行删除同事务→ops 双写+广播。
+func (r *SQLiteRepo) applyDelete(req *writeReq) (int64, error) {
+	d := req.del
+	if _, err := objectKeyValidation(r.sch, d.kind, d.scope, d.name); err != nil {
+		return 0, err
+	}
+	var storedRV int64
+	var storedCanon string
+	err := r.db.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
+		d.kind, d.scope, d.name).Scan(&storedCanon, &storedRV)
+	if errors.Is(err, sql.ErrNoRows) {
+		r.logApply(&Object{Kind: d.kind, Scope: d.scope, Name: d.name}, 0, "delete-missing", req)
+		return 0, fmt.Errorf("%w: %s/%s/%s", ErrNotFound, d.kind, d.scope, d.name)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("repository: docs DB 查询: %w", err)
+	}
+	if d.expectRV > 0 && d.expectRV != storedRV {
+		r.logApply(&Object{Kind: d.kind, Scope: d.scope, Name: d.name}, storedRV, "conflict", req)
+		return 0, &ConflictError{Kind: d.kind, Scope: d.scope, Name: d.name,
+			Expected: d.expectRV, Current: storedRV}
+	}
+	tx, terr := r.db.Begin()
+	if terr != nil {
+		return 0, fmt.Errorf("repository: docs DB 事务: %w", terr)
+	}
+	if _, err := tx.Exec(`INSERT INTO doc_history
+	(kind, scope, name, rev, content, applied_at, field_manager)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		d.kind, d.scope, d.name, storedRV, storedCanon, stampNow(), "console:delete:"+req.fm); err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("repository: docs DB 删除留账: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM doc WHERE kind=? AND scope=? AND name=?`,
+		d.kind, d.scope, d.name); err != nil {
+		_ = tx.Rollback()
+		return 0, fmt.Errorf("repository: docs DB 删除: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("repository: docs DB 提交: %w", err)
+	}
+	obj := &Object{Kind: d.kind, Scope: d.scope, Name: d.name}
+	r.logApply(obj, storedRV, "deleted", req)
+	r.broadcast(fmt.Sprintf("%d", storedRV))
+	return storedRV, nil
 }
 
 // Write 提交写入（并发安全：单 goroutine 串行队列；语义与 GitRepo.Write 一致，

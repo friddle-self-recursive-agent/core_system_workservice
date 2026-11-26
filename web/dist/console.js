@@ -90,7 +90,7 @@ var CoreConsole = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
+  // node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -104,7 +104,7 @@ var CoreConsole = (() => {
     validator: () => validator
   });
 
-  // ../../../../web/node_modules/fast-json-patch/module/helpers.mjs
+  // node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -231,7 +231,7 @@ var CoreConsole = (() => {
     })(Error)
   );
 
-  // ../../../../web/node_modules/fast-json-patch/module/core.mjs
+  // node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -551,7 +551,7 @@ var CoreConsole = (() => {
     return a !== a && b !== b;
   }
 
-  // ../../../../web/node_modules/fast-json-patch/module/duplex.mjs
+  // node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -721,7 +721,7 @@ var CoreConsole = (() => {
     return patches;
   }
 
-  // ../../../../web/node_modules/fast-json-patch/index.mjs
+  // node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -1334,7 +1334,7 @@ var CoreConsole = (() => {
     return active ? chip("Running", "acc") : chip("InSync", "ok");
   }
 
-  // ../../../../web/node_modules/marked/lib/marked.esm.js
+  // node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -3470,7 +3470,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // ../../../../web/node_modules/dompurify/dist/purify.es.mjs
+  // node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -5619,7 +5619,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // ../../../../web/node_modules/js-yaml/dist/js-yaml.mjs
+  // node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -9163,7 +9163,270 @@ ${text2}</tr>
     ["\uFF09\uFF1F\u4E50\u89C2\u9501\u57FA\u51C6 r", ")? optimistic-lock base r"],
     ["\uFF1A\u6682\u65E0\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>", ": none (explicit empty state).</div>"],
     ["\uFF1B\u8D85\u9650 tag \u6536\u655B ", "; over-limit tags converge "],
-    ["\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=", "? dry-run passed (rv="]
+    ["\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=", "? dry-run passed (rv="],
+    /* §19 全页可用性批——EN 回填（plain 缺译全量） */
+    ["\u6587\u6863\u7F16\u8F91\u5668", "Document editor"],
+    ["\u8FD0\u884C\u8BE6\u60C5", "Run detail"],
+    ["Service \u5927\u5C4F", "Service dashboard"],
+    ["\u7CFB\u7EDF\u8BE6\u60C5", "System detail"],
+    ["\uFF08\u65E0\u5DEE\u5F02\uFF09", "(no diff)"],
+    ["\u540D\u79F0", "Name"],
+    ["\u4F5C\u7528\u57DF", "Scope"],
+    ["\u7248\u672C\u53F7", "Version"],
+    ["\u76EE\u6807\u6587\u6863", "Target doc"],
+    ["\u8BF4\u660E\u6587\u6863", "Description"],
+    ["\u76F8\u5173\u6587\u6863", "Related docs"],
+    ["\u5916\u90E8\u4F9D\u8D56", "External deps"],
+    ["\u670D\u52A1\u5B9E\u4F8B", "Service instances"],
+    ["\u5185\u7F6E\u670D\u52A1", "Built-in services"],
+    ["\u5BF9\u8BDD\u5165\u53E3\uFF08Agent\uFF09", "Dialog entry (Agent)"],
+    ["\u8FD0\u884C\u72B6\u6001", "Run status"],
+    ["\u5DF2\u5E94\u7528\u7684\u7248\u672C", "Applied version"],
+    ["\u5DF2\u6302\u8F7D\u8FDE\u63A5", "Mounted connections"],
+    ["\u51ED\u636E\u6E90", "Credential source"],
+    ["\u5F53\u524D\u4F1A\u8BDD", "Current session"],
+    ["\u6807\u9898", "Title"],
+    ["\u4F9D\u8D56", "Deps"],
+    ["\u539F\u6587", "Source"],
+    ["\u67E5\u770B\u5BF9\u8C61", "View object"],
+    ["\u5C55\u5F00", "Expand"],
+    ["\u6211", "Me"],
+    ["\u751F\u6210\u7ED3\u8BBA", "Conclusion"],
+    ["\u5B8C\u6574\u6587\u6863\u6A21\u5F0F\uFF1A", "Full document: "],
+    ["\u5B8C\u6574\u6587\u6863\u6A21\u5F0F", "Full document"],
+    ["\u5199\u5165\u8349\u7A3F", "To draft"],
+    ["\u601D\u8003\u8FC7\u7A0B", "Thinking"],
+    ["\u5DE5\u5177\u8FC7\u7A0B", "Tool trace"],
+    ["\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0", "Object workspace"],
+    ["\u7A3F: ", "Draft: "],
+    ["\uFF08\u5BF9\u8C61\u4E0D\u5728\u518C\u2014\u2014apply \u5C06\u521B\u5EFA\u901A\u8DEF\uFF09", "(object not registered \u2014 apply will create it)"],
+    ["\u57FA\u51C6=r?", "base=r?"],
+    ["\u57FA\u51C6=r", "base=r"],
+    ["\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A", "(face value unreadable: "],
+    [" \xB7 \u7A3F ", " \xB7 draft "],
+    ["B vs \u843D\u5E93\u503C ", "B vs stored "],
+    ["B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ", "B (live read, no cache) \xB7 "],
+    ["\u9884\u68C0\u4E2D\u2026", "Dry-run\u2026"],
+    ["\u6279\u51C6\uFF08= Apply\uFF09", "Approve (= Apply)"],
+    ["dry-run \u9884\u68C0\u672A\u8FC7\uFF08", "dry-run precheck failed ("],
+    ["\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002", ") \u2014 zero side effects, draft kept."],
+    ["\u4E50\u89C2\u9501\u5BF9\u9F50 r", "optimistic lock aligned r"],
+    ["\u4E50\u89C2\u9501\u6F02\u79FB\uFF08\u73B0 r", "optimistic lock drift (now r"],
+    [" vs \u7A3F\u57FA r", " vs draft base r"],
+    ["\u2014\u2014\u843D\u5E93\u5C06\u88AB\u62D2\uFF09", " \u2014 apply would be rejected)"],
+    ["\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09", "Confirm approve (Apply) "],
+    ["\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=", "? dry-run passed (rv="],
+    ["\u843D\u5E93\u4E2D\u2026", "Applying\u2026"],
+    ["Apply \u5931\u8D25\uFF08", "Apply failed ("],
+    ["\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002", ") \u2014 draft kept, not applied."],
+    ["\u53BB\u5904\u7406", "Handle"],
+    ["\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002", "Pending = draft cache (DocReview same source) \u222A ApprovalNeeded archived rows (granted ones drop out). Approve/reject are human clicks; diff = draft vs live value."],
+    ["\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09", "Batch approve awaits backend verb \u2014 approve one by one (honest note)"],
+    ["\u5F85\u5BA1\u533A\u4E3A\u7A7A\uFF08\u8349\u7A3F\u7F13\u5B58\u4E0E ApprovalNeeded \u5F52\u6863\u5747\u7A7A\uFF09", "Nothing pending (draft cache and ApprovalNeeded archive both empty)"],
+    ["\u56DE Welcome", "Back to Welcome"],
+    ["\u2014 \u9009\u62E9 session\uFF08\u6216\u8F93\u5165\uFF09\u2014", "\u2014 pick a session (or type) \u2014"],
+    ["\u6216\u624B\u586B session id", "or type a session id"],
+    ["\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D", "Submit a request / find a doc / update a doc \u2014 e.g. run a code audit, measure the actual-vs-doc gap, and fix it"],
+    ["\u53D1\u9001", "Send"],
+    ["Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09", "Enter to send \xB7 queue semantics (delivered to the agent session; the conclusion lands in docs by the agent, visible via status badge and node graph)"],
+    ["\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001", "Dialog channel not injected (chatfaces.js absent) \u2014 delivery face explicitly absent, never fakes a send"],
+    ["\u7EBF\u7A0B\u4E3A\u7A7A\u2014\u2014\u53D1\u7B2C\u4E00\u6761\u9700\u6C42\uFF1Bagent \u7684\u5B8C\u6574\u8F68\u8FF9\u5728\u539F\u751F\u754C\u9762\uFF08\u65B0\u7A97\u53E3\uFF09\u53EF\u89C1\u3002", "Thread empty \u2014 send the first request; the agent\u2019s full track is visible in the native UI (new window)."],
+    ["\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08", "Body unreadable ("],
+    ["\u5185\u5BB9\u7F3A\u5E2D", "content absent"],
+    ["\u5173\u95ED", "Close"],
+    ["\u5199\u5165\u8349\u7A3F\uFF08\u7F16\u8F91\u5668\uFF09", "To draft (editor)"],
+    ["\u5DF2\u9001\u8FBE\uFF08queue\uFF09\u2014\u2014agent \u4F1A\u8BDD\u5DF2\u53D7\u7406\u3002\u7ED3\u8BBA\u5C06\u7531 agent \u751F\u6210\u5E76\u81EA\u884C\u843D\u6587\u6863\uFF1B\u6587\u6863\u72B6\u6001\u5FBD\u4E0E workflow \u8282\u70B9\u56FE\u968F\u540E\u53EF\u89C1\u3002\u539F\u751F\u8F68\u8FF9\uFF1A", "Delivered (queue) \u2014 agent session accepted. The conclusion will be produced by the agent and land in docs on its own; watch the doc status badge and workflow node graph. Native track:"],
+    ["\u9001\u8FBE\u5931\u8D25\uFF08", "Delivery failed ("],
+    ["\u5BBF\u4E3B\u539F\u751F\u754C\u9762\uFF08\u6743\u5A01\u8F68\u8FF9\uFF09", "Host native UI (authoritative track)"],
+    ["rootAgent\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\uFF1Bref \u53EF\u70B9\uFF0C\u7ED3\u8BBA\u53EF\u5168\u6587\u6863\u89C2\u770B", "rootAgent \u2014 find and update docs; refs are clickable, conclusions viewable as full documents"],
+    ["\u65B0\u7A97\u53E3\u539F\u751F\u754C\u9762", "Native UI in new window"],
+    ["\u5BF9\u8BDD\u7EBF\u7A0B", "Dialog thread"],
+    ["\u672C\u5730\u7EBF\u7A0B\u53EA\u8BB0\u672C\u63A7\u5236\u53F0\u53D1\u51FA\u7684\u6D88\u606F\uFF1B\u6743\u5A01\u8F68\u8FF9=\u5BBF\u4E3B\u539F\u751F\u4F1A\u8BDD\uFF08\u4E0B\u65B9 expand \u5185\u5D4C\uFF09\u3002", "Local thread only records messages sent from this console; the authoritative track is the host native session (embedded below)."],
+    ["\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/", "Hydrating context\u2026 (GET /v1/sessions/"],
+    ["\u65E0\u7A3F", "No draft"],
+    ["\u6B63\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08", "Body unreachable ("],
+    ["\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB", ") \u2014 reopen after recovery to read live"],
+    ["scheme\uFF08frontmatter \u58F0\u660E\u2014\u2014expand \u67E5\u770B\u5B8C\u6574\uFF09", "scheme (frontmatter declaration \u2014 expand for full)"],
+    ["\u25CF \u672A Apply\uFF08\u8349\u7A3F ", "\u25CF unapplied (draft "],
+    [" \u5904\u53D8\u66F4)", " change(s))"],
+    ["\u65E0\u8349\u7A3F", "No draft"],
+    ["Apply\uFF08\u65E0\u53D8\u66F4\uFF09", "Apply (no changes)"],
+    ["\u6D41\u7A0B\uFF1A\u5199\u4FEE\u6539\u610F\u56FE \u2192 AI \u51FA\u5168\u6587\u5EFA\u8BAE \u2192 \u5199\u5165\u8349\u7A3F \u2192 \u53F3\u4E0B Apply\uFF08\u4E50\u89C2\u9501+\u9884\u68C0\u7167\u8D70\u2014\u2014AI \u65E0\u7279\u6743\uFF09\u3002", "Flow: write the change intent \u2192 AI proposes a full draft \u2192 to draft \u2192 Apply at bottom-right (optimistic lock + precheck as usual \u2014 AI has no privilege)."],
+    ["\u4FEE\u6539\u610F\u56FE\uFF0C\u5982\uFF1A\u8865\u5145 X \u8282\uFF1B\u4FEE\u6B63 Y \u5904\u53E3\u5F84\u2026", "Change intent, e.g. add section X; fix wording at Y\u2026"],
+    ["\u8BF7\u6C42 AI \u5EFA\u8BAE", "Ask AI for a proposal"],
+    ["\u5EFA\u8BAE\u5C06\u73B0\u8BFB\u4E8E\u6B64\u2014\u2014\u5199\u5165\u8349\u7A3F\u540E\u8D70\u65E2\u6709 Apply \u901A\u8DEF\u3002", "The proposal will appear here \u2014 send to draft, then use the existing Apply path."],
+    ["AI \u901A\u9053\u672A\u6CE8\u5165\uFF08__CC.chatFaces.docFix \u7F3A\u5E2D\uFF09\u2014\u2014\u53EF\u5728\u300C\u539F\u6587\u300D\u89C6\u56FE\u624B\u7F16\uFF0C\u6216\u7ECF\u4F1A\u8BDD\u5C4F\u5BF9\u8BDD\u540E\u4EBA\u5DE5\u8D34\u56DE\u3002", "AI channel not injected (__CC.chatFaces.docFix absent) \u2014 edit manually in Source view, or dialog on the session screen and paste back."],
+    ["AI \u73B0\u8BFB\u4E2D\u2026", "AI working\u2026"],
+    ["\u7A7A\u5EFA\u8BAE", "Empty proposal"],
+    ["AI \u5EFA\u8BAE\u5DF2\u5230\uFF08", "AI proposal arrived ("],
+    ["\u5DF2\u5199\u5165\u8349\u7A3F\u2014\u2014\u53F3\u4E0B Apply \u843D\u5E93\uFF08\u4E50\u89C2\u9501\u7167\u8D70\uFF09\u3002", "Written to draft \u2014 Apply at bottom-right (optimistic lock as usual)."],
+    ["AI \u5EFA\u8BAE\u5931\u8D25\uFF08", "AI proposal failed ("],
+    ["\uFF08\u4E50\u89C2\u9501\u671F\u671B\u503C\u2014\u2014409 \u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09\xB7 \u7A3F ", "(optimistic-lock expected \u2014 409 never silently rebases) \xB7 draft "],
+    ["\u8349\u7A3F\u4FDD\u5B58\u5931\u8D25\uFF08", "Draft save failed ("],
+    ["\uFF09\u2014\u2014\u5DE5\u4F5C\u526F\u672C\u4ECD\u5728\u5185\u5B58\uFF0C\u9000\u51FA\u524D\u4E0D\u4E22", ") \u2014 working copy stays in memory, not lost before exit"],
+    ["\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09", "Doc absent (registered draft base \u2014 Apply = creation path)"],
+    ["\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09", "(optimistic-lock base)"],
+    ["\u6CE8\u6C34\u4E2D\u2026", "Hydrating\u2026"],
+    ["Apply \u843D\u5E93 ", "Apply stored "],
+    ["\uFF09\uFF1F\u4E50\u89C2\u9501\u57FA\u51C6 r ", ")? optimistic-lock base r "],
+    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u7A3F\u5DF2\u4FDD\u7559\uFF0C\u8BF7\u5BF9\u9F50\u6700\u65B0 rv \u540E\u91CD\u8BD5", " \u2014 optimistic-lock conflict: draft kept, align to latest rv and retry"],
+    ["Apply \u6210\u529F\u2014\u2014\u6587\u6863\u5DF2\u843D\u5E93\uFF08rv=", "Applied \u2014 doc stored (rv="],
+    ["\u5BF9\u8C61\u89E3\u6790\u6B67\u4E49\u6216\u7F3A\u5E2D", "Object resolution ambiguous or absent"],
+    ["\u540C\u540D\u5BF9\u8C61\u8DE8 kind/scope \u4E0D\u552F\u4E00\u2014\u2014\u8BF7\u4ECE\u7CFB\u7EDF\u6811\u8FDB\u5165\u3002", "Same-named object across kinds/scopes \u2014 enter via the system tree."],
+    ["\u6253\u5F00\u7CFB\u7EDF\u6811", "Open system tree"],
+    ["\u67E5\u770B ", "View "],
+    ["workflow \u951A ", "workflow anchor "],
+    [" \u2192 \u5DE5\u4F5C\u6D41", " \u2192 workflow"],
+    ["\u5173\u8054\u8FD0\u884C", "Related runs"],
+    ["\u4F1A\u8BDD ", "Session "],
+    ["\u4F1A\u8BDD\u8BE6\u60C5", "Session detail"],
+    ["\u5FAA\u73AF\u5524\u9192 #", "Loop wake #"],
+    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"],
+    ["\u7A97\u53E3\u5185\u65E0\u4E8B\u4EF6", "No events in window"],
+    ["\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002", "Filter has zero hits \u2014 loosen it and retry."],
+    ["\u5FEB\u7167 events \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot events aggregate is empty (no faking)."],
+    ["\u72B6\u6001", "Status"],
+    ["\u73B0\u8BFB\u4E2D\u2026", "Reading live\u2026"],
+    ["kinds \u2192 scope \u2192 \u5BF9\u8C61\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF1B\u5BF9\u8C61\u540D\u53EF\u70B9\u8FDB\u5DE5\u4F5C\u53F0\uFF09", "kinds \u2192 scope \u2192 objects (snapshot projection; names click into the workspace)"],
+    ["\u5FEB\u7167\u6682\u65E0\u5BF9\u8C61\u679A\u4E3E", "Snapshot has no object enumeration"],
+    ["\u7B49\u5F85\u9996\u4E2A\u5FEB\u7167\u805A\u5408\u3002", "Waiting for the first snapshot aggregate."],
+    ["\u76EE\u5F55\u6811\u5F0F\u6587\u6863\u6E05\u5355\u2014\u2014tag \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863", "Tree-style doc list \u2014 tag filter + version/importance columns; click a row for rendered view and AI doc-fix"],
+    ["\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95", "No declared kinds registered \u2014 full enumeration fallback"],
+    ["\u91CD\u8981\u5EA6\u2014", "importance \u2014"],
+    ["\u6253\u5F00", "Open"],
+    ["\u6E32\u67D3\u89C6\u56FE", "Rendered view"],
+    ["\u7A97\u53E3\u5185\u65E0\u6587\u6863", "No docs in window"],
+    ["\u8FC7\u6EE4\u96F6\u547D\u4E2D\u6216\u5FEB\u7167\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Filter zero-hit or snapshot empty (explicit empty state)."],
+    ["tag/\u91CD\u8981\u5EA6\u6765\u81EA\u7F13\u5B58\u6B63\u6587\u7684 frontmatter\uFF08\u9884\u53D6\u7A97\u53E3 24 \u7BC7\u2014\u2014\u672A\u7F13\u5B58\u7BC7\u663E\u793A \u2014\uFF0C\u73B0\u5F00\u5373\u8BFB\uFF09\u3002", "Tags/importance come from cached body frontmatter (prefetch window 24 \u2014 uncached show \u2014, read live on open)."],
+    ["\u7F51\u7EDC", "Network"],
+    ["\u539F\u6587\uFF08HEAD\uFF09", "Source (HEAD)"],
+    ["\u767D\u540D\u5355\u4ED3\u6811\uFF08GET /v1/design-docs\u2014\u2014HEAD \u6743\u5A01\u96F6\u7F13\u5B58\uFF09", "Whitelisted repo tree (GET /v1/design-docs \u2014 HEAD authoritative, zero cache)"],
+    ["\u672A\u9009\u6863", "No file selected"],
+    ["\u5DE6\u4FA7\u9009\u62E9\u4ED3\u6587\u4EF6\uFF08\u9ED8\u8BA4\u9996\u4ED3\u9996\u6587\u4EF6\uFF09\u3002", "Pick a repo file on the left (defaults to first repo, first file)."],
+    ["ConnectorOps / WorkService / Provider / Ref \u56DB\u65CF\uFF08\u6587\u6863\u4E0E\u8D44\u6E90\u540C\u89C4\u5219\uFF09", "Four families: ConnectorOps / WorkService / Provider / Ref (docs and resources, same rules)"],
+    ["\u9700\u6C42\u63D0\u6848", "Proposals"],
+    ["\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09", "Proposal face (list + live elements) \u2014 approve/reject go through approvals and Apply (LLM has no Apply right)"],
+    ["\u672A\u547D\u540D\u63D0\u6848", "Unnamed proposal"],
+    ["\u5F85\u5B9A", "Pending"],
+    ["\u6682\u65E0\u63D0\u6848", "No proposals"],
+    ["\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002", "Snapshot proposals aggregate is empty (explicit empty state)."],
+    [" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", "\u2019s objects and events (snapshot projection)"],
+    ["\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61", "No registered objects under this scope"],
+    ["\u4E0D\u88C5\u5047\u2014\u2014scope \u8BCD\u5F62\u53EF\u80FD\u4E3A\u5B9E\u4F8B\u6876\uFF08\u6811\u5185\u53EF\u89C1\uFF09\u3002", "No faking \u2014 the scope word may be an instance bucket (visible in the tree)."],
+    ["\u672A\u77E5\u8584\u5C4F", "Unknown thin screen"],
+    ["\u4E1A\u52A1\u63A7\u5236\u53F0", "Business console"],
+    ["\u4E1A\u52A1\u89C6\u89D2\u5360\u4F4D\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u540E\u5728\u6B64\u627F\u8F7D\u4E1A\u52A1\u5927\u5C4F\u4E0E\u64CD\u4F5C\u9762\uFF08\u5F53\u524D\u96F6\u5185\u5BB9\uFF0C\u663E\u5F0F\u5360\u4F4D\u4E0D\u88C5\u5047\uFF09\u3002", "Business-view placeholder \u2014 a later ServiceAgent login will host the business dashboard here (zero content now; explicit placeholder, no faking)."],
+    ["\u672A\u5206\u7EC4", "Ungrouped"],
+    ["\u89C4\u5219\u6587\u6863\u65CF\u7D22\u5F15\u6682\u4E0D\u53EF\u8FBE\u2014\u2014\u547D\u4E2D\u5224\u5B9A\u6682\u7F3A\uFF08\u4E0D\u5192\u5145\u65E0\u9002\u7528\uFF09\u3002", "Rule-doc family index unreachable \u2014 hit decision missing (never fakes \u201Cno applicable rules\u201D)."],
+    ["\u6807\u7B7E\u300C", "Tag \u201C"],
+    ["\u300D\u540C\u7EC4", "\u201D same group"],
+    ["\u89C4\u5219\u539F\u6587\u63D0\u53CA ", "Rule text mentions "],
+    ["\u5BF9\u8C61\u6B63\u6587\u5F15\u7528 ", "Object body references "],
+    ["\u5DF2\u5165\u5FEB\u7167", "In snapshot"],
+    ["\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "Open in doc library"],
+    [" \u7F3A", " missing"],
+    ["\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09", "Object workspace (six panes: tags/rules/context/actions/content/scheme)"],
+    ["\u5FEB\u7167", "Snapshot"],
+    ["\u516D\u7247\u56FA\u5B9A\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme", "Six fixed panes: tags/rules/context/actions/content/scheme"],
+    ["\u5FEB\u7167 objects \u805A\u5408\u4E3A\u7A7A\u6216\u8BE5 kind \u65E0\u5BF9\u8C61\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot objects aggregate empty or no objects of this kind (no faking)."],
+    ["takeBudget \u987B\u4E3A ", "takeBudget must be "],
+    [" \u7684\u6570\u503C\uFF08ContextPolicy \u9884\u7B97\u57DF\uFF09", " (ContextPolicy budget domain)"],
+    [" \u6B21", " time(s)"],
+    [" \xB7 \u6700\u8FD1 ", " \xB7 recent "],
+    ["\u65F6\u95F4\u672A\u77E5", "time unknown"],
+    [" \u603B\u2264", " total \u2264"],
+    ["\u53EF\u64A4\u9500", "revertible"],
+    [" \xB7 \u5907\u6CE8 ", " \xB7 note "],
+    [" \xB7 \u57DF ", " \xB7 domain "],
+    ["\u5171 ", "total "],
+    [" \u7247 \xB7 stale ", " shard(s) \xB7 stale "],
+    [" \xB7 \u91CD\u5EFA\u9608\u503C ", " \xB7 rebuild threshold "],
+    ["\u2014\u2014\u4E50\u89C2\u9501\u51B2\u7A81\uFF1A\u8BF7\u91CD\u8FDB\u9762\u677F\u5BF9\u9F50 revision \u540E\u91CD\u8BD5\uFF08\u7A3F\u4E0D\u8986\u76D6\uFF0C\u4E0D\u9759\u9ED8\u91CD\u57FA\uFF09", " \u2014 optimistic-lock conflict: reopen the panel, align revision, retry (draft not overwritten, never silently rebased)"],
+    ["\uFF1B\u8D85\u9650 tag \u6536\u655B ", "; over-limit tags converged "],
+    [" \u4E2A\uFF1A", ": "],
+    ["\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F", "Revert the last context fork (restore the server-side pre-write snapshot)?"],
+    ["\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09", " \u2014 contextidx not assembled (defensive face)"],
+    ["\u9A8C\u8BC1\u4E2D", "Verifying"],
+    ["\u6392\u961F\u4E2D", "Queued"],
+    ["\u5F85\u542F\u52A8", "Pending start"],
+    ["\u53D7\u963B", "Blocked"],
+    ["\u5931\u8D25", "Failed"],
+    ["\u5DF2\u5B8C\u6210", "Done"],
+    ["\u5DF2\u53D6\u6D88", "Canceled"],
+    ["\u672A\u547D\u540D\u4EFB\u52A1", "Unnamed task"],
+    ["\u4F9D\u8D56 ", "Deps "],
+    ["\u8D1F\u8D23 ", "Owner "],
+    ["\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014", "Last action: \u2014"],
+    ["\u5173\u8054\u4F1A\u8BDD", "Related session"],
+    [" \u9879", " item(s)"],
+    ["\u2190 \u4EFB\u52A1\u4E2D\u5FC3", "\u2190 Task center"],
+    ["\u4EFB\u52A1\u4E0D\u5728\u518C", "Task not registered"],
+    ["\u5FEB\u7167\u4EFB\u52A1\u6E05\u5355\u65E0\u6B64 id\uFF08\u53EF\u80FD\u5DF2\u5B8C\u6210\u51FA\u7A97\u6216 id \u6709\u8BEF\uFF09\u3002", "No such id in the snapshot task list (completed out of window, or wrong id)."],
+    ["\u6700\u8FD1\u52A8\u4F5C", "Last action"],
+    ["\u6700\u8FD1\u9519\u8BEF", "Last error"],
+    ["\u4E25\u91CD", "Critical"],
+    ["\u91CD\u8981", "Major"],
+    ["\u4E00\u822C", "Minor"],
+    ["\u672A\u5206\u7EA7", "Ungraded"],
+    ["\u8BC1\u636E\u2014\u2014\u70B9\u51FB\u8FDB\u5165", "Evidence \u2014 click through"],
+    ["\u8BC1\u636E", "Evidence"],
+    ["\u672A\u547D\u540D\u5173\u6CE8\u9879", "Unnamed attention item"],
+    ["\u667A\u80FD\u5F52\u7EB3", "Smart digest"],
+    ["\u57FA\u7840\u6C47\u603B", "Basic summary"],
+    ["\u672A\u6CE8\u660E\u751F\u6210\u65B9\u5F0F", "Generation method unstated"],
+    [" \xB7 \u68C0\u67E5\u8303\u56F4 ", " \xB7 check scope "],
+    [" \xB7 \u622A\u81F3 ", " \xB7 as of "],
+    [" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A", " \xB7 absent data: "],
+    ["severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F", "severity-sorted \xB7 clickable evidence \xB7 data trust stated"],
+    ["\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879", "No attention items in this window"],
+    ["attention \u805A\u5408\u96F6\u547D\u4E2D\uFF08\u7A7A\u6001\u663E\u5F0F\u2014\u2014\u4E0D\u5192\u5145\u6709\u98CE\u9669\uFF09\u3002", "attention aggregate zero-hit (explicit empty \u2014 never fakes risk)."],
+    ["\u5F53\u524D\u5FAA\u73AF", "Current loop"],
+    ["\u89E6\u53D1\u4E8B\u4EF6", "Fire event"],
+    ["\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF", "No loop in progress"],
+    ["\u5168\u90E8", "All"],
+    ["\u7A3F", "Draft"],
+    ["\u5347\u7EA7", "Escalate"],
+    ["\u65E0\u4F1A\u8BDD", "No session"],
+    ["\u4E8B\u4EF6", "Events"],
+    ["\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6", "drafts \u222A pending events"],
+    ["\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B", "Open dialog thread"],
+    ["\u6B63\u5728\u8DD1\u7684 Workflows", "Running workflows"],
+    ["\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279", "Approvals needed recently"],
+    ["\u6838\u5FC3 Agent", "Core agents"],
+    ["\u603B\u89C8", "Overview"],
+    ["\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB", "System-view dashboard \u2014 running tasks, approvals needed, core agents at a glance"],
+    ["Service", "Service"],
+    ["Service \u89C6\u89D2\u5927\u5C4F\uFF08\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u5373\u843D\u6B64\u89C6\u56FE\uFF09", "Service-view dashboard (same layout as the system one \u2014 a later ServiceAgent login lands here)"],
+    ["ServiceDesc \u5728\u518C\u2014\u2014agents=", "ServiceDesc registered \u2014 agents="],
+    ["ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09", "ServiceDesc object not registered (projected from snapshot \u2014 never fakes registration)"],
+    ["\u8FDB\u884C\u4E2D", "Running"],
+    ["\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09", "Single node (declared phases not projected)"],
+    ["\u70B9\u51FB\u8282\u70B9\u770B\u8BE5\u76F8\u4F4D\u7684\u4E8B\u4EF6\u94FE\u4E0E\u6D89\u53CA\u6587\u6863\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\u3002", "Click a node for that phase\u2019s event chain and involved docs; progress refreshes live via patches."],
+    ["\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002", "No events for this phase in window (honest empty)."],
+    ["\u6D89\u53CA", "Involved"],
+    ["\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A", "Event chain (archive window):"],
+    ["\u672A\u77E5", "Unknown"],
+    [" \u6B21\u8FD0\u884C", " run(s)"],
+    ["\u805A\u5408\u9762\uFF08\u5FEB\u7167 workflows/runs\uFF09\uFF1B\u8FD0\u884C\u72EC\u7ACB\u9875\u89C1\u8BE6\u60C5", "Aggregate face (snapshot workflows/runs); runs have their own detail pages"],
+    ["\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41", "No registered workflows"],
+    ["\u5FEB\u7167 workflows \u805A\u5408\u4E3A\u7A7A\uFF08\u4E0D\u88C5\u5047\uFF09\u3002", "Snapshot workflows aggregate is empty (no faking)."],
+    ["\u5DE5\u4F5C\u6D41\u8BE6\u60C5", "Workflow detail"],
+    ["\u2190 \u5DE5\u4F5C\u6D41", "\u2190 Workflows"],
+    ["\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C", "Workflow not registered"],
+    ["\u5FEB\u7167\u805A\u5408\u65E0\u6B64 workflow\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u6709\u8BEF\uFF09\u3002", "No such workflow in the snapshot aggregate (offline, or wrong name)."],
+    ["\u76EE\u6807", "Target"],
+    ["\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C", "Run not registered"],
+    ["\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002", "No such run in the snapshot runs aggregate (out of window)."],
+    ["\u7B49\u5BA1\u6279", "Awaiting approval"],
+    ["\u8FD0\u884C\u4E2D", "Running"],
+    ["\u53BB\u5BA1\u6279 \u2192", "To approvals \u2192"],
+    ["\u5F53\u524D\u76F8\u4F4D", "Current phase"],
+    ["\u4E8B\u4EF6\u65F6\u95F4\u7EBF", "Event timeline"],
+    ["\u5355\u8282\u70B9", "Single node"],
+    ["\u6B63\u5728\u53D1\u751F\u2014\u2014\u63A8\u8FDB\u7531 patch \u5B9E\u65F6\u5237\u65B0", "Happening now \u2014 progress refreshes live via patches"],
+    ["\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u4E8B\u4EF6\u6309\u5F52\u6863\u7A97\u53E3\u56DE\u653E", "Past phase \u2014 events replayed from the archive window"],
+    ["\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279", "Handle this approval"],
+    ["\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002", "No events in the archive window yet \u2014 rows land here live as the workflow advances."]
   ]);
   var DICTS = { en };
   var subs = /* @__PURE__ */ new Set();
@@ -10054,10 +10317,10 @@ ${text2}</tr>
       if (btn.disabled) return;
       const wf = btn.getAttribute("data-appr-wf") || "";
       const scope = btn.getAttribute("data-appr-scope") || "global";
-      const run2 = btn.getAttribute("data-appr-run") || "";
-      const key = btn.getAttribute("data-appr-key") || run2;
+      const run = btn.getAttribute("data-appr-run") || "";
+      const key = btn.getAttribute("data-appr-key") || run;
       const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
-      if (!window.confirm(ask + wf + " #" + run2)) return;
+      if (!window.confirm(ask + wf + " #" + run)) return;
       btn.disabled = true;
       const r = await ctx2.api.eventPub({
         type: type2,
@@ -10089,11 +10352,11 @@ ${text2}</tr>
     const runRows = pendingRunsOf(ctx2).slice(0, 8).map((r) => {
       const wf = String(r.workflow || r.wf || "");
       if (!wf) return "";
-      const run2 = String(r.run != null ? r.run : "");
-      const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run2;
+      const run = String(r.run != null ? r.run : "");
+      const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run;
       return pendingRunRowHtml({
         wf,
-        run: run2,
+        run,
         key,
         scope: runOwnerScope(r),
         phase: String(r.phase || r.state || "AwaitingApproval"),
@@ -11062,7 +11325,7 @@ ${text2}</tr>
     reportScreen(el, ctx2);
   }
 
-  // ../../../../web/node_modules/diff/libesm/diff/base.js
+  // node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -11264,7 +11527,7 @@ ${text2}</tr>
     }
   };
 
-  // ../../../../web/node_modules/diff/libesm/diff/line.js
+  // node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);

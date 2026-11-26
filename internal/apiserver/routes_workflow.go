@@ -308,6 +308,9 @@ func runsPayload(st workflow.RunState) map[string]any {
 				"maxMutationsTick": r.Brakes.MaxMutationsTick,
 				"source":           r.Brakes.Source,
 			},
+			// 审批策略投影（2026-11-26「Workflow 可设置 Agent 节点是否自动级别」）：
+			// "auto"=闸锚自动通过；空=human 缺省（闸锚挂起等人）。新载荷键=代际判别器。
+			"approvalMode": r.ApprovalMode,
 		})
 	}
 	return map[string]any{

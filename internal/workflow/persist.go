@@ -81,6 +81,7 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 		Run: run.Run, Workflow: run.Workflow, SpecSource: run.SpecSource,
 		PhasesJSON: mustJSON(run.Phases), TransitionsJSON: mustJSON(run.Transitions),
 		Phase: run.Phase, Status: run.Status, BrakesJSON: mustJSON(run.Brakes),
+		SpecJSON: mustJSON(map[string]string{"approvalMode": run.ApprovalMode}),
 		TriggerSeq: run.TriggerSeq, EventID: run.EventID, Type: run.Type,
 		DedupKey: run.DedupKey, Route: run.Route, Owner: run.Owner, Target: run.Target,
 		Involved: run.Involved, StartedAt: stampNano(run.StartedAt),
@@ -93,6 +94,7 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 	run := RunRecord{
 		Run: r.Run, Workflow: r.Workflow, SpecSource: r.SpecSource,
 		Phase: r.Phase, Status: r.Status,
+		ApprovalMode: specFromJSON(r.SpecJSON)["approvalMode"],
 		TriggerSeq: r.TriggerSeq, EventID: r.EventID, Type: r.Type,
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
 		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
@@ -102,6 +104,15 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 	_ = json.Unmarshal([]byte(r.TransitionsJSON), &run.Transitions)
 	_ = json.Unmarshal([]byte(r.BrakesJSON), &run.Brakes)
 	return run
+}
+
+// specFromJSON spec 侧车 JSON 列 → map（空列/损坏=空 map——诚实降级不冒充声明）。
+func specFromJSON(s string) map[string]string {
+	var m map[string]string
+	if s == "" || json.Unmarshal([]byte(s), &m) != nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 // verifyToJSON Verify 判定 → JSON 文本列（nil=空列——未审词形）。

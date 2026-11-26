@@ -148,7 +148,9 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 	run.Phase = next
 	switch Phase(next) {
 	case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
-		run.Status = RunSuspended
+		if run.ApprovalMode != "auto" { // auto=闸锚自动通过（spec.approval.mode——Agent 节点自动级别；直续行不挂起）
+			run.Status = RunSuspended
+		}
 	case Failed: // 落终点锚=终态（迁移终点语义——非引擎失败语义）
 		run.Status = RunFailed
 	}
