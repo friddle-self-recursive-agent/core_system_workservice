@@ -86,10 +86,16 @@ export function mapTranscript(events) {
 
 function nodeHtml(n, names) {
   if (n.kind === 'user') {
+    // 注入行（source≠user——system-reminder/技能目录等）默认折叠成细条（可展开全文——
+    // 全文泡会淹没对话；真用户消息照常气泡）。
+    if (n.injected && !n.pending) {
+      return '<div class="cc-msg tool">' +
+        expandBlock('<div class="mono small" style="white-space:pre-wrap">' + esc(trunc(String(n.text || ''), 1200)) + '</div>',
+          tr('注入上下文（') + trunc(String(n.text || ''), 60) + tr('…）')) + '</div>';
+    }
     return '<div class="cc-msg user">' +
       '<div class="cc-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">…</span>') + '</div>' +
-      (n.pending ? '<div class="cc-meta faint">' + esc(tr('送达中…')) + '</div>' :
-        (n.injected ? '<div class="cc-meta faint">' + esc(tr('注入上下文')) + '</div>' : '')) +
+      (n.pending ? '<div class="cc-meta faint">' + esc(tr('送达中…')) + '</div>' : '') +
       '</div>';
   }
   if (n.kind === 'assistant') {

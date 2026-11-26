@@ -10091,7 +10091,13 @@ ${text2}</tr>
   }
   function nodeHtml(n, names) {
     if (n.kind === "user") {
-      return '<div class="cc-msg user"><div class="cc-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">\u2026</span>') + "</div>" + (n.pending ? '<div class="cc-meta faint">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="cc-meta faint">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "") + "</div>";
+      if (n.injected && !n.pending) {
+        return '<div class="cc-msg tool">' + expandBlock(
+          '<div class="mono small" style="white-space:pre-wrap">' + esc(trunc(String(n.text || ""), 1200)) + "</div>",
+          t("\u6CE8\u5165\u4E0A\u4E0B\u6587\uFF08") + trunc(String(n.text || ""), 60) + t("\u2026\uFF09")
+        ) + "</div>";
+      }
+      return '<div class="cc-msg user"><div class="cc-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">\u2026</span>') + "</div>" + (n.pending ? '<div class="cc-meta faint">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : "") + "</div>";
     }
     if (n.kind === "assistant") {
       return '<div class="cc-msg ai"><div class="cc-avatar">\u25C6</div><div class="cc-body">' + (n.reasoning ? expandBlock('<div class="msg-text faint">' + linkifyRefs(n.reasoning, names) + "</div>", t("\u601D\u8003\u8FC7\u7A0B")) : "") + (n.text ? '<div class="cc-md md-body">' + renderMarkdown(n.text) + "</div>" : '<div class="cc-md faint">' + esc(t("\uFF08\u7A7A\u56DE\u590D\uFF09")) + "</div>") + "</div></div>";
