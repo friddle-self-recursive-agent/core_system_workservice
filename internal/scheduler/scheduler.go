@@ -98,6 +98,8 @@ type Scheduler struct {
 	conflictResolvedSeen map[string]bool      // 已处置裁决事件 ID
 	conflictHold         map[string]bool      // Apply 冲突挂起（等 TaskConflictResolved，不重试）
 	conflictPairs        map[string]string    // 挂起对：当前任务 → 在先任务
+	orphanOrders         map[string]time.Time // 孤儿租约认领锚（taskId → event_log running 判定时刻；占位=无需认领）
+	adopted              bool                 // 孤儿认领已扫档（本轮进程一次——orders() 幂等闸）
 }
 
 // New 构建调度器（cancels/applies 可为 nil=取消扫描/Apply 关口冲突拦截关断；spawn 地址空=拉起关断保持 ready）。
@@ -132,7 +134,8 @@ func New(repo repository.Repository, bus *eventbus.Bus, sch *scheme.Scheme, canc
 		repo: repo, bus: bus, sch: sch, cancels: cancels, applies: applies, sessions: opts.Sessions,
 		url: url, hc: &http.Client{Timeout: SpawnTimeout}, tick: tick, now: now, logf: logf,
 		readySince: map[string]time.Time{}, leases: map[string]time.Time{},
-		backoff: map[string]time.Time{}, spawnFails: map[string]int{},
+		orphanOrders: map[string]time.Time{},
+		backoff:      map[string]time.Time{}, spawnFails: map[string]int{},
 		cancelPending: map[string]bool{}, cancelSeen: map[string]bool{},
 		conflictSeen: map[string]bool{}, conflictResolvedSeen: map[string]bool{},
 		conflictHold: map[string]bool{}, conflictPairs: map[string]string{},
@@ -202,6 +205,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 		bySession[id] = st.AgentSession
 	}
 	s.trackReady(byPhase, now)
+	s.adoptOrphanLeases(ctx, views, now) // 孤儿租约认领（首拍扫档——重启前在途 running 不悬空）
 	s.scanCancels()
 	s.applyCancels(ctx, byObj, byPhase)
 	s.recoverLeases(ctx, byObj, byView, cfg, now)
