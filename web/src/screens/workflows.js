@@ -140,47 +140,115 @@ function detailScreen(el, ctx, name) {
   });
 }
 
-/** 运行独立页（#/wf/:name/r/:n——运行抽屉的独立路由形态）。 */
+/** 运行独立页（#/wf/:name/r/:n）——人视角布局：
+ *  hero（名+run+状态+时间+审批动作锚）→ 真连线 stepper（视觉中心）→ 双栏（当前相位卡 | 事件时间线）。
+ *  空态全部内联弱化（不裸句挂底）。 */
+/** 区内 ref-chip 的 data-go 点击（runScreen 局部——不走全仓委托）。 */
+function bindDocLinks(scopeEl, ctx) {
+  scopeEl.querySelectorAll('[data-go]').forEach((n) => {
+    n.addEventListener('click', () => ctx.go(n.getAttribute('data-go')));
+  });
+}
+
 function runScreen(el, ctx, name, no) {
   const runs = ctx.store.runs().filter((r) => String(r && (r.workflow || r.name || '')) === String(name));
   const run = runs.find((r) => String(r.run != null ? r.run : (r.no != null ? r.no : '')) === String(no)) || runs[0];
-  const head = screenHead(tr('运行详情'), 'workflow=' + String(name) + ' · run #' + String(no),
-    chipGo('← ' + String(name), 'wf/' + encodeURIComponent(String(name)), 'mute', false));
   if (!run) {
-    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('运行记录不在册'), tr('快照 runs 聚合无此运行（可能已出窗）。')) + '</div>';
+    el.innerHTML = '<div class="view-inner">' +
+      '<div class="run-hero"><div class="rh-top">' + chipGo(tr('← ' + String(name)), 'wf/' + encodeURIComponent(String(name)), 'mute', false) + '</div>' +
+      '<div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + '</span></div></div>' +
+      emptyBox(tr('运行记录不在册'), tr('快照 runs 聚合无此运行（可能已出窗）。')) + '</div>';
     return;
   }
-  const rows = [
-    [tr('状态'), runChip(run)],
-    ['route', esc(trunc(String(run.route || '—'), 120))],
-  ];
-  if (run.startedAt || run.at || run.ts) rows.push([tr('开始于'), timeHtml(run.startedAt || run.at || run.ts)]);
-  if (run.finishedAt || run.doneAt) rows.push([tr('结束于'), timeHtml(run.finishedAt || run.doneAt)]);
-  if (run.error) rows.push([tr('错误'), chip(trunc(String(run.error), 160), 'esc')]);
-  const steps = Array.isArray(run.steps) ? run.steps : [];
-  el.innerHTML = '<div class="view-inner">' + head +
-    tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
-    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b" data-pg-box>') +
-    (phaseGraphHtml(run, ctx)) + '</div></div>' +
-    (steps.length
-      ? tr('<h2 class="sec-title">步骤</h2><div class="card">') + steps.map((s) =>
-        '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || tr('步骤'))) + ' ' + runChip(s) + '</div>' +
-        '<div class="mr-sub small mono">' + esc(trunc(String(s && (s.detail || s.message) || ''), 120)) + '</div></div></div>'
-      ).join('') + '</div>'
-      : tr('<div class="small faint">契约未携带步骤明细——不显示不编造。</div>')) +
+  const st = String(run.status || '');
+  const stCls = st === 'suspended' ? 'warn' : (RUN_CLS[st] || 'mute');
+  const startedAt = run.startedAt || run.at || run.ts;
+  const gateWord = st === 'suspended' ? tr('等审批') : (st === 'running' ? tr('运行中') : st);
+  el.innerHTML = '<div class="view-inner">' +
+    /* hero */
+    '<div class="run-hero">' +
+    '<div class="rh-top">' + chipGo(tr('← ' + String(name)), 'wf/' + encodeURIComponent(String(name)), 'mute', false) + '</div>' +
+    '<div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + '</span>' +
+    chip(st || tr('未知'), stCls) + '</div>' +
+    '<div class="rh-meta">' +
+    (startedAt ? '<span>' + esc(tr('开始于')) + ' ' + esc(relAge(startedAt) || String(startedAt)) + '</span>' : '') +
+    (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + '</span>' : '') +
+    (st === 'suspended' ? '<span class="ref-chip" data-go="approvals">' + esc(tr('去审批 →')) + '</span>' : '') +
+    '</div></div>' +
+    /* stepper（视觉中心） */
+    '<div class="step-line" data-step-line></div>' +
+    /* 双栏：当前相位 | 事件时间线 */
+    '<div class="run-cols">' +
+    '<div class="run-col"><div class="panel-h">' + esc(tr('当前相位')) + '</div><div data-run-now></div></div>' +
+    '<div class="run-col"><div class="panel-h">' + esc(tr('事件时间线')) + '</div><div data-run-tl></div></div>' +
+    '</div>' +
+    '<div class="foot-note">' + esc(tr('相位序列=Workflow 声明原样；推进由 patch 增量实时刷新；' + gateWord + '。')) + '</div>' +
     '</div>';
-  bindPhaseGraph(el, ctx, run);
-  // 全量行注水（snapshot.runs.recent 不带 phases——/v1/workflows/runs 面才有；注水后重绘节点图）
+
+  /* stepper 渲染+选中态 */
+  const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || tr('单节点')];
+  const curIdx = phases.indexOf(run.phase);
+  const sel = { idx: curIdx >= 0 ? curIdx : 0 };
+  const lineEl = el.querySelector('[data-step-line]');
+  const paintLine = () => {
+    lineEl.innerHTML = phases.map((p, i) => {
+      const done = st === 'done' || (curIdx >= 0 ? i < curIdx : false);
+      const active = i === curIdx && st !== 'done';
+      const dot = done ? '✓' : (active ? '' : String(i + 1));
+      const conn = i < phases.length - 1
+        ? '<div class="step-conn' + (done || (curIdx >= 0 && i < curIdx) ? ' fill' : '') + '"></div>' : '';
+      return '<div class="step' + (done ? ' done' : '') + (active ? ' active' : '') + (p === 'Failed' ? ' failstep' : '') +
+        '" data-step="' + i + '" role="button">' +
+        '<div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + '</div></div>' + conn;
+    }).join('');
+    el.querySelectorAll('[data-step]').forEach((n) => {
+      n.addEventListener('click', () => { sel.idx = Number(n.getAttribute('data-step')); paintNow(); paintSel(); });
+    });
+    paintSel();
+  };
+  const paintSel = () => {
+    el.querySelectorAll('[data-step]').forEach((n, i) => n.classList.toggle('sel', i === sel.idx));
+  };
+
+  /* 当前相位卡+事件时间线 */
+  const nowEl = el.querySelector('[data-run-now]');
+  const tlEl = el.querySelector('[data-run-tl]');
+  const paintNow = () => {
+    const ph = phases[sel.idx];
+    const isCur = ph === run.phase;
+    const involved = String(run.involved || '');
+    const refs = involved.split(',').map((x) => x.trim()).filter((x) => x.split('/').length >= 3)
+      .map((x) => {
+        const p2 = x.split('/');
+        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + '/' + esc(p2[1]) + '/' + esc(p2[2]) + '">' + esc(x) + '</span>';
+      }).join(' ');
+    nowEl.innerHTML =
+      '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || tr('进行中'), stCls) : '') + '</div>' +
+      '<div class="small faint">' + esc(isCur ? tr('正在发生——推进由 patch 实时刷新') : tr('历史相位——事件按归档窗口回放')) + '</div>' +
+      (refs ? '<div class="now-refs">' + esc(tr('涉及')) + '：' + refs + '</div>' : '') +
+      (isCur && st === 'suspended' ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(tr('去处理这条审批')) + '</span></div>' : '');
+    bindDocLinks(nowEl, ctx);
+  };
+  const paintTl = () => {
+    const evs = ctx.store.events().filter((e) => {
+      const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+      return hay.includes(String(run.workflow || '')) || hay.includes(String(run.phase || ''));
+    }).slice(0, 12);
+    tlEl.innerHTML = evs.length
+      ? '<div class="tl">' + evs.map((e) =>
+        '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || '')) + '</b>' +
+        '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 56)) + '</div></div>' +
+        '<div class="tl-time">' + esc(relAge(e.ts) || '') + '</div></div>').join('') + '</div>'
+      : '<div class="tl-empty">' + esc(tr('归档窗口内暂无事件——workflow 推进时此处实时落行。')) + '</div>';
+  };
+  paintLine(); paintNow(); paintTl();
   ctx.api.workflowRuns().then((r) => {
     if (!r.ok || !el.isConnected) return;
     const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : (Array.isArray(r.data) ? r.data : []);
-    const full = arr.find((x) => String(x && (x.run != null ? x.run : '')) === String(no)) ||
-      arr.find((x) => String(x && (x.workflow || '')) === String(name));
-    if (!full) return;
-    const box = el.querySelector('[data-pg-box]');
-    if (!box) return;
-    box.innerHTML = phaseGraphHtml(full, ctx);
-    bindPhaseGraph(el, ctx, full);
+    const full = arr.find((x) => String(x && (x.run != null ? x.run : '')) === String(no));
+    if (!full || !Array.isArray(full.phases) || !full.phases.length) return;
+    const lineEl2 = el.querySelector('[data-step-line]');
+    if (lineEl2) { run.phases = full.phases; run.phase = full.phase; run.status = full.status || run.status; run.involved = full.involved || run.involved; }
   });
 }
 

@@ -9998,25 +9998,6 @@ ${text2}</tr>
     const body = phases.length ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run2) + "</div>";
     return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u770B\u8BE5\u76F8\u4F4D\u7684\u4E8B\u4EF6\u94FE\u4E0E\u6D89\u53CA\u6587\u6863\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
   }
-  function bindPhaseGraph(el, ctx2, run2) {
-    el.querySelectorAll("[data-pg-node]").forEach((n) => {
-      n.addEventListener("click", () => {
-        const ph = String(n.getAttribute("data-pg-node") || "");
-        const drawer = el.querySelector("[data-pg-drawer]");
-        if (!drawer) return;
-        const evs = ctx2.store.events().filter((e) => {
-          const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-          return hay.includes(String(run2.workflow || "")) || hay.includes(ph);
-        }).slice(0, 10);
-        const involved = String(run2.involved || "");
-        const evRows = evs.length ? evs.map((e) => '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(e.type || "")) + '</b></div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + '</div></div><span class="small faint">' + esc(relAge(e.ts) || "") + "</span></div>").join("") : '<div class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002")) + "</div>";
-        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' + (involved ? '<div class="mr-sub">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + involved.split(",").map((x) => {
-          const parts = x.trim().split("/");
-          return parts.length >= 3 ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + "/" + esc(parts[1]) + "/" + esc(parts[2]) + '">' + esc(x.trim()) + "</span>" : '<span class="small faint mono">' + esc(x.trim()) + "</span>";
-        }).join(" ") + "</div>" : "") + '<div class="small faint">' + esc(t("\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A")) + "</div>" + evRows + "</div></div>";
-      });
-    });
-  }
   var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
   function runChip(r) {
     const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
@@ -10064,39 +10045,82 @@ ${text2}</tr>
       row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
   }
+  function bindDocLinks(scopeEl, ctx2) {
+    scopeEl.querySelectorAll("[data-go]").forEach((n) => {
+      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
+    });
+  }
   function runScreen(el, ctx2, name, no) {
     const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
     const run2 = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
-    const head = screenHead(
-      t("\u8FD0\u884C\u8BE6\u60C5"),
-      "workflow=" + String(name) + " \xB7 run #" + String(no),
-      chipGo("\u2190 " + String(name), "wf/" + encodeURIComponent(String(name)), "mute", false)
-    );
     if (!run2) {
-      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002")) + "</div>";
+      el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u5FEB\u7167 runs \u805A\u5408\u65E0\u6B64\u8FD0\u884C\uFF08\u53EF\u80FD\u5DF2\u51FA\u7A97\uFF09\u3002")) + "</div>";
       return;
     }
-    const rows = [
-      [t("\u72B6\u6001"), runChip(run2)],
-      ["route", esc(trunc(String(run2.route || "\u2014"), 120))]
-    ];
-    if (run2.startedAt || run2.at || run2.ts) rows.push([t("\u5F00\u59CB\u4E8E"), timeHtml(run2.startedAt || run2.at || run2.ts)]);
-    if (run2.finishedAt || run2.doneAt) rows.push([t("\u7ED3\u675F\u4E8E"), timeHtml(run2.finishedAt || run2.doneAt)]);
-    if (run2.error) rows.push([t("\u9519\u8BEF"), chip(trunc(String(run2.error), 160), "esc")]);
-    const steps = Array.isArray(run2.steps) ? run2.steps : [];
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run2, ctx2) + "</div></div>" + (steps.length ? t('<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">') + steps.map(
-      (s) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || t("\u6B65\u9AA4"))) + " " + runChip(s) + '</div><div class="mr-sub small mono">' + esc(trunc(String(s && (s.detail || s.message) || ""), 120)) + "</div></div></div>"
-    ).join("") + "</div>" : t('<div class="small faint">\u5951\u7EA6\u672A\u643A\u5E26\u6B65\u9AA4\u660E\u7EC6\u2014\u2014\u4E0D\u663E\u793A\u4E0D\u7F16\u9020\u3002</div>')) + "</div>";
-    bindPhaseGraph(el, ctx2, run2);
+    const st = String(run2.status || "");
+    const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+    const startedAt = run2.startedAt || run2.at || run2.ts;
+    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st;
+    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run2.run != null ? run2.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run2.error ? '<span class="rh-err">' + esc(trunc(String(run2.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + '</div></div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u76F8\u4F4D\u5E8F\u5217=Workflow \u58F0\u660E\u539F\u6837\uFF1B\u63A8\u8FDB\u7531 patch \u589E\u91CF\u5B9E\u65F6\u5237\u65B0\uFF1B" + gateWord + "\u3002")) + "</div></div>";
+    const phases = Array.isArray(run2.phases) && run2.phases.length ? run2.phases : [run2.phase || t("\u5355\u8282\u70B9")];
+    const curIdx = phases.indexOf(run2.phase);
+    const sel = { idx: curIdx >= 0 ? curIdx : 0 };
+    const lineEl = el.querySelector("[data-step-line]");
+    const paintLine = () => {
+      lineEl.innerHTML = phases.map((p, i) => {
+        const done = st === "done" || (curIdx >= 0 ? i < curIdx : false);
+        const active = i === curIdx && st !== "done";
+        const dot = done ? "\u2713" : active ? "" : String(i + 1);
+        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
+        return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
+      }).join("");
+      el.querySelectorAll("[data-step]").forEach((n) => {
+        n.addEventListener("click", () => {
+          sel.idx = Number(n.getAttribute("data-step"));
+          paintNow();
+          paintSel();
+        });
+      });
+      paintSel();
+    };
+    const paintSel = () => {
+      el.querySelectorAll("[data-step]").forEach((n, i) => n.classList.toggle("sel", i === sel.idx));
+    };
+    const nowEl = el.querySelector("[data-run-now]");
+    const tlEl = el.querySelector("[data-run-tl]");
+    const paintNow = () => {
+      const ph = phases[sel.idx];
+      const isCur = ph === run2.phase;
+      const involved = String(run2.involved || "");
+      const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
+        const p2 = x.split("/");
+        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
+      }).join(" ");
+      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? t("\u6B63\u5728\u53D1\u751F\u2014\u2014\u63A8\u8FDB\u7531 patch \u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u4E8B\u4EF6\u6309\u5F52\u6863\u7A97\u53E3\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
+      bindDocLinks(nowEl, ctx2);
+    };
+    const paintTl = () => {
+      const evs = ctx2.store.events().filter((e) => {
+        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+        return hay.includes(String(run2.workflow || "")) || hay.includes(String(run2.phase || ""));
+      }).slice(0, 12);
+      tlEl.innerHTML = evs.length ? '<div class="tl">' + evs.map((e) => '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>").join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002")) + "</div>";
+    };
+    paintLine();
+    paintNow();
+    paintTl();
     ctx2.api.workflowRuns().then((r) => {
       if (!r.ok || !el.isConnected) return;
       const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
-      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no)) || arr.find((x) => String(x && (x.workflow || "")) === String(name));
-      if (!full) return;
-      const box = el.querySelector("[data-pg-box]");
-      if (!box) return;
-      box.innerHTML = phaseGraphHtml(full, ctx2);
-      bindPhaseGraph(el, ctx2, full);
+      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
+      if (!full || !Array.isArray(full.phases) || !full.phases.length) return;
+      const lineEl2 = el.querySelector("[data-step-line]");
+      if (lineEl2) {
+        run2.phases = full.phases;
+        run2.phase = full.phase;
+        run2.status = full.status || run2.status;
+        run2.involved = full.involved || run2.involved;
+      }
     });
   }
   function render3(el, ctx2) {
