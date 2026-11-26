@@ -962,7 +962,9 @@ var CoreConsole = (() => {
       event: (id) => request("v1/events/" + enc(String(id == null ? "" : id))),
       loopCurrent: () => request("v1/loop/current"),
       /* ---------- 既有只读面 ---------- */
-      object: (kind, scope, name) => request("v1/objects/" + enc(kind) + "/" + enc(name) + (scope && scope !== "global" ? "?scope=" + enc(scope) : "")),
+      /* R1（§19.2）：scope 恒显式（cored 词形「写入/读取需显式 scope」——global 亦不省，
+       * 省略=400「scope 与 storage 模板不相容」噪声 15 条/页+正文恒注水中）。 */
+      object: (kind, scope, name) => request("v1/objects/" + enc(kind) + "/" + enc(name) + "?scope=" + enc(scope || "global")),
       kinds: () => request("v1/scheme/kinds"),
       drafts: () => request("v1/drafts"),
       draft: (kind, name, scope) => request("v1/drafts/" + enc(kind) + "/" + enc(name) + (scope && scope !== "global" ? "?scope=" + enc(scope) : "")),
@@ -982,7 +984,10 @@ var CoreConsole = (() => {
       designDoc: (repo, path) => request("v1/design-docs/" + enc(repo) + "/" + enc(path)),
       /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
       apply: (payload) => request(P.apply, { method: "POST", body: payload }),
-      saveDraft: (payload) => request(P.drafts, { method: "POST", body: payload })
+      saveDraft: (payload) => request(P.drafts, { method: "POST", body: payload }),
+      /* 事件注入通路（§19 R3——人工批闸/点火/取消族；部署=宿主路由 /core-console/event-publish
+       * （绝对词位——经 plugin 注入主体，source=human 服务端强制）。 */
+      eventPub: (payload) => request("/core-console/event-pub", { method: "POST", body: payload })
     };
   }
 
@@ -1313,6 +1318,20 @@ var CoreConsole = (() => {
     const m = /^([A-Za-z][A-Za-z0-9]*)\/([^/\s]+)\/([^/\s]+)$/.exec(r);
     if (m) return "obj/" + m.slice(1).map(encSeg).join("/");
     return "";
+  }
+  function syncBadge(runs, name) {
+    const active = (runs || []).some((r) => {
+      const st = String(r && (r.status || r.state) || "");
+      if (!st || st === "done" || st === "failed" || st === "canceled") return false;
+      let hay = "";
+      try {
+        hay = JSON.stringify([r.involved, r.target, r.route, r.workflow]);
+      } catch {
+        hay = "";
+      }
+      return hay.includes(name);
+    });
+    return active ? chip("Running", "acc") : chip("InSync", "ok");
   }
 
   // node_modules/marked/lib/marked.esm.js
@@ -11610,10 +11629,21 @@ ${text2}</tr>
       const sub = sec.sub ? '<div class="nav-sub-h" data-fold="' + esc(sec.sub.label) + '"><span class="nav-ico fold-chev">' + (foldState[sec.sub.label] ? "\u25B8" : "\u25BE") + "</span>" + esc(t(sec.sub.label)) + "</div>" + (foldState[sec.sub.label] ? "" : '<nav class="side-nav l3">' + sec.sub.items.map(([r, label, icon]) => '<div class="nav-item l3" data-nav="' + esc(r.split("/")[0]) + '" data-go="' + esc(r) + '"><span class="nav-ico">' + icon + "</span>" + esc(t(label)) + "</div>").join("") + "</nav>") : "";
       return '<div class="nav-section' + (open ? " open" : "") + '" data-section="' + sec.level + '"><div class="nav-section-h" data-level="' + sec.level + '"><span class="nav-ico">' + sec.icon + "</span>" + esc(t(sec.label)) + '<span class="fold-chev">' + (open ? "\u25BE" : "\u25B8") + "</span></div>" + (open ? '<nav class="side-nav l2">' + items + "</nav>" + sub : "") + "</div>";
     }).join("");
-    return sections + sideFootHtml();
+    return sections;
   }
   function sideFootHtml() {
     return '<div class="side-foot"><span class="lamp off" data-conn-lamp></span><span class="small faint" data-conn-label>' + esc(t("\u8FDE\u63A5\u4E2D\u2026")) + "</span></div>";
+  }
+  function crumbLabel(route) {
+    const bare = String(route || "").split("/")[0];
+    for (const sec of NAV_TREE) {
+      for (const [r, label] of sec.items) if (r.split("/")[0] === bare) return t(label);
+      if (sec.sub) {
+        for (const [r, label] of sec.sub.items) if (r.split("/")[0] === bare) return t(label);
+      }
+    }
+    const extra = { task: t("\u4EFB\u52A1\u8BE6\u60C5"), event: t("\u4E8B\u4EF6\u8BE6\u60C5"), doc: t("\u6587\u6863\u7F16\u8F91\u5668"), designdoc: t("\u8BBE\u8BA1\u6587\u6863"), wf: t("\u8FD0\u884C\u8BE6\u60C5"), session: t("\u4F1A\u8BDD"), service: t("Service \u5927\u5C4F"), s: t("\u7CFB\u7EDF\u8BE6\u60C5"), inbox: t("\u6536\u4EF6\u7BB1") };
+    return extra[bare] || bare;
   }
   function shellHtml() {
     return '<div class="app"><aside class="sidebar"><div class="side-logo"><span class="logo-mark">C</span><span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(t("web \u91CD\u6784\u8D77\u70B9")) + "</span></span></div><div data-nav-tree>" + sidebarHtml() + "</div>" + sideFootHtml() + '</aside><div class="main-wrap"><header class="topbar"><span class="topbar-crumb" data-topbar-crumb></span><span class="topbar-right"><span class="lamp off" data-conn-lamp-top></span><span class="small faint" data-conn-label-top>' + esc(t("\u8FDE\u63A5\u4E2D\u2026")) + "</span>" + langToggleHtml() + '</span></header><main class="main"><div class="view" id="view"></div></main></div></div>';
@@ -11621,7 +11651,7 @@ ${text2}</tr>
   function paintNav(route) {
     document.querySelectorAll("[data-nav]").forEach((n) => {
       const r = String(n.dataset.nav || "");
-      const on = route === r || r === "tasks" && (route === "task" || route === "report") || r === "events" && route === "event" || r === "workflows" && route === "wf" || r === "docs" && (route === "doc" || route === "designdoc") || r === "welcome" && route === "service" || r === "chat" && (route === "session" || route.startsWith("chat"));
+      const on = route === r || r === "tasks" && route === "task" || r === "events" && route === "event" || r === "workflows" && route === "wf" || r === "docs" && (route === "doc" || route === "designdoc") || r === "welcome" && route === "service" || r === "chat" && (route === "session" || route.startsWith("chat"));
       n.classList.toggle("active", on);
       const section = n.closest(".nav-section");
       if (on && section && section.dataset.section && section.dataset.section !== curLevel) {
@@ -11643,7 +11673,7 @@ ${text2}</tr>
       paintNav(router.current.route);
       try {
         const crumb = document.querySelector("[data-topbar-crumb]");
-        if (crumb) crumb.textContent = router.current.route;
+        if (crumb) crumb.textContent = crumbLabel(router.current.route);
       } catch {
       }
     };
@@ -11654,10 +11684,12 @@ ${text2}</tr>
     const text2 = { connected: t("\u5B9E\u65F6\uFF08WS patch\uFF09"), reconnecting: t("\u91CD\u8FDE\u4E2D\u2026"), degraded: t("\u964D\u7EA7\u8F6E\u8BE2\uFF0830s\uFF09"), connecting: t("\u8FDE\u63A5\u4E2D\u2026") }[state] || state;
     const cls = { connected: "ok", reconnecting: "warn", degraded: "warn", connecting: "off" }[state] || "off";
     [["[data-conn-lamp]", "[data-conn-label]"], ["[data-conn-lamp-top]", "[data-conn-label-top]"]].forEach(([ls, ltx]) => {
-      const lamp = document.querySelector(ls);
-      const label = document.querySelector(ltx);
-      if (lamp) lamp.className = "lamp " + cls + (state === "connected" ? " pulse-ok" : "");
-      if (label) label.textContent = text2;
+      document.querySelectorAll(ls).forEach((lamp) => {
+        lamp.className = "lamp " + cls + (state === "connected" ? " pulse-ok" : "");
+      });
+      document.querySelectorAll(ltx).forEach((label) => {
+        label.textContent = text2;
+      });
     });
   }
   var hydrating = false;

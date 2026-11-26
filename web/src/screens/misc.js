@@ -4,7 +4,7 @@
  * （HEAD 权威零缓存——缺席=诚实降级）。展开态/过滤态=视图态（内存态，非业务状态）。 */
 
 import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute, syncBadge } from '../render/chips.js';
 import { renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 

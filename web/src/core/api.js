@@ -47,8 +47,10 @@ export function createApi(base = '', paths = {}) {
     event: (id) => request('v1/events/' + enc(String(id == null ? '' : id))),
     loopCurrent: () => request('v1/loop/current'),
     /* ---------- 既有只读面 ---------- */
+    /* R1（§19.2）：scope 恒显式（cored 词形「写入/读取需显式 scope」——global 亦不省，
+     * 省略=400「scope 与 storage 模板不相容」噪声 15 条/页+正文恒注水中）。 */
     object: (kind, scope, name) =>
-      request('v1/objects/' + enc(kind) + '/' + enc(name) + (scope && scope !== 'global' ? '?scope=' + enc(scope) : '')),
+      request('v1/objects/' + enc(kind) + '/' + enc(name) + '?scope=' + enc(scope || 'global')),
     kinds: () => request('v1/scheme/kinds'),
     drafts: () => request('v1/drafts'),
     draft: (kind, name, scope) =>
@@ -72,5 +74,8 @@ export function createApi(base = '', paths = {}) {
     /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
     apply: (payload) => request(P.apply, { method: 'POST', body: payload }),
     saveDraft: (payload) => request(P.drafts, { method: 'POST', body: payload }),
+    /* 事件注入通路（§19 R3——人工批闸/点火/取消族；部署=宿主路由 /core-console/event-publish
+     * （绝对词位——经 plugin 注入主体，source=human 服务端强制）。 */
+    eventPub: (payload) => request('/core-console/event-pub', { method: 'POST', body: payload }),
   };
 }

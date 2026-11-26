@@ -70,8 +70,9 @@
 .cc-app .chip.mute { color: var(--text-2); background: var(--panel-2); }
 .cc-app ::-webkit-scrollbar-thumb { background: #cfd3d6; border: none; }
 
-/* ── 顶栏（右上角语言切换+连接态——四次裁决） ── */
-.cc-app .main-wrap { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+/* ── 顶栏（右上角语言切换+连接态——四次裁决；main-wrap flex:1=占满剩余宽——
+ *  §19：缺 flex:1 时 wrap 收缩到内容宽=顶栏宽随页漂移） ── */
+.cc-app .main-wrap { flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 0; }
 .cc-app .topbar { display: flex; align-items: center; justify-content: space-between; height: 46px;
   padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--panel); flex-shrink: 0; }
 .cc-app .topbar-right { display: flex; align-items: center; gap: 12px; }

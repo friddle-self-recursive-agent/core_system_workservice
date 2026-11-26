@@ -111,12 +111,23 @@ function sidebarHtml() {
       (open ? '<nav class="side-nav l2">' + items + '</nav>' + sub : '') +
       '</div>';
   }).join('');
-  return sections + sideFootHtml();
+  return sections; /* footer 唯一份在 shellHtml（§19 R5：双 footer=连接灯覆写竞态，删侧栏内重复） */
 }
 
 function sideFootHtml() {
   return '<div class="side-foot"><span class="lamp off" data-conn-lamp></span>' +
     '<span class="small faint" data-conn-label>' + esc(tr('连接中…')) + '</span></div>';
+}
+
+/* 路由→面包屑词形（NAV 树现译——§19 R5：裸 route 词「welcome」不给人看）。 */
+function crumbLabel(route) {
+  const bare = String(route || '').split('/')[0];
+  for (const sec of NAV_TREE) {
+    for (const [r, label] of sec.items) if (r.split('/')[0] === bare) return tr(label);
+    if (sec.sub) for (const [r, label] of sec.sub.items) if (r.split('/')[0] === bare) return tr(label);
+  }
+  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱') };
+  return extra[bare] || bare;
 }
 
 function shellHtml() {
@@ -137,11 +148,12 @@ function shellHtml() {
     '<main class="main"><div class="view" id="view"></div></main></div></div>';
 }
 
-/* 导航高亮（route→nav 前缀映射）。 */
+/* 导航高亮（route→nav 前缀映射；§19 R5：report 不再映射 tasks——双高亮残留）。 */
 function paintNav(route) {
   document.querySelectorAll('[data-nav]').forEach((n) => {
     const r = String(n.dataset.nav || '');
-    const on = route === r || (r === 'tasks' && (route === 'task' || route === 'report')) ||
+    const on = route === r ||
+      (r === 'tasks' && route === 'task') ||
       (r === 'events' && route === 'event') || (r === 'workflows' && route === 'wf') ||
       (r === 'docs' && (route === 'doc' || route === 'designdoc')) ||
       (r === 'welcome' && (route === 'service')) ||
@@ -158,7 +170,7 @@ function paintNav(route) {
   });
 }
 
-/* 屏包装（params 注入+当前 route 记录+导航高亮）。 */
+/* 屏包装（params 注入+当前 route 记录+导航高亮；crumb=NAV 现译词形）。 */
 function screenOf(fn) {
   return (el, params) => {
     ctx.params = params;
@@ -167,7 +179,7 @@ function screenOf(fn) {
     paintNav(router.current.route);
     try {
       const crumb = document.querySelector('[data-topbar-crumb]');
-      if (crumb) crumb.textContent = router.current.route;
+      if (crumb) crumb.textContent = crumbLabel(router.current.route);
     } catch { /* 无 crumb 环境 */ }
   };
 }
@@ -179,10 +191,8 @@ function paintConn(state) {
   const text = { connected: tr('实时（WS patch）'), reconnecting: tr('重连中…'), degraded: tr('降级轮询（30s）'), connecting: tr('连接中…') }[state] || state;
   const cls = { connected: 'ok', reconnecting: 'warn', degraded: 'warn', connecting: 'off' }[state] || 'off';
   [['[data-conn-lamp]', '[data-conn-label]'], ['[data-conn-lamp-top]', '[data-conn-label-top]']].forEach(([ls, ltx]) => {
-    const lamp = document.querySelector(ls);
-    const label = document.querySelector(ltx);
-    if (lamp) lamp.className = 'lamp ' + cls + (state === 'connected' ? ' pulse-ok' : '');
-    if (label) label.textContent = text;
+    document.querySelectorAll(ls).forEach((lamp) => { lamp.className = 'lamp ' + cls + (state === 'connected' ? ' pulse-ok' : ''); });
+    document.querySelectorAll(ltx).forEach((label) => { label.textContent = text; });
   });
 }
 
