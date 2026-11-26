@@ -1322,6 +1322,7 @@ var CoreConsole = (() => {
   var DEFAULT_ORG = typeof window !== "undefined" && window.__CC && window.__CC.repoOrg || "friddle-self-recursive-agent";
   var REPO_NAMES = [
     "core_system",
+    "core_design",
     "core_system_instance",
     "core_system_workservice",
     "core_system_dsh_plugin",
@@ -1334,24 +1335,21 @@ var CoreConsole = (() => {
     const r = String(ref || "").trim().replace(/^"+|"+$/g, "");
     if (!r) return "";
     if (/^https?:\/\//i.test(r)) return safeHref(r);
+    const GH = (org, repo, sub, frag) => {
+      const url = "https://github.com/" + org + "/" + String(repo || "").replace(/\.git$/, "");
+      const s = (sub || "").replace(/^\/+/, "");
+      return s ? url + "/blob/main/" + s + (frag ? "#" + frag : "") : url + (frag ? "#" + frag : "");
+    };
     let m = /^(?:pkg|git|source):\/\/([^/\s]+)(?:\/([^\s#]*))?/.exec(r);
     if (m) {
-      const org = m[1], rest = (m[2] || "").replace(/^\/+/, "");
-      const url = "https://github.com/" + org;
-      return rest ? url + "/blob/main/" + rest : url;
+      const first = m[1], rest = (m[2] || "").replace(/^\/+/, "");
+      if (REPO_NAMES.includes(first)) return GH(DEFAULT_ORG, first, rest);
+      return GH(first, rest.split("/")[0] || "", rest.split("/").slice(1).join("/"));
     }
     m = /^github\.com\/([^/\s]+)\/([^/\s#]+)(?:\/([^\s#]*))?(?:#(\S+))?/.exec(r);
-    if (m) {
-      const url = "https://github.com/" + m[1] + "/" + m[2].replace(/\.git$/, "");
-      const sub = (m[3] || "").replace(/^\/+/, "");
-      const frag = m[4] ? "#" + m[4] : "";
-      return sub ? url + "/blob/main/" + sub + frag : url + frag;
-    }
+    if (m) return GH(m[1], m[2], m[3] || "", m[4] || "");
     const bare = /^([A-Za-z0-9._-]+)(?:\/([^\s#]+))?$/.exec(r);
-    if (bare && REPO_NAMES.includes(bare[1])) {
-      const url = "https://github.com/" + DEFAULT_ORG + "/" + bare[1];
-      return bare[2] ? url + "/blob/main/" + bare[2] : url;
-    }
+    if (bare && REPO_NAMES.includes(bare[1])) return GH(DEFAULT_ORG, bare[1], bare[2] || "");
     return "";
   }
   function repoLinkChip(ref, label) {

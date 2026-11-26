@@ -102,34 +102,33 @@ export function safeLink(label, href, cls = 'lk') {
  * 不匹配=空串（调用方降级纯文本——不编造外链）。 */
 const DEFAULT_ORG = (typeof window !== 'undefined' && window.__CC && window.__CC.repoOrg) || 'friddle-self-recursive-agent';
 const REPO_NAMES = [
-  'core_system', 'core_system_instance', 'core_system_workservice', 'core_system_dsh_plugin',
+  'core_system', 'core_design', 'core_system_instance', 'core_system_workservice', 'core_system_dsh_plugin',
   'common_connector', 'sybran_usage_connector', 'sybran-developer-system', 'sybran-business-system',
 ];
 
-/** repoRef → 外部仓库 URL（纯函数——node 单测可机械直测；不匹配=空串）。 */
+/** repoRef → 外部仓库 URL（纯函数——node 单测可机械直测；不匹配=空串）。
+ * 词形判定顺序：http(s) 透传 → pkg://git://（首段=仓名或 org——命中已知仓名家族即按
+ * 默认 org 解析，否则首段=org）→ github.com 透传 → 裸仓名家族（默认 org）。 */
 export function repoUrl(ref) {
   const r = String(ref || '').trim().replace(/^"+|"+$/g, '');
   if (!r) return '';
   if (/^https?:\/\//i.test(r)) return safeHref(r);
+  const GH = (org, repo, sub, frag) => {
+    const url = 'https://github.com/' + org + '/' + String(repo || '').replace(/\.git$/, '');
+    const s = (sub || '').replace(/^\/+/, '');
+    return s ? url + '/blob/main/' + s + (frag ? '#' + frag : '') : url + (frag ? '#' + frag : '');
+  };
   let m = /^(?:pkg|git|source):\/\/([^/\s]+)(?:\/([^\s#]*))?/.exec(r);
   if (m) {
-    const org = m[1], rest = (m[2] || '').replace(/^\/+/, '');
-    const url = 'https://github.com/' + org;
-    return rest ? url + '/blob/main/' + rest : url;
+    const first = m[1], rest = (m[2] || '').replace(/^\/+/, '');
+    if (REPO_NAMES.includes(first)) return GH(DEFAULT_ORG, first, rest); // 首段=仓名（A38 无前缀=默认 org）
+    return GH(first, rest.split('/')[0] || '', rest.split('/').slice(1).join('/')); // 首段=org
   }
   m = /^github\.com\/([^/\s]+)\/([^/\s#]+)(?:\/([^\s#]*))?(?:#(\S+))?/.exec(r);
-  if (m) {
-    const url = 'https://github.com/' + m[1] + '/' + m[2].replace(/\.git$/, '');
-    const sub = (m[3] || '').replace(/^\/+/, '');
-    const frag = m[4] ? '#' + m[4] : '';
-    return sub ? url + '/blob/main/' + sub + frag : url + frag;
-  }
+  if (m) return GH(m[1], m[2], m[3] || '', m[4] || '');
   // 裸仓名（core_design/goal.md、core_system_workservice/internal/...）→ 默认 org。
   const bare = /^([A-Za-z0-9._-]+)(?:\/([^\s#]+))?$/.exec(r);
-  if (bare && REPO_NAMES.includes(bare[1])) {
-    const url = 'https://github.com/' + DEFAULT_ORG + '/' + bare[1];
-    return bare[2] ? url + '/blob/main/' + bare[2] : url;
-  }
+  if (bare && REPO_NAMES.includes(bare[1])) return GH(DEFAULT_ORG, bare[1], bare[2] || '');
   return '';
 }
 
