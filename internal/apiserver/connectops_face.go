@@ -6,8 +6,15 @@
 // 实现侧契约保证（connectops-code-audit 只读不写；其他实现接入时随其自身契约），路由层
 // 不做即兴写动作。
 //
-// 错误码：connector 未注册=404；op 不在声明集=400；params 不可解析=400；op 执行失败=502
-// （ErrNoAudit=404——回查未命中与执行失败分立）；成功=200 透传实现侧 JSON 结果。
+// 权限门（G-03 fail-closed，权限门契约 subject 三段必须 check）：subject 解析后先过权限
+// 判定再 Invoke——资源域=ops/<name> × 动作=call（permission.md §1 资源域词形 {scope:
+// "ops/onedev-ci", actions: [call]}；Role 对象按 ops/<name> 授权 call）。装配未注入权限
+// 系统=零值系统（空授权面——仅 DefaultAdmin 字面量兜底；进程级本地信任不兜底 HTTP 匿名
+// 请求，与 apply 写面同口径）；无效/无权 subject → 403，Invoke 不达（先拒后调）。
+//
+// 错误码：connector 未注册=404；op 不在声明集=400；params 不可解析=400；subject 无效/
+// 无权=403（fail-closed）；op 执行失败=502（ErrNoAudit=404——回查未命中与执行失败分立）；
+// 成功=200 透传实现侧 JSON 结果。
 package apiserver
 
 import (
@@ -19,14 +26,31 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors/codeaudit"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/permission"
 )
 
 // connectopsBodyMax 调试面请求体上限（1MiB——audit params 体量：target+checks/ruleChecks 投影）。
 const connectopsBodyMax = 1 << 20
 
-// registerConnectOpsRoutes ops 调试面路由注册（server.go New 尾段装配；面恒开——调用即
-// 只读审核，非写面，不随 --allow-apply 门控）。
-func registerConnectOpsRoutes(mux *http.ServeMux) {
+// connectops 资源域词形（permission.md §1 资源域：{scope: "ops/<name>", actions: [call]}
+// ——Role.Holds 资源域形态精确比对，与 events publish 域分立同范式：ops call 权限不产生
+// 对象 write，对象 write 不产生 ops call）。
+const (
+	connectOpsDomainPrefix = "ops/"
+	connectOpsActionCall   = "call"
+)
+
+// WithPerm 注入权限系统（G-03 connectops 权限门判定权威；装配层与 eventpub.Publisher/apply
+// 写面共用同一 *permission.System——同一代权威快照，判定依据可追。nil=零值系统 fail-closed：
+// 仅 subject 断言 role/global/admin 字面量可过，Role 对象授权面缺席）。
+func WithPerm(s *permission.System) Option {
+	return func(o *options) { o.perm = s }
+}
+
+// registerConnectOpsRoutes ops 调试面路由注册（server.go New 尾段装配；subject 权限门
+// fail-closed——无效/无权 subject 403 在 Invoke 之前；面恒开——判定过门即只读审核，非写面，
+// 不随 --allow-apply 门控）。
+func registerConnectOpsRoutes(mux *http.ServeMux, perm *permission.System) {
 	mux.HandleFunc("POST /v1/connectops/{name}/{op}", func(w http.ResponseWriter, r *http.Request) {
 		name, op := r.PathValue("name"), r.PathValue("op")
 		c, ok := connectors.LookupOpsConnector(name)
@@ -65,6 +89,18 @@ func registerConnectOpsRoutes(mux *http.ServeMux) {
 			delete(envelope, "subject")
 		}
 		subject := subjectFrom(r, subj)
+		// 权限门（G-03 fail-closed——先拒后调）：subject 三段必须 check 才可 Invoke。判定方
+		// ByRole=请求级主体 role 表查表（permission.md §4 b 路，events 发布面同款）；域=ops/<name>
+		// 资源域精确比对 × 动作=call。装配未注入权限系统=零值系统（空授权面——匿名/无权一律
+		// 403，DefaultAdmin 字面量是最低保障；宁拒不降级）。
+		sys := perm
+		if sys == nil {
+			sys = &permission.System{}
+		}
+		if err := sys.Check(*subject, connectOpsDomainPrefix+name, connectOpsActionCall, permission.ByRole); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "connectops 权限拒绝（fail-closed）: " + err.Error()})
+			return
+		}
 		params, err := json.Marshal(envelope)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "params 编码失败: " + err.Error()})

@@ -64,12 +64,12 @@ func attentionReport(ctx context.Context, objects ObjectSource, runs RunFace, o 
 	// 1) 系统/实例：ServiceDesc 是声明，ServiceInstance 才是现实。没有实例=系统未接入现实。
 	instancesByScope := map[string][]string{}
 	if objects != nil {
-		if insts, err := objects.List(ctx, "ServiceInstance", ""); err == nil {
+		if insts, err := listMetaOrList(objects, ctx, "ServiceInstance", ""); err == nil {
 			for _, in := range insts {
 				instancesByScope[in.Scope] = append(instancesByScope[in.Scope], in.Name)
 			}
 		}
-		if descs, err := objects.List(ctx, "ServiceDesc", ""); err == nil {
+		if descs, err := listMetaOrList(objects, ctx, "ServiceDesc", ""); err == nil {
 			facts["systems"] = len(descs)
 			for _, d := range descs {
 				names := instancesByScope[d.Scope]
@@ -110,7 +110,7 @@ func attentionReport(ctx context.Context, objects ObjectSource, runs RunFace, o 
 				}
 			}
 		}
-		if insts, err := objects.List(ctx, "ServiceInstance", ""); err == nil {
+		if insts, err := listMetaOrList(objects, ctx, "ServiceInstance", ""); err == nil {
 			facts["instances"] = len(insts)
 		}
 	}

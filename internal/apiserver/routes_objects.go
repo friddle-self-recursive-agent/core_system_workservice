@@ -42,7 +42,7 @@ func registerObjectRoutes(d *deps, mux *http.ServeMux) {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		}
-		objs, err := objects.List(r.Context(), kind, scope)
+		objs, err := listMetaOrList(objects, r.Context(), kind, scope) // G-15：清单投影只需键/rv——元数据直读优先
 		if err != nil {
 			writeObjErr(w, err)
 			return

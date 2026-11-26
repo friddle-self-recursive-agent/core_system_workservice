@@ -267,3 +267,87 @@ func TestSQLiteConcurrentWritesSerial(t *testing.T) {
 		t.Fatalf("并发写落库数=%d err=%v", len(ags), err)
 	}
 }
+
+// TestSQLiteListMetaNoContent G-15 元数据直读面：ListMeta 行集键/rv/排序与 List 同一，
+// Content=nil（列表投影不带正文——正文仅单读路径 Get 拉）；List 契约保持 Content 随行
+// （行为兼容锚——调度器/索引/导出等全量消费方零迁移）。
+func TestSQLiteListMetaNoContent(t *testing.T) {
+	r, _ := newSQLiteRepo(t)
+	ctx := context.Background()
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "a1", Content: agentYAML("a1", "")}, "fm", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "a2", Content: agentYAML("a2", "")}, "fm", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.Write(ctx, &Object{Kind: "Workflow", Scope: "global", Name: "w1",
+		Content: []byte("apiVersion: core/v1\nkind: Workflow\nmetadata:\n  name: w1\n  scope: global\nspec:\n  steps: []\n")}, "fm", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	metas, err := r.ListMeta(ctx, "Agent", "")
+	if err != nil || len(metas) != 2 {
+		t.Fatalf("ListMeta 跨 scope 枚举: %v err=%v", metas, err)
+	}
+	for _, m := range metas {
+		if len(m.Content) != 0 {
+			t.Fatalf("ListMeta 行不得携带 content: %s/%s", m.Scope, m.Name)
+		}
+		if m.Kind != "Agent" || m.Scope != "global" || m.Name == "" || m.ResourceVersion == 0 {
+			t.Fatalf("ListMeta 元数据列直读应齐（kind/scope/name/rv）: %+v", m)
+		}
+	}
+	if metas[0].Name != "a1" || metas[1].Name != "a2" {
+		t.Fatalf("ListMeta 排序应与 List 同一（scope,name 字典序）: %s, %s", metas[0].Name, metas[1].Name)
+	}
+	// scope 限定枚举同口径。
+	metas, err = r.ListMeta(ctx, "Workflow", "global")
+	if err != nil || len(metas) != 1 || metas[0].Name != "w1" {
+		t.Fatalf("ListMeta scope 限定: %v err=%v", metas, err)
+	}
+	if _, err := r.ListMeta(ctx, "Nope", ""); !errors.Is(err, ErrNotRegistered) {
+		t.Fatalf("ListMeta 未注册 kind 应 ErrNotRegistered: err=%v", err)
+	}
+
+	// 行为兼容锚：List 仍携 content（接口契约——键/rv 与 ListMeta 同源）。
+	full, err := r.List(ctx, "Agent", "")
+	if err != nil || len(full) != 2 {
+		t.Fatalf("List 全量枚举: %v err=%v", full, err)
+	}
+	for _, o := range full {
+		if len(o.Content) == 0 {
+			t.Fatalf("List 行应携带 content（契约不变）: %s/%s", o.Scope, o.Name)
+		}
+	}
+}
+
+// TestSQLiteWALAndReadPool G-15 机械判据：文件库=WAL 模式+读连接池>1；内存库恒串行
+// （:memory: 多连接=多独立库，池>1 即表分裂——串行保一致）。
+func TestSQLiteWALAndReadPool(t *testing.T) {
+	// 文件库：journal_mode=wal + maxConns>1。
+	r, err := OpenSQLite(filepath.Join(t.TempDir(), "docs.db"), mustScheme(t), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if r.maxConns <= 1 {
+		t.Fatalf("文件库读连接池应 >1（G-15），得 %d", r.maxConns)
+	}
+	var mode string
+	if err := r.db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if mode != "wal" {
+		t.Fatalf("文件库应 WAL 模式，得 %q", mode)
+	}
+
+	// 内存库：恒串行（池=1）。
+	m, err := OpenSQLite("", mustScheme(t), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if m.maxConns != 1 {
+		t.Fatalf("内存库应恒串行（池=1），得 %d", m.maxConns)
+	}
+}

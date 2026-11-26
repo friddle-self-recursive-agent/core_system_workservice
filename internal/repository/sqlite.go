@@ -32,11 +32,13 @@ import (
 )
 
 // SQLiteRepo 文档库 sqlite 后端。写路径全部经单 goroutine 串行队列（与 GitRepo 同范式）；
-// 连接池收敛为 1（单写者，SQLITE_BUSY 面与 ops DB 同口径消灭）。
+// 文件库连接池放开为读侧并行（WAL 读者不阻塞写者；写者互斥由 busy_timeout 兜底——单写者
+// 语义由串行队列保证，池只在读路径并行）；内存库恒串行（:memory: 每连接=独立库，池>1 即分裂）。
 type SQLiteRepo struct {
-	db   *sql.DB
-	sch  *scheme.Scheme
-	opts Options
+	db       *sql.DB
+	maxConns int // 读连接池上限（1=内存库串行；>1=文件库 WAL 读侧并行——G-15 机械判据锚）
+	sch      *scheme.Scheme
+	opts     Options
 
 	reqs chan *writeReq
 	stop chan struct{}
@@ -73,13 +75,6 @@ func OpenSQLite(dbPath string, sch *scheme.Scheme, opts *Options, seedRoot strin
 	if err != nil {
 		return nil, fmt.Errorf("repository: 打开 docs DB %s: %w", path, err)
 	}
-	db.SetMaxOpenConns(1) // 单写者（concepts/core.md §7 串行队列；与 ops DB 同口径）
-	if path != ":memory:" {
-		if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;`); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("repository: docs DB pragma: %w", err)
-		}
-	}
 	r := &SQLiteRepo{
 		db:   db,
 		sch:  sch,
@@ -87,6 +82,17 @@ func OpenSQLite(dbPath string, sch *scheme.Scheme, opts *Options, seedRoot strin
 		stop: make(chan struct{}),
 		done: make(chan struct{}),
 		subs: map[chan string]struct{}{},
+	}
+	// 连接池（G-15 读侧高性能）：文件库=WAL+busy_timeout（DSN pragma 每连接生效）+
+	// 池放开——读多写少读面并行、写面仍单 goroutine 串行队列（单写者语义不变）；
+	// 内存库恒 1（:memory: 多连接=多个独立库，池>1 即表分裂）。
+	if path == ":memory:" {
+		db.SetMaxOpenConns(1)
+		r.maxConns = 1
+	} else {
+		db.SetMaxOpenConns(sqliteReadPool)
+		db.SetMaxIdleConns(sqliteReadPool)
+		r.maxConns = sqliteReadPool
 	}
 	if opts != nil {
 		r.opts = *opts
@@ -111,6 +117,10 @@ func OpenSQLite(dbPath string, sch *scheme.Scheme, opts *Options, seedRoot strin
 
 // sqliteDriver 驱动名（modernc.org/sqlite 注册名；与 opslog 包同驱动同进程注册一次）。
 const sqliteDriver = "sqlite"
+
+// sqliteReadPool 文件库读连接池上限（G-15 读侧高性能——WAL 模式读者不阻塞写者；写面单
+// goroutine 串行队列=单写者，池只放大读路径并行度；busy_timeout=5000 兜底残余写互斥窗口）。
+const sqliteReadPool = 4
 
 func (r *SQLiteRepo) migrate() error {
 	const ddl = `
@@ -382,6 +392,11 @@ func (r *SQLiteRepo) Get(_ context.Context, kind, scope, name string) (*Object, 
 }
 
 // List 枚举对象：scope 给定则限定，scope="" 跨 scope 通配（该 kind 全部对象）。
+// 实现注记（G-15 读侧高性能）：元数据直读 doc 表列（scope/name/resource_version）构造
+// Object，不再逐行 splitDoc+YAML 解析——列=写路径身份闸门的权威投影（写入时 metadata.name/
+// scope 与对象键强一致校验、resourceVersion 同拍反写正文；种子导入同闸），列直读与既有
+// docObject 投影逐字段等价。Content 仍随行（Repository 接口契约：调度器/索引/导出等消费方
+// 现读正文；列表瘦身面走 ListMeta——见下）。
 func (r *SQLiteRepo) List(_ context.Context, kind, scope string) ([]*Object, error) {
 	if _, err := r.sch.Lookup(kind); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotRegistered, err)
@@ -389,9 +404,9 @@ func (r *SQLiteRepo) List(_ context.Context, kind, scope string) ([]*Object, err
 	var rows *sql.Rows
 	var err error
 	if scope == "" {
-		rows, err = r.db.Query(`SELECT content FROM doc WHERE kind=? ORDER BY scope, name`, kind)
+		rows, err = r.db.Query(`SELECT scope, name, resource_version, content FROM doc WHERE kind=? ORDER BY scope, name`, kind)
 	} else {
-		rows, err = r.db.Query(`SELECT content FROM doc WHERE kind=? AND scope=? ORDER BY name`, kind, scope)
+		rows, err = r.db.Query(`SELECT scope, name, resource_version, content FROM doc WHERE kind=? AND scope=? ORDER BY name`, kind, scope)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("repository: docs DB 枚举: %w", err)
@@ -399,15 +414,51 @@ func (r *SQLiteRepo) List(_ context.Context, kind, scope string) ([]*Object, err
 	defer rows.Close()
 	var out []*Object
 	for rows.Next() {
+		var o Object
 		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		if err := rows.Scan(&o.Scope, &o.Name, &o.ResourceVersion, &raw); err != nil {
 			return nil, fmt.Errorf("repository: docs DB 读行: %w", err)
 		}
-		o, err := docObject(kind, []byte(raw), scope, "")
-		if err != nil {
-			continue // 坏行跳过不致命（只读面宽松，与 git 后端 List 同口径）
+		o.Kind = kind
+		o.Content = []byte(raw)
+		out = append(out, &o)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Scope != out[j].Scope {
+			return out[i].Scope < out[j].Scope
 		}
-		out = append(out, o)
+		return out[i].Name < out[j].Name
+	})
+	return out, rows.Err()
+}
+
+// ListMeta 元数据直读清单（G-15——列表投影面瘦身：SELECT 不取 content 列、零逐行 YAML
+// 解析；正文仅单读路径 Get/RevContent 拉）。行集键/rv/排序与 List 同一（doc 表列权威投影，
+// 见 List 实现注记）；Object.Content=nil——消费方（console 对象索引/关注报告/snapshot
+// objects 桶等只需键与 rv 的读面）按需 Get 拉正文，不冒充全量行。
+func (r *SQLiteRepo) ListMeta(_ context.Context, kind, scope string) ([]*Object, error) {
+	if _, err := r.sch.Lookup(kind); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrNotRegistered, err)
+	}
+	var rows *sql.Rows
+	var err error
+	if scope == "" {
+		rows, err = r.db.Query(`SELECT scope, name, resource_version FROM doc WHERE kind=? ORDER BY scope, name`, kind)
+	} else {
+		rows, err = r.db.Query(`SELECT scope, name, resource_version FROM doc WHERE kind=? AND scope=? ORDER BY name`, kind, scope)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("repository: docs DB 元数据枚举: %w", err)
+	}
+	defer rows.Close()
+	var out []*Object
+	for rows.Next() {
+		var o Object
+		if err := rows.Scan(&o.Scope, &o.Name, &o.ResourceVersion); err != nil {
+			return nil, fmt.Errorf("repository: docs DB 元数据读行: %w", err)
+		}
+		o.Kind = kind
+		out = append(out, &o)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Scope != out[j].Scope {
@@ -477,7 +528,7 @@ VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kind, scope, name) DO NOTHING`,
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 逐次正文历史读面（R-DOC-7 规则 4：doc_history=逐次账——周期 git 导出快照不得冒充；
-// 读走直连（MaxOpenConns=1 单写者串行，读与写队列共享连接天然互斥））
+// 读走连接池直连（G-15：文件库 WAL 读侧并行、写面串行队列单写者——读写互不阻塞））
 // ─────────────────────────────────────────────────────────────────────────────
 
 // DocHistoryRow 逐次历史行投影（不含正文——列表面瘦身；正文经 RevContent 读面）。

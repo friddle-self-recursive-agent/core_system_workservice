@@ -30,6 +30,7 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 	applier := d.applier
 	drafts := d.drafts
 	runs := d.runs
+	wakes := d.wakes
 	publisher := d.publisher
 	o := d.o
 	eventLog := o.eventLog
@@ -213,14 +214,7 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 					continue
 				}
 			}
-			tier, visibility := eventTierOf(sch, e.Type)
-			items = append(items, map[string]any{
-				"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
-				"type": e.Type, "source": e.Source, "involved": e.Involved,
-				"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
-				"scope": e.Scope,                        // metadata.scope 投影（BUG-010——归档行强制携带，旧行读侧推导兜底）
-				"tier":  tier, "visibility": visibility, // 分层/展示词形随行（规则 18——机读判据）
-			})
+			items = append(items, eventRowOf(sch, e)) // 行投影构造器（清单与 snapshot events 聚合零双源）
 		}
 		resp := map[string]any{"count": len(items), "events": items}
 		if consumer != "" {
@@ -229,11 +223,19 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, resp)
 	})
-	// 单事件详情读面（v0.66 R-ENG §3——`GET /v1/events/{eventId}`）：归档行直投
-	// （EventQuery.EventID 精确直取，404=不在归档——不冒充空对象）+ 关联链：① 同 eventId
-	// 的 run（runs face 环内按 EventID 过滤——face 缺席=null）；② 同 dedupKey 后续事件
-	// （EventQuery.DedupKey 查询，剔除本行，limit 20 有界——dedupKey 空=无聚合键无后续）；
-	// ③ involved 对象键解析（kind/scope/name 三段——畸形/非对象引用=null 不编造）。
+	// 单事件详情读面（v0.66 R-ENG §3——`GET /v1/events/{eventId}`；G-08 补强：事件详情↔
+	// 最近 loop↔session 链）：归档行直投（EventQuery.EventID 精确直取，404=不在归档——
+	// 不冒充空对象）+ **顶层词形平铺**（console 详情屏读顶层 type/level/ts/involved/run/
+	// agentSession/session/wake——归档行键同源直投零新源；结构化 event 键保持不动零迁移；
+	// involvedRef=involved 三段对象键解析，畸形/非对象引用=null 不编造）。关联链：
+	// ① 同 eventId 的 run（runs face 环内过滤——face 缺席=null）+ 顶层便利词 run/runPhase/
+	//    runStatus（console 链路条深链读词，取最近一条命中）；
+	// ② 同 dedupKey 后续事件（EventQuery.DedupKey 查询，剔除本行，limit 20 有界——dedupKey
+	//    空=无聚合键无后续）；
+	// ③ loop wake（wakes face 同 eventId 的 LoopRequested 唤醒序号——事件页「循环唤醒」
+	//    链路条；face 缺席/未命中=null）；
+	// ④ session/agentSession：词位预留恒 null（真实拉起=agent-session 域 declared-deferred，
+	//    本构建无事件→会话数据源——不编造，console 缺词不渲染）。
 	// 详情面 ShowInfra=true（显式单事件查阅——visibility 默认窗不适用于直取详情，与
 	// `?showInfra=true` 调试视图同口径）。face 缺席=503（防御面同 GET /v1/events）。
 	mux.HandleFunc("GET /v1/events/{eventId}", func(w http.ResponseWriter, r *http.Request) {
@@ -256,17 +258,18 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 			return
 		}
 		e := rows[0]
-		tier, visibility := eventTierOf(sch, e.Type)
+		evRow := eventRowOf(sch, e) // 归档行直投（与清单/snapshot events 同一构造器零双源）
 		out := map[string]any{
-			"event": map[string]any{
-				"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
-				"type": e.Type, "source": e.Source, "involved": e.Involved,
-				"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
-				"scope": e.Scope, "tier": tier, "visibility": visibility,
-			},
-			"involved": involvedRefOf(e.Involved),
+			"event":        evRow,                     // 结构化直投（v0.66 词形保持——既有消费者零迁移）
+			"involvedRef":  involvedRefOf(e.Involved), // involved 三段对象键解析（对象引用才非 null）
+			"session":      nil,                       // 词位预留（declared-deferred——不编造）
+			"agentSession": nil,                       // 词位预留（declared-deferred——不编造）
 		}
-		// 关联链①：同 eventId 的 run（runs face 环内过滤；face 缺席=null）。
+		// 顶层词形平铺（console 详情屏 known 词表——归档行键同源直投；involved 顶层=原文字形）。
+		for k, v := range evRow {
+			out[k] = v
+		}
+		// 关联链①：同 eventId 的 run（runs face 环内过滤；face 缺席=null）+ 顶层便利词。
 		out["runs"] = faceOrNil(runs != nil, func() any {
 			matched := []map[string]any{}
 			for _, rr := range runs.State().Runs {
@@ -279,6 +282,17 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 			}
 			return matched
 		})
+		if runs != nil {
+			st := runs.State()
+			for i := len(st.Runs) - 1; i >= 0; i-- {
+				if st.Runs[i].EventID == e.EventID {
+					out["run"] = st.Runs[i].Run
+					out["runPhase"] = st.Runs[i].Phase
+					out["runStatus"] = st.Runs[i].Status
+					break
+				}
+			}
+		}
 		// 关联链②：同 dedupKey 后续事件（本行剔除；空 dedupKey=无聚合键=null）。
 		out["followUps"] = faceOrNil(e.DedupKey != "", func() any {
 			dups, err := eventLog.QueryEvents(opslog.EventQuery{DedupKey: e.DedupKey, Limit: 20, ShowInfra: true})
@@ -297,6 +311,16 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 			}
 			return follows
 		})
+		// 关联链③：loop wake（wakes face 同 eventId 的 LoopRequested 唤醒序号；face 缺席/未命中=null）。
+		if wakes != nil {
+			st := wakes.State()
+			for i := len(st.Wakes) - 1; i >= 0; i-- {
+				if st.Wakes[i].EventID == e.EventID && st.Wakes[i].Type == "LoopRequested" {
+					out["wake"] = st.Wakes[i].Wake
+					break
+				}
+			}
+		}
 		writeJSON(w, http.StatusOK, out)
 	})
 }
@@ -410,6 +434,19 @@ func writePublishErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	}
+}
+
+// eventRowOf 归档行 → 投影行（GET /v1/events 清单、单事件详情 event 直投与 snapshot
+// events 聚合共用同一构造器零双源——tier/visibility 分层词随行，规则 18 机读判据；
+// scope=metadata.scope 投影——BUG-010 归档行强制携带，旧行读侧推导兜底）。
+func eventRowOf(sch *scheme.Scheme, e opslog.EventLog) map[string]any {
+	tier, visibility := eventTierOf(sch, e.Type)
+	return map[string]any{
+		"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
+		"type": e.Type, "source": e.Source, "involved": e.Involved,
+		"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
+		"scope": e.Scope, "tier": tier, "visibility": visibility,
 	}
 }
 

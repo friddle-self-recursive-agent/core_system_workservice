@@ -1,13 +1,16 @@
 // routes_workflow.go —— workflow/触发域路由组（R-ENG-7 server.go 拆分：纯搬家零语义变化——
-// 触发骨架/派发决策/run/送达/唤醒/派单投影/workflow 聚合面自 server.go 原位迁入，
-// handler 体逐字节保持不动；装配与公共 helper 仍在 server.go）。
+// 触发骨架/派发决策/run/送达/唤醒/派单投影/workflow 聚合面自 server.go 原位迁入，handler 体
+// 逐字节保持不动；装配与公共 helper 仍在 server.go）。
 package apiserver
 
 import (
+	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheduler"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 )
 
@@ -130,13 +133,20 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 	// 不发明状态机**。数据锚=wakes face 最近一条 LoopRequested 唤醒投影（wake.go——自循环
 	// 拉起=LoopRequested 事件经 dispatch 表 root-agent 行推进的唤醒受理，corectl loop /
 	// wake 桥同源）；seq/startedAt/eventId/wake 行=该锚直投（无 wake 数据=字段 null 不编造）；
-	// session=dsh 会话 id——真实拉起=agent-session 域 declared-deferred（本构建无循环会话
-	// 数据源：intake 会话是录入会话、scheduler 面 Task 无会话 id——恒 null 不冒充）；
+	// G-08 读面补强（event 详情↔最近 loop↔session 链）：
+	//   - run/phase：runs face 环内回指该 wake 的真实 RunRecord（EventID 同源优先；兜底=
+	//     对账循环锚 core-workflow 最近 run——「最近一次 loop 的 run 相位」投影，不发明新
+	//     run）；phase=run 相位顶层词形（console 当前循环卡读词）。runs face 缺席/无命中=null。
+	//   - agent：wake 行 agent 锚直投（root/parent 等 <p>-agent 前缀段）。
+	//   - session：dsh 会话 id——真实拉起=agent-session 域 declared-deferred（本构建无循环
+	//     会话数据源：intake 会话是录入会话——恒 null 不冒充）。
+	//   - agentSession：run involved 解析为 Task 对象时回填 status.agentSession（G-08
+	//     「Task 无真实 sessionId 回填」的读面半边——真实回填链；非 Task/对象缺席/未回填=null）。
 	// status 机械判定词：有 LoopRequested 唤醒投影=running（唤醒已受理——真实循环态机
 	// deferred 不发明 idle 判据，idle=词形预留）、无任何 wake 数据=unknown。face 缺席=
 	// status unknown+字段 null（不冒充空轮次）。只读 GET 恒开；旧构建（路由未注册）经
 	// 兜底 handler 405=代际判别器。
-	mux.HandleFunc("GET /v1/loop/current", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /v1/loop/current", func(w http.ResponseWriter, r *http.Request) {
 		var latest *workflow.WakeRecord
 		if wakes != nil {
 			for i := len(wakes.State().Wakes) - 1; i >= 0; i-- { // 旧→新序——尾向扫描取最近一条
@@ -148,17 +158,22 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 			}
 		}
 		out := map[string]any{
-			"seq":       nil,
-			"startedAt": nil,
-			"eventId":   nil,
-			"wake":      nil,
-			"session":   nil, // dsh 会话 id：真实拉起 deferred——无数据源恒 null 不编造（见路由注）
-			"status":    "unknown",
+			"seq":          nil,
+			"startedAt":    nil,
+			"eventId":      nil,
+			"wake":         nil,
+			"session":      nil, // dsh 会话 id：真实拉起 deferred——无数据源恒 null 不编造（见路由注）
+			"agentSession": nil, // run involved→Task status.agentSession 回填链（G-08）——无链=null
+			"run":          nil, // 最近真实 RunRecord 投影（EventID 同源优先/core-workflow 兜底）——无命中=null
+			"phase":        nil, // run 相位顶层词形（console 当前循环卡读词）
+			"agent":        nil, // wake 行 agent 锚直投
+			"status":       "unknown",
 		}
 		if latest != nil {
 			out["seq"] = latest.Wake
 			out["startedAt"] = latest.At.UTC().Format(time.RFC3339Nano)
 			out["eventId"] = latest.EventID
+			out["agent"] = latest.Agent
 			out["wake"] = map[string]any{
 				"wake": latest.Wake, "agent": latest.Agent, "origin": latest.Origin,
 				"status": latest.Status, "level": latest.Level, "triggerSeq": latest.TriggerSeq,
@@ -166,6 +181,16 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 				"route": latest.Route, "owner": latest.Owner, "at": latest.At.UTC().Format(time.RFC3339Nano),
 			}
 			out["status"] = "running" // 唤醒受理态（机械词——非执行完毕非循环态机推断）
+			if runs != nil {
+				if rr := loopRunOf(runs.State(), latest.EventID); rr != nil {
+					out["run"] = map[string]any{
+						"run": rr.Run, "workflow": rr.Workflow, "phase": rr.Phase, "status": rr.Status,
+						"startedAt": rr.StartedAt.UTC().Format(time.RFC3339Nano),
+					}
+					out["phase"] = rr.Phase
+					out["agentSession"] = loopSessionOf(r.Context(), objects, rr.Involved)
+				}
+			}
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
@@ -203,6 +228,44 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 // flowbind.DispatchRecord → matchingKeyOf 同源；空 connector/proposal 行=零值键不匹配任何投影）。
 func matchingKeyOfRecord(d flowbind.DispatchRecord) string {
 	return flowbind.ApprovalKeyOf(d)
+}
+
+// loopRunOf 最近一次 loop run 解析（G-08——loop/current run 相位源；环内**真实投影**零发明）：
+// EventID 与 loop wake 同源的 run 优先（该次唤醒推进的对账 run）；兜底=对账循环锚
+// core-workflow 最近 run（run.go ReconcileWorkflow——系统级循环本体锚；「最近一次」语义）。
+// 无命中=nil（face 环空/无 run——不编造）。
+func loopRunOf(st workflow.RunState, eventId string) *workflow.RunRecord {
+	for i := len(st.Runs) - 1; i >= 0; i-- {
+		if st.Runs[i].EventID == eventId {
+			return &st.Runs[i]
+		}
+	}
+	for i := len(st.Runs) - 1; i >= 0; i-- {
+		if st.Runs[i].Workflow == workflow.ReconcileWorkflow {
+			return &st.Runs[i]
+		}
+	}
+	return nil
+}
+
+// loopSessionOf run involved → Task 对象 agentSession 回填链（G-08 读面半边——session 深链
+// 的真实数据源）：involved 三段解析且 kind=Task → 现读 Task 对象 → scheduler.Parse 的
+// status.agentSession。非 Task 引用/对象缺席/未回填=nil 不编造（诚实投影——写面回填属
+// scheduler 执行域，本面只投已回填事实）。
+func loopSessionOf(ctx context.Context, objects ObjectSource, involved string) any {
+	segs := strings.Split(involved, "/")
+	if len(segs) < 3 || segs[0] != taskKind || objects == nil {
+		return nil
+	}
+	o, err := objects.Get(ctx, taskKind, segs[1], segs[2])
+	if err != nil {
+		return nil
+	}
+	_, st, ok := scheduler.Parse(o.Content)
+	if !ok || st.AgentSession == "" {
+		return nil
+	}
+	return st.AgentSession
 }
 
 // triggersPayload GET /v1/triggers 载荷构造器（原 handler 内联体原样上提——snapshot 面
