@@ -46,6 +46,10 @@ const DefaultHealRetryLimit = 2
 // 不重启；v0.56 单点声明，plugin SelfHealBridge 回填同值）。
 const DefaultHealWord = "继续"
 
+// defaultEntryTTL 僵尸心跳进程内条目保留期缺省（G-04③：会话消亡后进程内账不永久驻留——
+// 行 updated_at 超 TTL 无 beat 即摘除；部署侧经 EntryTTL 调窗，探针可缩至 30m 复现判据）。
+const defaultEntryTTL = 24 * time.Hour
+
 // Heartbeat 一次心跳注册请求（会话推进点上报——相位推进/工具调用完成/产物落盘任一）。
 type Heartbeat struct {
 	SessionID  string // 必填：会话锚
@@ -90,23 +94,27 @@ type Watchdog struct {
 	Registry     Registry
 	Bus          *eventbus.Bus
 	Sch          *scheme.Scheme
-	Interval0    time.Duration                        // 扫描拍间隔（--session-watch-interval；0=关断；导出经 Interval()）
-	ThresholdV   time.Duration                        // 停滞阈值（--stall-threshold；缺省 DefaultStallThreshold）
-	HealLimitV   int                                  // 连续自愈无效升级阈值（--heal-retry-limit；缺省 2）
-	SelfHeal     SelfHeal                             // 自愈第一动作执行面（nil=只判定不上报处置——纯观测装配）
-	SelfHealV    SelfHealBridge                       // 自愈注入桥（v0.56 真实接线——dsh 宿主 plugin 侧装配；nil=纯观测）
-	Diagnose     Diagnose                             // 诊断面（nil=分诊默认人工上报路）
-	NotifyWindow time.Duration                        // 人工上报去重窗口（缺省=Threshold——同停滞窗至多一封）
-	Now          func() time.Time                     // 测试时钟注入（缺省 time.Now）
-	onEvent      func(typ, session string, err error) // 装配锚回调（stderr 报告；测试断言）
+	Interval0    time.Duration    // 扫描拍间隔（--session-watch-interval；0=关断；导出经 Interval()）
+	ThresholdV   time.Duration    // 停滞阈值（--stall-threshold；缺省 DefaultStallThreshold）
+	HealLimitV   int              // 连续自愈无效升级阈值（--heal-retry-limit；缺省 2）
+	SelfHeal     SelfHeal         // 自愈第一动作执行面（nil=只判定不上报处置——纯观测装配）
+	SelfHealV    SelfHealBridge   // 自愈注入桥（v0.56 真实接线——dsh 宿主 plugin 侧装配；nil=纯观测）
+	Diagnose     Diagnose         // 诊断面（nil=分诊默认人工上报路）
+	NotifyWindow time.Duration    // 人工上报去重窗口（缺省=Threshold——同停滞窗至多一封）
+	Now          func() time.Time // 测试时钟注入（缺省 time.Now）
+	// EntryTTL 僵尸心跳进程内条目保留期（G-04③；≤0=缺省 defaultEntryTTL 24h——每拍 sweep
+	// 附带清扫行缺席或超期无 beat 的会话条目，防长期运行 map 无界增长）。
+	EntryTTL time.Duration
+	onEvent  func(typ, session string, err error) // 装配锚回调（stderr 报告；测试断言）
 	// selfHealBridge 注入桥运行态（SetSelfHealBridge 装配；mu 保护——桥可在 watchdog 启动后
 	// 由宿主面就绪回填）。
 	selfHealBridge SelfHealBridge
-	mu           sync.Mutex
-	counts       map[string]int  // 进程内心跳计数（session → 累计心跳数）
-	attempts     map[string]int  // 注入计数（session → 累计注入次数；行 HealAttempts 快照源）
-	rounds       map[string]int  // 人工分诊上报轮次（session → 连续无效轮数；达 HealLimit 升级）
-	prevStalled  map[string]bool // 曾判停滞集（session → true；无注入面部署的恢复判定锚）
+	mu             sync.Mutex
+	counts         map[string]int  // 进程内心跳计数（session → 累计心跳数）
+	attempts       map[string]int  // 注入计数（session → 累计注入次数；行 HealAttempts 快照源）
+	rounds         map[string]int  // 人工分诊上报轮次（session → 连续无效轮数；达 HealLimit 升级）
+	prevStalled    map[string]bool // 曾判停滞集（session → true；无注入面部署的恢复判定锚）
+	escalNoted     map[string]bool // 升级幕续停滞已上报集（G-04④ 状态去重：每升级幕至多一条 escalated-stall-note；恢复重置）
 }
 
 // New 构建 watchdog（threshold<=0=缺省 10m；healLimit<=0=缺省 2）。
@@ -126,22 +134,33 @@ func New(reg Registry, bus *eventbus.Bus, sch *scheme.Scheme, interval, threshol
 		attempts:     map[string]int{},
 		rounds:       map[string]int{},
 		prevStalled:  map[string]bool{},
+		escalNoted:   map[string]bool{},
 	}
 }
 
 // SetSelfHealBridge 装配自愈注入桥（v0.56 真实接线——宿主面就绪后由装配层回填；桥接管
 // SelfHeal 面成为第一动作执行面：注入经宿主会话推进面 sessionController.prompt）。
+// 全程锁内（G-04②：桥可在 watchdog 启动后回填，与 sweep 判定读并发——解锁后写
+// SelfHealV/SelfHeal 是数据竞争，装配回填与读取同一临界区）。
 func (w *Watchdog) SetSelfHealBridge(b SelfHealBridge) {
 	if w == nil {
 		return
 	}
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.selfHealBridge = b
-	w.mu.Unlock()
-	w.SelfHealV = b
+	w.SelfHealV = b // 查询/测试词形
 	if b != nil {
 		w.SelfHeal = w.injectViaBridge // 装配面词形统一：注入一律走桥路由
 	}
+}
+
+// selfHealFn 自愈执行面读取（G-04②：markStalled/retryInject 判定读与装配回填写同锁——
+// 导出字面的裸读在桥运行态回填场景下是竞争点，读取一律经本口面）。
+func (w *Watchdog) selfHealFn() SelfHeal {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.SelfHeal
 }
 
 // injectViaBridge 桥路由注入（真实接线词形——第一动作=宿主 sessionController.prompt 注入
@@ -168,12 +187,15 @@ func (w *Watchdog) injectViaBridge(sessionID string) error {
 	return nil
 }
 
-// OnEvent 装配锚回调（每条合成事件发射后调用；err=nil=已入总线）。
+// OnEvent 装配锚回调（每条合成事件发射后调用；err=nil=已入总线）。锁内写（与 emit
+// 派发读并发安全——装配可晚于 watchdog 启动）。
 func (w *Watchdog) OnEvent(f func(typ, session string, err error)) {
 	if w == nil {
 		return
 	}
+	w.mu.Lock()
 	w.onEvent = f
+	w.mu.Unlock()
 }
 
 // Enabled watchdog 是否开启：interval>0 ∧ 类型已注册（注册表闸门前置——未注册即不启动）。
@@ -243,19 +265,22 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		w.mu.Lock()
 		delete(w.attempts, h.SessionID)
 		delete(w.rounds, h.SessionID)
+		delete(w.escalNoted, h.SessionID) // 恢复=升级幕闭合（续停滞去重态重置——G-04④）
 		w.mu.Unlock()
 		hb.HealedAt = now
 		hb.HealAttempts = 0
 		hb.State = opslog.SessionStateHealed
 		_ = w.Registry.UpsertSessionHeartbeat(hb) // 行态快照并入恢复戳（state=healed）
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-by-beat")
-	} else if prev, ok := w.prevStalled[h.SessionID]; ok && prev {
+	} else if w.takePrevStalled(h.SessionID) {
 		// 无注入执行面部署的恢复判定：曾判停滞（本进程判定过 SuspectedStall）∧注入前
 		// 恢复（自行续租）——同记 SessionHealed（恢复=活性事实；判别字段=healAttempts=0，
 		// 语义=无自愈动作注入、会话自行恢复——诚实投影不冒充注入恢复）。
+		// G-04①：读原为无锁裸读（与 sweep 写并发竞争）——判定+摘除同一临界区原子化
+		// （同会话并发 Beat 至多一路记 healed-self）。
 		stalled := w.lastStallAt(h.SessionID, now)
 		w.mu.Lock()
-		delete(w.prevStalled, h.SessionID)
+		delete(w.escalNoted, h.SessionID) // 恢复=升级幕闭合（续停滞去重态重置——G-04④）
 		w.mu.Unlock()
 		hb.HealedAt = now
 		hb.State = opslog.SessionStateHealed
@@ -263,6 +288,18 @@ func (w *Watchdog) Beat(h Heartbeat) error {
 		w.emit(w.buildEvent(TypeSessionHealed, hb, stalled), h.SessionID, "healed-self")
 	}
 	return nil
+}
+
+// takePrevStalled 曾判停滞判定并摘除（原子——G-04①：Beat 恢复判定读原先无锁；
+// 判定为真即摘除，同会话并发 Beat 至多一路报 healed-self）。
+func (w *Watchdog) takePrevStalled(sessionID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if prev, ok := w.prevStalled[sessionID]; ok && prev {
+		delete(w.prevStalled, sessionID)
+		return true
+	}
+	return false
 }
 
 // SelfHealBridge 自愈注入桥口面（v0.56 真实接线段——agent-session.md §7/§8 落点：dsh 宿主
@@ -295,7 +332,9 @@ func (w *Watchdog) BeatSource(sessionID, lastAction string) error {
 		}
 		h.LastAction = clip(lastAction, 200)
 		h.UpdatedAt = now
-		h.HealAttempts = w.attempts[sessionID]
+		w.mu.Lock()
+		h.HealAttempts = w.attempts[sessionID] // G-04①：attempts 裸读改锁内（与 Beat/recordInject 并发）
+		w.mu.Unlock()
 		return w.Registry.UpsertSessionHeartbeat(h)
 	}
 	return fmt.Errorf("sessionliveness: 会话 %s 无心跳行（watchdog 观测续租锚缺席——会话侧未注册过心跳）", sessionID)
@@ -340,6 +379,55 @@ func (w *Watchdog) sweep() {
 	for _, h := range stale {
 		w.handleStale(h, now)
 	}
+	w.gcStaleEntries(now) // 僵尸条目清扫（G-04③——每拍附带，读失败下拍重试）
+}
+
+// gcStaleEntries 僵尸心跳条目清扫（G-04③：进程内五账 counts/attempts/rounds/prevStalled/
+// escalNoted 永不 GC 会随会话消亡无界增长）。判据：心跳行缺席 ∨ updated_at 早于
+// now-EntryTTL（缺省 24h；部署侧 EntryTTL 调窗，探针缩窗复现「陈旧心跳 30m 后消失」）。
+// 清扫只摘进程内账（ops 行=审计事实不动）；读失败整拍跳过（可丢语义，下拍重扫）。
+func (w *Watchdog) gcStaleEntries(now time.Time) {
+	rows, err := w.Registry.AllSessionHeartbeats(0)
+	if err != nil {
+		return
+	}
+	ttl := w.EntryTTL
+	if ttl <= 0 {
+		ttl = defaultEntryTTL
+	}
+	keep := make(map[string]bool, len(rows))
+	for _, h := range rows {
+		if now.Sub(h.UpdatedAt) < ttl {
+			keep[h.SessionID] = true
+		}
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for id := range w.counts {
+		if !keep[id] {
+			delete(w.counts, id)
+		}
+	}
+	for id := range w.attempts {
+		if !keep[id] {
+			delete(w.attempts, id)
+		}
+	}
+	for id := range w.rounds {
+		if !keep[id] {
+			delete(w.rounds, id)
+		}
+	}
+	for id := range w.prevStalled {
+		if !keep[id] {
+			delete(w.prevStalled, id)
+		}
+	}
+	for id := range w.escalNoted {
+		if !keep[id] {
+			delete(w.escalNoted, id)
+		}
+	}
 }
 
 // handleStale 一行停滞候选的处置（固定顺序状态机：判定→注入继续→恢复/诊断分诊→升级）。
@@ -361,8 +449,11 @@ func (w *Watchdog) handleStale(h opslog.SessionHeartbeat, now time.Time) {
 		// healed 行停滞=再次失活：回 live 口径重新判定（上一轮自愈成功后再度停滞是新因由）。
 		w.markStalled(h, stalledFor)
 	case opslog.SessionStateEscalated:
-		// 已升级：停自动处置——继续上报（Escalate 已在账，不再重复升级；事件留痕不静默）。
-		w.emitLongTaskStalledNote(h, stalledFor)
+		// 已升级：停自动处置——继续上报但不逐拍重发（G-04④ 状态去重：每升级幕至多一条
+		// escalated-stall-note；恢复重置后再度升级可再报——留痕不静默与防事件风暴并重）。
+		if w.noteEscalatedOnce(h.SessionID) {
+			w.emitLongTaskStalledNote(h, stalledFor)
+		}
 	}
 }
 
@@ -376,8 +467,8 @@ func (w *Watchdog) markStalled(h opslog.SessionHeartbeat, stalledFor time.Durati
 	w.emit(evt, h.SessionID, "suspected-stall（注入继续前判定）")
 	// 自愈第一动作：注入固定 prompt「继续」（保留上下文，不重启）——每步留事件；
 	// 注入动作本身落心跳行（phase=inject，事件回执不落 DB——DB 行=租约面非事件账本）。
-	if w.SelfHeal != nil {
-		if err := w.SelfHeal(h.SessionID); err != nil {
+	if sh := w.selfHealFn(); sh != nil { // G-04②：执行面读取经锁（与桥装配回填并发）
+		if err := sh(h.SessionID); err != nil {
 			// 处置失败继续上报，绝不静默重试：失败上报事件 + stderr 告警；行态保持 suspected
 			// （HealAttempts=0，下一拍 treat 重试第一动作——注入未成功留痕=重试，不是跳步）。
 			log.Printf("sessionliveness: 会话 %s 注入「继续」失败（下一拍重试上报）: %v", h.SessionID, err)
@@ -432,10 +523,11 @@ func (w *Watchdog) treat(h opslog.SessionHeartbeat, stalledFor time.Duration, no
 
 // retryInject 注入失败后的重试（处置失败继续上报——事件与 stderr 双面可见，绝不静默跳步）。
 func (w *Watchdog) retryInject(h opslog.SessionHeartbeat, stalledFor time.Duration) {
-	if w.SelfHeal == nil {
+	sh := w.selfHealFn() // G-04②：执行面读取经锁
+	if sh == nil {
 		return // 纯观测装配（无自愈执行面）——判定事件已在账，不冒充处置
 	}
-	if err := w.SelfHeal(h.SessionID); err != nil {
+	if err := sh(h.SessionID); err != nil {
 		log.Printf("sessionliveness: 会话 %s 注入「继续」失败（继续上报，下一拍重试）: %v", h.SessionID, err)
 		w.emit(w.buildDetailEvent(TypeSessionStalled, h, stalledFor,
 			"自愈注入失败（继续上报）"), h.SessionID, "self-heal-inject-failed")
@@ -461,8 +553,23 @@ func (w *Watchdog) escalate(h opslog.SessionHeartbeat, stalledFor time.Duration,
 		DedupKey: "session-escalate:" + h.SessionID,
 		Level:    et.DefaultLevel,
 	}
+	w.mu.Lock()
+	delete(w.escalNoted, h.SessionID) // 新升级幕开启：续停滞观测重新可报（G-04④ 幕边界重置）
+	w.mu.Unlock()
 	w.emit(evt, h.SessionID, fmt.Sprintf("escalated（自愈无效×%d 停自动处置）", attempts))
 	w.updateState(h.SessionID, opslog.SessionStateEscalated, nil)
+}
+
+// noteEscalatedOnce escalated 续停滞上报许可（G-04④ 状态去重：true=本幕尚未上报，取走
+// 上报权；false=已上报，本拍静默跳过）。恢复（Beat/Heal）或新升级（escalate）重置。
+func (w *Watchdog) noteEscalatedOnce(sessionID string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.escalNoted[sessionID] {
+		return false
+	}
+	w.escalNoted[sessionID] = true
+	return true
 }
 
 // emitLongTask 长任务显式汇报（任务名/已运行时长/当前阶段/决策点；有进展=不判停滞；结束回收）。
@@ -542,8 +649,11 @@ func (w *Watchdog) emit(e *eventbus.Event, session, note string) {
 }
 
 func (w *Watchdog) onEventp(typ, session string, err error, note string) {
-	if w.onEvent != nil {
-		w.onEvent(typ, session, err)
+	w.mu.Lock()
+	f := w.onEvent // 锁内读（与 OnEvent 装配写并发安全）
+	w.mu.Unlock()
+	if f != nil {
+		f(typ, session, err)
 	}
 	_ = note
 }
@@ -569,6 +679,7 @@ func (w *Watchdog) Heal(sessionID string) error {
 		delete(w.attempts, sessionID) // 成功自愈=连续无效计数清零
 		delete(w.rounds, sessionID)
 		delete(w.prevStalled, sessionID)
+		delete(w.escalNoted, sessionID) // 恢复=升级幕闭合（续停滞去重态重置——G-04④）
 		w.mu.Unlock()
 		return nil
 	}

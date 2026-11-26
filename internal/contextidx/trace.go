@@ -30,9 +30,9 @@ type TraceReport struct {
 	Kind          string       `json:"kind"`
 	Scope         string       `json:"scope"`
 	Name          string       `json:"name"`
-	Implements    []TraceEntry `json:"implements"`    // 我（N 端）声明实现了谁
+	Implements    []TraceEntry `json:"implements"`     // 我（N 端）声明实现了谁
 	ImplementedBy []TraceEntry `json:"implemented_by"` // 谁（N 端）声明实现了我（1 端反向聚合——1 对 N）
-	VerifiedBy    []TraceEntry `json:"verified_by"`   // 谁声明验证了我
+	VerifiedBy    []TraceEntry `json:"verified_by"`    // 谁声明验证了我
 }
 
 // Trace 单文档双向聚合。文档无 trace 段=空聚合（不 404）；对象不在索引=ErrAbs 由调用面

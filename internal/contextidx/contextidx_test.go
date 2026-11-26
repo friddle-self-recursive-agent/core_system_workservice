@@ -10,7 +10,9 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 )
 
@@ -139,6 +141,18 @@ func (f *fakeSrc) Get(_ context.Context, kind, scope, name string) (*repository.
 	return nil, repository.ErrNotFound
 }
 
+// remove 源侧删除（G-18 集成锚用——仓库删除路径的测试词形：源不再有此对象）。
+func (f *fakeSrc) remove(kind, scope, name string) {
+	out := make([]*repository.Object, 0, len(f.objs))
+	for _, o := range f.objs {
+		if o.Kind == kind && o.Scope == scope && o.Name == name {
+			continue
+		}
+		out = append(out, o)
+	}
+	f.objs = out
+}
+
 func mdDoc(kind, scope, name string, fm string) *repository.Object {
 	return &repository.Object{Kind: kind, Scope: scope, Name: name, ResourceVersion: 1,
 		Content: []byte("---\n" + fm + "\n---\n# " + name + "\n正文\n")}
@@ -246,6 +260,172 @@ func TestThresholdFromEnv(t *testing.T) {
 	if v := ThresholdFromEnv(); v != DefaultRebuildThreshold {
 		t.Fatalf("缺省应 75，得 %d", v)
 	}
+}
+
+// G-07 生产装配接线锚：New() 单点经 ThresholdFromEnv 读 env（生产装配路径=cmd cored
+// contextidx.New 调用，本包内接线即生效）。机械判据「env REBUILD_THRESHOLD=50 时行为变化」：
+// mixed-doc×mech:cache 相关性构造在 (50,75) 开区间——缺省 75 下同更新不失效，env=50 下失效。
+func TestNewWiresThresholdFromEnv(t *testing.T) {
+	mk := func() *Index {
+		src := &fakeSrc{objs: []*repository.Object{
+			mdDoc("Rule", "core_system", "mixed-doc", "name: mixed-doc\ntags: [{tag: cache, tag_type: mech}, {tag: workflow, tag_type: domain}, {tag: notify, tag_type: domain}]\nimportance: 60"),
+		}}
+		ix := New(src, func() []string { return []string{"Rule"} })
+		_ = ix.Build(context.Background())
+		return ix
+	}
+	// 前置：该文档与分片虚对象的相关性落 (50,75) 开区间（env 调阈可翻转行为的构造依据）。
+	ix0 := mk()
+	d0, ok := ix0.Get("Rule", "core_system", "mixed-doc")
+	if !ok {
+		t.Fatal("前置文档缺席")
+	}
+	score, _ := Relevance(d0, shardPseudoDoc("mech:cache"))
+	if score <= 50 || score >= DefaultRebuildThreshold {
+		t.Fatalf("构造失准：mixed-doc×mech:cache 相关性 %v 不在 (50,%d)——env 翻转依据失效", Round1(score), DefaultRebuildThreshold)
+	}
+	// env 未设（缺省装配）：阈值 75 → 同一更新不触发分片失效。
+	t.Setenv(EnvRebuildThreshold, "")
+	ixDef := mk()
+	if got := ixDef.Shards().Threshold(); got != DefaultRebuildThreshold {
+		t.Fatalf("缺省装配阈值应 75，得 %d", got)
+	}
+	ixDef.Shards().Get("mech", "cache") // 预热
+	dDef, _ := ixDef.Get("Rule", "core_system", "mixed-doc")
+	ixDef.Shards().Invalidate(dDef)
+	if sh, _ := ixDef.Shards().Peek("mech", "cache"); sh.Stale {
+		t.Fatalf("缺省 75 下中相关更新（%v）不应失效：%s", Round1(score), sh.Reason)
+	}
+	// env=50 装配（生产装配单点 New）：阈值生效 ∧ 同一更新触发失效（判据「行为变化」）。
+	t.Setenv(EnvRebuildThreshold, "50")
+	ix50 := mk()
+	if got := ix50.Shards().Threshold(); got != 50 {
+		t.Fatalf("env=50 装配阈值应 50，得 %d", got)
+	}
+	ix50.Shards().Get("mech", "cache") // 预热
+	d50, _ := ix50.Get("Rule", "core_system", "mixed-doc")
+	ix50.Shards().Invalidate(d50)
+	if sh, _ := ix50.Shards().Peek("mech", "cache"); !sh.Stale {
+		t.Fatalf("env=50 下同一更新应触发失效（阈值接线生效）：score=%v", Round1(score))
+	}
+	// 非法 env 装配回缺省 75（不冒充自定义）。
+	t.Setenv(EnvRebuildThreshold, "bogus")
+	if got := New(nil, nil).Shards().Threshold(); got != DefaultRebuildThreshold {
+		t.Fatalf("非法 env 装配应回缺省 75，得 %d", got)
+	}
+}
+
+// ───────────────── 删除失效（G-18 / R-CTX-5 删除即失效）─────────────────
+
+// G-18 删除失效集成锚：建文档→索引→find 命中→删（Index.Remove 失效面）→find 立即
+// 不命中（无需等 rebuild——chunk 摘除即时生效）∧ 高相关分片标 stale（Reason=DocRemoved）
+// ∧ 重建后成员集不含已删键 ∧ 其余文档不受影响。幂等重复删除=false。
+func TestRemoveInvalidatesFindAndShards(t *testing.T) {
+	src := &fakeSrc{objs: []*repository.Object{
+		mdDoc("Rule", "core_system", "cache-doc", "name: cache-doc\ntags: [{tag: cache, tag_type: mech}]\nimportance: 80"),
+		mdDoc("Rule", "core_system", "ctx-doc", "name: ctx-doc\ntags: [{tag: context, tag_type: domain}]\nimportance: 80"),
+	}}
+	ix := New(src, func() []string { return []string{"Rule"} })
+	if err := ix.Build(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// 建文档→find 命中（cache-doc 在榜）。
+	hits := ix.Find(FindQuery{Q: "cache", Tags: []string{"mech:cache"}, K: 10})
+	if !findHitNamed(hits, "cache-doc") {
+		t.Fatalf("删除前 find 应命中 cache-doc：%+v", hits)
+	}
+	// 预热分片（mech:cache 成员含 cache-doc）。
+	sh := ix.Shards().Get("mech", "cache")
+	if sh.Stale || !shardHasKey(sh, "Rule/core_system/cache-doc") {
+		t.Fatalf("前置分片应新鲜且含 cache-doc：%+v", sh)
+	}
+	// 删（仓库删除路径钩子词形：源移除 + Index.Remove 失效面一次调用）。
+	src.remove("Rule", "core_system", "cache-doc")
+	if !ix.Remove("Rule", "core_system", "cache-doc") {
+		t.Fatal("删除失效面应落（键在册）")
+	}
+	if ix.Remove("Rule", "core_system", "cache-doc") {
+		t.Fatal("重复删除应幂等 false")
+	}
+	// find 立即不命中（chunk 已摘——无需等 rebuild）。
+	hits2 := ix.Find(FindQuery{Q: "cache", Tags: []string{"mech:cache"}, K: 10})
+	if findHitNamed(hits2, "cache-doc") {
+		t.Fatalf("删后 find 不应再命中 cache-doc：%+v", hits2)
+	}
+	if _, ok := ix.Get("Rule", "core_system", "cache-doc"); ok {
+		t.Fatal("删后索引 chunk 应摘除")
+	}
+	// 分片失效（G-18 分片面）：标 stale 携 DocRemoved 因由；访问重建后不含已删键。
+	sh2, ok := ix.Shards().Peek("mech", "cache")
+	if !ok || !sh2.Stale || !contains(sh2.Reason, "DocRemoved") {
+		t.Fatalf("高相关分片删除后应标 stale（DocRemoved）：ok=%v %+v", ok, sh2)
+	}
+	sh3 := ix.Shards().Get("mech", "cache")
+	if sh3.Stale {
+		t.Fatal("访问后应重建去 stale")
+	}
+	if shardHasKey(sh3, "Rule/core_system/cache-doc") {
+		t.Fatalf("重建成员集仍含已删键：%+v", sh3.DocKeys)
+	}
+	// 其余文档不受删除影响。
+	hits3 := ix.Find(FindQuery{Q: "context", Tags: []string{"domain:context"}, K: 10})
+	if !findHitNamed(hits3, "ctx-doc") {
+		t.Fatalf("未删文档 find 应不受影响：%+v", hits3)
+	}
+}
+
+// G-18 事件跟随删除词形（Start 生产流）：DocApplied 事件×源侧已删（Get 失败）→
+// 摘 chunk + 分片失效——删除面与更新面同一条事件主干零旁路。
+func TestStartEventRemovalInvalidates(t *testing.T) {
+	src := &fakeSrc{objs: []*repository.Object{
+		mdDoc("Rule", "core_system", "cache-doc", "name: cache-doc\ntags: [{tag: cache, tag_type: mech}]\nimportance: 80"),
+	}}
+	ix := New(src, func() []string { return []string{"Rule"} })
+	if err := ix.Build(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ix.Shards().Get("mech", "cache") // 预热分片
+	bus := eventbus.NewBus(nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ix.Start(ctx, bus)
+	time.Sleep(50 * time.Millisecond) // Start 订阅就绪（订阅在 goroutine 启动即注册）
+	// 删除：源移除 + 删除词形事件（involved=kind/scope/name 三段）。
+	src.remove("Rule", "core_system", "cache-doc")
+	if err := bus.Publish(&eventbus.Event{Type: "DocApplied", Involved: "Rule/core_system/cache-doc"}); err != nil {
+		t.Fatalf("DocApplied 发布失败: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := ix.Get("Rule", "core_system", "cache-doc"); !ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, ok := ix.Get("Rule", "core_system", "cache-doc"); ok {
+		t.Fatal("事件跟随删除词形未摘 chunk（Start Get 失败路）")
+	}
+	if sh, ok := ix.Shards().Peek("mech", "cache"); !ok || !sh.Stale || !contains(sh.Reason, "DocRemoved") {
+		t.Fatalf("事件跟随删除应触发分片失效：ok=%v %+v", ok, sh)
+	}
+}
+
+func findHitNamed(hits []Hit, name string) bool {
+	for _, h := range hits {
+		if h.Doc.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func shardHasKey(sh *Shard, key string) bool {
+	for _, k := range sh.DocKeys {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 // ───────────────── trace 聚合（B11 / R-DOC-9）─────────────────

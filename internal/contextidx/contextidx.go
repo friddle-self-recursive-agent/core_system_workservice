@@ -91,9 +91,11 @@ type Index struct {
 }
 
 // New 构建空索引。src=对象读取源；kinds=注册 kind 枚举（可为 nil——增量路径仍可用）。
+// 分片失效阈值经 ThresholdFromEnv 接线（G-07/R-CTX-5：CORE_SYSTEM_CTX_REBUILD_THRESHOLD
+// env 可调，缺省 75——生产装配 contextidx.New 单点生效，不再硬编码）。
 func New(src ObjectSource, kinds func() []string) *Index {
 	ix := &Index{docs: map[string]*Doc{}, src: src, kinds: kinds}
-	ix.shards = newShardCache(ix, DefaultRebuildThreshold)
+	ix.shards = newShardCache(ix, ThresholdFromEnv())
 	return ix
 }
 
@@ -134,7 +136,8 @@ func (ix *Index) Build(ctx context.Context) error {
 
 // UpdateObject 单对象 chunk 增量（BUG-005 核心落点：DocApplied 只重切更新对象自身的
 // 索引块——其余条目零重算、零全量重建）。对象已删（content 不可解析或 Get 缺席）=摘除
-// 自身 chunk。返回是否落索引。
+// 自身 chunk，并对受影响分片标 stale（G-18 删除面失效——高相关分片下次访问重建）。
+// 返回是否落索引。
 func (ix *Index) UpdateObject(o *repository.Object) bool {
 	if o == nil || o.Kind == "" {
 		return false
@@ -142,18 +145,32 @@ func (ix *Index) UpdateObject(o *repository.Object) bool {
 	d := ParseDoc(o) // 已删/不可解析=nil → 摘除路径
 	key := (&Doc{Kind: o.Kind, Scope: o.Scope, Name: o.Name}).Key()
 	ix.mu.Lock()
-	defer ix.mu.Unlock()
+	var removed *Doc
 	if d == nil {
-		if _, ok := ix.docs[key]; ok {
-			delete(ix.docs, key)
-			ix.version.Add(1)
-			return true
+		old, ok := ix.docs[key]
+		if !ok {
+			ix.mu.Unlock()
+			return false
 		}
-		return false
+		removed = old // 摘除前留档：分片失效按删除前词形打分（G-18）
+		delete(ix.docs, key)
+	} else {
+		ix.docs[d.Key()] = d
 	}
-	ix.docs[d.Key()] = d
 	ix.version.Add(1)
+	ix.mu.Unlock()
+	if removed != nil {
+		ix.shards.invalidate(removed, "DocRemoved") // 删除面分片失效（阈值同口径）
+	}
 	return true
+}
+
+// Remove 文档删除失效面（G-18/R-CTX-5 删除即失效）：摘除索引 chunk ∧ 对受影响分片标
+// stale——删后 find 立即不命中（Find 读 chunk 集，无需等 rebuild）。仓库侧文档删除路径
+// 装配钩子的唯一落点（同步调用一次即可；事件跟随路 Start 的 Get 失败词形同走本实现）。
+// 返回是否确有删除（键不在册=false 幂等）。
+func (ix *Index) Remove(kind, scope, name string) bool {
+	return ix.UpdateObject(&repository.Object{Kind: kind, Scope: scope, Name: name})
 }
 
 // Get 按键取条目（快照；返回副本防外改）。
@@ -196,10 +213,11 @@ func (ix *Index) Start(ctx context.Context, bus *eventbus.Bus) {
 			if ix.src == nil {
 				continue
 			}
-			// 单对象读回 + 自身 chunk 重切（读失败=摘除——删除面与坏对象同词形）。
+			// 单对象读回 + 自身 chunk 重切（读失败=对象已删——删除词形与坏对象同路：
+			// 摘除 chunk + 分片失效，G-18 删后 find 立即不命中）。
 			o, err := ix.src.Get(ctx, kind, scope, name)
 			if err != nil {
-				ix.UpdateObject(&repository.Object{Kind: kind, Scope: scope, Name: name})
+				ix.Remove(kind, scope, name)
 				continue
 			}
 			ix.UpdateObject(o)
