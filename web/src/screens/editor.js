@@ -16,6 +16,16 @@ import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
  * window.__CC.chatFaces.docFix(prompt, ref) => Promise<string>|string——返回建议全文；
  * 未注入=面板显式缺席（人仍可在「原文」视图手编——零旁路）。 */
 
+
+/* frontmatter 拆分（scheme 派生内容——默认折叠隐藏，expand 才看完整 scheme；三次裁决）。 */
+function splitFrontmatter(content) {
+  const s = String(content || '');
+  if (!s.startsWith('---')) return { fm: '', body: s };
+  const end = s.indexOf('\n---', 3);
+  if (end < 0) return { fm: '', body: s };
+  return { fm: s.slice(0, end + 4), body: s.slice(end + 4).replace(/^\n/, '') };
+}
+
 function aiFaces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
 }
@@ -92,7 +102,13 @@ function paintBody(key) {
   if (!el || !ed) return;
   el.innerHTML = ed.view === 'render'
     ? (isMarkdownDoc(ed.ref.kind, ed.ref.name)
-      ? '<div data-md-render="1">' + renderMarkdown(ed.working) + '</div>' + rawDisclosure(tr('原文'), ed.working)
+      ? (function () {
+          const { fm, body } = splitFrontmatter(ed.working);
+          const fmHtml = fm
+            ? '<details class="scheme-fold"><summary class="ex-sum"><span class="ex-chev">▸</span>' + esc(tr('scheme（frontmatter 声明——expand 查看完整）')) + '</summary><pre class="mono small scheme-pre">' + esc(fm) + '</pre></details>'
+            : '';
+          return '<div data-md-render="1">' + fmHtml + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), ed.working);
+        })()
       : '<div data-md-cards="1">' + (yamlToCards(ed.working) || tr('<div class="ob-empty">（空声明）</div>')) + '</div>' + rawDisclosure('YAML', ed.working))
     : '';
   const ta = document.querySelector('[data-ed-textarea]');

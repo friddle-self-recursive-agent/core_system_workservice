@@ -90,3 +90,16 @@ export function safeLink(label, href, cls = 'lk') {
     ? '<a class="' + esc(cls) + '" href="' + esc(ok) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>'
     : '<span class="mono">' + esc(label) + '</span>';
 }
+
+/* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running，否则 InSync）。
+ * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。 */
+export function syncBadge(runs, name) {
+  const active = (runs || []).some((r) => {
+    const st = String((r && (r.status || r.state)) || '');
+    if (!st || st === 'done' || st === 'failed' || st === 'canceled') return false;
+    let hay = '';
+    try { hay = JSON.stringify([r.involved, r.target, r.route, r.workflow]); } catch { hay = ''; }
+    return hay.includes(name);
+  });
+  return active ? chip('Running', 'acc') : chip('InSync', 'ok');
+}

@@ -16,6 +16,59 @@ export function wfAnchorOfRoute(route) {
   return '';
 }
 
+
+/* 相位管线节点图（数据=run.phases/transitions/phase——声明序列原样；缺席=单节点诚实降级）。
+ * 节点点击 → 下方抽屉（该相位关联事件链+involved 文档 chips——日志=R归档窗口内事实）。 */
+function phaseGraphHtml(run, ctx) {
+  const phases = Array.isArray(run.phases) ? run.phases : [];
+  const cur = String(run.phase || '');
+  const st = String(run.status || '');
+  const nodeHtml = (p, i) => {
+    const active = p === cur;
+    const done = st === 'done' || (cur && phases.indexOf(cur) > i);
+    const cls = 'pg-node' + (active ? ' active' : '') + (done ? ' done' : '') + (p === 'Failed' ? ' fail' : '');
+    return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div>' +
+      '<div class="pg-name">' + esc(p) + '</div>' + (active ? chip(st || tr('进行中'), 'acc') : '') + '</div>';
+  };
+  const body = phases.length
+    ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">→</span>')
+    : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || tr('单节点（声明未投影相位）')) + '</div>' + runChip(run) + '</div>';
+  return '<div class="pg-wrap">' + body + '</div>' +
+    '<div class="small faint">' + esc(tr('点击节点看该相位的事件链与涉及文档；推进由 patch 增量实时刷新。')) + '</div>' +
+    '<div data-pg-drawer style="margin-top:10px"></div>';
+}
+
+function bindPhaseGraph(el, ctx, run) {
+  el.querySelectorAll('[data-pg-node]').forEach((n) => {
+    n.addEventListener('click', () => {
+      const ph = String(n.getAttribute('data-pg-node') || '');
+      const drawer = el.querySelector('[data-pg-drawer]');
+      if (!drawer) return;
+      const evs = ctx.store.events().filter((e) => {
+        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+        return hay.includes(String(run.workflow || '')) || hay.includes(ph);
+      }).slice(0, 10);
+      const involved = String(run.involved || '');
+      const evRows = evs.length
+        ? evs.map((e) => '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(e.type || '')) + '</b></div>' +
+          '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div>' +
+          '<span class="small faint">' + esc(relAge(e.ts) || '') + '</span></div>').join('')
+        : '<div class="small faint">' + esc(tr('窗口内无该相位事件（诚实空态）。')) + '</div>';
+      drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' +
+        (involved
+          ? '<div class="mr-sub">' + esc(tr('涉及')) + '：' + involved.split(',').map((x) => {
+            const parts = x.trim().split('/');
+            return parts.length >= 3
+              ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + '/' + esc(parts[1]) + '/' + esc(parts[2]) + '">' + esc(x.trim()) + '</span>'
+              : '<span class="small faint mono">' + esc(x.trim()) + '</span>';
+          }).join(' ') + '</div>'
+          : '') +
+        '<div class="small faint">' + esc(tr('事件链（归档窗口）：')) + '</div>' + evRows +
+        '</div></div>';
+    });
+  });
+}
+
 const RUN_CLS = { running: 'acc', done: 'ok', ok: 'ok', success: 'ok', failed: 'esc', error: 'esc', canceled: 'mute', queued: 'mute', pending: 'mute' };
 
 function runChip(r) {
@@ -77,6 +130,7 @@ function detailScreen(el, ctx, name) {
   }).join('');
   el.innerHTML = '<div class="view-inner">' + head +
     tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
+    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run, ctx) + '</div></div>' +
     tr('<h2 class="sec-title">运行记录</h2>') +
     (runRows ? '<div class="card">' + runRows + '</div>' : tr('<div class="small faint">该 workflow 暂无运行记录（空态显式）。</div>')) +
     '</div>';
@@ -105,6 +159,7 @@ function runScreen(el, ctx, name, no) {
   const steps = Array.isArray(run.steps) ? run.steps : [];
   el.innerHTML = '<div class="view-inner">' + head +
     tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
+    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run, ctx) + '</div></div>' +
     (steps.length
       ? tr('<h2 class="sec-title">步骤</h2><div class="card">') + steps.map((s) =>
         '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || tr('步骤'))) + ' ' + runChip(s) + '</div>' +
@@ -112,6 +167,7 @@ function runScreen(el, ctx, name, no) {
       ).join('') + '</div>'
       : tr('<div class="small faint">契约未携带步骤明细——不显示不编造。</div>')) +
     '</div>';
+  bindPhaseGraph(el, ctx, run);
 }
 
 export function render(el, ctx) {

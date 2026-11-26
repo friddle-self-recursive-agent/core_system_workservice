@@ -191,3 +191,58 @@
   padding: 120px 0 0; text-align: center; }
 .biz-hero-mark { width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center;
   background: rgba(91, 140, 255, .15); color: var(--accent, #5b8cff); font-size: 28px; font-weight: 800; }
+
+/* ── 对话框（找文档/更新文档——入口永远一个对话框） ── */
+.cc-composer { border: 1px solid var(--bd, #2a2f3a); border-radius: 14px; padding: 10px 12px; background: rgba(255,255,255,.02); }
+.cc-comp-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.cc-comp-row:last-child { margin-bottom: 0; }
+.cc-sess { max-width: 320px; }
+.cc-sess-free { flex: 1; max-width: 320px; }
+.cc-text { flex: 1; min-height: 44px; resize: vertical; }
+.dash-composer { margin-bottom: 14px; }
+.msg { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--bd, #222733); }
+.msg:last-child { border-bottom: none; }
+.msg-avatar { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  background: rgba(91,140,255,.15); flex-shrink: 0; }
+.msg-user .msg-avatar { background: rgba(255,255,255,.08); }
+.msg-body { flex: 1; min-width: 0; }
+.msg-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.msg-text { white-space: pre-wrap; word-break: break-word; }
+.ref-chip { display: inline-block; background: rgba(91,140,255,.14); border: 1px solid rgba(91,140,255,.35);
+  border-radius: 6px; padding: 0 6px; margin: 0 2px; cursor: pointer; font-size: 12px; }
+.ref-chip:hover { background: rgba(91,140,255,.28); }
+.ex-block { margin-top: 6px; border: 1px dashed var(--bd, #2a2f3a); border-radius: 8px; }
+.ex-sum { cursor: pointer; padding: 5px 10px; font-size: 12px; color: var(--fg-dim, #8b93a7); list-style: none; }
+.ex-sum::-webkit-details-marker { display: none; }
+.ex-chev { display: inline-block; margin-right: 6px; transition: transform .15s; }
+.ex-block[open] .ex-chev { transform: rotate(90deg); }
+.ex-body { padding: 4px 10px 8px; }
+.concl-card { border: 1px solid rgba(91,140,255,.4); background: rgba(91,140,255,.07); border-radius: 10px; padding: 10px 12px; }
+.concl-t { font-weight: 700; font-size: 12px; color: var(--accent, #5b8cff); margin-bottom: 6px; }
+.concl-refs { margin-top: 6px; }
+.concl-acts { margin-top: 8px; display: flex; gap: 8px; }
+.doc-ov { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.doc-ov.hidden { display: none; }
+.doc-ov-card { background: var(--bg, #12151c); border: 1px solid var(--bd, #2a2f3a); border-radius: 14px;
+  width: min(900px, 92vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.doc-ov-h { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--bd, #2a2f3a); }
+.doc-ov-b { overflow: auto; padding: 14px 18px; }
+.host-embed { width: 100%; height: 420px; border: 1px solid var(--bd, #2a2f3a); border-radius: 10px; background: #fff; }
+
+/* ── 相位节点图 ── */
+.pg-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.pg-node { display: flex; align-items: center; gap: 6px; border: 1px solid var(--bd, #2a2f3a); border-radius: 10px;
+  padding: 6px 10px; cursor: pointer; }
+.pg-node:hover { border-color: var(--accent, #5b8cff); }
+.pg-node .pg-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-dim, #8b93a7); }
+.pg-node.active { border-color: var(--accent, #5b8cff); background: rgba(91,140,255,.1); }
+.pg-node.active .pg-dot { background: var(--accent, #5b8cff); box-shadow: 0 0 0 3px rgba(91,140,255,.2); }
+.pg-node.done .pg-dot { background: #34c77b; }
+.pg-node.fail .pg-dot { background: #e5484d; }
+.pg-name { font-size: 12px; font-weight: 600; }
+.pg-edge { color: var(--fg-dim, #8b93a7); }
+
+/* ── editor scheme 折叠 ── */
+.scheme-fold { border: 1px dashed var(--bd, #2a2f3a); border-radius: 8px; margin-bottom: 12px; }
+.scheme-pre { padding: 8px 10px; overflow: auto; max-height: 240px; }
+.sess-list { max-height: 420px; overflow: auto; }

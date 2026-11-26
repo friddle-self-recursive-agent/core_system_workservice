@@ -102,10 +102,11 @@ function docsScreen(el, ctx) {
         const meta = c ? fmMeta(c.content) : null;
         const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, 'mute')).join('');
         const imp = meta && meta.importance != null ? chip('I:' + meta.importance, meta.importance >= 80 ? 'acc' : 'mute') : chip(tr('重要度—'), 'mute');
+        const sync = syncBadge(ctx.store.runs(), o.name);
         return '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '">' +
           '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + (draftSet.has(o.kind + '|' + o.scope + '|' + o.name) ? '<span class="draft-dot">●</span>' : '') + '</div>' +
           '<div class="mr-sub small mono">' + esc(o.kind + '/' + o.scope) + ' · rv ' + esc(String(o.rv != null ? o.rv : '—')) + '</div>' +
-          '<div class="mr-sub">' + tagChips + imp + '</div></div>' +
+          '<div class="mr-sub">' + tagChips + imp + sync + '</div></div>' +
           '<span class="ws-chip">' + chipGo(tr('打开'), docRoute(o.kind, o.scope, o.name), 'acc', true, tr('渲染视图')) + '</span></div>';
       }).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
       : emptyBox(tr('窗口内无文档'), tr('过滤零命中或快照为空（空态显式）。'))) +

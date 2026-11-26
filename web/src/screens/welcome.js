@@ -6,6 +6,7 @@
 
 import { esc, relAge, fmtNum, trunc } from '../core/format.js';
 import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
+import { composerHtml, bindComposer } from './chat.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ── 摘要统计卡（点击深链） ── */
@@ -137,6 +138,8 @@ function dashLayout(ctx, opts) {
     statCard(tr('收件箱'), (store.inbox() || []).length, tr('待你处理'), 'inbox', '') +
     statCard(tr('进行中任务'), (store.tasks() || []).filter((x) => ['running', 'verifying'].includes(String((x && x.status && (x.status.phase || x.status)) || ''))).length, tr('任务中心'), 'tasks', '');
   return '<div class="view-inner">' + (opts.head || '') +
+    (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx, '') +
+      '<div class="small faint"><span class="ref-chip" data-go="chat/root-agent">' + esc(tr('打开对话线程')) + '</span></div></div>' : '') +
     '<div class="dash-stats">' + stats + '</div>' +
     '<div data-loop-box>' +
     '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(tr('当前循环'), 'mute') +
@@ -158,7 +161,9 @@ export function render(el, ctx) {
   el.innerHTML = dashLayout(ctx, {
     head: '<div class="dash-head"><h2 class="page-title">' + esc(tr('总览')) + '</h2>' +
       '<span class="small faint">' + esc(tr('系统视角大屏——正在跑的任务、最近需要的审批、核心 Agent 一眼可读')) + '</span></div>',
+    composer: true,
   });
+  bindComposer(el, ctx, el);
   hydrateLoop(el, ctx);
 }
 
