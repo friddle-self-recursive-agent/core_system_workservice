@@ -215,6 +215,40 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())
 	}
 
+	// sqlite→git 定时导出器（R-DOC-7 规则 2：git=导出/公开 output/public——周期快照非逐次
+	// 账，逐次正文账=doc_history）。env 三键（部署侧配置，R-PUB-2——键名入库、实际值不入）：
+	// CORE_SYSTEM_DOCS_EXPORT_INTERVAL 控制开关与间隔（如 30m；未设=不启动，不可解析/非正=
+	// 缺口 stderr 可见不启动）；CORE_SYSTEM_DOCS_EXPORT_DIR 必填才启动（目标工作树）；
+	// CORE_SYSTEM_DOCS_EXPORT_REMOTE 设了才 push（no force-push，认证走部署侧凭据不入库）。
+	// 仅 sqlite 后端装配（git 后端自身已是布局权威，无导出语义）。导出=只读派生任务：每拍
+	// 全量快照按对象规范路径写目标树→有变化才 commit→可选 push；失败只告警不回滚 sqlite 写、
+	// 不崩 cored（下拍重试自愈）；绝不回导（回导=--docs 显式一次性迁移通道）。
+	if _, ok := repo.(*repository.SQLiteRepo); ok {
+		if iv := strings.TrimSpace(os.Getenv("CORE_SYSTEM_DOCS_EXPORT_INTERVAL")); iv != "" {
+			d, perr := time.ParseDuration(iv)
+			switch {
+			case perr != nil || d <= 0:
+				fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（CORE_SYSTEM_DOCS_EXPORT_INTERVAL=%q 不可解析/非正——缺口可见不启动）\n", iv)
+			case os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR") == "":
+				fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（interval=%s 已设但 CORE_SYSTEM_DOCS_EXPORT_DIR 缺席——必填才启动）\n", d)
+			default:
+				exp, err := repository.NewExporter(repo, sch, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE"))
+				if err != nil {
+					return fmt.Errorf("docs 导出器装配: %w", err)
+				}
+				expCtx, cancelExp := context.WithCancel(context.Background())
+				defer cancelExp()
+				go exp.Run(expCtx, d)
+				pushState := "off（本地 commit 止步）"
+				if os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") != "" {
+					pushState = "on（push " + os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") + "）"
+				}
+				fmt.Fprintf(os.Stderr, "cored: docs 导出器=on(%s → %s push=%s)（sqlite→git 周期快照——git 历史=导出快照非逐次账；失败只告警不回滚不崩；绝不回导）\n",
+					d, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), pushState)
+			}
+		}
+	}
+
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
 	// 触发骨架（dispatch 接线：第二段 v0.12 订阅面动态化 → 第三段 v0.13 引擎主体第一段
@@ -692,10 +726,16 @@ func run() error {
 		if sessionState != "off" && sessionState != "unregistered" {
 			opts = append(opts, apiserver.WithSessionLiveness(liveness))
 		}
-		// 历史 rv 正文读面（v0.63 rev-content diff 面，§1.40——历史 tab 点行 diff 上一版读半边）：
-		// git 后端恒装配（git=内容版本权威）；sqlite 后端缺席=面 503 诚实降级（防御面词形）。
-		if gr, ok := store2.(*repository.GitRepo); ok {
-			opts = append(opts, apiserver.WithRevContent(gr))
+		// 历史 rv 正文读面（v0.63 rev-content diff 面，§1.40——历史 tab 点行 diff 上一版读半边）
+		// 与逐次正文历史清单面（R-DOC-7 规则 4 doc_history 落地面，GET /v1/doc-history）按后端
+		// 分立装配：git 后端=rev-content 恒装配（裸库考古，source=git-backend）、doc-history
+		// 缺席 503（git 历史=导出快照非逐次账——不冒充）；sqlite 后端=两 face 恒装配
+		// （rev-content 数据源=doc_history 逐次账，source=sqlite-doc-history——503 升级为可用）。
+		switch src := store2.(type) {
+		case *repository.GitRepo:
+			opts = append(opts, apiserver.WithRevContent(src))
+		case *repository.SQLiteRepo:
+			opts = append(opts, apiserver.WithRevContent(src), apiserver.WithDocHistory(src))
 		}
 		return opts
 	}

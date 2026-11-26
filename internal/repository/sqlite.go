@@ -123,7 +123,18 @@ CREATE TABLE IF NOT EXISTS doc (
 	updated_at       TEXT NOT NULL,
 	PRIMARY KEY (kind, scope, name)
 );
-CREATE INDEX IF NOT EXISTS doc_kind_scope ON doc(kind, scope);`
+CREATE INDEX IF NOT EXISTS doc_kind_scope ON doc(kind, scope);
+CREATE TABLE IF NOT EXISTS doc_history (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind          TEXT NOT NULL,
+	scope         TEXT NOT NULL,
+	name          TEXT NOT NULL,
+	rev           INTEGER NOT NULL,
+	content       TEXT NOT NULL,
+	applied_at    TEXT NOT NULL,
+	field_manager TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS doc_history_key ON doc_history(kind, scope, name, rev);`
 	if _, err := r.db.Exec(ddl); err != nil {
 		return fmt.Errorf("repository: docs DB 建表: %w", err)
 	}
@@ -302,12 +313,34 @@ func (r *SQLiteRepo) applyWrite(req *writeReq) (int64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	if _, err := r.db.Exec(`INSERT INTO doc (kind, scope, name, content, resource_version, updated_at)
+	// 权威落库 + 逐次正文历史捕获同一事务（单写者连接=事务即串行边界）：update 动作先把
+	// 旧内容落 doc_history 一行（R-DOC-7 规则 4——逐次账非周期快照；rev=旧内容自带的
+	// resourceVersion、正文=库内原文逐字节、field_manager=本次翻页写者、applied_at=翻页时刻），
+	// 再 upsert 现行行；任一步失败同滚——不产生「现行已翻页、历史缺席」的缺口。
+	// create 无历史起点（第一版即现行，读现行 rv=现行正文）；noop/conflict 不落（无翻页发生）。
+	tx, terr := r.db.Begin()
+	if terr != nil {
+		return 0, "", fmt.Errorf("repository: docs DB 事务: %w", terr)
+	}
+	if action == "update" {
+		if _, err := tx.Exec(`INSERT INTO doc_history
+	(kind, scope, name, rev, content, applied_at, field_manager)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			o.Kind, o.Scope, o.Name, storedRV, storedCanon, stampNow(), req.fm); err != nil {
+			_ = tx.Rollback()
+			return 0, "", fmt.Errorf("repository: docs DB 历史落行: %w", err)
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO doc (kind, scope, name, content, resource_version, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (kind, scope, name) DO UPDATE SET
 	content=excluded.content, resource_version=excluded.resource_version, updated_at=excluded.updated_at`,
 		o.Kind, o.Scope, o.Name, string(out), newRV, stampNow()); err != nil {
+		_ = tx.Rollback()
 		return 0, "", fmt.Errorf("repository: docs DB 落库: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, "", fmt.Errorf("repository: docs DB 提交: %w", err)
 	}
 	r.logApply(o, newRV, "ok", req)
 	r.broadcast(fmt.Sprintf("%d", newRV))
@@ -441,6 +474,105 @@ VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kind, scope, name) DO NOTHING`,
 	}
 	return inserted, nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 逐次正文历史读面（R-DOC-7 规则 4：doc_history=逐次账——周期 git 导出快照不得冒充；
+// 读走直连（MaxOpenConns=1 单写者串行，读与写队列共享连接天然互斥））
+// ─────────────────────────────────────────────────────────────────────────────
+
+// DocHistoryRow 逐次历史行投影（不含正文——列表面瘦身；正文经 RevContent 读面）。
+type DocHistoryRow struct {
+	Rev          int64
+	AppliedAt    time.Time
+	FieldManager string
+	Bytes        int // 该次正文字节长度（列表面容量观察，不携正文）
+}
+
+// History 满足 apiserver.DocHistoryFace（GET /v1/doc-history 清单读面）——语义同 DocHistory，
+// 双名词形只为不改读面装配层契约（face 方法名 History，实现主名 DocHistory 保读面同源）。
+func (r *SQLiteRepo) History(kind, scope, name string) ([]DocHistoryRow, error) {
+	return r.DocHistory(kind, scope, name)
+}
+
+// DocHistory 对象逐次正文历史行集（rev 降序=最新翻页在前）。对象不在册（doc 与 history
+// 双缺）→ ErrNotFound；在册尚无翻页史（仅创建）→ 空行集（零历史=合法词形，不冒充）。
+func (r *SQLiteRepo) DocHistory(kind, scope, name string) ([]DocHistoryRow, error) {
+	if _, err := objectKeyValidation(r.sch, kind, scope, name); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.Query(`SELECT rev, applied_at, field_manager, LENGTH(CAST(content AS BLOB)) FROM doc_history
+WHERE kind=? AND scope=? AND name=? ORDER BY rev DESC`, kind, scope, name)
+	if err != nil {
+		return nil, fmt.Errorf("repository: docs DB 历史查询: %w", err)
+	}
+	defer rows.Close()
+	out := []DocHistoryRow{}
+	for rows.Next() {
+		var h DocHistoryRow
+		var applied string
+		if err := rows.Scan(&h.Rev, &applied, &h.FieldManager, &h.Bytes); err != nil {
+			return nil, fmt.Errorf("repository: docs DB 历史读行: %w", err)
+		}
+		if t, perr := time.Parse(time.RFC3339Nano, applied); perr == nil {
+			h.AppliedAt = t
+		}
+		out = append(out, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repository: docs DB 历史枚举: %w", err)
+	}
+	if len(out) == 0 {
+		// 零历史行：对象在册=合法零词形；对象缺席=ErrNotFound（与快照缺席分立，不冒充）。
+		var n int
+		if err := r.db.QueryRow(`SELECT COUNT(*) FROM doc WHERE kind=? AND scope=? AND name=?`,
+			kind, scope, name).Scan(&n); err != nil {
+			return nil, fmt.Errorf("repository: docs DB 计数: %w", err)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("%w: %s/%s/%s", ErrNotFound, kind, scope, name)
+		}
+	}
+	return out, nil
+}
+
+// RevContent 历史版本正文读面（RevContentFace 契约——GET /v1/rev-content 读半边；rv 由
+// face 层验为正整数）。数据源=doc_history 逐次账（R-DOC-7 规则 4）：rv=现行 → doc 表现行
+// 正文（该 rv 反写行在册）；rv<现行 → doc_history 行正文（该翻页时点原文逐字节）；其余 →
+// ErrRevNotFound（快照缺席，与对象缺席 ErrNotFound 分立）。读面零副作用零写路径。
+func (r *SQLiteRepo) RevContent(_ context.Context, kind, scope, name string, rv int64) (string, error) {
+	if _, err := objectKeyValidation(r.sch, kind, scope, name); err != nil {
+		return "", err
+	}
+	// 现行命中优先：现行正文即该 rv 时点正文（doc 表 resource_version 即该 rv）。
+	var curRaw string
+	var curRV int64
+	err := r.db.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
+		kind, scope, name).Scan(&curRaw, &curRV)
+	switch {
+	case err == nil && curRV == rv:
+		return curRaw, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return "", fmt.Errorf("%w: %s/%s/%s", ErrNotFound, kind, scope, name)
+	case err != nil:
+		return "", fmt.Errorf("repository: docs DB 读取: %w", err)
+	}
+	var raw string
+	var got int64
+	err = r.db.QueryRow(`SELECT content, rev FROM doc_history WHERE kind=? AND scope=? AND name=? AND rev=?`,
+		kind, scope, name, rv).Scan(&raw, &got)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("%w: %s/%s/%s r%d（doc_history 无该翻页行——逐次账缺席，不冒充现行）",
+			ErrRevNotFound, kind, scope, name, rv)
+	}
+	if err != nil {
+		return "", fmt.Errorf("repository: docs DB 历史正文查询: %w", err)
+	}
+	return raw, nil
+}
+
+// Source face 词形标注（不冒充——rev-content 响应 source 据实标注数据源，与 git 后端
+// "git-backend" 分立：本面=doc_history 逐次账）。
+func (r *SQLiteRepo) Source() string { return "sqlite-doc-history" }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Watch：进程内写直通知（单权威在库——无外部进程可改库，无需轮询兜底）

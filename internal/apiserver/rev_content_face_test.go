@@ -22,6 +22,8 @@ import (
 // rv≥9=快照缺席词形（ErrRevNotFound 包装——404 分立判定走 face err 映射）。
 type revFaceStub struct{ hit int }
 
+func (s *revFaceStub) Source() string { return "git-backend" }
+
 func (s *revFaceStub) RevContent(_ context.Context, _, _, _ string, rv int64) (string, error) {
 	s.hit++
 	if rv >= 9 {

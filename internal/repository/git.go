@@ -636,6 +636,10 @@ func blobRV(raw string) int64 {
 	return m.RV
 }
 
+// Source face 词形标注（不冒充——rev-content 响应 source 据实标注数据源，与 sqlite 后端
+// "sqlite-doc-history" 分立：本面=git 裸库提交考古，内容版本权威=仓库文件历史）。
+func (r *GitRepo) Source() string { return "git-backend" }
+
 // globObjects git 布局的读半边：按 storage 模板通配枚举 (kind, scope) 下全部对象文件
 // （GitRepo.List 与 sqlite 后端种子导入共用——git 布局=导入导出格式口径的机械落点）。
 func globObjects(root string, sch *scheme.Scheme, kind, scope string) ([]*Object, error) {

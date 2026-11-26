@@ -122,20 +122,40 @@ type ApprovalLogFace interface {
 }
 
 // RevContentFace 历史 rv 正文读面口面（v0.63 rev-content diff 面——历史 tab「点行 diff 上一版」
-// 余量收口的读半边；git 后端实现=repository.GitRepo）。语义=按对象键与目标 rv 取**该提交时点**
-// 的权威正文快照（git 后端权威=仓库文件历史，ops DB 只记 rv 流水——concepts/revision.md §3
-// 「git=内容版本权威」）；face 缺席=503 防御面（旧代兜底 405=代际判别器恒成立）。具体方法
-// 不占冻结 Repository 签名（QueryApplies 口面同款约定，compile 期断言在 New 尾注记）。
+// 余量收口的读半边；实现=repository.GitRepo「git-backend」与 repository.SQLiteRepo
+// 「sqlite-doc-history」双后端分立词形）。语义=按对象键与目标 rv 取**该次时点**的权威正文快照
+// （git 后端权威=仓库文件历史提交考古；sqlite 后端权威=doc_history 逐次账——R-DOC-7 规则 4，
+// 周期 git 导出快照不得冒充逐次历史）；face 缺席=503 防御面（旧代兜底 405=代际判别器恒成立）。
+// 具体方法不占冻结 Repository 签名（QueryApplies 口面同款约定，compile 期断言在 New 尾注记）。
 type RevContentFace interface {
-	// RevContent 取对象键 (kind, scope, name) 在 rv 提交时点的正文快照。找不到该 rv
-	// 的落库提交 → ErrRevNotFound（HTTP 404，与对象缺席分立）；读面零副作用。
+	// RevContent 取对象键 (kind, scope, name) 在 rv 时点的正文快照。找不到该 rv 的落库快照
+	// → ErrRevNotFound（HTTP 404，与对象缺席分立）；读面零副作用。
 	RevContent(ctx context.Context, kind, scope, name string, rv int64) (string, error)
+	// Source 数据源词形标注（响应 source 字段据实回显——git 裸库考古=「git-backend」、
+	// doc_history 逐次账=「sqlite-doc-history」；不冒充双后端同源）。
+	Source() string
 }
 
 // WithRevContent 注入历史 rv 正文读面（v0.63 rev-content diff 面——历史 tab 点行 diff 上一版
-// 读半边；git 后端恒装配；sqlite 后端=面缺席 503 诚实降级）。
+// 读半边；git/sqlite 后端各按其数据源装配，词形分立见 Source）。
 func WithRevContent(f RevContentFace) Option {
 	return func(o *options) { o.revContent = f }
+}
+
+// DocHistoryFace 逐次正文历史清单读面口面（R-DOC-7 规则 4 doc_history 落地面——sqlite 后端
+// 实现=repository.SQLiteRepo；git 后端不做：git 历史=周期导出快照非逐次账，面缺席=503 不冒充）。
+// 与 GET /v1/history（apply_log 审计流水——谁/何时/rv/结果，ops-log.md §2）分工：本面=
+// 逐次正文翻页清单（rev/翻页时刻/写者/正文字节数——不含正文；正文经 GET /v1/rev-content?rv=N
+// 按 rv 点取）。git 后端装配缺席=503 诚实降级（导出快照不冒充逐次清单）。
+type DocHistoryFace interface {
+	// History 对象逐次翻页行集（rev 降序）。对象缺席 → ErrNotFound；在册无翻页史 → 空行集。
+	History(kind, scope, name string) ([]repository.DocHistoryRow, error)
+}
+
+// WithDocHistory 注入逐次正文历史清单读面（R-DOC-7 规则 4——GET /v1/doc-history 读面；
+// sqlite 后端恒装配；git 后端缺席=面 503 诚实降级）。
+func WithDocHistory(f DocHistoryFace) Option {
+	return func(o *options) { o.docHistory = f }
 }
 
 // MetricsFace 数据面查询口面（metricsinfo.Store 满足；v0.33 MetricsInfo 数据面首段——
@@ -167,6 +187,7 @@ type options struct {
 	applyLog        ApplyLogFace
 	approval        ApprovalLogFace
 	revContent      RevContentFace
+	docHistory      DocHistoryFace
 	dispatch        DispatchFace
 	inbox           InboxFace
 	designDocs      DesignDocs
@@ -246,6 +267,8 @@ var (
 	_ ApplyLogFace        = (*opslog.SQLiteStore)(nil)
 	_ ApprovalLogFace     = (*opslog.SQLiteStore)(nil)
 	_ RevContentFace      = (*repository.GitRepo)(nil)
+	_ RevContentFace      = (*repository.SQLiteRepo)(nil)
+	_ DocHistoryFace      = (*repository.SQLiteRepo)(nil)
 	_ DesignDocs          = (*docrepo.Set)(nil)
 	_ SessionLivenessFace = (*sessionliveness.Watchdog)(nil)
 )
@@ -263,7 +286,11 @@ var (
 //	GET /v1/history/{kind}/{name}?scope=s 对象应用史投影（v0.38 console 读面第三段：apply_log
 //	                                     rv 降序；limit）
 //	GET /v1/rev-content/{kind}/{name}?scope=s&rv=N 历史 rv 正文投影（v0.63 rev-content diff 面
-//	                                     §1.40：git 权威正文快照读半边；face 缺席 503）
+//	                                     §1.40：git=裸库考古 / sqlite=doc_history 逐次账——source
+//	                                     词形分立标注；face 缺席 503）
+//	GET /v1/doc-history/{kind}/{name}?scope=s 逐次正文翻页清单（R-DOC-7 规则 4 doc_history 落地面：
+//	                                     rev/翻页时刻/写者/字节数，不含正文——sqlite 后端装配；
+//	                                     face 缺席 503）
 //	GET /v1/approvals                    审批判定账面查询面（v0.46 审批独立账：approval_log
 //	                                     rv 降序；decision/obj/limit）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
@@ -296,6 +323,8 @@ var (
 // eventLog 为 nil（事件归档查询口面未接线）时 GET /v1/events 返回 503（面注册但能力缺席；
 // 装配层随 ops DB 恒注入，此为防御面——旧代判别器仍是 405 兜底）。
 // applyLog 为 nil（应用史查询口面未接线）时 GET /v1/history/* 返回 503（同上口径）。
+// docHistory 为 nil（逐次正文历史清单口面未接线——git 后端不装配）时 GET /v1/doc-history/*
+// 返回 503（git 历史=周期导出快照非逐次账——面缺席诚实降级不冒充）。
 // approval 为 nil（审批判定账面口面未接线）时 GET /v1/approvals 返回 503 且批准/驳回写钩子
 // 零落账（账面缺席=无判定行，写路径语义不变——账面非权威，可重建）。
 // metrics 未注入（数据面未装配）时 /v1/metrics 返回空投影（关断口径缺省可见——与 405
@@ -311,6 +340,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	applyLog := o.applyLog
 	approval := o.approval
 	revContent := o.revContent
+	docHistory := o.docHistory
 	dispatch := o.dispatch
 	designDocs := o.designDocs
 	// logApproval 账面非权威落账：失败只注记 stderr，不翻转写路径结果（ops-log.md §2 v0.46）。
@@ -1227,14 +1257,15 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	})
 	// 历史 rv 正文投影面（v0.63 rev-content diff 面，§1.40——历史 tab「点行 diff 上一版」余量
 	// 收口的读半边）：`GET /v1/rev-content/{kind}/{name}?scope=s&rv=N` 按对象键+目标 rv 取该
-	// 提交时点权威正文快照（数据源=git 后端权威正文——concepts/revision.md §3 git=内容版本权威，
-	// ops DB 只记 rv 流水；快照定位=提交消息键段+blob rv 反写行双段对账）。只读 GET 零副作用；
-	// face 缺席=503 防御面（sqlite 后端/旧装配——诚实降级非 200 假面）；旧构建 405=代际判别器；
-	// 对象键不可解析/缺席 → 400/404 分立；rv 缺席或不可解析 → 400；该 rv 无落库提交 → 404
+	// 次时点权威正文快照。双后端分立词形（source 字段据实标注，不冒充同源）：git 后端=裸库
+	// 提交考古（concepts/revision.md §3 git=内容版本权威）；sqlite 后端=doc_history 逐次账
+	// （R-DOC-7 规则 4——周期 git 导出快照不得冒充逐次历史）。只读 GET 零副作用；
+	// face 缺席=503 防御面（旧装配——诚实降级非 200 假面）；旧构建 405=代际判别器；
+	// 对象键不可解析/缺席 → 400/404 分立；rv 缺席或不可解析 → 400；该 rv 无落库快照 → 404
 	// ErrRevNotFound 分立词形（与对象缺席分立——审计不冒充）。
 	mux.HandleFunc("GET /v1/rev-content/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
 		if revContent == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "历史 rv 正文读面未接线（face 缺席——sqlite 后端/旧装配诚实降级）"})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "历史 rv 正文读面未接线（face 缺席——旧装配诚实降级）"})
 			return
 		}
 		kind, name := r.PathValue("kind"), r.PathValue("name")
@@ -1252,7 +1283,7 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		case err == nil:
 			writeJSON(w, http.StatusOK, map[string]any{
 				"kind": kind, "scope": scope, "name": name, "rv": rv, "content": content,
-				"source": "git-backend",
+				"source": revContent.Source(),
 			})
 		case errors.Is(err, repository.ErrRevNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error(), "obj": fmt.Sprintf("%s/%s/%s", kind, scope, name), "rv": rv})
@@ -1263,6 +1294,41 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		default:
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		}
+	})
+	// 逐次正文历史清单投影面（R-DOC-7 规则 4 doc_history 落地面——`GET /v1/doc-history/
+	// {kind}/{name}?scope=s`）：逐次翻页行集（rev 降序：rev/翻页时刻/写者/正文字节数——
+	// 不含正文，正文经 GET /v1/rev-content?rv=N 点取）。与 GET /v1/history（apply_log 审计
+	// 流水——谁/何时/rv/结果，ops-log.md §2 双轨分工）词形分立：审计面管操作流水，本面管
+	// 逐次正文翻页账。只读 GET 零副作用；face 缺席=503（git 后端不装配：git 历史=周期导出
+	// 快照非逐次账——不冒充）；kind 未注册=404；scope 不合模板=400；对象缺席=404（与在册
+	// 无翻页史=空清单 200 分立）；旧构建（路由未注册）经兜底 handler 405=代际判别器。
+	mux.HandleFunc("GET /v1/doc-history/{kind}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if docHistory == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "逐次正文历史清单面未接线（doc_history 仅 sqlite 后端装配；git 后端历史=周期导出快照非逐次账——不冒充）"})
+			return
+		}
+		kind, name := r.PathValue("kind"), r.PathValue("name")
+		scope := r.URL.Query().Get("scope")
+		if _, err := sch.Lookup(kind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		rows, err := docHistory.History(kind, scope, name)
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		items := make([]map[string]any, 0, len(rows))
+		for _, h := range rows {
+			items = append(items, map[string]any{
+				"rev": h.Rev, "at": h.AppliedAt.UTC().Format(time.RFC3339Nano),
+				"fieldManager": h.FieldManager, "bytes": h.Bytes,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind": kind, "scope": scope, "name": name,
+			"count": len(items), "history": items,
+		})
 	})
 	// 审批判定账面查询面（v0.46 审批独立账，ops-log.md §2 v0.46 注记——`GET /v1/approvals`）：
 	// 数据源=ops DB approval_log（审批判定独立账：批准 granted/驳回 rejected——apply_log 承
