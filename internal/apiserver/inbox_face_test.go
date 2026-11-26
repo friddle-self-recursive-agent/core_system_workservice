@@ -109,7 +109,10 @@ func TestInboxFaceAbsent(t *testing.T) {
 	}
 	ts := httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil, nil, nil))
 	defer ts.Close()
-	res, _ := http.Get(ts.URL + "/v1/inbox")
+	res, err := http.Get(ts.URL + "/v1/inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("face 缺席=%d（期望 503）", res.StatusCode)
@@ -125,8 +128,11 @@ func TestHeartbeatWatchdogSourceRejected(t *testing.T) {
 	live := &stubLive{}
 	ts := httptest.NewServer(New(sch, nil, nil, nil, nil, nil, nil, nil, nil, WithSessionLiveness(live)))
 	defer ts.Close()
-	res, _ := http.Post(ts.URL+"/v1/sessions/heartbeat", "application/json",
+	res, err := http.Post(ts.URL+"/v1/sessions/heartbeat", "application/json",
 		strings.NewReader(`{"sessionId":"s1","source":"watchdog"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("watchdog 来源心跳=%d（期望 400 禁入）", res.StatusCode)
