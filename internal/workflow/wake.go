@@ -19,6 +19,8 @@ package workflow
 import (
 	"sync"
 	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/runtimestore"
 )
 
 // wake 状态词汇（v0.18 只有受理；真实拉起/session 语义落地轮在此扩枚举）。
@@ -63,6 +65,10 @@ type WakeSink interface {
 type WakeOptions struct {
 	// RingSize 唤醒环容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	RingSize int
+	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。挂接后
+	// 写穿透（每次受理同步 Append——唤醒受理即终态，同 wake id 重放 noop）+ 启动恢复
+	// （New 时装载历史行续接 seq/accepted 与环内最近投影）。读面零变化。
+	Store runtimestore.Store
 }
 
 // WakeLog 唤醒投影的进程内落点（WakeSink 缺省实现；并发安全；与 RunLog 同构——
@@ -77,7 +83,8 @@ type WakeLog struct {
 	dropped  int64
 }
 
-// NewWakeLog 构建唤醒投影落点。
+// NewWakeLog 构建唤醒投影落点。挂有 Store 时先做启动恢复（R-ENG §1——装载历史行填环内
+// 最近 RingSize 条、seq/accepted 续接为行数口径）。
 func NewWakeLog(opts *WakeOptions) *WakeLog {
 	w := &WakeLog{}
 	if opts != nil {
@@ -85,6 +92,25 @@ func NewWakeLog(opts *WakeOptions) *WakeLog {
 	}
 	if w.opts.RingSize <= 0 {
 		w.opts.RingSize = 256
+	}
+	if w.opts.Store != nil {
+		rows := loadWakeRows(w.opts.Store)
+		if len(rows) > 0 {
+			wakes := make([]WakeRecord, len(rows))
+			maxSeq := int64(0)
+			for i, row := range rows {
+				wakes[i] = wakeFromRow(row)
+				if row.Wake > maxSeq {
+					maxSeq = row.Wake
+				}
+			}
+			w.seq = maxSeq
+			w.accepted = int64(len(rows))
+			if excess := len(wakes) - w.opts.RingSize; excess > 0 {
+				wakes = wakes[excess:]
+			}
+			w.ring = wakes
+		}
 	}
 	return w
 }
@@ -106,6 +132,10 @@ func (w *WakeLog) Wake(rec TriggerRecord, b ExecutorBinding, origin string) {
 		Type: rec.Type, DedupKey: rec.DedupKey, Route: rec.Route, Owner: rec.Owner,
 		At: rec.ReceivedAt,
 	})
+	// 写穿透（R-ENG §1）：受理词形同步 Append（受理即终态——同 wake id 重放 noop）。
+	if w.opts.Store != nil {
+		persistAppend("唤醒受理", w.opts.Store.AppendWake(wakeToRow(w.ring[len(w.ring)-1])))
+	}
 }
 
 // State 查询快照（拷贝返回，调用方可安全持有；wakes 旧→新）。

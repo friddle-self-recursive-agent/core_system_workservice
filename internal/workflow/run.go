@@ -48,6 +48,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/runtimestore"
 )
 
 // run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running；v0.24 挂起-恢复
@@ -196,6 +198,11 @@ type RunOptions struct {
 	// 可选能力，缺省 nil=零闸既有行为面零翻转）。注入后 enabled=false 的锚触发留痕仍在、
 	// run 不落（disabled 计数可见）；判定缺席（未命中/解析失败）=放行（缺口可见不静默拦）。
 	EnabledRules EnabledResolver
+	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。挂接后
+	// 写穿透（run 落环/推进迁移/审批信号迁移同步 upsert——run 是可演化投影，恢复取最新
+	// 词形）+ 启动恢复（New 时装载历史行续接 seq/started 与环内最近 run；冷却窗键面
+	// lastAccepted 不恢复=重启重置冷却窗——窗口语义可接受偏差，留痕仍在）。读面零变化。
+	Store runtimestore.Store
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
@@ -214,7 +221,8 @@ type RunLog struct {
 	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
-// NewRunLog 构建 run 投影落点。
+// NewRunLog 构建 run 投影落点。挂有 Store 时先做启动恢复（R-ENG §1——装载历史行填环内
+// 最近 RingSize 条、seq/started 续接为行数口径；冷却窗键面不恢复=重启重置，见 RunOptions.Store 注）。
 func NewRunLog(opts *RunOptions) *RunLog {
 	r := &RunLog{}
 	if opts != nil {
@@ -224,6 +232,25 @@ func NewRunLog(opts *RunOptions) *RunLog {
 		r.opts.RingSize = 256
 	}
 	r.lastAccepted = map[string]time.Time{}
+	if r.opts.Store != nil {
+		rows := loadRunRows(r.opts.Store)
+		if len(rows) > 0 {
+			runs := make([]RunRecord, len(rows))
+			maxSeq := int64(0)
+			for i, row := range rows {
+				runs[i] = runFromRow(row)
+				if row.Run > maxSeq {
+					maxSeq = row.Run
+				}
+			}
+			r.seq = maxSeq
+			r.started = int64(len(rows))
+			if excess := len(runs) - r.opts.RingSize; excess > 0 {
+				runs = runs[excess:]
+			}
+			r.ring = runs
+		}
+	}
 	return r
 }
 
@@ -311,6 +338,11 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
 	})
+	// 写穿透（R-ENG §1）：run 落环同步 upsert 至挂接的 Store（run 是可演化投影——同 run
+	// id 覆写最新词形；锁内同步落库与投影同序，失败只注记不翻转行为）。
+	if r.opts.Store != nil {
+		persistAppend("run 投影", r.opts.Store.AppendRun(runToRow(r.ring[len(r.ring)-1])))
+	}
 }
 
 // ResumeSignal 审批信号的 run 域迁移判定（挂起-恢复首段 v0.24，workflows 规则 13）——
@@ -369,6 +401,10 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 				return
 			}
 			run.Phase, run.Status = to, RunFailed
+		}
+		// 写穿透（R-ENG §1）：审批信号迁移同步 upsert（可演化投影——恢复取迁移后词形）。
+		if r.opts.Store != nil {
+			persistAppend("run 迁移", r.opts.Store.AppendRun(runToRow(*run)))
 		}
 		return // 只作用现势 run（最新命中即返回）
 	}

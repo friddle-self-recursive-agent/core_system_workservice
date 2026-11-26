@@ -440,9 +440,11 @@ func (s *SQLiteStore) GroupEvents(q EventQuery) (groups []EventGroup, scanned in
 // cored-bridge.md §2 `GET /v1/events` 的底层读取）。过滤字段全部精确匹配、空=不过滤；
 // 时间过滤在 Go 侧逐行解析（同 EventCountsSince：RFC3339Nano 去尾零致字面序≠时序）。
 type EventQuery struct {
-	Type     string    // 精确匹配（空=不过滤）
-	Level    string    // 精确匹配（空=不过滤）
-	Involved string    // 精确匹配（空=不过滤）
+	Type     string // 精确匹配（空=不过滤）
+	EventID  string // 精确匹配（空=不过滤；v0.66 单事件详情读面——/v1/events/{eventId} 归档直取）
+	DedupKey string // 精确匹配（空=不过滤；v0.66 关联链读面——单事件详情的同 dedupKey 后续事件）
+	Level    string // 精确匹配（空=不过滤）
+	Involved string // 精确匹配（空=不过滤）
 	Since    time.Time // 时间下界含端点（零值=不限）
 	Until    time.Time // 时间上界严格不含（零值=不限）——v0.39 E7：向后分页游标（上一页最旧行 ts，
 	//  取 strictly-earlier 行实现翻页；与 Since 组合=半开窗 [since, until)）
@@ -502,6 +504,12 @@ func (s *SQLiteStore) QueryEvents(q EventQuery) ([]EventLog, error) {
 		}
 		if q.Type != "" && l.Type != q.Type {
 			continue
+		}
+		if q.EventID != "" && l.EventID != q.EventID {
+			continue // v0.66 单事件直取（详情读面——eventId 与发布回执同源）
+		}
+		if q.DedupKey != "" && l.DedupKey != q.DedupKey {
+			continue // v0.66 关联链（同 dedupKey 后续事件）
 		}
 		if q.Level != "" && l.Severity != q.Level {
 			continue

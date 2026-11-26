@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/runtimestore"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
@@ -123,6 +124,11 @@ type TriggerOptions struct {
 	// RingSize 留痕环形容量（缺省 256）：溢出丢最旧、dropped 计数可见。
 	// 留痕是观测面不是账本（账本=event_log 归档，ops-log.md §2）。
 	RingSize int
+	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。
+	// 挂接后写穿透（每次留痕同步 AppendTrigger）+ 启动恢复（New 时装载历史行续接
+	// seq/received 与环内最近留痕；sqlite 为权威续接，memory 空启动=零行）。
+	// 读面零变化：State() 语义照旧（读仍走内存环）。
+	Store runtimestore.Store
 }
 
 // TriggerState 查询快照（State() 返回值；apiserver GET /v1/triggers 的载荷来源）。
@@ -181,7 +187,9 @@ var beatSources = map[string]bool{
 	SourceMetricsThreshold: true,
 }
 
-// NewTriggerHub 构建触发骨架。
+// NewTriggerHub 构建触发骨架。挂有 Store 时先做启动恢复（R-ENG §1——sqlite 为权威续接：
+// 装载历史行填环内最近 RingSize 条、seq/received 续接为行数口径；dropped=恢复前的环挤出
+// 不可考（旧进程内环窗口外的丢弃历史不在 Store——dropped 只计本次进程内挤出，诚实投影））。
 func NewTriggerHub(opts *TriggerOptions) *TriggerHub {
 	h := &TriggerHub{}
 	if opts != nil {
@@ -189,6 +197,25 @@ func NewTriggerHub(opts *TriggerOptions) *TriggerHub {
 	}
 	if h.opts.RingSize <= 0 {
 		h.opts.RingSize = 256
+	}
+	if h.opts.Store != nil {
+		rows := loadTriggerRows(h.opts.Store)
+		if len(rows) > 0 {
+			records := make([]TriggerRecord, len(rows))
+			maxSeq := int64(0)
+			for i, r := range rows {
+				records[i] = triggerFromRow(r)
+				if r.Seq > maxSeq {
+					maxSeq = r.Seq
+				}
+			}
+			h.seq = maxSeq
+			h.received = int64(len(rows))
+			if excess := len(records) - h.opts.RingSize; excess > 0 {
+				records = records[excess:]
+			}
+			h.ring = records
+		}
 	}
 	return h
 }
@@ -288,6 +315,11 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		Exec: d.Exec, CCExec: d.CCExec, Scope: e.Scope,
 	}
 	h.ring = append(h.ring, rec)
+	// 写穿透（R-ENG §1）：留痕同步 Append 至挂接的 Store（幂等——同 seq 重放 noop；
+	// 锁内同步落库=留痕与 Store 同序，落库失败只注记不翻转投影行为——persistAppend）。
+	if h.opts.Store != nil {
+		persistAppend("触发留痕", h.opts.Store.AppendTrigger(triggerToRow(rec)))
+	}
 	// 真实拉起第一子段（v0.15）：workflow 触发面已接线（WireExecutor 登记 + BindRuns 挂接）
 	// 时，route 目标执行面=workflow 的留痕推进为一次对账 run 投影（v0.23 相位推进器首段：
 	// 受理即启动——引擎单步迁移判定随受理同拍完成；v0.25 显式迁移表首段：判定器=声明表
