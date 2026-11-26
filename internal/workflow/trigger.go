@@ -106,6 +106,16 @@ type TriggerRecord struct {
 
 	Exec   ExecutorBinding // route 目标执行绑定投影（收到时刻的执行计划快照——v0.14）
 	CCExec ExecutorBinding // cc 目标执行绑定投影（空 cc=零值绑定）
+	Scope  string          // metadata.scope 四层词（BUG-010，event.md 规则 19——总线侧强制回填的派发闸判据）
+}
+
+// ScopeGate 事件→Agent 投递的 scope 闸（BUG-010，event.md 规则 19③ 派发闸——
+// `matchScope(event.metadata.scope, agent.spec.eventScopes)` 的机读落点）：执行面=agent
+// 的绑定在推进唤醒投影前过闸，闸判 false=**不投递**（唤醒投影缺席+ScopeBlocked 计数可见，
+// 不静默吞）。实现须纯判定（锁内同步调用——非阻塞、不回调 hub，sink 契约同口径）。
+// nil 闸=全放行（闸未装配=既有行为面零翻转——装配层挂文档库后注入，declared 缺省关断同范式）。
+type ScopeGate interface {
+	Allow(eventScope, agent string) bool
 }
 
 // TriggerOptions 触发骨架可调项（零值可用）。
@@ -117,10 +127,11 @@ type TriggerOptions struct {
 
 // TriggerState 查询快照（State() 返回值；apiserver GET /v1/triggers 的载荷来源）。
 type TriggerState struct {
-	Types    []string        // 已订阅事件类型（Attach 集合；"*"=通配全类型，dispatch 表推导）
-	Received int64           // 累计收到（含已被环挤出的）
-	Dropped  int64           // 环溢出丢弃计数（可观测）
-	Records  []TriggerRecord // 环内留痕（旧→新）
+	Types        []string        // 已订阅事件类型（Attach 集合；"*"=通配全类型，dispatch 表推导）
+	Received     int64           // 累计收到（含已被环挤出的）
+	Dropped      int64           // 环溢出丢弃计数（可观测）
+	ScopeBlocked int64           // scope 闸拦截计数（BUG-010 派发闸——新载荷键=代际判别器；拦截不投递但可见）
+	Records      []TriggerRecord // 环内留痕（旧→新）
 }
 
 // TriggerHub 触发骨架（**单订阅者**）：每事件类型一条总线订阅，收到即落留痕。
@@ -133,6 +144,7 @@ type TriggerHub struct {
 	ring     []TriggerRecord
 	received int64
 	dropped  int64
+	scopeBlocked int64 // scope 闸累计拦截（BUG-010 派发闸；State().ScopeBlocked 可查询）
 	types    []string
 	cancels  []func()
 	rules    []scheme.DispatchRule // dispatch 表快照（AttachDispatch 挂接；裸 Attach 为空=留痕不标 route）
@@ -141,6 +153,7 @@ type TriggerHub struct {
 	deliver  DeliverySink          // notification 送达面送达投影落点（BindDeliveries 挂接；nil=不推进送达）
 	wakes    WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
 	advance  EventAdvanceSink      // 事件驱动推进面落点（v0.29 BindEventAdvance 挂接；nil=事件拍缺席——推进总闸关断）
+	gate     ScopeGate             // agent 投递 scope 闸（BUG-010 BindScopeGate 挂接；nil=全放行既有行为面）
 }
 
 // SourceEngineInternal 引擎内部源事件的 source 审计值（event.md 规则 10 服务侧判定口径——
@@ -272,7 +285,7 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		Source: e.Source, Involved: e.Involved, Level: e.Level,
 		At: e.At, ReceivedAt: time.Now(),
 		Route: d.Route, CC: d.CC, For: d.For, Owner: d.Owner,
-		Exec: d.Exec, CCExec: d.CCExec,
+		Exec: d.Exec, CCExec: d.CCExec, Scope: e.Scope,
 	}
 	h.ring = append(h.ring, rec)
 	// 真实拉起第一子段（v0.15）：workflow 触发面已接线（WireExecutor 登记 + BindRuns 挂接）
@@ -312,11 +325,14 @@ func (h *TriggerHub) record(e eventbus.Event) {
 	// 时，执行面=agent 的绑定推进为一条唤醒投影——route 主路与 cc 旁路双路收编（origin
 	// 维度留痕，与送达面同口径；wake.go）。同一锁内推进：唤醒与留痕/run/送达同序；
 	// 非 agent 执行面与未接线态不推进（单登记不生效）。
+	// scope 闸（BUG-010，event.md 规则 19③ 派发闸）：投递给 Agent 前校验
+	// event.metadata.scope ∈ agent.spec.eventScopes——越界不投递（唤醒投影缺席），
+	// 拦截计数 ScopeBlocked 可见 + 闸实现侧告警（可见不静默，不静默吞）。
 	if h.wakes != nil && h.wired[ExecAgent] {
-		if d.Exec.Executor == ExecAgent {
+		if d.Exec.Executor == ExecAgent && h.gateAllowsLocked(rec, d.Exec.Target) {
 			h.wakes.Wake(rec, d.Exec, OriginRoute)
 		}
-		if d.CCExec.Executor == ExecAgent {
+		if d.CCExec.Executor == ExecAgent && h.gateAllowsLocked(rec, d.CCExec.Target) {
 			h.wakes.Wake(rec, d.CCExec, OriginCC)
 		}
 	}
@@ -391,6 +407,26 @@ func (h *TriggerHub) BindEventAdvance(sink EventAdvanceSink) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.advance = sink
+}
+
+// BindScopeGate 挂接 agent 投递 scope 闸（BUG-010，event.md 规则 19③ 派发闸）。nil=
+// 全放行（闸未装配=既有行为面零翻转）；挂接后执行面=agent 的绑定投递前逐闸判定，
+// 拦截不投递、ScopeBlocked 计数可见（State() 查询）。幂等；须在 AttachDispatch 前调用
+// （同 Bind* 口径）。gate 契约见 ScopeGate（纯判定、非阻塞、不回调 hub）。
+func (h *TriggerHub) BindScopeGate(gate ScopeGate) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.gate = gate
+}
+
+// gateAllowsLocked scope 闸判定（调用方持 h.mu——record 锁内路径）。nil 闸=全放行；
+// 拦截=计数可见（告警留痕由闸实现侧 OnBlocked 回调承担——hub 不感知日志面）。
+func (h *TriggerHub) gateAllowsLocked(rec TriggerRecord, agent string) bool {
+	if h.gate == nil || h.gate.Allow(rec.Scope, agent) {
+		return true
+	}
+	h.scopeBlocked++
+	return false
 }
 
 // execBindingLocked 目标 → 执行面绑定（纯映射 execFor + hub 接线态覆写）。
@@ -534,7 +570,8 @@ func (h *TriggerHub) State() TriggerState {
 	records := make([]TriggerRecord, len(h.ring))
 	copy(records, h.ring)
 	types := append([]string{}, h.types...)
-	return TriggerState{Types: types, Received: h.received, Dropped: h.dropped, Records: records}
+	return TriggerState{Types: types, Received: h.received, Dropped: h.dropped,
+		ScopeBlocked: h.scopeBlocked, Records: records}
 }
 
 func (h *TriggerHub) hasTypeLocked(typ string) bool {

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventscope"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 )
 
@@ -21,6 +22,7 @@ type Event struct {
 	At       time.Time
 	DedupKey string
 	Level    string // debug/info/warn/error/fatal（A42，rule 1b 强制）
+	Scope    string // metadata.scope 四层词（BUG-010，event.md 规则 19——总线侧强制回填，空=按 involved 派生兜底）
 }
 
 // Options 总线可调项（零值可用；测试注入小窗口/假 ops store）。
@@ -111,6 +113,12 @@ func (b *Bus) Publish(e *Event) error {
 	if e.DedupKey == "" {
 		e.DedupKey = e.ID // 无显式 dedup 键=永不聚合
 	}
+	if e.Scope == "" {
+		// metadata.scope 强制回填（BUG-010，event.md 规则 19①）：显式声明优先，缺席按
+		// involvedRef 所属 scope 派生（服务侧回填，禁止无 scope 的野事件）；派生不出合法
+		// 四层词（畸形 involved/空 involved）=兜底 global——保守词形不炸旧发布链。
+		e.Scope = eventscope.FromInvolved(e.Involved)
+	}
 
 	b.mu.Lock()
 	now := time.Now() // 窗口以墙钟计；e.At 只是事件时间戳（重放事件不重置其窗口判定）
@@ -156,6 +164,7 @@ func (b *Bus) Publish(e *Event) error {
 		_ = b.opts.Ops.AppendEvent(opslog.EventLog{
 			Ts: e.At, EventID: e.ID, Type: e.Type, Source: e.Source,
 			Involved: e.Involved, DedupKey: e.DedupKey, Severity: e.Level, RoutedTo: routedTo,
+			Scope: e.Scope,
 		})
 	}
 	return nil

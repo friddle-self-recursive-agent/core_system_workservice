@@ -30,6 +30,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/heartbeat"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
@@ -43,6 +44,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -122,6 +124,11 @@ func run() error {
 			"缺省不改行为面。开启需 Scheme 注册 SessionStalled——注册表是引擎内部源唯一开关。停滞判定→自愈固定顺序"+
 			"（第一动作=注入固定 prompt「继续」→SessionHealed）→诊断分诊（权限类 ApprovalNeeded 向上提交/人工类按 "+
 			"bind 通道上报未配置=零通知零外发/长任务 LongTaskRunning 显式汇报）→连续无效达 --heal-retry-limit 升级 Escalate）")
+	heartbeatInterval := flag.Duration("heartbeat-interval", envDuration("CORE_SYSTEM_HEARTBEAT_INTERVAL", 0),
+		"底层心跳事件源拍间隔（BUG-010，event.md 规则 18 引擎内部源第七段；缺省读 CORE_SYSTEM_HEARTBEAT_INTERVAL，"+
+			"0=关断零事件不发，缺省不改行为面。开启需 Scheme 注册 Heartbeat——注册表是引擎内部源唯一开关。"+
+			"到点自产 Heartbeat source=core involved=自身 dedup=heartbeat:<subject>:<拍点>；level=注册表缺省投影 "+
+			"debug——rule 1b 只进内存队列不入归档；route=dead-letter 零分发（scheme.dispatch 表行）")
 	stallThreshold := flag.Duration("stall-threshold", sessionliveness.DefaultStallThreshold,
 		"会话停滞判定阈值（KI-003；缺省 10m=event.md 规则 14② 声明缺省。updated_at 早于 now-阈值=停滞候选）")
 	healRetryLimit := flag.Int("heal-retry-limit", sessionliveness.DefaultHealRetryLimit,
@@ -323,6 +330,24 @@ func run() error {
 	if advancer.Enabled() {
 		triggers.BindEventAdvance(runs)
 	}
+	// Agent 投递 scope 闸（BUG-010，event.md 规则 19③ 派发闸——挂文档库即接线）：执行面=agent
+	// 的绑定投递前校验 event.metadata.scope ∈ agent.spec.eventScopes（scopePattern 通配与
+	// 精确匹配）；Agent 未声明 eventScopes=只收 global/自身 scope（保守缺省）；被拦=告警可见
+	// 不静默+ScopeBlocked 计数（GET /v1/triggers 可查询），不投递。nil（未挂文档库）=闸缺席
+	// 既有行为面零翻转。消费闸（GET /v1/events?agent=）共用同一 Resolver 零双源。
+	var agentScopeResolver flowbind.AgentEventScopes
+	if repo != nil {
+		agentScopeResolver = agentScopeResolverFor(repo)
+		triggers.BindScopeGate(&flowbind.AgentScopeGate{
+			Resolver: agentScopeResolver,
+			OnBlocked: func(b flowbind.ScopeBlockedBlock) {
+				fmt.Fprintf(os.Stderr, "cored: %s（scope 闸拦截不投递——event.md 规则 19③）\n", b.BlockedNote())
+			},
+		})
+		fmt.Fprintf(os.Stderr, "cored: agent scope 闸=on（派发闸 BindScopeGate+消费闸 /v1/events?agent= 同一 Resolver——Agent 未声明 eventScopes=只收 global/自身 scope 保守缺省；越界不投递告警可见）\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "cored: agent scope 闸=off（未挂文档库——闸缺席既有行为面零翻转）\n")
+	}
 	stopTriggers := triggers.AttachDispatch(bus, sch.Spec.Dispatch)
 	defer stopTriggers()
 	// 定时巡检源（v0.22 引擎内部源第二段，event.md 规则 10）：装配层定时器到点自产
@@ -342,6 +367,22 @@ func run() error {
 	fmt.Fprintf(os.Stderr, "cored: 触发骨架已按 dispatch 表接线（行数=%d 订阅集合=%v owner解析=v0.13 决策面=/v1/triggers/resolve 执行投影=v0.14 workflow触发面=已接线 对账run投影=/v1/workflows/runs builtin注册表=6项（相位词汇映射已落设计 v0.19）notification送达面=已接线 送达投影=/v1/notifications/deliveries agent唤醒面=已接线 唤醒投影=/v1/agents/wakes 真实出站=%s 派发执行余量=相位推进器（声明面已完备） 事件发布面=v0.20（注入与引擎内部事件同管线零旁路——event.md 规则 8） ApprovalNeeded 自产=v0.21（人审档拒绝路径引擎内部源——event.md 规则 9） 定时巡检源=v0.22（ReconcileTick 自产——event.md 规则 10））\n",
 		len(sch.Spec.Dispatch), triggers.State().Types, outboundState)
 	fmt.Fprintf(os.Stderr, "cored: 定时巡检源=%s（--reconcile-interval；on=到点自产 ReconcileTick source=core 拍点即因由 route=workflows/core-workflow；unregistered=Scheme 未注册该类型——注册表闸门前置）\n", patrolState)
+	// 底层心跳事件源（BUG-010 第一段，event.md 规则 18 引擎内部源第七段）：装配层定时器
+	// 到点自产 Heartbeat 进总线（patrol 同款装配范式；--heartbeat-interval / env
+	// CORE_SYSTEM_HEARTBEAT_INTERVAL 显式开启，缺省关断零事件不改行为面）。注册表闸门前置；
+	// route=dead-letter 零分发（scheme.dispatch 表行）；level=注册表缺省投影 debug——rule 1b
+	// 只进内存队列不入归档（visibility=default-hidden 的双保险——默认流/报告/侦察天然不可见）。
+	heartbeatState := "off"
+	heartbeatTicker := heartbeat.New(bus, sch, *heartbeatInterval)
+	if heartbeatTicker.Enabled() {
+		heartbeatState = "on(" + heartbeatTicker.Interval().String() + ")"
+		hbCtx, cancelHeartbeat := context.WithCancel(context.Background())
+		defer cancelHeartbeat()
+		go heartbeatTicker.Run(hbCtx)
+	} else if *heartbeatInterval > 0 {
+		heartbeatState = "unregistered" // interval>0 但类型未注册：闸门前置不启动（缺口可见）
+	}
+	fmt.Fprintf(os.Stderr, "cored: 底层心跳源=%s（--heartbeat-interval / CORE_SYSTEM_HEARTBEAT_INTERVAL；on=到点自产 Heartbeat source=core involved=自身 dedup=heartbeat:<subject>:<拍点> route=dead-letter 零分发；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", heartbeatState)
 	// 会话活性 watchdog（KI-003，event.md 规则 14/14b 引擎内部源第六段；agent-session.md §7）：
 	// 装配层定时扫描 ops DB session_heartbeat——超阈值无心跳自产 SessionStalled（判定态词=
 	// SuspectedStall；dedupKey=session:<id>）→自愈固定顺序（第一动作=注入固定 prompt「继续」，
@@ -851,6 +892,31 @@ func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
 
 // repoSpecs 可重复旗标收集（--design-repo name=<仓根>）。
 type repoSpecs []string
+
+// envDuration 读环境变量时长（部署锚点经环境注入的旗标缺省面——CORE_SYSTEM_HEARTBEAT_
+// INTERVAL 同款口径）：空/未设=缺省值；不可解析=0（启动校验 envDurationValid 另行显式
+// 报错——配置错误可见不静默，不在旗标缺省面静默吞）。
+func envDuration(key string, def time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	if d, err := time.ParseDuration(raw); err == nil {
+		return d
+	}
+	return 0
+}
+
+// envDurationValid 环境变量时长词形前置校验（空/未设=合法；不可解析=false——调用方拒绝
+// 启动，与 --flag 解析失败同口径的可见失败）。
+func envDurationValid(key string) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return true
+	}
+	_, err := time.ParseDuration(raw)
+	return err == nil
+}
 
 func (r *repoSpecs) String() string     { return strings.Join(*r, ",") }
 func (r *repoSpecs) Set(v string) error { *r = append(*r, v); return nil }

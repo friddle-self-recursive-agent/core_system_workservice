@@ -36,7 +36,10 @@ type attentionClear struct {
 var severityRank = map[string]int{"critical": 0, "high": 1, "medium": 2}
 
 // attentionReport 组装规则版报告。所有数字来自服务端聚合（facts），叙述只用事实。
-func attentionReport(ctx context.Context, objects ObjectSource, runs RunFace, o *options) map[string]any {
+// hidden=default-hidden 类型集（BUG-010，event.md 规则 18——关注报告候选集不混入
+// default-hidden 事件；调用方按 scheme 注册表逐请求现取，热刷新跟随；SessionStalled/
+// Escalate 等 attention 族生效词形 default-visible 不受影响=异常照常上屏）。
+func attentionReport(ctx context.Context, objects ObjectSource, runs RunFace, o *options, hidden map[string]bool) map[string]any {
 	now := time.Now().UTC()
 	missing := []string{}
 	var attention []attentionItem
@@ -156,11 +159,13 @@ func attentionReport(ctx context.Context, objects ObjectSource, runs RunFace, o 
 		}
 	}
 
-	// 3) 最近 error/fatal 事件：逐条给可点证据（最多 5 条）。
+	// 3) 最近 error/fatal 事件：逐条给可点证据（最多 5 条）。visibility 过滤（BUG-010，
+	// 规则 18）：default-hidden 类型不进候选集（tier=infra 的恢复/节拍事实不淹没注意力）；
+	// attention 族（HeartbeatLost/SessionStalled/Escalate）生效词形 default-visible 照常上屏。
 	if o.eventLog != nil {
 		var evs []opslog.EventLog
 		for _, lv := range []string{"error", "fatal"} {
-			if rows, err := o.eventLog.QueryEvents(opslog.EventQuery{Level: lv, Limit: 50}); err == nil {
+			if rows, err := o.eventLog.QueryEvents(opslog.EventQuery{Level: lv, Limit: 50, HiddenTypes: hidden}); err == nil {
 				evs = append(evs, rows...)
 			}
 		}
