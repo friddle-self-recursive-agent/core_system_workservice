@@ -135,8 +135,8 @@ function opsPanel(ref) {
     .map((x) => repoLinkChip(String(x || ''), String(x || '')))
     .filter(Boolean).join(' ');
   return '<div>' +
-    '<button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + tr('">编辑器</button> ') +
-    '<button class="btn sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + tr('">所属 scope</button> ') +
+    '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + tr('">编辑器</button> ') +
+    '<button class="btn btn-ghost sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + tr('">所属 scope</button> ') +
     (repoChips ? '<div class="ob-ctx" style="margin-top:8px">' + repoChips + '</div>' : '') +
     '</div>';
 }

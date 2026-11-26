@@ -269,7 +269,7 @@ function dialogScreen(el, ctx) {
   const can = !!(f && typeof f.sessions === 'function');
   el.innerHTML = '<div class="view-inner">' +
     screenHead(tr('会话'), tr('自有对话面——真实转录与发送；会话 id 由宿主发，永不手填'),
-      chip(tr('新会话'), 'acc', false, 'data-cc-new style="cursor:pointer"')) +
+      '<button class="btn btn-chip sm" data-cc-new>' + esc(tr('新会话')) + '</button>') +
     (can ? '' : '<div class="card"><div class="card-b"><div class="small faint">' +
       esc(tr('对话通路未注入（chatfaces.js 缺席）——转录与发送面显式缺席，不冒充。')) + '</div></div></div>') +
     '<div data-sess-backlinks-slot style="margin-bottom:6px">' + sessBacklinksHtml(ctx.store, CHAT.sessionId) + '</div>' +
@@ -286,7 +286,7 @@ function dialogScreen(el, ctx) {
     '<div class="cc-comp-row">' +
     '<textarea class="inp cc-text" data-cc-text rows="2" placeholder="' +
     esc(tr('提交需求／找文档／更新文档——例如：进行代码审核，看看实际和文档差距有多大，并进行修复')) + '"></textarea>' +
-    '<button class="btn primary cc-send" data-cc-send' + (can ? '' : ' disabled') + '>' + esc(tr('发送')) + '</button>' +
+    sendBtnHtml(can) +
     '</div>' +
     '<div class="small faint">' +
     esc(tr('Enter 发送 · queue 语义——送达宿主 agent 会话（durable journal；转录区随后可见双方消息）')) +
@@ -404,6 +404,11 @@ function sessionOptions() {
   return '<option value="root" selected>' + esc(tr('root 会话（默认）')) + '</option>';
 }
 
+/* 发送主按钮（每屏唯一主操作——会话屏与总览大屏分别渲染，不共存）。 */
+function sendBtnHtml(enabled) {
+  return '<button class="btn btn-primary" data-cc-send' + (enabled ? '' : ' disabled') + '>' + esc(tr('发送')) + '</button>';
+}
+
 /** 对话 composer（总览大屏在用）。 */
 export function composerHtml(ctx, curSession) {
   const f = faces();
@@ -416,7 +421,7 @@ export function composerHtml(ctx, curSession) {
     '<div class="cc-comp-row">' +
     '<textarea class="inp cc-text" data-cc-text rows="2" placeholder="' +
     esc(tr('提交需求／找文档／更新文档——例如：进行代码审核，看看实际和文档差距有多大，并进行修复')) + '"></textarea>' +
-    '<button class="btn primary cc-send" data-cc-send' + (canSend ? '' : ' disabled') + '>' + esc(tr('发送')) + '</button>' +
+    sendBtnHtml(canSend) +
     '</div>' +
     '<div class="small faint">' +
     (canSend

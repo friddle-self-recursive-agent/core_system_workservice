@@ -111,8 +111,8 @@ export function renderMessage(msg, names) {
               : '';
           }).join('') : '') +
         '<div class="concl-acts">' +
-        (go0 ? '<button class="btn sm" data-go="' + esc(go0) + '">' + esc(tr('打开对象工作台')) + '</button>' : '') +
-        '<button class="btn sm" data-go="chat/core-headless">' + esc(tr('写入草稿')) + '</button>' +
+        (go0 ? '<button class="btn btn-secondary sm" data-go="' + esc(go0) + '">' + esc(tr('打开对象工作台')) + '</button>' : '') +
+        '<button class="btn btn-ghost sm" data-go="chat/core-headless">' + esc(tr('写入草稿')) + '</button>' +
         '</div></div>'
       : '<div class="msg-text">' + linkifyRefs(text, names) + '</div>') +
     (m.thinking ? expandBlock('<div class="msg-text faint">' + linkifyRefs(m.thinking, names) + '</div>', tr('思考过程')) : '') +

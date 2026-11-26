@@ -75,7 +75,7 @@ try { curLevel = (typeof localStorage !== 'undefined' && localStorage.getItem('c
 /* 语言切换（顶栏右上角——四次裁决：不在侧栏底角）。 */
 function langToggleHtml() {
   const cur = getLocale();
-  const btn = (id, label) => '<button class="lang-btn' + (cur === id ? ' active' : '') + '" data-lang="' + id + '">' + label + '</button>';
+  const btn = (id, label) => '<button class="btn btn-ghost sm' + (cur === id ? ' active' : '') + '" data-lang="' + id + '">' + label + '</button>';
   return '<span class="lang-toggle">' + btn('zh', '中文') + btn('en', 'EN') + '</span>';
 }
 

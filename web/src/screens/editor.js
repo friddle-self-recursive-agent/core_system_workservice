@@ -124,7 +124,7 @@ function paintMeta(keyStr) {
   if (!ed) slot.innerHTML = esc(tr('注水中…'));
   else if (ed.faceFail) {
     slot.innerHTML = '<span class="chip esc tiny">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</span> ' +
-      '<button class="btn sm" data-ed-retry>' + esc(tr('重试')) + '</button>';
+      '<button class="btn btn-secondary sm" data-ed-retry>' + esc(tr('重试')) + '</button>';
     bindRetry(keyStr);
   } else if (ed.faceAbsent) slot.innerHTML = esc(tr('文档缺席（在册稿基座——Apply=创建通路）'));
   else slot.innerHTML = 'r' + ed.faceRV + esc(tr('（乐观锁基准）'));
@@ -139,7 +139,7 @@ function paintBody(key) {
   if (ed.faceFail) {
     el.innerHTML = '<div class="empty"><div class="e-title">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</div>' +
       '<div class="small faint">' + esc(tr('face 现读未成功——乐观锁基准未知，编辑/Apply 已停用（零装假）；点重试重跑注水。')) + '</div>' +
-      '<div class="e-act"><button class="btn sm primary" data-ed-retry>' + esc(tr('重试')) + '</button></div></div>';
+      '<div class="e-act"><button class="btn btn-secondary sm" data-ed-retry>' + esc(tr('重试')) + '</button></div></div>';
     bindRetry(key);
     return;
   }
@@ -193,7 +193,7 @@ function paintRail(key, ctx) {
       '<div class="small faint">' + esc(tr('流程：写修改意图 → AI 出全文建议 → 写入草稿 → 右下 Apply（乐观锁+预检照走——AI 无特权）。')) + '</div>' +
       '<textarea class="inp" data-ai-prompt rows="3" style="width:100%;margin-top:8px" placeholder="' +
       esc(tr('修改意图，如：补充 X 节；修正 Y 处口径…')) + '"></textarea>' +
-      '<button class="btn primary sm" data-ai-ask style="margin-top:8px"' + (canAi ? '' : ' disabled') + '>' + esc(tr('请求 AI 建议')) + '</button>' +
+      '<button class="btn btn-chip ai-act" data-ai-ask' + (canAi ? '' : ' disabled') + '>' + esc(tr('请求 AI 建议')) + '</button>' +
       '<div data-ai-out style="margin-top:10px">' +
       (canAi
         ? '<div class="small faint">' + esc(tr('建议将现读于此——写入草稿后走既有 Apply 通路。')) + '</div>'
@@ -213,8 +213,8 @@ function paintRail(key, ctx) {
         const text = String(sug == null ? '' : sug);
         if (!text.trim()) throw new Error(tr('空建议'));
         out.innerHTML = '<div class="small faint">' + esc(tr('AI 建议已到（')) + text.length + ' B）</div>' +
-          '<pre class="mono small" style="max-height:220px;overflow:auto;border:1px solid var(--bd,#2a2f3a);padding:8px;border-radius:8px">' + esc(trunc(text, 4000)) + '</pre>' +
-          '<button class="btn primary sm" data-ai-apply style="margin-top:8px">' + esc(tr('写入草稿')) + '</button>';
+          '<pre class="mono small ai-preview">' + esc(trunc(text, 4000)) + '</pre>' +
+          '<button class="btn btn-secondary sm ai-act" data-ai-apply>' + esc(tr('写入草稿')) + '</button>';
         out.querySelector('[data-ai-apply]').addEventListener('click', () => {
           ed.working = text;
           paintBody(ed.ref.kind + '/' + (ed.ref.scope || 'global') + '/' + ed.ref.name);
@@ -305,7 +305,7 @@ function editorScreen(el, ctx, key) {
     '<div class="collab-tab' + ((ed && ed.tab) === 'ai' ? ' active' : '') + tr('" data-ed-tab="ai">AI 修文档</div>') +
     '</div>' +
     '<div class="collab-body" data-ed-rail></div>' +
-    tr('<div class="apply-dock"><button class="btn primary block" data-ed-apply disabled>Apply（无变更）</button></div>') +
+    tr('<div class="apply-dock"><button class="btn btn-primary block" data-ed-apply disabled>Apply（无变更）</button></div>') +
     '</div></div></div>';
   paintNotice();
   paintMeta(key.key);

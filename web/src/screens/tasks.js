@@ -84,7 +84,7 @@ function cancelBtnHtml(t) {
   const id = taskIdOf(t);
   if (cancelReq.has(id)) return chip(tr('取消请求已发布'), 'warn');
   if (!cancellable(t)) return '';
-  return '<button class="btn sm" data-task-cancel="' + esc(id) + '">' + esc(tr('取消')) + '</button>';
+  return '<button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(id) + '">' + esc(tr('取消')) + '</button>';
 }
 
 /** 发布 TaskCancelRequested → 成功=行尾 chip + 快照重读（store 权威投影跟进）；失败=alert 显式词形。 */
@@ -220,7 +220,7 @@ function taskDetailScreen(el, ctx, id) {
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +
     (cancellable(t) && !cancelReq.has(taskIdOf(t))
-      ? '<div style="margin-top:10px"><button class="btn sm" data-task-cancel="' + esc(taskIdOf(t)) + '">' + esc(tr('取消')) + '</button>' +
+      ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t)) + '">' + esc(tr('取消')) + '</button>' +
         '<span class="small faint" style="margin-left:8px">' + esc(tr('发布 TaskCancelRequested——调度器归档面消费')) + '</span></div>'
       : '') +
     '</div></div></div>';
@@ -269,7 +269,7 @@ function attentionCard(a) {
     '<b>' + esc(String(a.title || tr('未命名关注项'))) + '</b></div>' +
     (a.why ? '<div class="att-why small">' + esc(String(a.why)) + '</div>' : '') +
     '<div class="att-ev">' + (evs.length ? evs.join(' ') : tr('<span class="small faint">证据：—</span>')) + '</div>' +
-    (route ? '<div class="att-acts"><button class="btn sm" data-go="' + esc(route) + '">' + esc(String(action.label || tr('去处理'))) + '</button></div>' : '') +
+    (route ? '<div class="att-acts"><button class="btn btn-secondary sm" data-go="' + esc(route) + '">' + esc(String(action.label || tr('去处理'))) + '</button></div>' : '') +
     '</div>';
 }
 
