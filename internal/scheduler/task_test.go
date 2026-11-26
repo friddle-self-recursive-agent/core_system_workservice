@@ -3,11 +3,13 @@
 package scheduler
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
-const taskDocEmptyStatus = `kind: Task
+const taskDocEmptyStatus = `---
+kind: Task
 scope: self-recursive-core
 name: t1
 spec:
@@ -17,6 +19,8 @@ spec:
   agent: agent://core-headless
   workspace: {mode: inplace}
   touches: {repos: [], paths: [], objects: []}
+---
+# 探针
 `
 
 // TestParseEmptyStatusIsQueued 2026-11-26 活体缺口锚：新建 Task status 为空（P2：用户不写
@@ -36,10 +40,11 @@ func TestParseEmptyStatusIsQueued(t *testing.T) {
 
 // TestParseExplicitPhaseWins 显式相位不被归一覆盖。
 func TestParseExplicitPhaseWins(t *testing.T) {
-	doc := taskDocEmptyStatus + `status:
+	doc := strings.Replace(taskDocEmptyStatus, "---\n# 探针", `status:
   phase: running
   attempts: 2
-`
+---
+# 探针`, 1)
 	_, st, ok := Parse([]byte(doc))
 	if !ok || st.Phase != PhaseRunning || st.Attempts != 2 {
 		t.Fatalf("显式相位应保留，得 ok=%v %+v", ok, st)

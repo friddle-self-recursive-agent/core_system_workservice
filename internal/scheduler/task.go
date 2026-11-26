@@ -232,8 +232,13 @@ type statusPatch struct {
 // WriteStatus Task.status 机械改写（yaml 节点树保注释/键序；status 区缺席=追加）。
 // 返回 changed=false=零改动（值已等——幂等免写，调用方跳过仓库写面）。
 func WriteStatus(content []byte, p statusPatch) (out []byte, changed bool, err error) {
+	// md 形态（--- 围栏）=Task 对象常态（layout.md §3：身份字段住 frontmatter 顶层）——
+	// 只改 frontmatter 内的 status，围栏与正文逐字节保留；丢失围栏=仓库按裸 yaml 解析要求
+	// metadata 区而拒绝（2026-11-26 活体实证：重编码整文导致写面恒失败）。
+	// 裸 yaml 形态（身份住 metadata 区）走整文重编码（status 在根级、与 metadata 同级）。
+	front, body, isMD := splitFrontmatter(string(content))
 	var root yaml.Node
-	if err := yaml.Unmarshal(content, &root); err != nil {
+	if err := yaml.Unmarshal([]byte(front), &root); err != nil {
 		return nil, false, fmt.Errorf("scheduler: Task 原文解析: %w", err)
 	}
 	if len(root.Content) == 0 || root.Content[0].Kind != yaml.MappingNode {
@@ -261,7 +266,29 @@ func WriteStatus(content []byte, p statusPatch) (out []byte, changed bool, err e
 	if err := enc.Close(); err != nil {
 		return nil, false, err
 	}
+	if isMD {
+		return []byte("---\n" + buf.String() + "---\n" + body), true, nil
+	}
 	return buf.Bytes(), true, nil
+}
+
+// splitFrontmatter 拆 md frontmatter 与正文（口径与 repository.splitDoc 同源：首行 ---、
+// 第二个独立的 --- 收尾；正文含收尾行之后的全部内容逐字节保留）。非 md=整文作 frontmatter、
+// 正文空。
+func splitFrontmatter(text string) (front, body string, isMD bool) {
+	if !strings.HasPrefix(text, "---") {
+		return text, "", false
+	}
+	lines := strings.Split(text, "\n")
+	if strings.TrimSpace(lines[0]) != "---" {
+		return text, "", false
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return strings.Join(lines[1:i], "\n"), strings.Join(lines[i+1:], "\n"), true
+		}
+	}
+	return text, "", false // 未闭合围栏：按整文处理（写面会由仓库侧 ErrContent 拦）
 }
 
 // applyPatch 就地落字段（等值=零改动聚合进 changed）。
