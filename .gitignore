@@ -3,3 +3,8 @@
 friddle_decision.md
 /cored
 worktrees/
+
+# 临时/验证文件（R-ENG-8）：一律 tmp/，永不入库
+tmp/
+/*.jpeg
+/*.png
