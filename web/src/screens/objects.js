@@ -1,0 +1,253 @@
+/* objects.js —— 通用对象工作台（六片固定：标签 / 适用规则 / 上下文 / 操作 / 内容 / scheme）。
+ * 语义移植旧 console-obj.js（代码全部重写为 ESM+库）。缺片显式「无」不装假（诚实空态词形）。
+ * 单一真相：对象枚举/kinds=快照（store）；对象正文=docCache(rv 缓存)+api.object 现读。
+ * 规则命中=确定性纯函数 rulesFor()（tag/kind/scope/正文引用四路——命中来源显式标注；
+ * 零命中=「无适用规则」诚实空态；规则索引缺席=降级词形不冒充）。
+ * 安全红线：一切动态文本 esc/或经 md 渲染管线；零原文直插。 */
+
+import { esc, trunc } from '../core/format.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute } from '../render/chips.js';
+import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
+
+/* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ---------- */
+export function tagGroups(tags, vocab) {
+  const V = vocab || {};
+  const m = {};
+  (tags || []).forEach((t) => {
+    const type = V[t] || '未分组';
+    (m[type] = m[type] || []).push(t);
+  });
+  return Object.keys(m).sort((a, b) => {
+    if (a === '未分组') return 1;
+    if (b === '未分组') return -1;
+    return a < b ? -1 : 1;
+  }).map((type) => ({ type, tags: m[type].sort() }));
+}
+
+/* ---------- 规则命中（确定性纯函数——四路显式来源；≥1 路命中即列；上限 8） ---------- */
+export function rulesFor(obj, rules) {
+  if (!rules) return { hits: [], degraded: true, reason: '规则文档族索引暂不可达——命中判定暂缺（不冒充无适用）。', scanned: 0 };
+  const o = obj || {};
+  const text = String(o.content || '');
+  const low = text.toLowerCase();
+  const nameLow = String(o.name || '').toLowerCase();
+  const scopeLow = String(o.scope || '').toLowerCase();
+  const kindLow = String(o.kind || '').toLowerCase();
+  const objTags = o.tags || [];
+  const out = [];
+  (rules || []).forEach((r) => {
+    if (!r || !r.path) return;
+    const base = String(r.path).replace(/^.*\//, '').replace(/\.md$/, '');
+    const rlow = String(r.content || '').toLowerCase();
+    const rtags = r.tags || [];
+    const why = [];
+    const tagHit = objTags.filter((t) => rtags.includes(t));
+    if (tagHit.length) why.push('标签「' + tagHit.join('、') + '」同组');
+    if (kindLow && rlow.includes(kindLow)) why.push('规则原文提及 ' + o.kind);
+    if (scopeLow && scopeLow !== 'global' && scopeLow !== 'builtin' && rlow.includes(scopeLow)) why.push('规则原文提及 ' + o.scope);
+    const nameStem = nameLow.replace(/[-_].*$/, '');
+    if (nameStem && nameStem.length >= 3 && rlow.includes(nameStem)) why.push('规则原文提及 ' + nameStem);
+    if (base && low && low.includes(base.toLowerCase())) why.push('对象正文引用 ' + base);
+    if (!why.length) return;
+    out.push({ ref: (r.repo || 'core_design') + '/' + r.path + '#' + base, name: base, why });
+  });
+  out.sort((a, b) => b.why.length - a.why.length || (a.name < b.name ? -1 : 1));
+  return { hits: out.slice(0, 8), degraded: false, reason: '', scanned: (rules || []).length };
+}
+
+/** 必填段完成度（requiredSections 与正文标题对照——诚实勾缺）。 */
+export function sectionCompletion(content, requiredSections) {
+  const secs = requiredSections || [];
+  if (!secs.length) return [];
+  const heads = {};
+  String(content || '').split('\n').forEach((line) => {
+    const m = /^\s*#{1,6}\s+(.+?)\s*$/.exec(line);
+    if (m) heads[m[1].toLowerCase()] = true;
+  });
+  return secs.map((s) => {
+    const key = String(s).toLowerCase();
+    return { name: String(s), done: !!heads[key] || String(content || '').toLowerCase().includes(key) };
+  });
+}
+
+/** 正文 yaml 中的 tags 现读（spec.metadata.tags 优先、metadata.tags 次之——缺=空）。 */
+function tagsOfDoc(content) {
+  const t = loadYaml(content);
+  if (!t) return [];
+  const spec = t.spec && typeof t.spec === 'object' ? t.spec : {};
+  const meta = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : (t.metadata && typeof t.metadata === 'object' ? t.metadata : {});
+  const tags = meta.tags || spec.tags || t.tags;
+  return Array.isArray(tags) ? tags.map((x) => String(x)) : [];
+}
+
+/** markdown 判据（语义移植旧 console isMarkdownDoc）。 */
+export function isMarkdownDoc(kind, name) {
+  if (kind === 'Goal' || kind === 'Rule' || kind === 'Runbook' || kind === 'DriftReport') return true;
+  return /(^|[-_])(README|design|report|notes)([-_.]|$)/i.test(String(name || ''));
+}
+
+/* ---------- 六片渲染 ---------- */
+function tagPanel(groups) {
+  if (!groups || !groups.length) {
+    return '<div class="ob-empty">暂无标签——对象正文未声明 spec.metadata.tags（声明经 Apply 落库后此处现读）。</div>';
+  }
+  return groups.map((g) =>
+    '<div class="ob-tagrow">' + chip(g.type, 'mute') + ' ' +
+    g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + '" title="看同 tag 对象">#' + esc(t) + '</span>').join(' ') + '</div>'
+  ).join('');
+}
+
+function rulePanel(res) {
+  if (res.degraded) return '<div class="ob-empty">' + esc(res.reason) + '</div>';
+  if (!res.hits.length) {
+    return '<div class="ob-empty">无适用规则——按 kind/scope/tag/正文引用四路检查零命中（检查范围=' + res.scanned + ' 份规则文档）。</div>';
+  }
+  return res.hits.map((h, i) =>
+    '<details class="ob-rule"><summary>' +
+    '<span class="lk mono" data-go="' + esc('designdoc/core_design/' + encodeURIComponent(String(h.ref.replace(/^[^/]+\/([^#]+).*/, '$1') + '.md'))) + '">' + esc(h.ref) + '</span></summary>' +
+    '<div class="ob-rule-why small">' + h.why.map((w) => chip(w, 'mute')).join(' ') + '</div></details>'
+  ).join('');
+}
+
+function ctxPanel(rv) {
+  return '<div class="ob-ctx">' + chip('已入快照', 'ok') +
+    ' <span class="small">resourceVersion r' + esc(String(rv || 0)) + '（rv 未变不重读正文——降级轮询路径同样生效）</span>' +
+    ' ' + chipGo('在文档库中打开', 'docs', 'mute', true) + '</div>';
+}
+
+function opsPanel(ref) {
+  return '<div>' +
+    '<button class="btn sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + '">编辑器</button> ' +
+    '<button class="btn sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + '">所属 scope</button> ' +
+    '</div>';
+}
+
+function schemePanel(kindReg, content) {
+  if (!kindReg) return '<div class="ob-empty">scheme 暂不可达（kinds 聚合缺席）。</div>';
+  const spec = kindReg.spec || {};
+  const keys = Object.keys(spec);
+  const cards = keys.length
+    ? yamlToCards(Object.keys(spec).map((f) => f + ': ' + JSON.stringify(spec[f])).join('\n'))
+    : '';
+  const comp = sectionCompletion(content, (kindReg.requiredSections || [])).map((c) =>
+    chip(c.name + (c.done ? ' ✓' : ' 缺'), c.done ? 'ok' : 'mute')
+  ).join(' ');
+  if (!cards && !comp) return '';
+  return (comp ? '<div class="ob-seccomp">' + comp + '</div>' : '') +
+    (cards ? '<div data-md-cards="1">' + cards + '</div>' : '<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>');
+}
+
+function contentPanel(kind, name, content) {
+  if (!String(content || '').trim()) return '<div class="ob-empty">本文档暂无正文。</div>';
+  if (isMarkdownDoc(kind, name)) {
+    return '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure('原文', content);
+  }
+  return '<div data-md-cards="1">' + (yamlToCards(content) || '<div class="ob-empty">（空声明）</div>') + '</div>' + rawDisclosure('YAML', content);
+}
+
+/* ---------- 正文懒取（docCache(rv) 命中=复用；未命中=现读后入缓存并重绘） ---------- */
+async function hydrateDoc(el, ctx, ref) {
+  const stamp = typeof location !== 'undefined' ? location.hash : '';
+  const cached = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+  if (cached) return cached.content;
+  const r = await ctx.api.object(ref.kind, ref.scope, ref.name);
+  if (!el.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return null;
+  if (!r.ok) return null;
+  const data = r.data && typeof r.data === 'object' ? r.data : {};
+  const content = data.content != null ? String(data.content) : (typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2));
+  ctx.store.cacheDoc(ref.kind, ref.scope, ref.name, ref.rv, content);
+  return content;
+}
+
+/** 规则文档族懒取（Rule kind 在册=逐份现读上限 12；缺席=degraded 降级词形）。 */
+async function hydrateRules(el, ctx) {
+  const stamp = typeof location !== 'undefined' ? location.hash : '';
+  const ruleRefs = ctx.store.refs('Rule').slice(0, 12);
+  if (!ruleRefs.length) return null; // 索引缺席（诚实降级）
+  const rules = [];
+  for (const rr of ruleRefs) {
+    let content = '';
+    const cached = ctx.store.cachedDoc(rr.kind, rr.scope, rr.name, rr.rv);
+    if (cached) content = cached.content;
+    else {
+      const r = await ctx.api.object(rr.kind, rr.scope, rr.name);
+      if (!el.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return null;
+      if (r.ok) {
+        const data = r.data && typeof r.data === 'object' ? r.data : {};
+        content = data.content != null ? String(data.content) : '';
+        if (content) ctx.store.cacheDoc(rr.kind, rr.scope, rr.name, rr.rv, content);
+      }
+    }
+    rules.push({ repo: rr.scope, path: rr.name + '.md', tags: tagsOfDoc(content), content });
+  }
+  return rules;
+}
+
+/** 对象工作台渲染（六片）。 */
+function renderScreen(el, ctx, ref) {
+  const kinds = ctx.store.kinds();
+  const kindReg = kinds.find((k) => k && (k.name === ref.kind)) || null;
+  const cached = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+  const content = cached ? cached.content : '';
+  const tags = tagsOfDoc(content);
+  const ruleState = rulesPending.get(ref.kind + '|' + ref.name) || null;
+
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead(ref.name, '对象工作台（六片：标签/规则/上下文/操作/内容/scheme）',
+      kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
+    '<div class="obj-grid">' +
+    '<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">' + tagPanel(tagGroups(tags)) + '</div></section>' +
+    '<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">' +
+    (ruleState ? rulePanel(ruleState) : '<div class="small faint">规则命中判定中…</div>') + '</div></section>' +
+    '<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">' + ctxPanel(ref.rv) + '</div></section>' +
+    '<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">' + opsPanel(ref) + '</div></section>' +
+    '<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">' + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
+    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : '<div class="small faint">正文现读中…</div>') + '</div></section>' +
+    '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + '</div></section>' +
+    '</div></div>';
+
+  // tag 点选 → 对象清单过滤（同 tag 对象）
+  el.querySelectorAll('[data-obj-tag]').forEach((t) => {
+    t.addEventListener('click', () => ctx.go('docs'));
+  });
+
+  if (!cached) {
+    hydrateDoc(el, ctx, ref).then((c) => {
+      if (c == null || !el.isConnected) return;
+      renderScreen(el, ctx, ref); // rv 缓存已建——整屏重绘（首版允许）
+    });
+  }
+  if (!ruleState) {
+    hydrateRules(el, ctx).then((rules) => {
+      if (rules == null || !el.isConnected) return;
+      const fresh = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
+      const res = rulesFor({ kind: ref.kind, scope: ref.scope, name: ref.name, content: fresh ? fresh.content : '', tags }, rules);
+      rulesPending.set(ref.kind + '|' + ref.name, res);
+      const panel = el.querySelector('[data-panel="rules"]');
+      if (panel) panel.innerHTML = rulePanel(res);
+    });
+  }
+}
+
+const rulesPending = new Map(); // 会话内规则命中结果（键 kind|name——换对象现判不跨对象复用）
+
+/** 路由入口：#/obj（默认首个）、#/obj/:kind（该 kind 首个）、#/obj/:kind/:scope/:name。 */
+export function render(el, ctx) {
+  const p = ctx.params || {};
+  let objs = ctx.store.objects();
+  let ref = null;
+  if (p.kind && p.name) {
+    ref = objs.find((o) => o.kind === p.kind && o.name === p.name && (!p.scope || p.scope === 'global' || o.scope === p.scope)) || null;
+  } else if (p.kind) {
+    ref = objs.find((o) => o.kind === p.kind) || null;
+  } else {
+    ref = objs[0] || null;
+  }
+  if (!ref) {
+    const hint = p.kind ? 'kind「' + p.kind + '」' : '快照';
+    el.innerHTML = '<div class="view-inner">' + screenHead('对象工作台', '六片固定：标签/规则/上下文/操作/内容/scheme') +
+      emptyBox(hint + '暂无在册对象', '快照 objects 聚合为空或该 kind 无对象（不装假）。') + '</div>';
+    return;
+  }
+  renderScreen(el, ctx, ref);
+}

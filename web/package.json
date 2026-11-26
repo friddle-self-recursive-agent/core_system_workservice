@@ -1,0 +1,21 @@
+{
+  "name": "agent-console-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "console 前端重构起点（esbuild IIFE bundle + CoreConsole 全局；WS patch 增量 + 快照聚合 + 对象级 rv 缓存）",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "diff": "^8.0.0",
+    "dompurify": "^3.2.4",
+    "fast-json-patch": "^3.1.1",
+    "js-yaml": "^4.1.0",
+    "marked": "^15.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

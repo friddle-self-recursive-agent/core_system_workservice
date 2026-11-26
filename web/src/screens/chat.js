@@ -1,0 +1,95 @@
+/* chat.js —— 会话屏（清单 + 转录）。faces 注入点保留：window.__CC.chatFaces 同款接口——
+ * {sessions(ctx)?, transcript(id)?} 可由宿主注入后现读；未注入=快照 sessions 清单 +
+ * 诚实降级词形（不冒充转录内容——零编造）。深链：#/chat/:agent（agent 入口）、
+ * #/session/:id（转录）。 */
+
+import { esc, trunc, relAge } from '../core/format.js';
+import { chip, chipGo, kv, emptyBox, screenHead } from '../render/chips.js';
+
+function faces() {
+  return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
+}
+
+function sessionRow(s, activeId) {
+  const id = String(s && (s.id || s.sessionId || ''));
+  if (!id) return '';
+  const state = String((s && (s.state || s.status)) || '');
+  const cls = state === 'suspected-stall' || state === 'escalated' ? 'esc' : state ? 'acc' : 'mute';
+  return '<div class="mini-row' + (id === String(activeId || '') ? ' sel' : '') + '" data-sess="' + esc(id) + '">' +
+    '<div class="mr-main"><div><b class="mono">' + esc(trunc(id, 34)) + '</b> ' + (state ? chip(state, cls) : '') + '</div>' +
+    '<div class="mr-sub small">' + esc(String((s && (s.agent || s.route)) || '—')) +
+    (s && s.startedAt ? ' · ' + esc(relAge(s.startedAt) || '') : '') + '</div></div>' +
+    '</div>';
+}
+
+/** 会话清单（faces.sessions 注入优先；快照 sessions 投影次之；双缺=诚实空态）。 */
+function sessionList(ctx, activeId) {
+  const f = faces();
+  let rows = null;
+  if (f && typeof f.sessions === 'function') {
+    try { rows = f.sessions(ctx) || []; } catch { rows = null; }
+  }
+  if (!Array.isArray(rows)) rows = ctx.store.sessions();
+  const list = rows.map((s) => sessionRow(s, activeId)).filter(Boolean);
+  if (!list.length) {
+    return '<div class="card"><div class="card-b"><div class="small faint">会话清单暂不可得' +
+      (f ? '' : '（faces 未注入且快照 sessions 缺席）') + '——不冒充在册会话。</div></div></div>';
+  }
+  return '<div class="card">' + list.join('') + '</div>';
+}
+
+/** 转录（faces.transcript 注入优先——返回 HTML/文本；未注入=诚实降级词形）。 */
+function transcript(ctx, id) {
+  const f = faces();
+  if (f && typeof f.transcript === 'function') {
+    try {
+      const html = f.transcript(id, ctx);
+      if (html) return String(html); // faces 实现方担保已净化（宿主契约）
+    } catch { /* 注入面失败=落降级词形 */ }
+  }
+  return '<div class="ob-empty">转录面未装配——宿主注入 window.__CC.chatFaces 后现读；' +
+    '会话原文不入公共库（intake 留痕面为准）。</div>';
+}
+
+/** #/chat/:agent —— agent 会话入口（与 root 对话的深链词形兼容）。 */
+function chatScreen(el, ctx) {
+  const agent = String(ctx.params.agent || 'root-agent');
+  const sessions = ctx.store.sessions().filter((s) => !s || !s.agent || String(s.agent) === agent);
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead('会话', 'agent=' + agent + '（对话是一等面——同一 dsh 会话机制投影）',
+      chipGo('看 root 会话', 'chat/root-agent', 'acc', false)) +
+    '<div class="chat-grid"><div>' +
+    '<h2 class="sec-title">会话清单</h2>' + sessionList(ctx) +
+    '</div><div>' +
+    '<h2 class="sec-title">入口</h2>' +
+    '<div class="card"><div class="card-b">' +
+    kv([
+      ['agent', esc(agent)],
+      ['会话', chip(sessions.length + ' 个相关', sessions.length ? 'acc' : 'mute')],
+      ['CLI', '<code class="mono">corectl chat ' + esc(agent) + '</code>'],
+    ]) +
+    '<div class="small faint" style="margin-top:8px">转录与终端面由宿主 faces 注入（__CC.chatFaces / __CC.termFaces）；' +
+    '未注入=清单降级快照投影，转录面显式缺席词形。</div>' +
+    '</div></div></div></div></div>';
+  el.querySelectorAll('[data-sess]').forEach((row) => {
+    row.addEventListener('click', () => ctx.go('session/' + encodeURIComponent(row.dataset.sess)));
+  });
+}
+
+/** #/session/:id —— 转录屏。 */
+function sessionScreen(el, ctx) {
+  const id = String(ctx.params.id || '');
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead('会话转录', 'id=' + id, chipGo('← 会话', 'chat/root-agent', 'mute', false)) +
+    '<div class="chat-grid"><div><h2 class="sec-title">会话清单</h2>' + sessionList(ctx, id) + '</div>' +
+    '<div><h2 class="sec-title">转录</h2><div class="card"><div class="card-b transcript">' + transcript(ctx, id) + '</div></div></div>' +
+    '</div></div>';
+  el.querySelectorAll('[data-sess]').forEach((row) => {
+    row.addEventListener('click', () => ctx.go('session/' + encodeURIComponent(row.dataset.sess)));
+  });
+}
+
+export function render(el, ctx) {
+  if (ctx.params && ctx.params.id != null && ctx.params.id !== '') sessionScreen(el, ctx);
+  else chatScreen(el, ctx);
+}
