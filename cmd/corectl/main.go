@@ -132,12 +132,16 @@ func usage(w io.Writer) {
   dispatches                          派单受理投影
   sessions                            会话心跳/活性
   proposals [name]                    提案列表/详情
+  tasks [--phase P] [--scope S]       任务队列简表（status 投影）
+  task <scope>/<name>                 任务详情（spec+status 投影+原文）
 
 写入（与桌面同一条 Apply/Event/权限链）：
   apply -f <file> [--kind K] [--scope S] [--name N] [--rv N] [--dry-run] [--field-manager M]
   event publish --type T [--involved k/s/n] [--level L] [--dedup K]
   tick [--involved k/s/n] [--dedup K]  发布 ReconcileTick（系统事件触发 core-workflow）
   loop [--dedup K]                     发布 LoopRequested（事件→wake 桥→拉起自循环）
+  task submit -f <file>                提交任务（apply kind=Task 同一写链）
+  task cancel <scope>/<name>           发 TaskCancelRequested（调度器每拍扫描迁移 canceled）
 
 其他：
   version                              CLI + cored 版本
@@ -176,6 +180,10 @@ func (a *app) dispatch(cmd string, args []string) int {
 		return a.cmdSessions(args)
 	case "proposals":
 		return a.cmdProposals(args)
+	case "tasks":
+		return a.cmdTasks(args)
+	case "task":
+		return a.cmdTask(args)
 	case "tick":
 		return a.cmdTick(args)
 	case "loop":
@@ -552,7 +560,153 @@ func (a *app) cmdSimpleGET(args []string, path, name string) int {
 	return a.emit(raw)
 }
 
-// ---------- 关注报告（CLI 摘要） ----------
+// ---------- 任务队列（concepts/task-scheduler.md——corectl tasks/task 同源投影） ----------
+
+// taskCancelEvent / taskConflictResolved 取消与裁决事件类型（corectl 只产事件，判定在 cored
+// 调度器——每拍扫 eventLog；词形与 scheduler 包常量同源）。TaskCancelRequested 当前 scheme
+// 未注册时 POST /v1/events 返回 404 注册闸门错——缺口可见，注册即通（不改代码）。
+const (
+	taskCancelEvent      = "TaskCancelRequested"
+	taskConflictResolved = "TaskConflictResolved"
+)
+
+func (a *app) cmdTasks(args []string) int {
+	fs := flag.NewFlagSet("tasks", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	phase := fs.String("phase", "", "phase 过滤（queued|ready|blocked|running|verifying|done|failed|canceled）")
+	scope := fs.String("scope", "", "scope 收窄")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	q := url.Values{}
+	if *phase != "" {
+		q.Set("phase", *phase)
+	}
+	if *scope != "" {
+		q.Set("scope", *scope)
+	}
+	path := "/v1/tasks"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	raw, err := a.request(http.MethodGet, path, nil)
+	if err != nil {
+		return fail(a, err)
+	}
+	return a.emit(raw)
+}
+
+// cmdTask 任务子命令：`task <scope>/<name>` 详情 / `task submit -f <file>` 提交 /
+// `task cancel <scope>/<name>` 取消（发 TaskCancelRequested 事件）。
+func (a *app) cmdTask(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.err, "用法：corectl task <scope>/<name> | task submit -f <file> | task cancel <scope>/<name>")
+		return 2
+	}
+	switch args[0] {
+	case "submit":
+		return a.cmdTaskSubmit(args[1:])
+	case "cancel":
+		return a.cmdTaskCancel(args[1:])
+	default:
+		return a.cmdTaskDetail(args)
+	}
+}
+
+// cmdTaskDetail 任务详情：GET /v1/tasks/<scope>/<name>（键全给定直取）。
+func (a *app) cmdTaskDetail(args []string) int {
+	id := args[len(args)-1]
+	scope, name, ok := strings.Cut(id, "/")
+	if !ok || scope == "" || name == "" {
+		fmt.Fprintln(a.err, "错误：任务 ID 词形=<scope>/<name>（如 self-recursive-core/fix-gate-123）")
+		return 2
+	}
+	raw, err := a.request(http.MethodGet, "/v1/tasks/"+url.PathEscape(scope)+"/"+url.PathEscape(name), nil)
+	if err != nil {
+		return fail(a, err)
+	}
+	return a.emit(raw)
+}
+
+// cmdTaskSubmit 提交任务：POST /v1/apply kind=Task（与桌面/console 同一条 apply 链——零旁路；
+// kind 词形强制 Task，frontmatter 声明不符=拒绝）。
+func (a *app) cmdTaskSubmit(args []string) int {
+	fs := flag.NewFlagSet("task submit", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	file := fs.String("f", "", "任务文件（- = stdin）")
+	dry := fs.Bool("dry-run", false, "只准入校验，不落库")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *file == "" {
+		fmt.Fprintln(a.err, "用法：corectl task submit -f <file>")
+		return 2
+	}
+	var content []byte
+	var err error
+	if *file == "-" {
+		content, err = io.ReadAll(io.LimitReader(os.Stdin, 4<<20))
+	} else {
+		content, err = os.ReadFile(*file)
+	}
+	if err != nil {
+		return fail(a, err)
+	}
+	fk, fscope, fname := parseDocHeader(string(content))
+	if fk != "" && fk != "Task" {
+		return fail(a, fmt.Errorf("frontmatter kind=%q 与任务提交不符（只收 kind: Task）", fk))
+	}
+	if fscope == "" || fname == "" {
+		fmt.Fprintln(a.err, "错误：frontmatter 缺 scope/name（任务文件须带 metadata.scope/metadata.name 或扁平 scope/name）")
+		return 2
+	}
+	body := applyBody{
+		Kind: "Task", Scope: fscope, Name: fname,
+		Content: string(content), FieldManager: "corectl", DryRun: *dry, Subject: &a.subject,
+	}
+	raw, err := a.request(http.MethodPost, "/v1/apply", body)
+	if err != nil {
+		return fail(a, err)
+	}
+	if a.jsonOut {
+		return a.emit(raw)
+	}
+	fmt.Fprintf(a.out, "已提交任务 %s/%s（kind=Task，apply 同链；调度器下拍选取）\n", fscope, fname)
+	fmt.Fprintln(a.out, strings.TrimSpace(string(raw)))
+	fmt.Fprintln(a.out, "查看：corectl tasks | corectl task "+fscope+"/"+fname)
+	return 0
+}
+
+// cmdTaskCancel 取消任务：POST /v1/events type=TaskCancelRequested involved=Task/<scope>/<name>
+// （调度器每拍扫描 eventLog → 非 running 直接 canceled / running 注记后自然结束迁移）。
+func (a *app) cmdTaskCancel(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(a.err, "用法：corectl task cancel <scope>/<name>")
+		return 2
+	}
+	id := args[len(args)-1]
+	scope, name, ok := strings.Cut(id, "/")
+	if !ok || scope == "" || name == "" {
+		fmt.Fprintln(a.err, "错误：任务 ID 词形=<scope>/<name>")
+		return 2
+	}
+	raw, err := a.request(http.MethodPost, "/v1/events", eventBody{
+		Type:     taskCancelEvent,
+		Involved: "Task/" + scope + "/" + name,
+		DedupKey: fmt.Sprintf("task-cancel:%s/%s:%d", scope, name, time.Now().UnixNano()),
+		Subject:  &a.subject,
+	})
+	if err != nil {
+		return fail(a, err)
+	}
+	if a.jsonOut {
+		return a.emit(raw)
+	}
+	fmt.Fprintf(a.out, "已发布取消请求 %s（involved=Task/%s/%s；调度器每拍扫描迁移 canceled）\n", taskCancelEvent, scope, name)
+	fmt.Fprintln(a.out, strings.TrimSpace(string(raw)))
+	fmt.Fprintln(a.out, "查看：corectl task "+scope+"/"+name)
+	return 0
+}
 
 func (a *app) cmdReport(args []string) int {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)

@@ -1294,6 +1294,54 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"count": len(items), "approvals": items})
 	})
+	// 任务队列读面（concepts/task-scheduler.md §7——cored-bridge.md §2 `GET /v1/tasks`）：
+	// 数据源=文档库 Task 对象（零缓存现读）；列表=status 投影简表（?phase= 闭合集过滤+
+	// ?scope= 枚举收窄，现势→priority→scope/name 确定性投影）；详情=spec+status 投影+content
+	// 原文。只读 GET 恒开（objects 缺席=503；kind 未注册=404——scheme 闸门语义与 proposals 面
+	// 同口径）；status 写面不在此（P2 只由调度器/执行体写），任务提交/取消走 apply/events 既有写链。
+	mux.HandleFunc("GET /v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if objects == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "对象存储未配置（cored 缺 --docs）"})
+			return
+		}
+		if _, err := sch.Lookup(taskKind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		phaseFilter, scopeQ := r.URL.Query().Get("phase"), r.URL.Query().Get("scope")
+		objs, err := objects.List(r.Context(), taskKind, scopeQ)
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		rows := make([]taskRow, 0, len(objs))
+		for _, o := range objs {
+			row := taskRowOf(o.Name, o.Scope, o.ResourceVersion, o.Content)
+			if phaseFilter != "" && row.Phase != phaseFilter {
+				continue // phase 过滤（闭合集词形——词外值=恒空结果不冒充全量）
+			}
+			rows = append(rows, row)
+		}
+		sortTasks(rows)
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(rows), "tasks": rows})
+	})
+	mux.HandleFunc("GET /v1/tasks/{scope}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if objects == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "对象存储未配置（cored 缺 --docs）"})
+			return
+		}
+		scope, name := r.PathValue("scope"), r.PathValue("name")
+		if _, err := sch.Lookup(taskKind); err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
+		}
+		o, err := objects.Get(r.Context(), taskKind, scope, name) // 键全给定=直取（404 语义与 objects 面同口径）
+		if err != nil {
+			writeObjErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, taskDetail(o))
+	})
 	// 需求提案读面（v0.51 能力 B——cored-bridge.md §2 `GET /v1/proposals`；concepts/proposal.md）：
 	// 数据源=文档库 Proposal 对象（零缓存现读）；列表=瘦身投影（?status= 闭合集过滤+?scope=
 	// 枚举收窄，rv 降序确定性投影）；详情=全 spec 投影+content 原文（scope 缺省=global 优先→其余
