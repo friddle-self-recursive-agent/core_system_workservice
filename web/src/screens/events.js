@@ -41,7 +41,7 @@ function linksHtml(e) {
   const sess = clean(e && (e.agentSession || e.session));
   if (sess) out.push(chipGo(tr('会话 ') + trunc(sess, 18), 'session/' + encodeURIComponent(sess), 'mute', true, tr('会话详情')));
   const wake = e && (e.wake != null ? e.wake : (e.loopId != null ? e.loopId : null));
-  if (wake != null) out.push(chip(tr('循环唤醒 #') + wake, 'mute'));
+  if (wake != null) out.push(chipGo(tr('循环唤醒 #') + wake, 'welcome', 'mute', true, tr('总览循环卡——loop 唤醒关联')));
   return out.join(' ');
 }
 

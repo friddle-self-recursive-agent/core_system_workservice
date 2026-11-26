@@ -153,6 +153,8 @@ function pendingRunRowHtml(x) {
     (x.started ? '<span class="small faint">' + esc(x.started) + '</span>' : '') +
     '</div>' +
     '<div class="dr-side" style="display:flex;gap:6px;align-items:center">' +
+    (x.wf && x.run !== '' && x.run != null
+      ? '<button class="btn sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + '/r/' + encodeURIComponent(String(x.run)) + '">' + esc(tr('运行详情')) + '</button>' : '') +
     '<button class="btn sm primary"' + btnAttrs('grant') + '>' + esc(tr('批准继续')) + '</button>' +
     '<button class="btn sm"' + btnAttrs('reject') + '>' + esc(tr('驳回终止')) + '</button>' +
     '</div></div>';
@@ -178,7 +180,14 @@ function bindApprovalGates(el, ctx) {
     });
     if (r && r.ok) {
       const row = btn.closest('[data-appr-row]');
-      if (row) row.style.display = 'none';
+      // V-15：就地批闸后显示结果与已决台账指引（不静默消失）
+      if (row) {
+        const grant = type === 'ApprovalGranted';
+        row.innerHTML = '<div class="dr-main">' +
+          chip(grant ? tr('已批准（ApprovalGranted 已发布）') : tr('已驳回（ApprovalRejected 已发布）'), 'ok') +
+          '<span class="small faint">' + esc(tr('判定已落审批台账——快照重基后行集刷新。')) + '</span></div>' +
+          '<div class="dr-side">' + chipGo(tr('查看已决台账 →'), 'approvals', 'acc', true, tr('审批页已决台账')) + '</div>';
+      }
       ctx.api.snapshot().then((s) => { if (s && s.ok) ctx.store.init(s.data); });
     } else {
       btn.disabled = false;
@@ -261,12 +270,16 @@ function sessHitOf(list, name) {
 function sessLiveHtml(hit) {
   if (!hit) return chip(tr('无会话'), 'mute');
   const st = String(hit.state || '');
+  const sid = String(hit.sessionId || hit.id || '');
   const sub = [
     String(hit.phase || ''),
     trunc(String(hit.lastAction || ''), 18),
     (hit.lastBeat ? (relAge(hit.lastBeat) || '') : ''),
   ].filter(Boolean).join(' · ');
-  return (st ? chip(st, sessStateCls(st)) : '') +
+  const stChip = st
+    ? (sid ? chipGo(st, 'session/' + encodeURIComponent(sid), sessStateCls(st), true, tr('会话详情——活性账现读')) : chip(st, sessStateCls(st)))
+    : '';
+  return stChip +
     (sub ? '<span class="small faint">' + esc(sub) + '</span>' : '');
 }
 
@@ -297,11 +310,14 @@ function agentsHtml(ctx, filterAgents) {
     const sess = sessions.find((s) => String((s && (s.agent || s.route)) || '').includes(a.name)) ||
       sessions.find((s) => String((s && s.id) || '') === a.name);
     const state = sess ? String(sess.state || sess.status || '') : '';
+    const sid = sess ? String(sess.sessionId || sess.id || '') : '';
+    const liveChip = state
+      ? (sid ? chipGo(state, 'session/' + encodeURIComponent(sid), state === 'escalated' || state === 'suspected-stall' ? 'esc' : 'acc', true, tr('会话详情')) : chip(state, state === 'escalated' || state === 'suspected-stall' ? 'esc' : 'acc'))
+      : chip(tr('无会话'), 'mute');
     return '<div class="dash-row" data-go="' + esc('chat/' + encodeURIComponent(a.name)) + '" role="link">' +
       '<div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b>' +
       '<span class="small faint">' + esc(a.scope) + '</span></div>' +
-      '<div class="dr-side" data-agent-live="' + esc(a.name) + '">' +
-      (state ? chip(state, state === 'escalated' || state === 'suspected-stall' ? 'esc' : 'acc') : chip(tr('无会话'), 'mute')) +
+      '<div class="dr-side" data-agent-live="' + esc(a.name) + '">' + liveChip +
       '</div>' +
       '</div>';
   }).join('');

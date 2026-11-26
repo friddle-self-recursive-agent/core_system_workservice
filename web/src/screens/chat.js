@@ -180,8 +180,47 @@ async function refreshSessions(el, f) {
       refreshSessions(el, f);
       refreshTranscript(el, f, true);
       ensureCtxBar(el, CHAT.sessionId);
+      paintBacklinks(el);
     });
   });
+}
+
+/* V-10：会话屏回链 task/event（按 sessionId 反查快照 Task.status.agentSession ∪ 事件 agentSession/session——零编造）。 */
+export function sessBacklinksHtml(store, sessionId) {
+  const sid = String(sessionId || '').trim();
+  if (!sid || !store) return '';
+  const tasks = (store.tasks ? store.tasks() : []).filter((t) => {
+    const s = (t && t.status) || {};
+    return String(s.agentSession || s.sessionId || '') === sid;
+  });
+  const evs = (store.events ? store.events() : []).filter((e) => {
+    const s = String((e && (e.agentSession || e.session)) || '').replace(/^"+|"+$/g, '');
+    return s === sid;
+  }).slice(0, 4);
+  const taskChips = tasks.slice(0, 3).map((t) => {
+    const id = String((t && t.scope) || 'global') + '/' + String((t && t.name) || '');
+    const title = String((t && t.spec && t.spec.title) || (t && t.name) || id);
+    const ph = String((t && t.status && t.status.phase) || '');
+    return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + '">' +
+      'Task: ' + esc(trunc(title, 24)) + (ph ? ' · ' + esc(ph) : '') + '</span>';
+  }).join(' ');
+  const evChips = evs.map((e) => {
+    const eid = e && (e.id != null ? e.id : (e.eventId != null ? e.eventId : ''));
+    return eid !== ''
+      ? '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(eid)) + '" title="' + esc(tr('事件详情')) + '">' + esc(trunc(String(e.type || ''), 24)) + '</span>'
+      : chip(trunc(String(e.type || ''), 24), 'mute');
+  }).join(' ');
+  if (!taskChips && !evChips) {
+    return '<div class="small faint" data-sess-backlinks="1">' + esc(tr('关联任务/事件：快照反查无在册关联（独立会话——零编造）。')) + '</div>';
+  }
+  return '<div class="small" data-sess-backlinks="1" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+    '<span class="faint">' + esc(tr('关联：')) + '</span>' + taskChips + evChips + '</div>';
+}
+
+function paintBacklinks(el) {
+  const ctx = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
+  const slot = el && el.querySelector ? el.querySelector('[data-sess-backlinks-slot]') : null;
+  if (slot && ctx) slot.innerHTML = sessBacklinksHtml(ctx.store, CHAT.sessionId);
 }
 
 async function refreshState(el, f) {
@@ -244,6 +283,7 @@ function dialogScreen(el, ctx) {
       chip(tr('新会话'), 'acc', false, 'data-cc-new style="cursor:pointer"')) +
     (can ? '' : '<div class="card"><div class="card-b"><div class="small faint">' +
       esc(tr('对话通路未注入（chatfaces.js 缺席）——转录与发送面显式缺席，不冒充。')) + '</div></div></div>') +
+    '<div data-sess-backlinks-slot style="margin-bottom:8px">' + sessBacklinksHtml(ctx.store, CHAT.sessionId) + '</div>' +
     '<div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start">' +
     '<aside class="card" style="padding:8px;max-height:calc(100vh - 160px);overflow:auto">' +
     '<div class="small faint" style="padding:2px 6px 8px;font-weight:700">' + esc(tr('会话')) + '</div>' +
@@ -276,6 +316,7 @@ function dialogScreen(el, ctx) {
       await refreshSessions(el, f);
       refreshTranscript(el, f);
       ensureCtxBar(el, CHAT.sessionId);
+      paintBacklinks(el);
     } else {
       const slot = el.querySelector('[data-cc-state]');
       if (slot) slot.innerHTML = chip(tr('新会话失败（') + String(r.status) + tr('）'), 'esc');
@@ -347,11 +388,13 @@ export function render(el, ctx) {
           refreshSessions(el, f);
           refreshTranscript(el, f);
           ensureCtxBar(el, CHAT.sessionId);
+          paintBacklinks(el);
         }
       }, 700);
     }
     return;
   }
+  paintBacklinks(el);
   const f = faces();
   if (f) refreshTranscript(el, f);
 }

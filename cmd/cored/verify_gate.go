@@ -55,6 +55,8 @@ func newVerifyGate(cfg verifyGateConfig) *verifyGate {
 		codeaudit.WithTemplate("lint/personal-info.sh", lintTemplate(cfg, "personal-info.sh")),
 		codeaudit.WithTemplate("lint/metadatainfo.sh", lintTemplate(cfg, "metadatainfo.sh")),
 	)
+	// V-18：同步覆盖 ops 注册表实例，使 Verify gate 与 /v1/code-audit/findings 共用同一结果 LRU。
+	connectors.RegisterOpsConnector(conn)
 	return &verifyGate{cfg: cfg, conn: conn}
 }
 

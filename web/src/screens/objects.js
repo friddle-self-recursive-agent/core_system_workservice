@@ -6,21 +6,38 @@
  * 安全红线：一切动态文本 esc/或经 md 渲染管线；零原文直插。 */
 
 import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
 import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
-/* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ---------- */
+/** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。 */
+export function tagVocabFromKinds(kinds) {
+  const rows = Array.isArray(kinds) ? kinds : [];
+  for (const k of rows) {
+    const meta = k && k.spec && k.spec.metadata && typeof k.spec.metadata === 'object' ? k.spec.metadata : null;
+    const t = meta && meta.tagTypes;
+    if (t && typeof t === 'object' && !Array.isArray(t)) return t;
+    if (Array.isArray(t)) return t.reduce((acc, x) => { acc[String(x)] = String(x); return acc; }, {});
+  }
+  return {};
+}
+
+/* ---------- tagType 分组（词表缺席=「未分组」；未分组恒殿后，tags 字典序） ----------
+ * 支持两式词表：vocab[tag] 精确映射 ∪ type:value 前缀命中 vocab[type] 或显式前缀。 */
 export function tagGroups(tags, vocab) {
   const V = vocab || {};
+  const UN = tr('未分组');
   const m = {};
   (tags || []).forEach((t) => {
-    const type = V[t] || tr('未分组');
-    (m[type] = m[type] || []).push(t);
+    const s = String(t || '');
+    const colon = s.indexOf(':');
+    const prefix = colon > 0 ? s.slice(0, colon) : '';
+    const type = V[s] || (prefix ? (V[prefix] || prefix) : '') || UN;
+    (m[type] = m[type] || []).push(s);
   });
   return Object.keys(m).sort((a, b) => {
-    if (a === tr('未分组')) return 1;
-    if (b === tr('未分组')) return -1;
+    if (a === UN) return 1;
+    if (b === UN) return -1;
     return a < b ? -1 : 1;
   }).map((type) => ({ type, tags: m[type].sort() }));
 }
@@ -71,14 +88,34 @@ export function sectionCompletion(content, requiredSections) {
   });
 }
 
-/** 正文 yaml 中的 tags 现读（spec.metadata.tags 优先、metadata.tags 次之——缺=空）。 */
-function tagsOfDoc(content) {
-  const t = loadYaml(content);
-  if (!t) return [];
-  const spec = t.spec && typeof t.spec === 'object' ? t.spec : {};
-  const meta = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : (t.metadata && typeof t.metadata === 'object' ? t.metadata : {});
-  const tags = meta.tags || spec.tags || t.tags;
-  return Array.isArray(tags) ? tags.map((x) => String(x)) : [];
+/** 正文 yaml/frontmatter 中的 tags 现读（支持 md `---` frontmatter + 纯 yaml；支持字符串数组与 `{tag,tag_type}` 对）。 */
+export function tagsOfDoc(content) {
+  const s = String(content || '');
+  let yamlSrc = s;
+  if (s.startsWith('---')) {
+    const end = s.indexOf('\n---', 3);
+    if (end > 3) yamlSrc = s.slice(3, end);
+  }
+  const t = loadYaml(yamlSrc);
+  if (t && typeof t === 'object') {
+    const spec = t.spec && typeof t.spec === 'object' ? t.spec : {};
+    const meta = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : (t.metadata && typeof t.metadata === 'object' ? t.metadata : {});
+    const raw = meta.tags || spec.tags || t.tags;
+    if (Array.isArray(raw)) {
+      return raw.map((x) => {
+        if (x && typeof x === 'object' && x.tag) {
+          const tt = x.tag_type || x.tagType || '';
+          return tt ? String(tt) + ':' + String(x.tag) : String(x.tag);
+        }
+        return String(x || '').trim();
+      }).filter(Boolean);
+    }
+  }
+  // 兜底：轻量正则解析 frontmatter inline `tags: [...]`
+  const head = s.slice(0, 4000);
+  const flat = head.match(/tags:\s*\[([^\]]*)\]/);
+  if (flat) return flat[1].split(',').map((x) => x.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  return [];
 }
 
 /** markdown 判据（语义移植旧 console isMarkdownDoc）。 */
@@ -94,7 +131,7 @@ function tagPanel(groups) {
   }
   return groups.map((g) =>
     '<div class="ob-tagrow">' + chip(g.type, 'mute') + ' ' +
-    g.tags.map((t) => '<span class="tag click" data-obj-tag="' + esc(t) + tr('" title="看同 tag 对象">#') + esc(t) + '</span>').join(' ') + '</div>'
+    g.tags.map((t) => chipGo('#' + t, tagRoute(t), 'mute', true, tr('看同 tag 文档'))).join(' ') + '</div>'
   ).join('');
 }
 
@@ -202,7 +239,7 @@ function renderScreen(el, ctx, ref) {
     screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
     '<div class="obj-grid">' +
-    tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags)) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
     (ruleState ? rulePanel(ruleState) : tr('<div class="small faint">规则命中判定中…</div>')) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">') + ctxPanel(ref.rv) + '</div></section>' +
@@ -211,11 +248,6 @@ function renderScreen(el, ctx, ref) {
     '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
     '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + '</div></section>' +
     '</div></div>';
-
-  // tag 点选 → 对象清单过滤（同 tag 对象）
-  el.querySelectorAll('[data-obj-tag]').forEach((t) => {
-    t.addEventListener('click', () => ctx.go('docs'));
-  });
 
   if (!cached) {
     hydrateDoc(el, ctx, ref).then((c) => {

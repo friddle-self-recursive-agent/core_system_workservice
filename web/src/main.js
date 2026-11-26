@@ -24,6 +24,8 @@ import * as chat from './screens/chat.js';
 import * as approvals from './screens/approvals.js';
 import * as workflows from './screens/workflows.js';
 import * as misc from './screens/misc.js';
+import * as tags from './screens/tags.js';
+import * as audit from './screens/audit.js';
 import { getLocale, onLocaleChange, setLocale, t as tr } from './core/i18n.js';
 
 /* 部署基路径注入（window.__CORE_CONSOLE_BASES__: api/ws/apply/drafts——直连同源部署缺省
@@ -56,8 +58,11 @@ const NAV_TREE = [
       ['chat/core-headless', '会话', '💬'],
       ['tree', '系统树', '⑃'],
       ['docs', '文档库', '▤'],
+      ['tags', '标签', '#'],
+      ['designdoc', '设计文档', '✎'],
       ['obj', '对象工作台', '▭'],
       ['connectors', '连接', '⌁'],
+      ['audit', '代码审核', '✓'],
     ] },
   },
   {
@@ -126,7 +131,7 @@ function crumbLabel(route) {
     for (const [r, label] of sec.items) if (r.split('/')[0] === bare) return tr(label);
     if (sec.sub) for (const [r, label] of sec.sub.items) if (r.split('/')[0] === bare) return tr(label);
   }
-  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱') };
+  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱'), prop: tr('需求提案'), tags: tr('标签'), audit: tr('代码审核') };
   return extra[bare] || bare;
 }
 
@@ -155,7 +160,8 @@ function paintNav(route) {
     const on = route === r ||
       (r === 'tasks' && route === 'task') ||
       (r === 'events' && route === 'event') || (r === 'workflows' && route === 'wf') ||
-      (r === 'docs' && (route === 'doc' || route === 'designdoc')) ||
+      (r === 'proposals' && route === 'prop') ||
+      (r === 'docs' && route === 'doc') ||
       (r === 'welcome' && (route === 'service')) ||
       (r === 'chat' && (route === 'session' || route.startsWith('chat')));
     n.classList.toggle('active', on);
@@ -216,6 +222,9 @@ async function hydrateDocs() {
       }
     };
     await Promise.all(Array.from({ length: Math.min(4, stale.length) }, worker));
+    if (stale.length && (router.current.route === 'tags' || router.current.route === 'docs' || router.current.route === 'obj')) {
+      router.render();
+    }
   } finally { hydrating = false; }
 }
 
@@ -267,16 +276,22 @@ export function mount(root, opts = {}) {
     .route('chat/:agent', screenOf(chat.render))
     .route('session/:id', screenOf(chat.render))
     .route('approvals', screenOf(approvals.render))
+    .route('approvals/:focus', screenOf(approvals.render))
     .route('inbox', screenOf(approvals.render))
     .route('proposals', screenOf(misc.render))
+    .route('proposals/:name', screenOf(misc.render))
+    .route('prop/:name', screenOf(misc.render))
     .route('workflows', screenOf(workflows.render))
     .route('wf/:name', screenOf(workflows.render))
     .route('wf/:name/r/:n', screenOf(workflows.render))
     .route('tree', screenOf(misc.render))
     .route('docs', screenOf(misc.render))
+    .route('docs/tag/:tag', screenOf(misc.render))
+    .route('tags', screenOf(tags.render))
     .route('designdoc', screenOf(misc.render))
     .route('designdoc/:repo/:path', screenOf(misc.render))
     .route('connectors', screenOf(misc.render))
+    .route('audit', screenOf(audit.render))
     .route('s/:name', screenOf(misc.render))
     .route('service/:name', screenOf(welcome.renderService))
     .route('biz', screenOf(misc.renderBiz));

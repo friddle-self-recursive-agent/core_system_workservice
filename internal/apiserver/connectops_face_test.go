@@ -261,3 +261,73 @@ func TestConnectOpsPermissionFailClosed(t *testing.T) {
 		t.Fatalf("头通路过门后 Invoke 应累计两次，计得 %d", probe.calls.Load())
 	}
 }
+
+// TestCodeAuditFindingsReadOnlyRoute V-18 只读 findings 投影（GET /v1/code-audit/findings +
+// /v1/snapshot codeAudit 键）：POST 调试面受 G-03 权限门阻断时，前端只读展示走本只读 GET 面
+// （零写面、无需 POST/主体）；跑一次审核后 GET 面与 snapshot 均可见最新 auditId 与 findings。
+func TestCodeAuditFindingsReadOnlyRoute(t *testing.T) {
+	ts := newConnectopsServer(t)
+
+	// 只读 GET 无需 subject：200 返回结构化投影。
+	resp, err := ts.Client().Get(ts.URL + "/v1/code-audit/findings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&before); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/code-audit/findings 应 200，得 %d: %v", resp.StatusCode, before)
+	}
+	if before["source"] != "connectops-code-audit" {
+		t.Fatalf("source 应为 connectops-code-audit，得 %v", before["source"])
+	}
+
+	// 跑一次真实 audit 后，只读 GET 与 /v1/snapshot.codeAudit 均可见该 auditId。
+	target, schPath := strayTarget(t)
+	respAudit, out := postConnectops(t, ts, "connectops-code-audit", "audit", map[string]any{
+		"subject":    map[string]any{"user": "auditor-test", "roles": []string{"global/admin"}},
+		"target":     target,
+		"schemePath": schPath,
+		"checks":     []map[string]any{{"rule": "R-DOC-6", "checker": "cored-lint", "severity": "error"}},
+	})
+	if respAudit.StatusCode != http.StatusOK {
+		t.Fatalf("audit 应 200，得 %d: %v", respAudit.StatusCode, out)
+	}
+	auditID, _ := out["auditId"].(string)
+
+	resp2, err := ts.Client().Get(ts.URL + "/v1/code-audit/findings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var after map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&after); err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	audits, _ := after["audits"].([]any)
+	if len(audits) == 0 {
+		t.Fatalf("audit 后 GET /v1/code-audit/findings 应非空: %v", after)
+	}
+	first := audits[0].(map[string]any)
+	if first["auditId"] != auditID {
+		t.Fatalf("最新审核应为 %q，得 %v", auditID, first["auditId"])
+	}
+
+	// /v1/snapshot 携带只读 codeAudit 投影。
+	respSnap, err := ts.Client().Get(ts.URL + "/v1/snapshot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snap map[string]any
+	if err := json.NewDecoder(respSnap.Body).Decode(&snap); err != nil {
+		t.Fatal(err)
+	}
+	respSnap.Body.Close()
+	ca, ok := snap["codeAudit"].(map[string]any)
+	if !ok || ca["source"] != "connectops-code-audit" {
+		t.Fatalf("snapshot 应携带 codeAudit 只读投影，得 %v", snap["codeAudit"])
+	}
+}

@@ -16,6 +16,7 @@ const PHASE_VIEW = {
   verifying: { label: tr('验证中'), chip: 'acc' },
   queued: { label: tr('排队中'), chip: 'mute' },
   ready: { label: tr('待启动'), chip: 'mute' },
+  pending: { label: tr('等待拉起'), chip: 'mute' },
   blocked: { label: tr('受阻'), chip: 'warn' },
   failed: { label: tr('失败'), chip: 'esc' },
   done: { label: tr('已完成'), chip: 'ok' },
@@ -110,11 +111,38 @@ function requestCancel(el, ctx, t) {
   });
 }
 
+/* ---------- 依赖深链（V-03）：Task/task/<scope>/<name>→task/:id；Workflow/workflow/<scope>/<name>→wf/:name；
+ * 两段 <scope>/<name>→task/:id（Task dependsOn 简写）；裸 workflow 名若由 workflow 侧传入走 wf/:name。 */
+export function depRoute(d, defaultKind = '') {
+  const s = String(d || '').trim();
+  if (!s) return '';
+  const m = /^(Task|task|Workflow|workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(s);
+  if (m) {
+    return m[1].toLowerCase() === 'task'
+      ? 'task/' + encodeURIComponent(m[2] + '/' + m[3])
+      : 'wf/' + encodeURIComponent(m[3]);
+  }
+  const m2 = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(s);
+  if (m2) {
+    if (defaultKind === 'workflow') return 'wf/' + encodeURIComponent(m2[2]);
+    return 'task/' + encodeURIComponent(m2[1] + '/' + m2[2]);
+  }
+  if (defaultKind === 'workflow' && /^[A-Za-z0-9_.-]+$/.test(s)) return 'wf/' + encodeURIComponent(s);
+  return '';
+}
+
+export function depChips(deps, defaultKind = '') {
+  return (deps || []).map((d) => {
+    const r = depRoute(d, defaultKind);
+    return r ? chipGo(String(d), r, 'mute', true, tr('依赖——点击进详情')) : chip(String(d), 'mute');
+  }).join(' ');
+}
+
 function taskRow(t) {
   const id = taskIdOf(t);
   const s = statusOf(t);
   const spec = specOf(t);
-  const deps = (spec.dependsOn || s.dependsOn || []).length;
+  const depList = spec.dependsOn || s.dependsOn || [];
   const agent = String(s.agent || spec.agent || '').trim();
   const sess = String(s.agentSession || s.sessionId || '').trim();
   const last = String(s.lastAction || '').trim();
@@ -122,7 +150,7 @@ function taskRow(t) {
   return '<div class="task-row">' +
     '<div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t)) + '</b>' + phaseChip(t) +
     chip(id, 'mute') +
-    (deps ? chip(tr('依赖 ') + deps, 'mute') : '') +
+    (depList.length ? depChips(depList.slice(0, 3), 'task') + (depList.length > 3 ? chip('+' + (depList.length - 3), 'mute') : '') : '') +
     (agent ? chip(tr('负责 ') + agent, 'mute') : '') + '</div>' +
     '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
@@ -155,7 +183,10 @@ function tasksScreen(el, ctx) {
       if (i < n + rows.length) {
         const t = rows[i - n];
         row.style.cursor = 'pointer';
-        row.addEventListener('click', () => ctx.go('task/' + encodeURIComponent(taskIdOf(t))));
+        row.addEventListener('click', (ev) => {
+          if (ev.target && ev.target.closest('[data-go],[data-task-cancel]')) return;
+          ctx.go('task/' + encodeURIComponent(taskIdOf(t)));
+        });
         return;
       }
       n += rows.length;
@@ -196,7 +227,7 @@ function taskDetailScreen(el, ctx, id) {
   if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
   if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
-  if (deps.length) rows.push([tr('依赖'), deps.map((d) => chip(String(d), 'mute')).join(' ')]);
+  if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);
   if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +

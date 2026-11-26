@@ -6,7 +6,8 @@
  * 'core-workflow'——语义移植旧 console-app 同名函数）。 */
 
 import { esc, trunc, timeHtml, relAge } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoLinkChip } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoLinkChip, objRoute, docRoute } from '../render/chips.js';
+import { depChips } from './tasks.js';
 import { t as tr } from '../core/i18n.js';
 
 /** route → workflow 锚（不匹配=空串——不编造锚）。 */
@@ -52,9 +53,13 @@ function bindPhaseGraph(el, ctx, run) {
       }).slice(0, 10);
       const involved = String(run.involved || '');
       const evRows = evs.length
-        ? evs.map((e) => '<div class="mini-row"><div class="mr-main"><div><b>' + esc(String(e.type || '')) + '</b></div>' +
-          '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div>' +
-          '<span class="small faint">' + esc(relAge(e.ts) || '') + '</span></div>').join('')
+        ? evs.map((e) => {
+          const eid = e && (e.id != null ? e.id : (e.eventId != null ? e.eventId : ''));
+          const goAttr = eid !== '' ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : '';
+          return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div><b>' + esc(String(e.type || '')) + '</b></div>' +
+            '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div>' +
+            '<span class="small faint">' + esc(relAge(e.ts) || '') + '</span></div>';
+        }).join('')
         : '<div class="small faint">' + esc(tr('窗口内无该相位事件（诚实空态）。')) + '</div>';
       drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' +
         (involved
@@ -85,25 +90,43 @@ function phChip(ph) {
   return chip(p || '—', PH_CLS[p.toLowerCase()] || 'mute');
 }
 
-/** 模板首批三卡（§9b 四层 appliesTo——静态只读呈现；实例化待 Template kind 落册=诚实置灰）。 */
-const WF_TEMPLATES = [
-  { name: 'bug 生命周期', desc: '缺陷从发现到收敛的声明相位序列（含验证与批闸位）。' },
-  { name: 'dev-delivery', desc: '开发交付流水（实现→评审→落库）的相位序列与批闸位。' },
-  { name: '文档收敛', desc: '文档草稿→评审→落库的收敛相位与批闸位。' },
-];
-
 function wfDesignRoute() {
   return 'designdoc/' + encodeURIComponent('core_design') + '/' + encodeURIComponent('concepts/workflow.md');
 }
 
-function tplCardHtml(tp) {
-  return '<div class="card"><div class="card-h"><span class="h-title">' + esc(tp.name) + '</span>' +
-    '<span class="h-right">' + chip('Template', 'mute') + '</span></div>' +
-    '<div class="card-b"><div class="small">' + esc(tr(tp.desc)) + '</div>' +
+/* V-20/V-19：退役静态假卡——模板区只展示 snapshot 中 Template kind 真实对象；
+ * 零在册=诚实空态（含设计稿深链）；若在册 Workflow 含 bug-lifecycle 同步附真运行入口。 */
+function realTplCardHtml(o) {
+  const scope = o.scope || 'global';
+  return '<div class="card"><div class="card-h"><span class="h-title mono">' + esc(o.name) + '</span>' +
+    '<span class="h-right">' + chip('Template', 'acc') + ' ' + chip('r' + String(o.rv || 0), 'mute') + '</span></div>' +
+    '<div class="card-b"><div class="small mono faint">scope: ' + esc(scope) + '</div>' +
     '<div class="dh-actions" style="margin-top:8px">' +
-    chipGo(tr('设计见 workflow.md §9b'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) + ' ' +
-    '<button class="btn sm" disabled title="' + esc(tr('Template kind 落册后开放（§9b 四层 appliesTo）')) + '">' + esc(tr('实例化')) + '</button>' +
+    chipGo(tr('对象工作台'), objRoute('Template', scope, o.name), 'acc', true, tr('查看 Template 声明')) + ' ' +
+    chipGo(tr('编辑器'), docRoute('Template', scope, o.name), 'mute', true, tr('查看正文')) +
     '</div></div></div>';
+}
+
+export function templatesSectionHtml(ctx) {
+  const tpls = ctx.store.refs('Template');
+  const bugWf = ctx.store.refs('Workflow').find((w) => w && w.name === 'bug-lifecycle');
+  const bugRuns = ctx.store.runs().filter((r) => r && String(r.workflow || r.name || '') === 'bug-lifecycle');
+  const bugBlock = (bugWf || bugRuns.length)
+    ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span>' +
+      '<span class="h-right">' + chip('Workflow', 'acc') + ' ' + chip(bugRuns.length + tr(' 次运行'), bugRuns.length ? 'acc' : 'mute') + '</span></div>' +
+      '<div class="card-b"><div class="small">' + esc(tr('缺陷闭环真实 Workflow 对象（BugReport→临时 BugDoc→验证→关闭）。')) + '</div>' +
+      '<div class="dh-actions" style="margin-top:8px">' +
+      chipGo(tr('工作流详情'), 'wf/bug-lifecycle', 'acc', true) + ' ' +
+      chipGo(tr('文档库 BugDoc'), 'docs', 'mute', true) +
+      '</div></div></div>'
+    : '';
+  const tplBlock = tpls.length
+    ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join('') + '</div>'
+    : '<div class="card"><div class="card-b"><div class="small faint">' +
+      esc(tr('Template kind 暂无在册对象（GET /v1/objects/Template 零命中——静态假卡已退役，不冒充在册）。')) + ' ' +
+      chipGo(tr('设计见 workflow.md §9b'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) +
+      '</div></div></div>';
+  return bugBlock + tplBlock;
 }
 
 /** 列表三区（§19.3）：在册注册表（GET /v1/workflows 现读）∪ 运行记录（GET /v1/workflows/runs
@@ -165,7 +188,7 @@ function listScreen(el, ctx) {
     '<h2 class="sec-title" style="margin-top:18px">' + esc(tr('运行记录')) + '</h2>' +
     '<div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(tr('运行记录现读中…')) + '</div></div></div></div>' +
     '<h2 class="sec-title" style="margin-top:18px">' + esc(tr('模板')) + '</h2>' +
-    '<div class="grid cols-2">' + WF_TEMPLATES.map(tplCardHtml).join('') + '</div>' +
+    templatesSectionHtml(ctx) +
     '</div>';
 
   paintRuns();
@@ -195,12 +218,15 @@ function listScreen(el, ctx) {
         const ex = (w && w.execution) || {};
         const exState = String(ex.state || '');
         const connTxt = String(ex.connector || '') + (ex.connectorScope ? '/' + String(ex.connectorScope) : '');
+        const connCell = connTxt
+          ? chipGo(connTxt, 'connectors', 'mute', true, tr('连接层——查看绑定 connector'))
+          : '<span class="faint">—</span>';
         const latest = w && w.latest;
         const latestTxt = typeof latest === 'string' ? latest : String((latest && (latest.summary || latest.note || latest.status || latest.state)) || '');
         return '<tr>' +
           '<td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + '</span>' : '—') + '</td>' +
           '<td>' + chip(exState || '—', REG_CLS[exState.toLowerCase()] || 'mute') + '</td>' +
-          '<td class="mono small">' + esc(connTxt || '—') + '</td>' +
+          '<td class="mono small">' + connCell + '</td>' +
           '<td class="small">' + esc(trunc(latestTxt || '—', 60)) + '</td>' +
           '<td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(tr('过滤本页运行记录')) + '">' + esc(tr('运行记录')) + '</span>' : '') + '</td>' +
           '</tr>';
@@ -251,7 +277,7 @@ function detailScreen(el, ctx, name) {
     const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : '';
     if (repoChip) rows.push([tr('实现仓库'), repoChip]);
   }
-  if (wf && wf.spec && wf.spec.dependsOn) rows.push([tr('依赖'), (wf.spec.dependsOn || []).map((d) => chip(String(d), 'mute')).join(' ')]);
+  if (wf && wf.spec && wf.spec.dependsOn) rows.push([tr('依赖'), depChips(wf.spec.dependsOn, 'workflow')]);
   rows.push([tr('运行'), chip(runs.length + tr(' 次'), runs.length ? 'acc' : 'mute')]);
   const runRows = runs.map((r, i) => {
     const no = r.run != null ? r.run : (r.no != null ? r.no : (runs.length - i));
@@ -395,10 +421,13 @@ function runScreen(el, ctx, name, no) {
       return hay.includes(String(run.workflow || '')) || hay.includes(String(run.phase || ''));
     }).slice(0, 12);
     tlEl.innerHTML = transHtml + (evs.length
-      ? '<div class="tl">' + evs.map((e) =>
-        '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || '')) + '</b>' +
-        '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 56)) + '</div></div>' +
-        '<div class="tl-time">' + esc(relAge(e.ts) || '') + '</div></div>').join('') + '</div>'
+      ? '<div class="tl">' + evs.map((e) => {
+        const eid = e && (e.id != null ? e.id : (e.eventId != null ? e.eventId : ''));
+        const goAttr = eid !== '' ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : '';
+        return '<div class="tl-row"' + goAttr + '><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || '')) + '</b>' +
+          '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 56)) + '</div></div>' +
+          '<div class="tl-time">' + esc(relAge(e.ts) || '') + '</div></div>';
+      }).join('') + '</div>'
       : '<div class="tl-empty">' + esc(tr('归档窗口内暂无事件——workflow 推进时此处实时落行。')) + '</div>');
   };
   paintLine(); paintNow(); paintTl();

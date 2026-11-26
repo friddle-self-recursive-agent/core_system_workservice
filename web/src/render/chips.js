@@ -64,6 +64,11 @@ export function objRoute(kind, scope, name) {
   return 'obj/' + encSeg(kind) + '/' + encSeg(scope || 'global') + '/' + encSeg(name);
 }
 
+/** tag 深链（V-01）：docs/tag/:tag——docs 屏第三段=tag 过滤预填。 */
+export function tagRoute(tag) {
+  return 'docs/tag/' + encSeg(tag);
+}
+
 /** 编辑器深链：doc/:kind/:scope/:name。 */
 export function docRoute(kind, scope, name) {
   return 'doc/' + encSeg(kind) + '/' + encSeg(scope || 'global') + '/' + encSeg(name);
@@ -144,14 +149,23 @@ export function repoLinkChip(ref, label) {
 function truncTxt(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
 /* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running，否则 InSync）。
- * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。 */
+ * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。
+ * V-07：Running 徽可点——命中 run 可解析=运行详情深链 wf/:name/r/:n（不可解析=纯文本不冒充）。 */
 export function syncBadge(runs, name) {
-  const active = (runs || []).some((r) => {
+  const active = (runs || []).filter((r) => {
     const st = String((r && (r.status || r.state)) || '');
     if (!st || st === 'done' || st === 'failed' || st === 'canceled') return false;
     let hay = '';
     try { hay = JSON.stringify([r.involved, r.target, r.route, r.workflow]); } catch { hay = ''; }
     return hay.includes(name);
   });
-  return active ? chip('Running', 'acc') : chip('InSync', 'ok');
+  if (!active.length) return chip('InSync', 'ok');
+  const top = active[0];
+  const wf = String((top && (top.workflow || top.name)) || '');
+  const no = top && (top.run != null ? top.run : (top.no != null ? top.no : ''));
+  if (wf && no !== '' && no != null) {
+    return chipGo('Running', 'wf/' + encSeg(wf) + '/r/' + encSeg(no), 'acc', true, 'Workflow ' + wf + ' #' + no);
+  }
+  if (wf) return chipGo('Running', 'wf/' + encSeg(wf), 'acc', true, 'Workflow ' + wf);
+  return chip('Running', 'acc');
 }

@@ -77,6 +77,8 @@ func snapshotPayload(d *deps) map[string]any {
 	// metrics：数据面指标清单（face 缺席=null——与 /v1/metrics 恒注册空投影词形分立：
 	// 快照面缺席=缺席，不冒充空面）。
 	out["metrics"] = faceOrNil(o.metrics != nil, func() any { return metricsItems(o.metrics) })
+	// codeAudit：connectops-code-audit 只读 findings 投影（V-18——驱动未注册=null，不冒充空）。
+	out["codeAudit"] = codeAuditSnapshotPayload()
 	return out
 }
 

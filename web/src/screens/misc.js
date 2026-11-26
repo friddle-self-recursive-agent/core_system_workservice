@@ -3,15 +3,16 @@
  * 数据面：树/文档/连接/提案=快照聚合（store）；设计文档=GET /v1/design-docs 现读
  * （HEAD 权威零缓存——缺席=诚实降级）。展开态/过滤态=视图态（内存态，非业务状态）。 */
 
-import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute, syncBadge } from '../render/chips.js';
+import { esc, trunc, relAge } from '../core/format.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute, syncBadge, tagRoute } from '../render/chips.js';
 import { renderMarkdown, rawDisclosure } from '../render/md.js';
+import { frontmatterTags, tagsOfRef, loadContextIndexDocs, cachedIndexTagsOf, hasCachedIndex } from './tags.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ---------- 视图态 ---------- */
 const treeOpen = new Set();      // tree 已展开 kind 集合（内存视图态）
 let treeSeeded = false;          // 首次渲染播种标记：对象数 ≤3 的 kind 自动展开一次，其后纯用户手控
-const docFilter = { kind: '', q: '' };
+const docFilter = { kind: '', q: '', tag: '', routeTag: '' };
 const propOpen = new Set();      // 提案卡已展开集合（按 name 索引——内存视图态）
 const dd = { tree: null, sel: null, cache: new Map() }; // designdoc 工作台态（HEAD 现读——cache 仅防抖同屏重绘）
 
@@ -84,28 +85,51 @@ function treeScreen(el, ctx) {
   });
 }
 
-/* ---------- 文档库（#/docs） ---------- */
-const DOC_KINDS = ['Goal', 'Rule', 'Runbook', 'DesignDoc', 'DriftReport', 'DocReview', 'Agent', 'WorkService'];
+/* ---------- 文档库（#/docs 与 #/docs/tag/:tag） ---------- */
+// V-19：BugDoc 入 DOC_KINDS——bug 闭环临时文档可见（空 kind 自动缺席，不装假）。
+export const DOC_KINDS = ['Goal', 'Rule', 'Runbook', 'DesignDoc', 'DriftReport', 'DocReview', 'BugDoc', 'Agent', 'WorkService'];
 
 /* frontmatter 元数据小解析（tags 列表 + importance 数值）——数据源=docCache 缓存正文
  * （main.js hydrateDocs 预取）；未缓存=返回 null（列显示 —，不冒充）。 */
 function fmMeta(content) {
-  if (typeof content !== 'string' || !content.slice(0, 4000).includes('tags:')) return null;
+  if (typeof content !== 'string') return null;
+  const tags = frontmatterTags(content);
   const head = content.slice(0, 4000);
-  const tags = [];
-  let importance = null;
-  const flat = head.match(/tags:\s*\[([^\]]*)\]/);
-  if (flat) flat[1].split(',').forEach((x) => { const v = x.trim().replace(/^['"]|['"]$/g, ''); if (v) tags.push(v); });
   const imp = head.match(/^importance:\s*(\d{1,3})\s*$/m);
-  if (imp) importance = Number(imp[1]);
+  const importance = imp ? Number(imp[1]) : null;
+  if (!tags.length && importance == null) return null;
   return { tags, importance };
 }
 
+/** 某对象三源去重 tags（context/index ∪ ref tags ∪ docCache frontmatter）。 */
+function objectTagsOf(ctx, o) {
+  const set = new Set();
+  cachedIndexTagsOf(o.kind, o.scope || 'global', o.name).forEach((x) => set.add(x));
+  tagsOfRef(o).forEach((x) => set.add(x));
+  const c = ctx.store.cachedDoc(o.kind, o.scope || 'global', o.name, o.rv);
+  if (c) frontmatterTags(c.content).forEach((x) => set.add(x));
+  return Array.from(set);
+}
+
+let docsIdxLoading = false;
+
 function docsScreen(el, ctx) {
+  // V-01：#/docs/tag/:tag 第三段=tag 过滤预填；切回裸 #/docs 时清除旧路由预填态
+  const routeTag = String((ctx.params && ctx.params.tag) || '');
+  if (routeTag) {
+    if (docFilter.routeTag !== routeTag) { docFilter.tag = routeTag; docFilter.routeTag = routeTag; }
+  } else if (docFilter.routeTag) {
+    docFilter.tag = '';
+    docFilter.routeTag = '';
+  }
+
   let objs = ctx.store.objects();
   const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
   const docKinds = DOC_KINDS.filter((k) => presentKinds.includes(k));
-  const pool = docKinds.length ? objs.filter((o) => docKinds.includes(o.kind)) : objs; // 无声明 kind=全量兜底（诚实注记）
+  // 按 tag 过滤且未指定 kind 时跨全量对象命中（确保与 #/tags 三源聚合计数一致）
+  const pool = (docFilter.tag && !docFilter.kind)
+    ? objs
+    : (docKinds.length ? objs.filter((o) => docKinds.includes(o.kind)) : objs);
   let rows = pool;
   if (docFilter.kind) rows = rows.filter((o) => o.kind === docFilter.kind);
   if (docFilter.q) {
@@ -114,23 +138,31 @@ function docsScreen(el, ctx) {
   }
   if (docFilter.tag) {
     const tg = docFilter.tag.toLowerCase();
-    rows = rows.filter((o) => {
-      const c = ctx.store.cachedDoc(o.kind, o.scope || 'global', o.name, o.rv);
-      const meta = c ? fmMeta(c.content) : null;
-      return !!(meta && meta.tags.some((x) => x.toLowerCase().includes(tg)));
-    });
+    rows = rows.filter((o) => objectTagsOf(ctx, o).some((x) => x.toLowerCase().includes(tg)));
+    if (!hasCachedIndex() && !docsIdxLoading && ctx.api) {
+      docsIdxLoading = true;
+      const stamp = typeof location !== 'undefined' ? location.hash : '';
+      loadContextIndexDocs(ctx.api).then((res) => {
+        docsIdxLoading = false;
+        if (res && res.ok && el.isConnected && (typeof location !== 'undefined' ? location.hash : '') === stamp) {
+          docsScreen(el, ctx);
+        }
+      }).catch(() => { docsIdxLoading = false; });
+    }
   }
   const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + '|' + (d.scope || 'global') + '|' + d.name));
   el.innerHTML = '<div class="view-inner">' +
     screenHead(tr('文档库'), tr('目录树式文档清单——tag 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
-      docKinds.length ? '' : chip(tr('未注册声明 kind——全量枚举兜底'), 'mute')) +
+      chipGo(tr('标签聚合'), 'tags', 'mute', false) + (docKinds.length ? '' : ' ' + chip(tr('未注册声明 kind——全量枚举兜底'), 'mute'))) +
     '<div class="card" style="margin-bottom:10px"><div class="card-b small">' +
     esc(tr('新建文档：对话提交需求（总览或会话屏）→ agent 起草 → Apply 落库——文档创建走对话+Apply，无独立表单。')) + ' ' +
     chipGo(tr('打开对话'), 'chat/core-headless', 'acc', true, tr('在会话屏提交需求——agent 起草后 Apply 落库')) +
+    (docFilter.tag ? ' <span class="chip warn tiny click" data-clear-tag="1" title="' + esc(tr('清除 tag 过滤')) + '">' + esc(tr('清除 tag：')) + esc(docFilter.tag) + ' ×</span>' : '') +
+    (routeTag ? '<div class="small faint" style="margin-top:6px">' + esc(tr('当前 URL 直链 tag 过滤（#/docs/tag/')) + esc(routeTag) + esc(tr('）——三源真实命中，可刷新恢复。')) + '</div>' : '') +
     '</div></div>' +
     '<div class="filter-bar">' +
     tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +
-    tr('<input class="inp" id="docs-tag" placeholder="tag 过滤（缓存正文现匹配）…" value="') + esc(docFilter.tag || '') + '" style="max-width:220px">' +
+    tr('<input class="inp" id="docs-tag" placeholder="tag 过滤（三源聚合现匹配）…" value="') + esc(docFilter.tag || '') + '" style="max-width:220px">' +
     '<span class="fchip' + (!docFilter.kind ? ' on' : '') + tr('" data-docs-kind="">全部</span>') +
     docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? ' on' : '') + '" data-docs-kind="' + esc(k) + '">' + esc(k) + '</span>').join('') +
     '</div>' +
@@ -138,27 +170,41 @@ function docsScreen(el, ctx) {
       ? '<div class="card">' + rows.slice(0, 300).map((o) => {
         const c = ctx.store.cachedDoc(o.kind, o.scope || 'global', o.name, o.rv);
         const meta = c ? fmMeta(c.content) : null;
-        const tagChips = (meta && meta.tags ? meta.tags.slice(0, 4) : []).map((x) => chip(x, 'mute')).join('');
+        const allTags = objectTagsOf(ctx, o);
+        const tagChips = allTags.slice(0, 4).map((x) => chipGo('#' + x, tagRoute(x), 'mute', true, tr('看同 tag 文档'))).join(' ');
         const imp = meta && meta.importance != null ? chip('I:' + meta.importance, meta.importance >= 80 ? 'acc' : 'mute') : chip(tr('重要度—'), 'mute');
         const sync = syncBadge(ctx.store.runs(), o.name);
-        return '<div class="mini-row" data-go="' + esc(docRoute(o.kind, o.scope, o.name)) + '">' +
-          '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + (draftSet.has(o.kind + '|' + o.scope + '|' + o.name) ? '<span class="draft-dot">●</span>' : '') + '</div>' +
-          '<div class="mr-sub small mono">' + esc(o.kind + '/' + o.scope) + ' · rv ' + esc(String(o.rv != null ? o.rv : '—')) + '</div>' +
-          '<div class="mr-sub">' + tagChips + imp + sync + '</div></div>' +
-          '<span class="ws-chip">' + chipGo(tr('打开'), docRoute(o.kind, o.scope, o.name), 'acc', true, tr('渲染视图')) + '</span></div>';
+        const scope = o.scope || 'global';
+        const hasDraft = draftSet.has(o.kind + '|' + scope + '|' + o.name);
+        // V-13：draft-dot 可点→approvals 对应 diff 卡深链
+        const draftDot = hasDraft
+          ? ' <span class="draft-dot click" data-go="approvals/' + encodeURIComponent(o.kind + '/' + scope + '/' + o.name) +
+            '" title="' + esc(tr('有未落库草稿——点进审批 diff 卡')) + '">● ' + esc(tr('草稿待审')) + '</span>'
+          : '';
+        return '<div class="mini-row" data-doc-row="' + esc(docRoute(o.kind, scope, o.name)) + '">' +
+          '<div class="mr-main"><div><b>' + esc(o.name) + '</b>' + draftDot + '</div>' +
+          '<div class="mr-sub small mono">' + esc(o.kind + '/' + scope) + ' · rv ' + esc(String(o.rv != null ? o.rv : '—')) + '</div>' +
+          '<div class="mr-sub" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' + tagChips + ' ' + imp + ' ' + sync + '</div></div>' +
+          '<span class="ws-chip">' + chipGo(tr('打开'), docRoute(o.kind, scope, o.name), 'acc', true, tr('渲染视图')) + '</span></div>';
       }).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
       : emptyBox(tr('窗口内无文档'), tr('过滤零命中或快照为空（空态显式）。'))) +
-    '<div class="small faint" style="margin-top:8px">' + esc(tr('tag/重要度来自缓存正文的 frontmatter（预取窗口 24 篇——未缓存篇显示 —，现开即读）。')) + '</div>' +
+    '<div class="small faint" style="margin-top:8px">' + esc(tr('tag 来自三源真实聚合（/v1/context/index ∪ 对象 tags ∪ 预取 24 篇缓存 frontmatter）；重要度来自缓存正文。')) + '</div>' +
     '</div>';
   const inp = el.querySelector('#docs-q');
   if (inp) inp.addEventListener('input', () => { docFilter.q = inp.value; docsScreen(el, ctx); });
   const tagInp = el.querySelector('#docs-tag');
-  if (tagInp) tagInp.addEventListener('input', () => { docFilter.tag = tagInp.value; docsScreen(el, ctx); });
+  if (tagInp) tagInp.addEventListener('input', () => { docFilter.tag = tagInp.value; docFilter.routeTag = ''; docsScreen(el, ctx); });
+  const clr = el.querySelector('[data-clear-tag]');
+  if (clr) clr.addEventListener('click', () => { docFilter.tag = ''; docFilter.routeTag = ''; ctx.go('docs'); });
   el.querySelectorAll('[data-docs-kind]').forEach((c) => {
     c.addEventListener('click', () => { docFilter.kind = c.dataset.docsKind; docsScreen(el, ctx); });
   });
-  el.querySelectorAll('.mini-row[data-go]').forEach((row) => {
-    row.addEventListener('click', () => ctx.go(row.dataset.go));
+  el.querySelectorAll('.mini-row[data-doc-row]').forEach((row) => {
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.closest('[data-go]')) return; // tag / Running / draft-dot 走自身深链
+      ctx.go(row.dataset.docRow);
+    });
   });
 }
 
@@ -229,63 +275,196 @@ function designDocScreen(el, ctx) {
   }).catch(() => { /* 降级词形在 then 分支之外——网络异常=树盒保持现读词形 */ });
 }
 
-/* ---------- 连接层（#/connectors） ---------- */
+/** V-21：通知送达投影片渲染（纯函数——node 单测直测；数据=GET /v1/notifications/deliveries）。 */
+export function deliveriesPanelHtml(data) {
+  if (!data || typeof data !== 'object') {
+    return '<div class="small faint">' + esc(tr('送达投影面未就绪（GET /v1/notifications/deliveries 缺席——不冒充空）。')) + '</div>';
+  }
+  const rows = Array.isArray(data.deliveries) ? data.deliveries : [];
+  const summary = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+    chip(tr('总 ') + String(data.count != null ? data.count : rows.length), 'mute') +
+    (data.accepted != null ? chip('accepted ' + data.accepted, 'warn') : '') +
+    (data.sent != null ? chip('sent ' + data.sent, 'ok') : '') +
+    (data.failed != null ? chip('failed ' + data.failed, Number(data.failed) > 0 ? 'esc' : 'mute') : '') +
+    '</div>';
+  if (!rows.length) {
+    return summary + '<div class="small faint">' + esc(tr('送达投影暂无记录（accepted→sent/failed 出站时此处实时落行）。')) + '</div>';
+  }
+  const stCls = (st) => st === 'sent' ? 'ok' : (st === 'failed' ? 'esc' : (st === 'accepted' ? 'warn' : 'mute'));
+  return summary + rows.slice(0, 30).map((d) => {
+    const st = String((d && d.status) || 'unknown');
+    const att = d && d.attempts != null ? Number(d.attempts) : 0;
+    const eid = d && d.eventId ? String(d.eventId) : '';
+    const goAttr = eid ? ' data-go="event/' + encodeURIComponent(eid) + '" role="link" style="cursor:pointer"' : '';
+    return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div>' +
+      chip(st, stCls(st)) + ' <b>' + esc(String((d && d.type) || '—')) + '</b> ' +
+      chip('channel: ' + String((d && d.channel) || '*'), 'mute') + ' ' +
+      chip('attempts: ' + att, att > 0 ? 'acc' : 'mute') + '</div>' +
+      '<div class="mr-sub small mono">' + esc(trunc(String((d && (d.dedupKey || d.route)) || '—'), 64)) +
+      (d && d.lastError ? ' · ' + esc(trunc(String(d.lastError), 60)) : '') + '</div></div>' +
+      '<span class="small faint">' + esc(relAge(d && (d.completedAt || d.at)) || '') + '</span></div>';
+  }).join('');
+}
+
+/* ---------- 连接层（#/connectors——V-12 互链 workflows + V-21 Notification 与送达投影） ---------- */
 function connectorsScreen(el, ctx) {
-  const kinds = ['ConnectorOps', 'WorkService', 'Provider', 'Ref'];
+  const kinds = ['ConnectorOps', 'WorkService', 'Provider', 'Ref', 'Notification'];
   const secs = kinds.map((kind) => {
     const rows = ctx.store.refs(kind);
     return '<section class="card"><div class="card-h"><span class="h-title">' + esc(kind) + '</span>' +
       '<span class="h-right">' + chip(rows.length + tr(' 个'), rows.length ? 'acc' : 'mute') + '</span></div>' +
       '<div class="card-b">' + (rows.length
-        ? rows.map((o) => '<div class="mini-row" data-go="' + esc(docRoute(kind, o.scope, o.name)) + '">' +
+        ? rows.map((o) => '<div class="mini-row" data-conn-row="' + esc(docRoute(kind, o.scope, o.name)) + '">' +
           '<div class="mr-main"><div><b class="mono">' + esc(o.name) + '</b></div>' +
           '<div class="mr-sub small mono">' + esc(o.scope) + ' · r' + esc(String(o.rv || 0)) + '</div></div>' +
           '<span class="ws-chip">' + chipGo(tr('工作台'), objRoute(kind, o.scope, o.name), 'mute', true) + '</span></div>').join('')
         : tr('<div class="small faint">该 kind 暂无在册对象（空态显式）。</div>')) + '</div></section>';
   }).join('');
-  el.innerHTML = '<div class="view-inner">' + screenHead(tr('连接层'), tr('ConnectorOps / WorkService / Provider / Ref 四族（文档与资源同规则）')) +
-    '<div class="grid cols-2">' + secs + '</div></div>';
-  el.querySelectorAll('.mini-row[data-go]').forEach((row) => {
-    row.addEventListener('click', () => ctx.go(row.dataset.go));
+  const snapDel = ctx.store.deliveries ? ctx.store.deliveries() : null;
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead(tr('连接层'), tr('ConnectorOps / WorkService / Provider / Ref / Notification 五族 + 通知送达投影 + 绑定工作流互链'),
+      chipGo(tr('工作流'), 'workflows', 'mute', false)) +
+    '<div class="grid cols-2">' + secs + '</div>' +
+    '<h2 class="sec-title" style="margin-top:16px">' + esc(tr('通知送达投影（/v1/notifications/deliveries）')) + '</h2>' +
+    '<div class="card"><div class="card-b" data-conn-deliveries>' +
+    (snapDel ? deliveriesPanelHtml(snapDel) : '<div class="small faint">' + esc(tr('送达投影现读中…')) + '</div>') +
+    '</div></div>' +
+    '<h2 class="sec-title" style="margin-top:16px">' + esc(tr('绑定工作流（workflows ↔ connectors 互链）')) + '</h2>' +
+    '<div class="card"><div class="card-b" data-conn-wfs><div class="small faint">' + esc(tr('工作流绑定现读中…')) + '</div></div></div>' +
+    '</div>';
+
+  el.querySelectorAll('.mini-row[data-conn-row]').forEach((row) => {
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.closest('[data-go]')) return;
+      ctx.go(row.dataset.connRow);
+    });
   });
+
+  const stamp = typeof location !== 'undefined' ? location.hash : '';
+  // V-21：实时现读 /v1/notifications/deliveries
+  if (ctx.api && typeof ctx.api.deliveries === 'function') {
+    ctx.api.deliveries().then((r) => {
+      if (!el.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
+      const box = el.querySelector('[data-conn-deliveries]');
+      if (!box) return;
+      if (r && r.ok) box.innerHTML = deliveriesPanelHtml(r.data);
+      else if (!snapDel) box.innerHTML = '<div class="small faint">' + esc(tr('送达投影暂不可读（')) + esc(String((r && (r.error || r.status)) || '')) + '）</div>';
+    }).catch(() => {});
+  }
+  // V-12：反查在册工作流绑定的 connector，回链 wf/:name
+  if (ctx.api && typeof ctx.api.workflows === 'function') {
+    ctx.api.workflows().then((r) => {
+      if (!el.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
+      const box = el.querySelector('[data-conn-wfs]');
+      if (!box) return;
+      const wfs = (r && r.ok && r.data && Array.isArray(r.data.workflows)) ? r.data.workflows : [];
+      if (!wfs.length) { box.innerHTML = '<div class="small faint">' + esc(tr('暂无在册工作流绑定。')) + '</div>'; return; }
+      box.innerHTML = wfs.map((w) => {
+        const nm = String((w && w.name) || '');
+        const ex = (w && w.execution) || {};
+        const conn = String(ex.connector || '') + (ex.connectorScope ? '/' + String(ex.connectorScope) : '');
+        return '<div class="mini-row" data-go="wf/' + encodeURIComponent(nm) + '" style="cursor:pointer">' +
+          '<div class="mr-main"><div><b class="mono">' + esc(nm) + '</b> ' + chip(conn || tr('未绑定'), conn ? 'acc' : 'mute') + '</div>' +
+          '<div class="mr-sub small">' + esc(String(ex.state || '—')) + '</div></div>' +
+          '<span class="ws-chip">' + chipGo(tr('工作流详情'), 'wf/' + encodeURIComponent(nm), 'mute', true) + '</span></div>';
+      }).join('');
+    }).catch(() => {});
+  }
 }
 
-/* ---------- 需求提案（#/proposals） ---------- */
+/* ---------- 需求提案（#/proposals 与 #/prop/:name） ---------- */
 function proposalsScreen(el, ctx) {
   const rows = ctx.store.proposals();
+  const focusName = String((ctx.params && ctx.params.name) || '').trim();
+  if (focusName) propOpen.add(focusName);
   const cards = rows.map((p, i) => {
     const keys = p && typeof p === 'object' ? Object.keys(p) : [];
-    const key = String((p && p.name) || '') || '#' + i; // 无 name 提案退化为序号键（展开态仍可用）
+    const key = String((p && p.name) || '') || '#' + i;
     const open = propOpen.has(key);
+    const isFocus = !!focusName && key === focusName;
     const known = ['title', 'summary', 'status', 'proposer', 'createdAt', 'scope', 'name'];
     const sub = known.filter((k) => p[k] != null && k !== 'title').map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
-    // 展开区要素：known 之外的对象字段（acceptance/impact/priority/origin/landing 等）有则显示
     const extras = keys.filter((k) => !known.includes(k) && k !== 'summary' && p[k] != null && p[k] !== '')
       .map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + '</span>').join('');
-    return '<div class="mini-row" data-prop="' + esc(key) + '">' +
+    // V-14：「去审批」携带提案标识 approvals/:focus；并附对象工作台与直达链接 prop/:name
+    const approveRoute = p && p.name ? 'approvals/' + encodeURIComponent(String(p.name)) : 'approvals';
+    const propLink = p && p.name ? 'prop/' + encodeURIComponent(String(p.name)) : '';
+    return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : '') + '>' +
       '<div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
       '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席——不编造</span>')) + '</div>' +
       (open
         ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ''), 2000) || tr('summary 缺席——不编造')) + '</div>' +
           (extras ? '<div class="kv" style="margin-top:6px">' + extras + '</div>' : '') +
-          '<div class="small faint" style="margin-top:6px">' + esc(tr('再点一次卡片收起。')) + '</div>'
+          '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
+          (p && p.name ? chipGo(tr('对象工作台'), objRoute('Proposal', p.scope || 'global', p.name), 'mute', true) : '') +
+          (propLink ? chipGo(tr('直达链接'), propLink, 'mute', true) : '') +
+          '</div>' +
+          '<div class="small faint" style="margin-top:4px">' + esc(tr('再点一次卡片收起。')) + '</div>'
         : '') +
       '</div>' +
-      '<span class="ws-chip">' + chipGo(tr('去审批'), 'approvals', 'acc', true) + '</span>' +
+      '<span class="ws-chip">' + chipGo(tr('去审批'), approveRoute, 'acc', true, tr('定位至审批页该提案')) + '</span>' +
       '</div>';
   }).join('');
-  el.innerHTML = '<div class="view-inner">' + screenHead(tr('需求提案'), tr('提案面（点卡片展开 summary 全文与要素）——批准/驳回走审批与 Apply（LLM 无 Apply 权）')) +
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead(tr('需求提案'), tr('提案面（点卡片展开 summary 全文与要素；支持 #/prop/:name 直达）——批准/驳回走审批与 Apply（LLM 无 Apply 权）'),
+      focusName ? chipGo(tr('全部提案'), 'proposals', 'mute', false) : '') +
     (rows.length ? '<div class="card">' + cards + '</div>'
       : emptyBox(tr('暂无提案'), tr('快照 proposals 聚合为空（空态显式）。'))) +
     '</div>';
   el.querySelectorAll('[data-prop]').forEach((row) => {
     row.addEventListener('click', (ev) => {
-      if (ev.target.closest('[data-go]')) return; // 「去审批」chip 走自身深链——不触发展开
+      if (ev.target.closest('[data-go]')) return;
       const key = row.dataset.prop;
       if (propOpen.has(key)) propOpen.delete(key); else propOpen.add(key);
       proposalsScreen(el, ctx);
     });
   });
+  if (focusName) {
+    const hit = el.querySelector('[data-prop-focused="1"]');
+    if (hit && hit.scrollIntoView) hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+/* ---------- V-11：系统详情补 tasks / drafts / runs 三区块 ---------- */
+function systemExtraBlocks(ctx, scope) {
+  const tasks = ctx.store.tasks().filter((t) => t && (String(t.scope || '') === scope || String((t.spec && t.spec.scopeRef && t.spec.scopeRef.name) || '') === scope));
+  const drafts = ctx.store.drafts().filter((d) => d && String(d.scope || 'global') === scope);
+  const runs = ctx.store.runs().filter((r) => {
+    if (!r) return false;
+    let hay = '';
+    try { hay = JSON.stringify([r.scope, r.ownerScope, r.involved, r.route, r.workflow]); } catch { hay = ''; }
+    return hay.includes(scope);
+  });
+  const sec = (title, bodyHtml, emptyText) =>
+    '<h2 class="sec-title">' + esc(title) + '</h2><div class="card">' +
+    (bodyHtml || '<div class="card-b"><div class="small faint">' + esc(emptyText) + '</div></div>') + '</div>';
+  const taskHtml = tasks.slice(0, 8).map((t) => {
+    const id = (t.scope || 'global') + '/' + (t.name || '');
+    const ph = String((t.status && t.status.phase) || '');
+    return '<div class="mini-row" data-go="task/' + encodeURIComponent(id) + '" style="cursor:pointer">' +
+      '<div class="mr-main"><div><b>' + esc(String((t.spec && t.spec.title) || t.name || id)) + '</b> ' +
+      (ph ? chip(ph, ph === 'running' || ph === 'verifying' ? 'acc' : 'mute') : '') + '</div>' +
+      '<div class="mr-sub small mono">' + esc(id) + '</div></div></div>';
+  }).join('');
+  const draftHtml = drafts.slice(0, 8).map((d) => {
+    const sc = d.scope || 'global';
+    return '<div class="mini-row" data-go="' + esc(docRoute(d.kind, sc, d.name)) + '" style="cursor:pointer">' +
+      '<div class="mr-main"><div><b>' + esc(String(d.name || '')) + '</b> ' + kindBadge(String(d.kind || '')) + ' ' + chip(tr('草稿'), 'warn') + '</div>' +
+      '<div class="mr-sub small mono">' + esc(String(d.fieldManager || '—')) + '</div></div>' +
+      '<span class="ws-chip">' + chipGo(tr('去审批'), 'approvals/' + encodeURIComponent(d.kind + '/' + sc + '/' + d.name), 'acc', true) + '</span></div>';
+  }).join('');
+  const runHtml = runs.slice(0, 8).map((r) => {
+    const wf = String(r.workflow || r.name || '');
+    const no = r.run != null ? r.run : (r.no != null ? r.no : '');
+    const go = wf && no !== '' && no != null ? 'wf/' + encodeURIComponent(wf) + '/r/' + encodeURIComponent(String(no)) : (wf ? 'wf/' + encodeURIComponent(wf) : '');
+    return '<div class="mini-row"' + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : '') + '>' +
+      '<div class="mr-main"><div><b class="mono">' + esc(wf || '—') + '</b> ' + (no !== '' ? '<span class="small faint">#' + esc(String(no)) + '</span>' : '') + '</div>' +
+      '<div class="mr-sub small mono">' + esc(trunc(String(r.involved || r.route || '—'), 56)) + '</div></div></div>';
+  }).join('');
+  return sec(tr('相关任务'), taskHtml, tr('窗口内无本 scope 相关任务（空态显式）。')) +
+    sec(tr('草稿'), draftHtml, tr('窗口内无本 scope 草稿（空态显式）。')) +
+    sec(tr('运行记录'), runHtml, tr('窗口内无本 scope 运行记录（空态显式）。'));
 }
 
 /* ---------- 系统详情（#/s/:name——scope 视角的对象清单+摘要） ---------- */
@@ -296,7 +475,7 @@ function systemScreen(el, ctx) {
   const byKind = {};
   objs.forEach((o) => { byKind[o.kind] = (byKind[o.kind] || 0) + 1; });
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(scope, 'scope=' + scope + tr(' 的对象与事件（快照聚合投影）'), chipGo(tr('系统树'), 'tree', 'mute', false)) +
+    screenHead(scope, 'scope=' + scope + tr(' 的对象、任务、草稿、运行与事件（快照聚合投影）'), chipGo(tr('系统树'), 'tree', 'mute', false)) +
     '<div class="statbar">' +
     Object.keys(byKind).sort().map((k) =>
       '<div class="stat" data-go="' + esc('obj/' + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div>' +
@@ -312,10 +491,8 @@ function systemScreen(el, ctx) {
       '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? '')) + '">' +
       '<div class="mr-main"><div>' + esc(String(e.type || '')) + '</div>' +
       '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div></div>').join('') + '</div>' : '') +
+    systemExtraBlocks(ctx, scope) +
     '</div>';
-  el.querySelectorAll('[data-go]').forEach((x) => {
-    x.addEventListener('click', () => ctx.go(x.dataset.go));
-  });
 }
 
 export function render(el, ctx) {
@@ -324,18 +501,20 @@ export function render(el, ctx) {
   else if (r === 'docs') docsScreen(el, ctx);
   else if (r === 'designdoc') designDocScreen(el, ctx);
   else if (r === 'connectors') connectorsScreen(el, ctx);
-  else if (r === 'proposals') proposalsScreen(el, ctx);
+  else if (r === 'proposals' || r === 'prop') proposalsScreen(el, ctx);
   else if (r === 's') systemScreen(el, ctx);
   else el.innerHTML = '<div class="view-inner">' + emptyBox(tr('未知薄屏'), String(r)) + '</div>';
 }
 
 /* 业务控制台占位屏（2026-11-26 用户裁决：先不加东西——显式占位词形，不装内容）。
- * 后续 ServiceAgent 登录后此级承载业务视角（Service 维度的业务大屏与操作面）。 */
+ * V-22：词形显式声明「业务层未部署（设计稿在册）」+ 设计文档深链。 */
 export function renderBiz(el, ctx) {
+  void ctx;
   el.innerHTML = '<div class="view-inner">' +
     '<div class="biz-hero">' +
     '<div class="biz-hero-mark">B</div>' +
     '<h2 class="sec-title">' + esc(tr('业务控制台')) + '</h2>' +
-    '<div class="small faint">' + esc(tr('业务视角占位——后续 ServiceAgent 登录后在此承载业务大屏与操作面（当前零内容，显式占位不装假）。')) + '</div>' +
+    '<div class="small faint">' + esc(tr('业务层未部署（设计稿在册）——后续 ServiceAgent 登录后在此承载业务大屏与操作面（当前零内容，显式占位不装假）。')) + '</div>' +
+    '<div style="margin-top:10px">' + chipGo(tr('查看业务设计稿'), 'designdoc/' + encodeURIComponent('core_design') + '/' + encodeURIComponent('concepts/business-system.md'), 'mute', true) + '</div>' +
     '</div></div>';
 }
