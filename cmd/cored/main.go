@@ -57,18 +57,19 @@ func run() error {
 	schemePath := flag.String("scheme", os.Getenv("CORE_SYSTEM_SCHEME"),
 		"core/scheme.yaml 路径（缺省读 CORE_SYSTEM_SCHEME 环境变量）")
 	docsRoot := flag.String("docs", os.Getenv("CORE_SYSTEM_DOCS"),
-		"文档库根目录（缺省读 CORE_SYSTEM_DOCS；为空则 /v1/objects 返回 503，scheme 面不受影响。"+
-			"git 后端=权威布局根；sqlite 后端=种子导入来源（空库一次性导入，非空库不导入））")
-	docsBackend := flag.String("docs-backend", "git",
-		"文档存储后端（v0.34 文档 storage 走 sqlite 首段；git|sqlite。git=既有行为面缺省零翻转；"+
-			"sqlite=docs DB 为权威内容面（--docs-db 文件路径必配），git 布局降级为导入导出格式（--docs 给定时种子导入））")
+		"文档库根目录（缺省读 CORE_SYSTEM_DOCS；sqlite 后端=种子导入/导出格式来源（空库一次性导入，非空库不导入）；"+
+			"git 后端=兼容权威布局根（需显式 --docs-backend git））")
+	docsBackend := flag.String("docs-backend", "sqlite",
+		"文档存储后端（git|sqlite；缺省 sqlite=root 默认）。sqlite=docs DB 为权威内容面（--docs-db 必配），"+
+			"git 布局降级为导出/公开格式（定时导出+push 远程；--docs 给定时作空库种子导入）；"+
+			"git=兼容后端（既有行为面，非 root 部署显式选择）")
 	docsDB := flag.String("docs-db", "",
 		"docs DB（SQLite）文件路径（--docs-backend sqlite 必配；文档内容权威，不可丢弃——与 ops DB "+
 			"可丢弃口径分立，秘密库再分离，见 --secrets-db）")
 	addr := flag.String("addr", os.Getenv("CORE_SYSTEM_ADDR"),
 		"监听地址（缺省 127.0.0.1:0，即本机回环随机端口）")
 	allowApply := flag.Bool("allow-apply", false,
-		"显式开启写面（POST /v1/apply）；缺省 false=只读暴露。开启需同时配置 --docs")
+		"显式开启写面（POST /v1/apply）；缺省 false=只读暴露。git 后端需同时配置 --docs；sqlite 后端只需 --docs-db")
 	opsDB := flag.String("ops-db", "",
 		"ops DB（SQLite）文件路径；为空=进程内存库（DB 非权威可重建，ops-log.md；持久化部署显式传路径）")
 	secretsDB := flag.String("secrets-db", "",
@@ -143,8 +144,8 @@ func run() error {
 	if *addr == "" {
 		*addr = "127.0.0.1:0"
 	}
-	if *allowApply && *docsRoot == "" {
-		return errors.New("--allow-apply 需要文档库：同时给 --docs（写面依附文档库后端）")
+	if *allowApply && *docsRoot == "" && *docsBackend != "sqlite" {
+		return errors.New("--allow-apply 需要文档库：git 后端同时给 --docs（布局即权威）；sqlite 后端给 --docs-db 即可")
 	}
 	if *docsBackend != "git" && *docsBackend != "sqlite" {
 		return fmt.Errorf("--docs-backend 只允许 git|sqlite（实得 %q）", *docsBackend)
@@ -188,9 +189,9 @@ func run() error {
 	}
 	fmt.Fprintf(os.Stderr, "cored: 秘密库=%s（--secrets-db；on=凭据值部署侧权威面+脱敏 API 面 /v1/secrets 零值出；off=secret: 来源解析缺口可见——引用面照常声明）\n", secretsState)
 
-	// 文档对象读面 + 串行写队列：--docs 给定则打开文档库后端（野对象闸门=scheme 注册表）。
-	// --docs-backend 选择权威后端（v0.34 首段）：git=既有行为面缺省零翻转；sqlite=docs DB
-	// 权威内容面（--docs 旧布局根作种子导入来源，空库一次性导入保留 rv，非空库不导入=幂等）。
+	// 文档对象读面 + 串行写队列：--docs/--docs-db 给定则打开文档库后端（野对象闸门=scheme 注册表）。
+	// --docs-backend 选择权威后端（缺省 sqlite=root 默认）：sqlite=docs DB 权威内容面
+	// （--docs 旧布局根作空库种子导入来源，保留 rv；非空库不导入=幂等）；git=兼容后端（显式选择）。
 	var store2 apiserver.ObjectSource
 	var repo repository.Repository
 	switch {
@@ -211,7 +212,8 @@ func run() error {
 		repo = gr
 		defer repo.Close()
 		store2 = repo
-		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())	}
+		fmt.Fprintf(os.Stderr, "cored: 文档库已挂载 %s（git 后端，串行写+乐观锁）\n", gr.Root())
+	}
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
@@ -274,7 +276,7 @@ func run() error {
 	if repo != nil {
 		docsSpecs := workflow.DocsSpecs{Lookup: workflowDocLookup(repo)}
 		runOpts.Specs = docsSpecs
-		runOpts.Brakes.Resolver = docsSpecs // spec.brakes 声明收紧（未命中=强制默认兜底）
+		runOpts.Brakes.Resolver = docsSpecs                  // spec.brakes 声明收紧（未命中=强制默认兜底）
 		runOpts.EnabledRules = workflowEnabledResolver(repo) // 规则开关判定面（v0.58b enabled honoring——E3 余量段收口）
 		objSpecState = "on"
 		brakesResolverState = "docs"
@@ -529,7 +531,7 @@ func run() error {
 	}
 	var applier apiserver.Applier
 	var publisher apiserver.PublisherFace
-	var dispLog *flowbind.DispatchLog // 派单受理投影（v0.50 R-8；--allow-apply 装配，nil=面缺席 503）
+	var dispLog *flowbind.DispatchLog        // 派单受理投影（v0.50 R-8；--allow-apply 装配，nil=面缺席 503）
 	var approvalSync *flowbind.SyncApprovals // ask 批准动作面（v0.56 R-10；--allow-apply 装配，nil=面缺席 503）
 
 	// 设计文档面（v0.52 能力 A——cored-bridge.md §2.4）：--design-repo 注册白名单仓（读面=

@@ -4,8 +4,8 @@
 // （git 布局=导入导出格式）、instance 仓 runtime/ops-log.md（双轨分工收口段）。
 //
 // 取舍（本后端与 git 后端的关系，声明面见 scheme.yaml runtime.storage.docs）：
-//   - 并存、单权威：部署选择其一为权威（--docs-backend git|sqlite，缺省 git=既有行为面
-//     零翻转）；两后端同实现 Repository 接口（读/写/watch 语义一致）。
+//   - 并存、单权威：部署选择其一为权威（--docs-backend git|sqlite，缺省 sqlite=root 默认；
+//     git=兼容后端，非 root 部署可显式选择）；两后端同实现 Repository 接口（读/写/watch 语义一致）。
 //   - 权威=内容面：sqlite 后端下 doc 表即文档内容权威（resourceVersion=乐观锁，
 //     kind/scope/name=对象键）；git 布局降级为「导入导出格式」。
 //   - 迁移路径：`--docs-backend sqlite --docs-db <path> --docs <旧git布局根>` 首次打开
