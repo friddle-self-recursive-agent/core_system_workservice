@@ -158,7 +158,7 @@ func TestCanMigrateClosedSet(t *testing.T) {
 		{PhaseReady, PhaseRunning, true},
 		{PhaseRunning, PhaseDone, true},
 		{PhaseRunning, PhaseVerifying, true},
-		{PhaseDone, PhaseReady, false},   // 终态零出边
+		{PhaseDone, PhaseReady, false}, // 终态零出边
 		{PhaseCanceled, PhaseReady, false},
 		{"bogus", PhaseReady, false},     // 闭合集外
 		{PhaseReady, PhaseQueued, false}, // 回退非法

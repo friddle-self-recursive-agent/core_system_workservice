@@ -7,22 +7,19 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/contextidx"
@@ -32,8 +29,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventpub"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/heartbeat"
-	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsinfo"
-	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/metricsrc"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/intake"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/outbound"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/patrol"
@@ -43,7 +39,6 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheduler"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/sessionliveness"
-	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/watchsrc"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/secretstore"
 	"gopkg.in/yaml.v3"
@@ -88,9 +83,11 @@ func run() error {
 	reconcileInterval := flag.Duration("reconcile-interval", 0,
 		"定时巡检事件源间隔（v0.22 引擎内部源第二段，event.md 规则 10；0=关断零事件，缺省不改行为面；"+
 			"开启需 Scheme 注册 ReconcileTick——注册表是引擎内部源唯一开关）")
-	advanceInterval := flag.Duration("advance-interval", 0,
-		"run 相位异步推进间隔（v0.26 相位推进器异步推进首段，workflow.md 规则 15；0=关断，缺省不改行为面——"+
-			"受理首步同步推进不受影响。每拍对每现势 run 单步查表推进（stepByTable 复用）：落闸锚挂起、落终点锚终态、序列尾零动作停）")
+	advanceInterval := flag.Duration("advance-interval", 30*time.Second,
+		"run 相位异步推进间隔（v0.26 相位推进器异步推进首段，workflow.md 规则 15；G-13 收口：缺省 30s= "+
+			"tick 驱动相位推进缺省开启——RunRecord advances 随 tick 增长、相位机走完声明序列；显式 0=关断。"+
+			"每拍对每现势 run 单步查表推进（stepByTable 复用）：落闸锚挂起、落终点锚终态、序列尾零动作停；"+
+			"Verifying 出行先过 Verify 硬 gate（G-09/G-12，--verify-target 装配））")
 	watchSource := flag.Bool("watch-source", false,
 		"connector watch 事件桥（v0.30 引擎内部源第三段，event.md 规则 12；缺省 false=关断零事件不改行为面。"+
 			"开启时装配层枚举注册表内 Watch 契约驱动，把驱动侧外部变化通道桥接进总线——source 服务侧判定恒 connector，"+
@@ -140,6 +137,16 @@ func run() error {
 	selfHealWord := flag.String("self-heal-word", sessionliveness.DefaultHealWord,
 		"自愈第一动作注入词（v0.56；缺省「继续」——agent-session.md §7 固定 prompt 单点声明。"+
 			"真实注入执行=dsh 宿主 plugin 侧 sessionController.prompt 面（桥回填）；nil 桥=纯观测装配词形不变）")
+	runtimeStoreDriver := flag.String("runtime-store", envOr("CORE_SYSTEM_RUNTIME_STORE", ""),
+		"运行态投影存储驱动（G-01，R-ENG §1/perf-lint-baseline.md §2.2；sqlite|memory；缺省判定= "+
+			"sqlite 当 --ops-db 给定（rt_* 表族建在 ops DB 同库），否则 memory（进程内既有语义）——"+
+			"cored 启动时全量装载重建投影：写入→重启→GET /v1/runs 等读面数据仍在）")
+	runtimeDB := flag.String("runtime-db", "",
+		"运行态投影独立 DB 文件路径（可选非缺省路径；缺省 rt_* 表族与 ops DB 同库；memory 驱动忽略）")
+	verifyTarget := flag.String("verify-target", "",
+		"Verify 硬 gate 被审目录（G-09/G-12，R-TYPE-3——workflow Verifying 相位出行先跑 "+
+			"connectops-code-audit 真实审核，findings 非空/unbound=卡 Verify 不放行+Escalate；"+
+			"缺席=gate 不装配（stderr 缺口可见），不冒充零发现）")
 	var designRepos repoSpecs
 	flag.Var(&designRepos, "design-repo",
 		"设计文档白名单仓（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit；"+
@@ -181,6 +188,22 @@ func run() error {
 	if *opsDB == "" {
 		fmt.Fprintf(os.Stderr, "cored: ops DB=进程内存（未配 --ops-db；重启即清，DB 非权威）\n")
 	}
+
+	// 运行态投影存储（G-01 收口——R-ENG §1/perf-lint-baseline.md §2.2）：六类进程内投影
+	// （触发留痕/对账 run/送达/唤醒/派单/intake 会话）的统一持久化落点。缺省 sqlite 当
+	// --ops-db 给定（rt_* 表族建在 ops DB 同库）；cored 启动时全量装载重建投影（各投影
+	// 落点构造器内装载——下方 workflow/flowbind/intake 构造注入）。未知驱动词形=启动拒绝。
+	rtDriver, rtDSN, rtState := runtimeStoreChoice(*runtimeStoreDriver, *opsDB, *runtimeDB)
+	if rtDriver == "" {
+		return fmt.Errorf("--runtime-store 只允许 sqlite|memory（实得 %q）", *runtimeStoreDriver)
+	}
+	rtStore, err := assembleRuntimeStore(rtDriver, rtDSN)
+	if err != nil {
+		return err
+	}
+	defer rtStore.Close()
+	fmt.Fprintf(os.Stderr, "cored: 运行态投影存储=%s（--runtime-store %s；G-01 六类投影写穿透+启动恢复——调度器/读面语义零变化）\n",
+		runtimeStoreStateOr(rtStore, rtState), rtDriver)
 
 	// 秘密库（v0.34 secret 存储落地首段）：凭据真实值的部署侧权威面（--secrets-db 独立
 	// 文件 0600——秘密不随可丢弃的 ops DB 走）。--secrets-db 给定时装配 API 面（列表只出
@@ -250,31 +273,7 @@ func run() error {
 	// 仅 sqlite 后端装配（git 后端自身已是布局权威，无导出语义）。导出=只读派生任务：每拍
 	// 全量快照按对象规范路径写目标树→有变化才 commit→可选 push；失败只告警不回滚 sqlite 写、
 	// 不崩 cored（下拍重试自愈）；绝不回导（回导=--docs 显式一次性迁移通道）。
-	if _, ok := repo.(*repository.SQLiteRepo); ok {
-		if iv := strings.TrimSpace(os.Getenv("CORE_SYSTEM_DOCS_EXPORT_INTERVAL")); iv != "" {
-			d, perr := time.ParseDuration(iv)
-			switch {
-			case perr != nil || d <= 0:
-				fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（CORE_SYSTEM_DOCS_EXPORT_INTERVAL=%q 不可解析/非正——缺口可见不启动）\n", iv)
-			case os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR") == "":
-				fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（interval=%s 已设但 CORE_SYSTEM_DOCS_EXPORT_DIR 缺席——必填才启动）\n", d)
-			default:
-				exp, err := repository.NewExporter(repo, sch, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE"))
-				if err != nil {
-					return fmt.Errorf("docs 导出器装配: %w", err)
-				}
-				expCtx, cancelExp := context.WithCancel(context.Background())
-				defer cancelExp()
-				go exp.Run(expCtx, d)
-				pushState := "off（本地 commit 止步）"
-				if os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") != "" {
-					pushState = "on（push " + os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") + "）"
-				}
-				fmt.Fprintf(os.Stderr, "cored: docs 导出器=on(%s → %s push=%s)（sqlite→git 周期快照——git 历史=导出快照非逐次账；失败只告警不回滚不崩；绝不回导）\n",
-					d, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), pushState)
-			}
-		}
-	}
+	maybeStartDocsExporter(repo, sch)
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
@@ -311,7 +310,7 @@ func run() error {
 	// origin 维度留痕）推进为一条唤醒投影（GET /v1/agents/wakes 查询）。唤醒投影出现 ≠
 	// agent 会话已拉起（真实拉起=agent-session 域，declared-deferred）。
 	// 相位态机→刹车→冷却→minLevel 仍 declared-deferred（cored-bridge.md §2.3）。
-	dlOpts := &workflow.DeliveryOptions{}
+	dlOpts := &workflow.DeliveryOptions{Store: rtStore} // 送达投影写穿透+恢复（G-01）
 	if *outboundExec != "" {
 		argv, err := outbound.ParseCommand(*outboundExec)
 		if err != nil {
@@ -336,6 +335,7 @@ func run() error {
 	// 投影，零缓存=apply 落库即生效；相位投影即点亮既有表驱动判定——判定器零改动）。未挂
 	// 文档库=能力缺席，既有行为面不变。
 	runOpts := &workflow.RunOptions{}
+	runOpts.Store = rtStore              // 运行态投影写穿透+启动恢复（G-01——六类投影第一段：run/触发/送达/唤醒）
 	runOpts.Brakes.Enabled = *brakesFlag // 刹车闸挂接态（缺省关断=零刹车既有行为面零翻转）
 	objSpecState := "off（未挂文档库——object 源表不投影）"
 	brakesResolverState := "defaults"
@@ -357,10 +357,10 @@ func run() error {
 	dlOpts.DedupWindow = *notifyDedupWindow
 	dlOpts.MinLevel = *notifyMinLevel
 	deliveries := workflow.NewDeliveryLog(dlOpts)
-	wakes := workflow.NewWakeLog(nil)
+	wakes := workflow.NewWakeLog(&workflow.WakeOptions{Store: rtStore}) // 唤醒投影写穿透+恢复（G-01）
 	wakeSink := workflow.WakeSink(wakes)
 	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_WAKE_ADDR")); addr != "" {
-		wakeSink = newWakeNotifier(wakes, addr)
+		wakeSink = newWakeNotifier(wakes, runs, wakes, addr)
 		fmt.Fprintf(os.Stderr, "cored: wake 桥=on(%s)（白名单事件→宿主 /wake/spawn，显式事件拉起自循环）\n", addr)
 	} else {
 		fmt.Fprintln(os.Stderr, "cored: wake 桥=off（纯投影；CORE_SYSTEM_WAKE_ADDR 缺席）")
@@ -377,7 +377,21 @@ func run() error {
 	// v0.29 提前构建：事件驱动推进面的挂接（BindEventAdvance）须先于订阅主干 AttachDispatch
 	// （同 Bind* 口径——事件开始流入后无接线窗口）；定时拍 goroutine 仍在下方启动。
 	advancer := workflow.NewAdvancer(runs, *advanceInterval)
-	triggers := workflow.NewTriggerHub(nil)
+	// Verify 硬 gate 接线（G-09/G-12——R-TYPE-3）：--verify-target 声明被审目录即恒挂接
+	// （connectops-code-audit 真实审核；findings 非空/unbound=卡 Verify+Escalate；缺席=
+	// gate 缺席缺口可见）。判定在推进拍锁外执行（checker 时长不阻塞订阅主干）。
+	if vg := newVerifyGate(verifyGateConfig{sch: sch, target: *verifyTarget,
+		schemeDir: filepath.Dir(sch.Source)}); vg != nil {
+		runOpts.VerifyGate = vg
+		runOpts.OnVerifyBlocked = verifyEscalatePublisher(bus, sch, func(f string, a ...any) {
+			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
+		})
+		fmt.Fprintf(os.Stderr, "cored: Verify 硬 gate=on（--verify-target %s；connectops-code-audit audit op 真实审核—— "+
+			"error findings/unbound=卡 Verify 不放行+Escalate source=core；R-TYPE-3 ruleChecks 三行接线）\n", *verifyTarget)
+	} else {
+		fmt.Fprintf(os.Stderr, "cored: Verify 硬 gate=off（--verify-target 缺席——缺口可见不静默；R-TYPE-3 接线面待部署声明）\n")
+	}
+	triggers := workflow.NewTriggerHub(&workflow.TriggerOptions{Store: rtStore}) // 触发留痕写穿透+恢复（G-01）
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
 	triggers.BindAgents(wakeSink)
@@ -481,40 +495,7 @@ func run() error {
 	// 未配置=零通知零外发/长任务 LongTaskRunning 显式汇报）→连续无效达 --heal-retry-limit 合成
 	// Escalate 停自动处置。注册表闸门前置（SessionStalled 未注册=unregistered 不启动）；
 	// interval=0 关断零事件零扫描（缺省不改行为面）。与注入面同一条主干零旁路。
-	heartbeatStore := struct {
-		sessionliveness.Registry
-	}{store}
-	liveness := sessionliveness.New(heartbeatStore, bus, sch, *sessionWatchInterval, *stallThreshold, *healRetryLimit)
-	// SelfHeal 真实接线（v0.56 R-10——agent-session.md §7/§8 落点）：桥=dsh 宿主 plugin 侧
-	// sessionController.prompt 面，cored 经 env（CORE_SYSTEM_SELFHEAL_ADDR——宿主 loopback HTTP
-	// 面）回填。桥缺席（env 未设）=纯观测装配词形不变（healed-self 恢复判定照旧）；桥在=
-	// 注入第一动作经宿主会话推进面（sessionController.prompt mode=queue 注入「继续」）。
-	// 注入失败=err 返回照实上报绝不静默（下一拍重试第一动作=重试不是跳步）；会话侧回执心跳
-	// （source=session phase=inject-continue）非续租——恢复判据=会话侧真实推进心跳。
-	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SELFHEAL_ADDR")); addr != "" {
-		liveness.SetSelfHealBridge(newSelfHealHTTPBridge(addr, *selfHealWord))
-		fmt.Fprintf(os.Stderr, "cored: 自愈注入桥=on(%s)（CORE_SYSTEM_SELFHEAL_ADDR——第一动作经 dsh 宿主 sessionController.prompt 注入「%s」，失败上报绝不静默；桥缺席=纯观测装配）\n", addr, *selfHealWord)
-	}
-	liveness.OnEvent(func(typ, session string, err error) {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "cored: sessionliveness 会话 %s 合成事件 %s 发布失败（继续上报不静默）: %v\n", session, typ, err)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "cored: sessionliveness 会话 %s 合成事件 %s 已入总线\n", session, typ)
-	})
-	sessionState := "off"
-	switch {
-	case *sessionWatchInterval <= 0:
-		// 缺省关断
-	case !liveness.Enabled():
-		sessionState = "unregistered" // interval>0 但 SessionStalled 未注册：闸门前置不启动（缺口可见）
-	default:
-		sessionState = "on(" + liveness.Interval().String() + ",threshold=" + liveness.Threshold().String() + ")"
-		liveCtx, cancelLive := context.WithCancel(context.Background())
-		defer cancelLive()
-		go liveness.Run(liveCtx)
-	}
-	fmt.Fprintf(os.Stderr, "cored: 会话活性 watchdog=%s（--session-watch-interval；on=停滞判定 SuspectedStall→注入继续→SessionHealed→诊断分诊→升级 Escalate 全链事件化；unregistered=SessionStalled 未注册——注册表闸门前置；off=关断零事件缺省不改行为面；心跳注册面=POST /v1/sessions/heartbeat 查询面=GET /v1/sessions）\n", sessionState)
+	liveness, sessionState := setupSessionWatchdog(store, bus, sch, *sessionWatchInterval, *stallThreshold, *healRetryLimit, *selfHealWord)
 	// 通知门链装配锚（v0.35 KI-001 通知段——探针机读判别器）：门恒挂接（修复非选项——
 	// apply 写入不触发用户通知）；dedup/minLevel 部署侧可调（<=0/空=关断词形）。
 	minLevelWord := *notifyMinLevel
@@ -529,33 +510,7 @@ func run() error {
 	// 类型注册闸门前置；level=注册表缺省投影；dedupKey=驱动侧因由声明）。旗标关断（缺省）
 	// =零驱动零事件，缺省不改行为面；watch 事件落 run 同拍即拍（workflow.md 规则 15 v0.30
 	// 段——拍面驱动源集合扩展，零新开关）。
-	watchState := "off"
-	if *watchSource {
-		if _, err := sch.LookupEventType(watchsrc.EventType); err != nil {
-			watchState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
-		} else {
-			watchCtx, cancelWatchSrc := context.WithCancel(context.Background())
-			defer cancelWatchSrc()
-			var watchSrcs []watchsrc.Source
-			for _, p := range connectors.Providers() { // Type 排序快照——装配顺序确定性
-				if !p.Contract().Watch {
-					continue
-				}
-				ch, err := p.Watch(watchCtx)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "cored: watch 驱动 %s 订阅失败（跳过该源）: %v\n", p.Type(), err)
-					continue
-				}
-				watchSrcs = append(watchSrcs, watchsrc.Source{Name: p.Type(), Involved: "WorkService/" + p.Type(), Events: ch})
-			}
-			if len(watchSrcs) == 0 {
-				watchState = "no-driver" // 已开启∧类型已注册∧注册表无 Watch 契约驱动（缺口可见）
-			} else {
-				watchState = fmt.Sprintf("on(%d)", len(watchSrcs))
-				go watchsrc.New(bus, sch, watchSrcs).Run(watchCtx)
-			}
-		}
-	}
+	watchState := startWatchSource(*watchSource, bus, sch)
 	fmt.Fprintf(os.Stderr, "cored: watch 源=%s（--watch-source；on=装配层 watch 桥驱动 Watch 契约通道自产 ExternalChanged source=connector dedupKey=驱动侧因由——event.md 规则 12；no-driver=已开启但注册表无 Watch 契约驱动；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", watchState)
 	// metrics 阈值事件桥（v0.31 引擎内部源第四段，event.md 规则 13）+ MetricsInfo 数据面
 	// 首段（v0.33，event.md 规则 13 数据面落点）：数据面=进程内样本库（store/queries 投影，
@@ -565,68 +520,9 @@ func run() error {
 	// 告警面（v0.33 随行件：判定谓词落声明面——服务侧桥只判定不发明；逐对象 involved=
 	// WorkService/<name> 源级绑定锚）。旗标关断（缺省）=零样本源零事件，缺省不改行为面；
 	// metrics 事件落 run 同拍即拍（workflow.md 规则 15——拍面驱动源集合扩展，零新开关）。
-	metricsState := "off"
-	metricsPlaneState := "off"
-	var metricsStore *metricsinfo.Store
-	var metricsFace apiserver.MetricsFace
-	if *metricsSource {
-		metricsStore = metricsinfo.NewStore()
-		metricsFace = metricsStore
-		// 数据面真实生产者首段：装配层自观测采样器（ops DB event_log 流水窗口计数）。
-		sampler := metricsinfo.NewSampler(metricsStore, *metricsWindow, store.EventCountsSince)
-		if sampler.Enabled() {
-			metricsPlaneState = "on(" + sampler.Window().String() + ")"
-			metricsCtx, cancelMetricsPlane := context.WithCancel(context.Background())
-			defer cancelMetricsPlane()
-			go sampler.Run(metricsCtx)
-		} else {
-			metricsPlaneState = "off（窗口<=0）"
-		}
-		if _, err := sch.LookupEventType(metricsrc.EventType); err != nil {
-			metricsState = "unregistered" // 注册表闸门前置：类型未注册不启动（缺口可见）
-		} else {
-			// 阈值声明面绑定（v0.33 首段；v0.45 装配段收编 BindWorkservice 一步投影；v0.47 起
-			// 装配期枚举只是初值——apply 事件驱动热重绑，声明面落库即生效免重启）：文档库
-			// WorkService 对象 observation.metrics 告警面 → 桥阈值绑定；逐对象 involved=
-			// WorkService/<scope>/<name>（involvedRef kind/scope/name 三段同构——owner/scope
-			// 谓词与 console 事件详情对象链可解析）。零声明/身份不完整=零绑定初值（合法等待
-			// 态——apply 热激活，no-source 终态退场）。
-			enumMetrics := func() ([]metricsrc.Source, error) {
-				if repo == nil {
-					return nil, nil
-				}
-				wss, err := repo.List(context.Background(), "WorkService", "")
-				if err != nil {
-					return nil, err
-				}
-				var srcs []metricsrc.Source
-				for _, o := range wss {
-					if src, ok := metricsrc.BindWorkservice(o.Scope, o.Name, o.Content); ok {
-						srcs = append(srcs, src)
-					}
-				}
-				return srcs, nil // 零告警面声明对象零绑定（等待态口径：判定静默，apply 热激活）
-			}
-			metricsSrcs, err := enumMetrics()
-			if err != nil {
-				return fmt.Errorf("枚举 WorkService 阈值声明面: %w", err)
-			}
-			metricsState = fmt.Sprintf("on(%d)", len(metricsSrcs))
-			metricsCtx, cancelMetricsSrc := context.WithCancel(context.Background())
-			defer cancelMetricsSrc()
-			// 桥级单样本流（v0.47：绑定表与样本流解耦——重绑只换声明不碰流，零通道抖动）；
-			// 零绑定初值也照常挂流运行（等待态可热激活）。
-			metricsBridge := metricsrc.New(bus, sch, metricsSamplePump(metricsStore.Subscribe()), metricsSrcs)
-			go metricsBridge.Run(metricsCtx)
-			metricsrc.StartRebind(metricsCtx, bus, metricsBridge, enumMetrics, metricsrc.RebindHooks{
-				Applied: func(n int) {
-					fmt.Fprintf(os.Stderr, "cored: metrics 阈值热重绑 n=%d（DocApplied×WorkService→绑定表替换——v0.47 声明面落库即生效免重启）\n", n)
-				},
-				Failed: func(err error) {
-					fmt.Fprintf(os.Stderr, "cored: metrics 阈值热重绑失败（保旧表+下次 apply 重试自愈）: %v\n", err)
-				},
-			})
-		}
+	metricsState, metricsPlaneState, _, metricsFace, metricsErr := startMetricsPlane(*metricsSource, *metricsWindow, bus, sch, repo, store)
+	if metricsErr != nil {
+		return metricsErr
 	}
 	fmt.Fprintf(os.Stderr, "cored: metrics 阈值源=%s（--metrics-source；on(n)=装配层阈值桥数据面样本通道自产 MetricThreshold source=metrics dedupKey=<metric>:<window>，n=绑定数——event.md 规则 13；on(0)=装配期零绑定合法等待态（v0.47 热重绑——apply 落库即激活，no-source 终态退场）；unregistered=Scheme 未注册该类型——注册表闸门前置；off=关断零事件缺省不改行为面）\n", metricsState)
 	fmt.Fprintf(os.Stderr, "cored: metrics 数据面=%s（--metrics-window；on=MetricsInfo store/queries 投影+自观测采样器 event_log 窗口计数——查询投影即样本 /v1/metrics 可查，解耦口径=数据面零信号面依赖；off=关断零样本缺省不改行为面）\n", metricsPlaneState)
@@ -747,7 +643,7 @@ func run() error {
 		// origin=workflow-bind 标注对象，人/agent 实现零盲写。
 		// 派单受理投影（v0.50 R-8，§11.2 拉起形态首段）：一次真实物化动作（created|updated）
 		// 即一条 apply-workflow 锚派单受理（autoLevel=ask 数据面在册；noop/skipped 不派单）。
-		dispLog = flowbind.NewDispatchLog(nil)
+		dispLog = flowbind.NewDispatchLog(&flowbind.DispatchOptions{Store: rtStore}) // 派单投影写穿透+恢复（G-01）
 		flowMat := &flowbind.Materializer{Repo: repo, Apply: engine, Dispatch: dispLog}
 		// 派单 ask 批准动作面（v0.56 R-10——workflow-runtime.md §11.4 第一段）：派单受理同拍
 		// 记 pending 批准投影（autoLevel=ask 的派单默认挂批准——ask=Planning 后挂起等批）；
@@ -810,7 +706,9 @@ func run() error {
 		publisher = &eventpub.Publisher{Sch: sch, Bus: bus, Perm: perm}
 		// 设计文档写面引擎（v0.52 能力 A）：写设计文档=permission.md 机读判定（core/design-docs
 		// 资源域——scheme.yaml Role 声明词汇 core/*），审计=apply_log 行+DocApplied 事件。
-		designDocs.BindEngine(&docrepo.Engine{Bus: bus, Ops: store, Perm: perm, Domain: "core/design-docs"})
+		if designDocs != nil { // 防御：--design-repo 未注册（Set 为 nil）时零盲调——2026-11-26 活体实证 nil 接收器 panic
+			designDocs.BindEngine(&docrepo.Engine{Bus: bus, Ops: store, Perm: perm, Domain: "core/design-docs"})
+		}
 		fmt.Fprintf(os.Stderr, "cored: apply 写面已开启（POST /v1/apply；请求级主体判定，匿名拒绝；本地信任仅作引擎 fallback）\n")
 		fmt.Fprintf(os.Stderr, "cored: 事件注入面已开启（POST /v1/events；动作=publish × 域=events 与 apply 写面分立；注入通道 source=human——v0.20）\n")
 	}
@@ -831,6 +729,7 @@ func run() error {
 	if schedCfg.Enabled && repo != nil {
 		sched := scheduler.New(repo, bus, sch, store, store, scheduler.Options{
 			SpawnAddr: strings.TrimSpace(os.Getenv(scheduler.EnvSpawnAddr)),
+			Sessions:  store, // 会话终结信号（G-08 done 判定——SessionEnded 词形→done+agentSession 回填）
 		})
 		schedCtx, cancelSched := context.WithCancel(context.Background())
 		defer cancelSched()
@@ -844,6 +743,9 @@ func run() error {
 			schedCfg.LeaseTTL, schedCfg.MaxAttempts, spawnWord, schedCfg.ApplyConflictGate)
 	}
 	fmt.Fprintf(os.Stderr, "cored: 任务调度器=%s（runtime.taskScheduler 每拍热读——无关任务并发/相关任务串行；status 写面=task-scheduler；事件=TaskStateChanged source=core；spawn 桥与 wake 桥同族固定载荷不进 shell；applyConflictGate=ask(pause-first|abort-current) 裁决事件 TaskConflictResolved dedup 尾段判别）\n", schedState)
+	// intake 会话投影写穿透（G-01 第六类——face 侧构造零迁移的注入面：apiserver intake face
+	// 在 apiserver.New 内构造 Engine，cored 经包级装配锚承接——须先于 apiserver.New 设定）。
+	intake.SetDefaultStore(rtStore)
 	apiserverOpts := func() []apiserver.Option {
 		opts := apiserverOpts(metricsFace, secrets, store, dispLog, approvalSync, designDocs)
 		if sessionState != "off" && sessionState != "unregistered" {
@@ -896,238 +798,3 @@ func run() error {
 	}
 	return nil
 }
-
-// metricsSamplePump 数据面→信号面样本通道适配（装配层持两者——metricsinfo 与 metricsrc
-// 两包零互依，解耦口径的机械落点；字段直投不改造——窗口标签由样本侧声明服务侧透传同口径）。
-func metricsSamplePump(in <-chan metricsinfo.Sample) <-chan metricsrc.Sample {
-	out := make(chan metricsrc.Sample)
-	go func() {
-		for smp := range in { // 反压即丢由数据面扇出侧承担（订阅缓冲满即丢）——此处直投
-			out <- metricsrc.Sample{Metric: smp.Metric, Value: smp.Value, Window: smp.Window}
-		}
-		close(out)
-	}()
-	return out
-}
-
-// permDocs 投影权限对象（Role/Group，global scope——permission.md §1 作用域 Global）。
-// permission 包不反向依赖存储层：这里把文档对象投影成它的装载输入。
-// workflowDocLookup 对象声明表解析首段（v0.27）装配侧查找：按 workflow 锚名在文档库全
-// scope 取 Workflow 对象原文（List 跨 scope 通配；global 同名优先——作用域覆盖语义的确定性
-// 投影）。零缓存：每次现读（git 后端权威，apply 落库即生效）。未挂库/未命中=nil。
-func workflowDocLookup(repo repository.Repository) func(string) ([]byte, bool) {
-	return func(name string) ([]byte, bool) {
-		objs := workflowDocObjects(repo, name)
-		if len(objs) == 0 {
-			return nil, false
-		}
-		for _, o := range objs {
-			if o.Scope == "global" {
-				return o.Content, true // global 同名优先（确定性投影）
-			}
-		}
-		return objs[0].Content, true // 无 global=首个对象行（List 序）
-	}
-}
-
-// workflowEnabledResolver 规则开关判定面（v0.58b enabled honoring——E3 余量段收口）装配侧
-// 注入：按 workflow 锚名取文档库对象行集 → workflow.EnabledOf 生效值纯映射（系统层 override
-// 优先字典序首个 → global 本体 → 零对象=缺省启用——与 /v1/workflows 聚合面 effectiveObject
-// 同 precedence 口径，判定面与聚合面无双源漂移）。零缓存=apply 落库即生效（Specs 同款热装载
-// 语义天然跟随）。未命中=ok=false 放行（builtin 锚零对象=注册表缺省启用；缺口可见不静默拦）。
-func workflowEnabledResolver(repo repository.Repository) workflow.EnabledResolver {
-	return workflow.EnabledFunc(func(name string) (bool, bool) {
-		objs := workflowDocObjects(repo, name)
-		if len(objs) == 0 {
-			return true, false
-		}
-		rows := make([]workflow.EnabledObject, 0, len(objs))
-		for _, o := range objs {
-			rows = append(rows, workflow.EnabledObject{Scope: o.Scope, Content: o.Content})
-		}
-		return workflow.EnabledOf(rows)
-	})
-}
-
-// workflowDocObjects 按 workflow 锚名在文档库全 scope 取 Workflow 对象行集（enabled.go
-// 判定面与既有 workflowDocLookup 共用的装配侧查找单点——List 跨 scope 通配，零缓存现读）。
-func workflowDocObjects(repo repository.Repository, name string) []repository.Object {
-	if repo == nil || name == "" {
-		return nil
-	}
-	objs, err := repo.List(context.Background(), "Workflow", "")
-	if err != nil {
-		return nil
-	}
-	var out []repository.Object
-	for _, o := range objs {
-		if o.Name == name {
-			out = append(out, *o)
-		}
-	}
-	return out
-}
-
-func permDocs(ctx context.Context, repo repository.Repository) ([]permission.ObjectDoc, error) {
-	if repo == nil {
-		return nil, errors.New("权限对象装载需文档库（--allow-apply 依附 --docs）")
-	}
-	var out []permission.ObjectDoc
-	for _, kind := range []string{"Role", "Group"} {
-		objs, err := repo.List(ctx, kind, "global")
-		if err != nil {
-			return nil, fmt.Errorf("枚举 %s 对象: %w", kind, err)
-		}
-		for _, o := range objs {
-			out = append(out, permission.ObjectDoc{Kind: kind, Name: o.Name, Scope: o.Scope, Content: o.Content})
-		}
-	}
-	return out, nil
-}
-
-// draftOpsStore draft.Persistence 的 ops DB 实现（装配层适配器）：draft 与 opslog 两包
-// 保持叶子解耦，字段映射只在此处发生（draft.Draft ↔ opslog.DraftRow）。
-type draftOpsStore struct{ s *opslog.SQLiteStore }
-
-func (a draftOpsStore) PutDraft(d *draft.Draft) error {
-	return a.s.UpsertDraft(opslog.DraftRow{
-		Kind: d.Kind, Scope: d.Scope, Name: d.Name, Content: d.Content,
-		FieldManager: d.FieldManager, ReasonRef: d.ReasonRef, BaseRV: d.BaseRV,
-		CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
-	})
-}
-
-func (a draftOpsStore) DeleteDraft(kind, scope, name string) error {
-	return a.s.DeleteDraft(kind, scope, name)
-}
-
-func (a draftOpsStore) ListDrafts() ([]*draft.Draft, error) {
-	rows, err := a.s.ListDrafts()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*draft.Draft, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, &draft.Draft{
-			Kind: r.Kind, Scope: r.Scope, Name: r.Name, Content: r.Content,
-			FieldManager: r.FieldManager, ReasonRef: r.ReasonRef, BaseRV: r.BaseRV,
-			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		})
-	}
-	return out, nil
-}
-
-// repoSpecs 可重复旗标收集（--design-repo name=<仓根>）。
-type repoSpecs []string
-
-// envDuration 读环境变量时长（部署锚点经环境注入的旗标缺省面——CORE_SYSTEM_HEARTBEAT_
-// INTERVAL 同款口径）：空/未设=缺省值；不可解析=0（启动校验 envDurationValid 另行显式
-// 报错——配置错误可见不静默，不在旗标缺省面静默吞）。
-func envDuration(key string, def time.Duration) time.Duration {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return def
-	}
-	if d, err := time.ParseDuration(raw); err == nil {
-		return d
-	}
-	return 0
-}
-
-// envDurationValid 环境变量时长词形前置校验（空/未设=合法；不可解析=false——调用方拒绝
-// 启动，与 --flag 解析失败同口径的可见失败）。
-func envDurationValid(key string) bool {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return true
-	}
-	_, err := time.ParseDuration(raw)
-	return err == nil
-}
-
-func (r *repoSpecs) String() string     { return strings.Join(*r, ",") }
-func (r *repoSpecs) Set(v string) error { *r = append(*r, v); return nil }
-
-// apiserverOpts 可选能力装配（九参构建签名零迁移；空=零可选面零行为翻转）。
-func apiserverOpts(metricsFace apiserver.MetricsFace, secrets *secretstore.Store, store *opslog.SQLiteStore, dispatch *flowbind.DispatchLog, approvals *flowbind.SyncApprovals, designDocs *docrepo.Set) []apiserver.Option {
-	var opts []apiserver.Option
-	if metricsFace != nil {
-		opts = append(opts, apiserver.WithMetrics(metricsFace))
-	}
-	if secrets != nil {
-		opts = append(opts, apiserver.WithSecrets(secrets))
-	}
-	// 事件归档查询面（v0.36 console 读面首段 GET /v1/events）：ops DB 恒装配（含内存库
-	// ——DB 非权威可重建，归档读面照常成立），恒注入不缺位。
-	if store != nil {
-		opts = append(opts, apiserver.WithEventLog(store))
-	}
-	// 应用史查询面（v0.38 console 读面第三段 GET /v1/history）：ops DB 恒装配（同上口径），
-	// 恒注入不缺位。
-	if store != nil {
-		opts = append(opts, apiserver.WithApplyLog(store))
-	}
-	// 审批判定账面（v0.46 审批独立账：批准/驳回写钩子 + GET /v1/approvals 读面）：ops DB
-	// 恒装配（同上口径），恒注入不缺位。
-	if store != nil {
-		opts = append(opts, apiserver.WithApprovalLog(store))
-	}
-	// 派单受理投影面（v0.50 R-8，GET /v1/agents/dispatches 读面）：随 flowbind 写面装配
-	// （--allow-apply；headless 载体=零物化零派单，face 缺席 503 防御面）。
-	if dispatch != nil {
-		opts = append(opts, apiserver.WithDispatchFace(dispatch))
-	}
-	// 通知中心收件箱面（v0.56 R-10，GET /v1/inbox 读面）：随批准投影面装配（--allow-apply；
-	// face 缺席 503 防御面）——四类判定分类自读面现读组装，console 零自建状态。
-	if approvals != nil {
-		opts = append(opts, apiserver.WithInboxFace(approvals))
-	}
-	// 设计文档面（v0.52 能力 A，/v1/design-docs* 读/史/草稿/apply）：随 --design-repo 装配
-	// （写面随 --allow-apply；未注册=面缺席 503）。
-	if designDocs != nil {
-		opts = append(opts, apiserver.WithDesignDocs(designDocs))
-	}
-	return opts
-}
-
-// selfHealHTTPBridge 自愈注入桥的 HTTP 形（v0.56 R-10——cored watchdog → dsh 宿主 plugin 侧
-// 会话推进面）。cored 侧零宿主依赖：桥=loopback POST {addr}/selfheal/bounce 载荷
-// {sessionId, word, source:"cored-watchdog"}；宿主 plugin 装配段启 listener（127.0.0.1，
-// env 同址回填 CORE_SYSTEM_SELFHEAL_ADDR）——经 sessionController.prompt(mode=queue) 注入
-// 固定 prompt「继续」（红线：只对已判停滞会话注入固定词，不新增任何自动任务/自动执行面）。
-// 超时=err 返回（watchdog 侧照实上报绝不静默——下一拍重试第一动作）。
-type selfHealHTTPBridge struct {
-	addr string
-	word string
-}
-
-func newSelfHealHTTPBridge(addr, word string) *selfHealHTTPBridge {
-	return &selfHealHTTPBridge{addr: addr, word: word}
-}
-
-func (b *selfHealHTTPBridge) Bounce(sessionID string) error {
-	payload, err := json.Marshal(map[string]any{
-		"sessionId": sessionID, "word": b.word, "source": "cored-watchdog",
-	})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, "http://"+b.addr+"/selfheal/bounce", bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("content-type", "application/json")
-	cl := &http.Client{Timeout: 10 * time.Second}
-	resp, err := cl.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("selfheal bridge HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return nil
-}
-
-func (b *selfHealHTTPBridge) InjectWord() string { return b.word }

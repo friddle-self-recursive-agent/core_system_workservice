@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite" // DriverName=sqlite（opslog 同款驱动）
 )
@@ -173,6 +174,21 @@ CREATE INDEX IF NOT EXISTS rt_intake_sessions_updated ON rt_intake_sessions(upda
 	if _, err := s.db.Exec(ddl); err != nil {
 		return fmt.Errorf("runtimestore: 建表: %w", err)
 	}
+	// 既有 DB 无损升列（opslog 同款口径——幂等：duplicate column 容忍；历史行缺省空=未回填/未审，
+	// 读侧零值词形诚实投影不回填写面）：
+	//   rt_run_records.session_id   —— G-08 loop 会话关联（唤醒桥受理回执回填）；
+	//   rt_run_records.verify_json  —— G-09/G-12 Verify 硬 gate 判定投影（卡 Verify 证据随行）；
+	//   rt_wake_records.session_id  —— G-08 loop 会话关联（/v1/loop/current 读面）。
+	for _, col := range []struct{ table, name, ddl string }{
+		{"rt_run_records", "session_id", `ALTER TABLE rt_run_records ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`},
+		{"rt_run_records", "verify_json", `ALTER TABLE rt_run_records ADD COLUMN verify_json TEXT NOT NULL DEFAULT ''`},
+		{"rt_wake_records", "session_id", `ALTER TABLE rt_wake_records ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`},
+	} {
+		if _, err := s.db.Exec(col.ddl); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return fmt.Errorf("runtimestore: %s 升列 %s: %w", col.table, col.name, err)
+		}
+	}
 	return nil
 }
 
@@ -193,14 +209,15 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 }
 
 // AppendRun 追加/更新对账 run（INSERT OR REPLACE——run 是**可演化投影**：受理落环后随
-// 推进迁移/审批信号迁移就地翻转相位与状态，写穿透同 run id 覆写最新词形，恢复取终态）。
+// 推进迁移/审批信号迁移/会话回填/Verify 判定就地翻转相位与状态，写穿透同 run id 覆写最新
+// 词形，恢复取终态）。
 func (s *SQLiteStore) AppendRun(r RunRow) error {
 	const q = `INSERT OR REPLACE INTO rt_run_records
-(run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+(run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	_, err := s.db.Exec(q, r.Run, r.Workflow, r.SpecSource, r.PhasesJSON, r.TransitionsJSON,
 		r.Phase, r.Status, r.BrakesJSON, r.TriggerSeq, r.EventID, r.Type, r.DedupKey,
-		r.Route, r.Owner, r.Target, r.Involved, r.StartedAt)
+		r.Route, r.Owner, r.Target, r.Involved, r.StartedAt, r.SessionID, r.VerifyJSON)
 	if err != nil {
 		return fmt.Errorf("runtimestore: rt_run_records 追加: %w", err)
 	}
@@ -222,15 +239,26 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	return nil
 }
 
-// AppendWake 追加唤醒投影（INSERT OR IGNORE——同 wake 重放 noop）。
+// AppendWake 追加唤醒投影（同 wake 重放 noop；会话锚回填走 upsert 语义——
+// session_id 非空的覆写词形经 AppendWakeSession，受理词形仍 IGNORE 幂等）。
 func (s *SQLiteStore) AppendWake(r WakeRow) error {
 	const q = `INSERT OR IGNORE INTO rt_wake_records
-(wake, agent, origin, status, level, trigger_seq, event_id, type, dedup_key, route, owner, at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+(wake, agent, origin, status, level, trigger_seq, event_id, type, dedup_key, route, owner, at, session_id)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	_, err := s.db.Exec(q, r.Wake, r.Agent, r.Origin, r.Status, r.Level, r.TriggerSeq,
-		r.EventID, r.Type, r.DedupKey, r.Route, r.Owner, r.At)
+		r.EventID, r.Type, r.DedupKey, r.Route, r.Owner, r.At, r.SessionID)
 	if err != nil {
 		return fmt.Errorf("runtimestore: rt_wake_records 追加: %w", err)
+	}
+	return nil
+}
+
+// AppendWakeSession 回填唤醒会话锚（G-08 loop 会话关联——同 wake 行就地覆写 session_id；
+// 受理词形已落、仅补会话锚的演化面。行缺席=幂等 noop（受理未落库时回填无锚可挂））。
+func (s *SQLiteStore) AppendWakeSession(wake int64, sessionID string) error {
+	const q = `UPDATE rt_wake_records SET session_id = ? WHERE wake = ?`
+	if _, err := s.db.Exec(q, sessionID, wake); err != nil {
+		return fmt.Errorf("runtimestore: rt_wake_records 回填 session_id: %w", err)
 	}
 	return nil
 }
@@ -287,7 +315,7 @@ func (s *SQLiteStore) ListTriggers(limit int, since int64) ([]TriggerRow, error)
 
 // ListRuns run 行集（run 升序；since=游标）。
 func (s *SQLiteStore) ListRuns(limit int, since int64) ([]RunRow, error) {
-	rows, err := s.db.Query(`SELECT run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at FROM rt_run_records WHERE run > ? ORDER BY run ASC LIMIT ?`, since, listLimit(limit))
+	rows, err := s.db.Query(`SELECT run, workflow, spec_source, phases_json, transitions_json, phase, status, brakes_json, trigger_seq, event_id, type, dedup_key, route, owner, target, involved, started_at, session_id, verify_json FROM rt_run_records WHERE run > ? ORDER BY run ASC LIMIT ?`, since, listLimit(limit))
 	if err != nil {
 		return nil, fmt.Errorf("runtimestore: rt_run_records 列举: %w", err)
 	}
@@ -297,7 +325,8 @@ func (s *SQLiteStore) ListRuns(limit int, since int64) ([]RunRow, error) {
 		var r RunRow
 		if err := rows.Scan(&r.Run, &r.Workflow, &r.SpecSource, &r.PhasesJSON, &r.TransitionsJSON,
 			&r.Phase, &r.Status, &r.BrakesJSON, &r.TriggerSeq, &r.EventID, &r.Type,
-			&r.DedupKey, &r.Route, &r.Owner, &r.Target, &r.Involved, &r.StartedAt); err != nil {
+			&r.DedupKey, &r.Route, &r.Owner, &r.Target, &r.Involved, &r.StartedAt,
+			&r.SessionID, &r.VerifyJSON); err != nil {
 			return nil, fmt.Errorf("runtimestore: 读 rt_run_records 行: %w", err)
 		}
 		r.Cursor = r.Run
@@ -329,7 +358,7 @@ func (s *SQLiteStore) ListDeliveries(limit int, since int64) ([]DeliveryRow, err
 
 // ListWakes 唤醒行集（wake 升序；since=游标）。
 func (s *SQLiteStore) ListWakes(limit int, since int64) ([]WakeRow, error) {
-	rows, err := s.db.Query(`SELECT wake, agent, origin, status, level, trigger_seq, event_id, type, dedup_key, route, owner, at FROM rt_wake_records WHERE wake > ? ORDER BY wake ASC LIMIT ?`, since, listLimit(limit))
+	rows, err := s.db.Query(`SELECT wake, agent, origin, status, level, trigger_seq, event_id, type, dedup_key, route, owner, at, session_id FROM rt_wake_records WHERE wake > ? ORDER BY wake ASC LIMIT ?`, since, listLimit(limit))
 	if err != nil {
 		return nil, fmt.Errorf("runtimestore: rt_wake_records 列举: %w", err)
 	}
@@ -338,7 +367,7 @@ func (s *SQLiteStore) ListWakes(limit int, since int64) ([]WakeRow, error) {
 	for rows.Next() {
 		var r WakeRow
 		if err := rows.Scan(&r.Wake, &r.Agent, &r.Origin, &r.Status, &r.Level, &r.TriggerSeq,
-			&r.EventID, &r.Type, &r.DedupKey, &r.Route, &r.Owner, &r.At); err != nil {
+			&r.EventID, &r.Type, &r.DedupKey, &r.Route, &r.Owner, &r.At, &r.SessionID); err != nil {
 			return nil, fmt.Errorf("runtimestore: 读 rt_wake_records 行: %w", err)
 		}
 		r.Cursor = r.Wake

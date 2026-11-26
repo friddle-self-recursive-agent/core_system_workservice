@@ -31,18 +31,20 @@ const (
 // WakeRecord 一条唤醒投影（agent 族绑定→agent 域的受理留痕；观测面非账本，
 // 账本=event_log 归档，ops-log.md §2）。
 type WakeRecord struct {
-	Wake       int64     // 唤醒序号（本 sink 进程内单调递增，1 起）
-	Agent      string    // agent 锚投影（=ExecutorBinding.Target：root/parent 等 <p>-agent 前缀段）
-	Origin     string    // 绑定来源（OriginRoute/OriginCC——route 主路/cc 旁路留痕）
-	Status     string    // 唤醒状态（v0.18 恒 WakeAccepted）
-	Level      string    // 事件等级（Escalate/HeartbeatLost 均 error——唤醒分诊观测点）
-	TriggerSeq int64     // 来源触发留痕 seq（可回指 GET /v1/triggers records）
-	EventID    string    // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
-	Type       string    // 事件类型
-	DedupKey   string    // 与发布方回执同源
-	Route      string    // 命中行 route 原文（root-agent / parent-agent 等锚的出处）
-	Owner      string    // owner 解析值（parent 锚的 owner 维度在此承载）
-	At         time.Time // 唤醒受理时刻（收到留痕同刻）
+	Wake       int64  // 唤醒序号（本 sink 进程内单调递增，1 起）
+	Agent      string // agent 锚投影（=ExecutorBinding.Target：root/parent 等 <p>-agent 前缀段）
+	Origin     string // 绑定来源（OriginRoute/OriginCC——route 主路/cc 旁路留痕）
+	Status     string // 唤醒状态（v0.18 恒 WakeAccepted）
+	Level      string // 事件等级（Escalate/HeartbeatLost 均 error——唤醒分诊观测点）
+	TriggerSeq int64  // 来源触发留痕 seq（可回指 GET /v1/triggers records）
+	EventID    string // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
+	Type       string // 事件类型
+	DedupKey   string // 与发布方回执同源
+	Route      string // 命中行 route 原文（root-agent / parent-agent 等锚的出处）
+	Owner      string // owner 解析值（parent 锚的 owner 维度在此承载）
+	SessionID  string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执经 AttachSessionID 回填，
+	//                     export.go LoopWake 读面消费；空=未回填不冒充已拉起）
+	At time.Time // 唤醒受理时刻（收到留痕同刻）
 }
 
 // WakeState 查询快照（WakeLog.State() 返回值；apiserver GET /v1/agents/wakes 载荷来源）。

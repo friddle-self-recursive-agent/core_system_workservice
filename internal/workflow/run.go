@@ -149,7 +149,11 @@ type RunRecord struct {
 	Involved    string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
 	//                             v0.37 console 读面第二段新增载荷键=代际判别器：运行抽屉「涉及文档」
 	//                             直接取本字段落对象链接，无前端拼凑）
-	StartedAt   time.Time       // run 起始时刻（收到留痕同刻）
+	SessionID string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执经 AttachSessionID 回填，
+	//                         export.go LoopSession 读面消费；空=未回填不冒充已拉起）
+	Verify *VerifyVerdict // Verify 相位硬 gate 判定投影（G-09/G-12：离开 Verifying 相位先过 gate——
+	//                         判定随 run 留痕写穿透，恢复取最新词形；nil=未审。新载荷键=代际判别器）
+	StartedAt time.Time // run 起始时刻（收到留痕同刻）
 }
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
@@ -160,6 +164,7 @@ type RunState struct {
 	Braked   int64       // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
 	Capped   int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
 	Disabled int64       // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
+	Gated    int64       // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
 	Runs     []RunRecord // 环内 run 投影（旧→新）
 }
 
@@ -199,10 +204,20 @@ type RunOptions struct {
 	// run 不落（disabled 计数可见）；判定缺席（未命中/解析失败）=放行（缺口可见不静默拦）。
 	EnabledRules EnabledResolver
 	// Store 运行态投影存储挂接（R-ENG §1 可选能力——nil=纯内存既有行为面零翻转）。挂接后
-	// 写穿透（run 落环/推进迁移/审批信号迁移同步 upsert——run 是可演化投影，恢复取最新
-	// 词形）+ 启动恢复（New 时装载历史行续接 seq/started 与环内最近 run；冷却窗键面
-	// lastAccepted 不恢复=重启重置冷却窗——窗口语义可接受偏差，留痕仍在）。读面零变化。
+	// 写穿透（run 落环/推进迁移/审批信号迁移/会话回填/Verify 判定同步 upsert——run 是可演化
+	// 投影，恢复取最新词形）+ 启动恢复（New 时装载历史行续接 seq/started 与环内最近 run；
+	// 冷却窗键面 lastAccepted 不恢复=重启重置冷却窗——窗口语义可接受偏差，留痕仍在）。
+	// 读面零变化。
 	Store runtimestore.Store
+	// VerifyGate Verify 相位硬 gate（G-09/G-12，R-TYPE-3——可选能力，nil=既有行为面零翻转）。
+	// 挂接后 run 试图离开 Verifying 相位先过 gate（connectops-code-audit 审核；判定锁外执行
+	// 不阻塞订阅主干）：OK=false 卡 Verify 不放行（gated 计数可见）+ OnVerifyBlocked 上报；
+	// OK=true 放行且判定随 run 留痕。装配层（cored）恒挂接（修复非选项——验收纪律收口）。
+	VerifyGate VerifyGate
+	// OnVerifyBlocked 卡 Verify 上报钩子（G-09/G-12——nil=只卡不上报）。gate 判定 blocked 时
+	// 在锁外调用（可发布 Escalate 事件——cored 走既有注册类型 root 通道）；同 run 每拍重审
+	// 重复 blocked 时重复回调（总线 dedup 窗口承担风暴抑制；checker 幂等只读）。
+	OnVerifyBlocked func(run RunRecord, v VerifyVerdict)
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
@@ -218,6 +233,7 @@ type RunLog struct {
 	braked       int64                // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
 	capped       int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
 	disabled     int64                // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
+	gated        int64                // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
 	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
@@ -426,7 +442,7 @@ func (r *RunLog) State() RunState {
 	defer r.mu.Unlock()
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
-	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Disabled: r.disabled, Runs: runs}
+	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Disabled: r.disabled, Gated: r.gated, Runs: runs}
 }
 
 // stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中

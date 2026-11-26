@@ -67,17 +67,19 @@ type CancelSource interface {
 type Options struct {
 	Tick      time.Duration // 拍间隔（缺省 DefaultTick；env CORE_SYSTEM_SCHEDULER_TICK_MS 装配层可覆写）
 	SpawnAddr string        // 宿主 spawn 桥地址（host:port 或 http://host:port；空=关断）
+	Sessions  SessionSource // 会话终结信号读口面（G-08 done 判定——nil=判定关断既有行为面）
 	Now       func() time.Time
 	Logf      func(format string, args ...any)
 }
 
 // Scheduler 任务调度器（cored 装配层持有；Run 阻塞直到 ctx 取消）。
 type Scheduler struct {
-	repo    repository.Repository
-	bus     *eventbus.Bus
-	sch     *scheme.Scheme
-	cancels CancelSource
-	applies ApplyLogSource
+	repo     repository.Repository
+	bus      *eventbus.Bus
+	sch      *scheme.Scheme
+	cancels  CancelSource
+	applies  ApplyLogSource
+	sessions SessionSource // 会话终结信号（G-08 done 判定——nil=关断）
 
 	url  string // spawn 桥 URL（空=关断）
 	hc   *http.Client
@@ -85,17 +87,17 @@ type Scheduler struct {
 	now  func() time.Time
 	logf func(format string, args ...any)
 
-	mu                    sync.Mutex
-	readySince            map[string]time.Time // ready 起算（等待时长排序输入）
-	leases                map[string]time.Time // 租约起点（taskId → 本轮拉起时刻）
-	backoff               map[string]time.Time // spawn 退避（taskId → 下次允许尝试时刻）
-	spawnFails            map[string]int       // spawn 连败计数（退避步进；成功清零）
-	cancelPending         map[string]bool      // 已请求取消、等自然结束的任务
-	cancelSeen            map[string]bool      // 已处理取消事件 ID（归档游标幂等）
-	conflictSeen          map[string]bool      // 已处置 apply 冲突行（ts+obj+fm 复合键——BUG-013）
-	conflictResolvedSeen  map[string]bool      // 已处置裁决事件 ID
-	conflictHold          map[string]bool      // Apply 冲突挂起（等 TaskConflictResolved，不重试）
-	conflictPairs         map[string]string    // 挂起对：当前任务 → 在先任务
+	mu                   sync.Mutex
+	readySince           map[string]time.Time // ready 起算（等待时长排序输入）
+	leases               map[string]time.Time // 租约起点（taskId → 本轮拉起时刻）
+	backoff              map[string]time.Time // spawn 退避（taskId → 下次允许尝试时刻）
+	spawnFails           map[string]int       // spawn 连败计数（退避步进；成功清零）
+	cancelPending        map[string]bool      // 已请求取消、等自然结束的任务
+	cancelSeen           map[string]bool      // 已处理取消事件 ID（归档游标幂等）
+	conflictSeen         map[string]bool      // 已处置 apply 冲突行（ts+obj+fm 复合键——BUG-013）
+	conflictResolvedSeen map[string]bool      // 已处置裁决事件 ID
+	conflictHold         map[string]bool      // Apply 冲突挂起（等 TaskConflictResolved，不重试）
+	conflictPairs        map[string]string    // 挂起对：当前任务 → 在先任务
 }
 
 // New 构建调度器（cancels/applies 可为 nil=取消扫描/Apply 关口冲突拦截关断；spawn 地址空=拉起关断保持 ready）。
@@ -127,7 +129,7 @@ func New(repo repository.Repository, bus *eventbus.Bus, sch *scheme.Scheme, canc
 		url = strings.TrimRight(addr, "/") + "/task/spawn"
 	}
 	return &Scheduler{
-		repo: repo, bus: bus, sch: sch, cancels: cancels, applies: applies,
+		repo: repo, bus: bus, sch: sch, cancels: cancels, applies: applies, sessions: opts.Sessions,
 		url: url, hc: &http.Client{Timeout: SpawnTimeout}, tick: tick, now: now, logf: logf,
 		readySince: map[string]time.Time{}, leases: map[string]time.Time{},
 		backoff: map[string]time.Time{}, spawnFails: map[string]int{},
@@ -180,6 +182,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	byObj := map[string]*repository.Object{}
 	byView := map[string]TaskView{}
 	byPhase := map[string]string{}
+	bySession := map[string]string{} // 任务 id → 现行 agentSession（G-08 done 判定匹配键）
 	for _, o := range objs {
 		spec, st, ok := Parse(o.Content)
 		if !ok {
@@ -196,11 +199,15 @@ func (s *Scheduler) Tick(ctx context.Context) {
 		byObj[id] = o
 		byView[id] = v
 		byPhase[id] = st.Phase
+		bySession[id] = st.AgentSession
 	}
 	s.trackReady(byPhase, now)
 	s.scanCancels()
 	s.applyCancels(ctx, byObj, byPhase)
 	s.recoverLeases(ctx, byObj, byView, cfg, now)
+	// 会话终结→done 判定（G-08——先于冲突链/dispatch：done 任务本拍即退出参选，
+	// agentSession 回填真实 sessionId；nil 源=判定关断既有行为面零翻转）。
+	s.observeSessionEnds(ctx, byObj, byPhase, bySession)
 	// Apply 关口冲突链（BUG-013）：扫描 409 冲突行 → 实质冲突判定 → 上抛/挂起；裁决事件两路
 	// 落面；让位复位。在 Plan 之前——挂起任务不参选不重试（恢复仍由本拍裁决/复位承担）。
 	s.scanApplyConflicts(ctx, byView, cfg, byObj)

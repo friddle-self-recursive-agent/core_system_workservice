@@ -69,16 +69,34 @@ func (m *MemoryStore) AppendDelivery(r DeliveryRow) error {
 	return nil
 }
 
-// AppendWake 追加唤醒投影（同 wake 重放 noop）。
+// AppendWake 追加唤醒投影（同 wake 重放 noop；session_id 非空=演化回填词形——
+// 受理行已在账时就地覆写会话锚，与 sqlite AppendWakeSession 同语义合并面）。
 func (m *MemoryStore) AppendWake(r WakeRow) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, x := range m.wakes {
-		if x.Wake == r.Wake {
+	for i := range m.wakes {
+		if m.wakes[i].Wake == r.Wake {
+			if r.SessionID != "" {
+				m.wakes[i].SessionID = r.SessionID // 演化回填（受理词形不变，只补会话锚）
+			}
 			return nil
 		}
 	}
 	m.wakes = append(m.wakes, r)
+	return nil
+}
+
+// AppendWakeSession 回填唤醒会话锚（同 wake 行就地覆写 session_id；行缺席=noop——与
+// sqlite 驱动同口径，受理未落库时回填无锚可挂）。
+func (m *MemoryStore) AppendWakeSession(wake int64, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.wakes {
+		if m.wakes[i].Wake == wake {
+			m.wakes[i].SessionID = sessionID
+			return nil
+		}
+	}
 	return nil
 }
 

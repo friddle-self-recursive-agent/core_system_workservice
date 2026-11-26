@@ -145,21 +145,21 @@ type TriggerState struct {
 type TriggerHub struct {
 	opts TriggerOptions
 
-	mu       sync.Mutex
-	seq      int64
-	ring     []TriggerRecord
-	received int64
-	dropped  int64
+	mu           sync.Mutex
+	seq          int64
+	ring         []TriggerRecord
+	received     int64
+	dropped      int64
 	scopeBlocked int64 // scope 闸累计拦截（BUG-010 派发闸；State().ScopeBlocked 可查询）
-	types    []string
-	cancels  []func()
-	rules    []scheme.DispatchRule // dispatch 表快照（AttachDispatch 挂接；裸 Attach 为空=留痕不标 route）
-	wired    map[string]bool       // 执行面接线态（WireExecutor 登记；缺省全 false=真实拉起 deferred）
-	runs     RunSink               // workflow 触发面 run 投影落点（BindRuns 挂接；nil=不推进 run）
-	deliver  DeliverySink          // notification 送达面送达投影落点（BindDeliveries 挂接；nil=不推进送达）
-	wakes    WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
-	advance  EventAdvanceSink      // 事件驱动推进面落点（v0.29 BindEventAdvance 挂接；nil=事件拍缺席——推进总闸关断）
-	gate     ScopeGate             // agent 投递 scope 闸（BUG-010 BindScopeGate 挂接；nil=全放行既有行为面）
+	types        []string
+	cancels      []func()
+	rules        []scheme.DispatchRule // dispatch 表快照（AttachDispatch 挂接；裸 Attach 为空=留痕不标 route）
+	wired        map[string]bool       // 执行面接线态（WireExecutor 登记；缺省全 false=真实拉起 deferred）
+	runs         RunSink               // workflow 触发面 run 投影落点（BindRuns 挂接；nil=不推进 run）
+	deliver      DeliverySink          // notification 送达面送达投影落点（BindDeliveries 挂接；nil=不推进送达）
+	wakes        WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
+	advance      EventAdvanceSink      // 事件驱动推进面落点（v0.29 BindEventAdvance 挂接；nil=事件拍缺席——推进总闸关断）
+	gate         ScopeGate             // agent 投递 scope 闸（BUG-010 BindScopeGate 挂接；nil=全放行既有行为面）
 }
 
 // SourceEngineInternal 引擎内部源事件的 source 审计值（event.md 规则 10 服务侧判定口径——
