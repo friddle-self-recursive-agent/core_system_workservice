@@ -166,30 +166,3 @@
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--ds-rad-card);
   box-shadow: var(--shadow); max-height: 70vh; overflow-y: auto;
 }
-
-/* ---------- 会话屏 v3（DeepSeek 式对话面） ---------- */
-.cc-app .cc-tr { display: flex; flex-direction: column; gap: 12px; }
-.cc-app .cc-msg { display: flex; max-width: 100%; }
-.cc-app .cc-msg.user { justify-content: flex-end; }
-.cc-app .cc-msg.user .cc-bubble {
-  max-width: 72%; background: var(--accent-dim); border: 1px solid var(--border);
-  border-radius: var(--ds-rad-card) var(--ds-rad-card) var(--rad-sm) var(--ds-rad-card);
-  padding: 12px 16px; white-space: pre-wrap; word-break: break-word; font-size: var(--fs-body);
-}
-.cc-app .cc-msg.ai { display: flex; gap: 12px; align-items: flex-start; }
-.cc-app .cc-avatar {
-  width: 28px; height: 28px; border-radius: var(--rad-sm);
-  background: var(--accent); color: var(--ds-btn-text);
-  display: flex; align-items: center; justify-content: center;
-  font-size: var(--fs-small); flex-shrink: 0;
-}
-.cc-app .cc-msg.ai .cc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.cc-app .cc-md { word-break: break-word; font-size: var(--fs-body); }
-.cc-app .cc-md p { margin: 0 0 8px; }
-.cc-app .cc-msg.tool { padding-left: 40px; }
-.cc-app .cc-meta { font-size: var(--fs-micro); padding: 0 2px; color: var(--text-3); }
-.cc-app .cc-empty {
-  border: 1px dashed var(--border-2); border-radius: var(--ds-rad-panel);
-  padding: 24px 16px; text-align: center; color: var(--text-2); background: var(--panel-2);
-  font-size: var(--fs-small);
-}

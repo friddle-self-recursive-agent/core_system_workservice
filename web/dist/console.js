@@ -1278,14 +1278,8 @@ var CoreConsole = (() => {
     };
   }
 
-  // src/core/i18n.js
-  var KEY = "cc.locale";
-  var locale = "zh";
-  try {
-    locale = typeof localStorage !== "undefined" && localStorage.getItem(KEY) || "zh";
-  } catch {
-  }
-  var en = /* @__PURE__ */ new Map([
+  // src/core/i18n-en.js
+  var enEntries = [
     /* 侧栏/壳（main.js） */
     ["Core Console", "Core Console"],
     ["web \u91CD\u6784\u8D77\u70B9", "web rebuild baseline"],
@@ -2021,8 +2015,74 @@ var CoreConsole = (() => {
     ["\u6B63\u5728\u53D1\u751F\u2014\u2014\u63A8\u8FDB\u7531 patch \u5B9E\u65F6\u5237\u65B0", "Happening now \u2014 progress refreshes live via patches"],
     ["\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u4E8B\u4EF6\u6309\u5F52\u6863\u7A97\u53E3\u56DE\u653E", "Past phase \u2014 events replayed from the archive window"],
     ["\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279", "Handle this approval"],
-    ["\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002", "No events in the archive window yet \u2014 rows land here live as the workflow advances."]
-  ]);
+    ["\u5F52\u6863\u7A97\u53E3\u5185\u6682\u65E0\u4E8B\u4EF6\u2014\u2014workflow \u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u843D\u884C\u3002", "No events in the archive window yet \u2014 rows land here live as the workflow advances."],
+    /* ── 会话屏 v4（C 批）EN 回填（chat.js 新词形——C-11 双语随行） ── */
+    ["\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u5FD9\u7684\uFF1F", "How can I help?"],
+    ["\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\uFF0F\u63D0\u4EA4\u9700\u6C42\u2014\u2014\u4F1A\u8BDD\u7531\u5BBF\u4E3B\u5EFA\u6863\uFF0C\u8F6C\u5F55\u5373\u771F\u5B9E journal\u3002", "Find docs / update docs / submit requests \u2014 sessions are created by the host; the transcript is the real journal."],
+    ["\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D", "Run a code audit, measure the actual-vs-doc gap, and fix it"],
+    ["\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355", "Find all drifted docs and produce a reconciliation list"],
+    ["\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981", "Summarize the current loop into a SessionLog"],
+    ["\u68C0\u67E5 workflow \u5F15\u64CE\u7684\u8FD0\u884C\u8BB0\u5F55\uFF0C\u6807\u51FA\u5931\u8D25\u539F\u56E0", "Inspect workflow engine runs and flag failure causes"],
+    ["\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09", "Interject (inject into the running session now \u2014 steer)"],
+    ["\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026", "Submit a request / find a doc / update a doc\u2026"],
+    ["\u53D1\u9001", "Send"],
+    ["\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09", "Stop (interrupt the running turn)"],
+    ["Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62", "Enter to send \xB7 Shift+Enter for newline \xB7 becomes interject/stop while running"],
+    ["Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295", "Enter to interject \xB7 \u300C\u25A0\u300D stops the running turn \xB7 falls back to queue when idle"],
+    ["\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09", "Acceptance mode = steer (inject into the running session now)"],
+    ["\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09", "Acceptance mode = queue (enqueued \u2014 read when the agent winds down)"],
+    ["\u6B63\u5728\u8C03\u7528", "Calling"],
+    ["\u5DF2 {n} \u79D2", "({n}s)"],
+    ["agent \u8FD0\u884C\u4E2D\u2026", "agent working\u2026"],
+    ["\u6392\u961F {n}", "queue {n}"],
+    ["\u63D2\u8BDD {n}", "steer {n}"],
+    ["\u5DF2\u6DF1\u5EA6\u601D\u8003", "Deep thinking"],
+    ["\u5DF2\u8C03\u7528", "Called"],
+    ["\u5B8C\u6210", "done"],
+    ["\u6267\u884C\u4E2D\u2026", "running\u2026"],
+    ["\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500", "\u2500\u2500\u2500\u2500 result \u2500\u2500\u2500\u2500"],
+    ["\u9001\u8FBE\u4E2D\u2026", "Delivering\u2026"],
+    ["\u9001\u8FBE\u5931\u8D25\uFF08", "Delivery failed ("],
+    ["\u91CD\u8BD5", "Retry"],
+    ["\u6CE8\u5165\u4E0A\u4E0B\u6587", "Injected context"],
+    ["\u505C\u6B62\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js.stop \u7F3A\u5E2D\uFF09\u2014\u2014\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002", "Stop channel not injected (chatfaces.js.stop absent) \u2014 explicitly absent, never faked."],
+    ["\u5DF2\u8BF7\u6C42\u505C\u6B62\u2014\u2014\u4F1A\u8BDD\u56DE\u5230\u7A7A\u95F2\u540E\u8F6C\u5F55\u53EF\u89C1\u4E2D\u65AD\u8BCD\u5F62\u3002", "Stop requested \u2014 the interrupt word form appears in the transcript once the session goes idle."],
+    ["\u505C\u6B62\u5931\u8D25\uFF08", "Stop failed ("],
+    ["\u65B0\u4F1A\u8BDD", "New session"],
+    ["\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08", "New session failed ("],
+    ["\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002", "No sessions yet \u2014 click New session and the host creates one."],
+    ["\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08", "Session list unreadable ("],
+    ["\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026", "Loading sessions\u2026"],
+    ["\u4ECA\u5929", "Today"],
+    ["\u66F4\u65E9", "Earlier"],
+    ["\u7A7A\u767D", "blank"],
+    ["\u7A7A\u95F2", "Idle"],
+    ["\u8FD0\u884C\u4E2D", "Running"],
+    ["\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026", "Loading transcript\u2026"],
+    ["\u8F6C\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08", "Transcript face unreadable ("],
+    ["\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002", ") \u2014 never fakes an empty state."],
+    ["\uFF08\u7A7A\u56DE\u590D\uFF09", "(empty reply)"],
+    ["\u5DE5\u5177", "Tool"],
+    ["\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B", "Own chat face \u2014 real transcript and delivery; session ids come from the host, never hand-typed"],
+    ["\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002", "Dialog channel not injected (chatfaces.js absent) \u2014 transcript & delivery faces explicitly absent, never faked."],
+    ["\u5F00\u53D1\u8005", "Developer"],
+    ["\u2014\u2014\u4EFB\u52A1\u8BE6\u60C5", " \u2014 task detail"],
+    ["\u5FEB\u7167\u4E09\u6E90\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u53CD\u67E5\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002", "Reverse lookup across the three snapshot sources (Task.agentSession \u222A event agentSession) finds no registered link \u2014 a standalone session (zero fabrication)."],
+    ["\u5173\u8054\uFF1A", "Linked: "],
+    ["root \u4F1A\u8BDD\uFF08\u9ED8\u8BA4\uFF09", "root session (default)"],
+    ["Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE root agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09", "Enter to send \xB7 queue semantics (delivered to the root agent session; the conclusion lands in docs by the agent, visible via status badge and node graph)"],
+    ["\u5DF2\u9001\u8FBE\uFF08queue\uFF09\u2014\u2014root agent \u4F1A\u8BDD\u5DF2\u53D7\u7406\uFF1B\u7ED3\u8BBA\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\u3002", "Delivered (queue) \u2014 root agent session accepted; watch the status badge and node graph for the conclusion."],
+    ["\uFF09", ")"]
+  ];
+
+  // src/core/i18n.js
+  var KEY = "cc.locale";
+  var locale = "zh";
+  try {
+    locale = typeof localStorage !== "undefined" && localStorage.getItem(KEY) || "zh";
+  } catch {
+  }
+  var en = new Map(enEntries);
   var DICTS = { en };
   var subs = /* @__PURE__ */ new Set();
   function t(s) {
@@ -2211,10 +2271,6 @@ var CoreConsole = (() => {
       }
     }
     return html3;
-  }
-  function expandBlock(innerHtml, label, opts) {
-    const o = opts || {};
-    return '<details class="ex-block' + (o.cls ? " " + esc(o.cls) : "") + (o.open ? " open" : "") + '"' + (o.open ? " open" : "") + '><summary class="ex-sum"><span class="ex-chev">\u25B8</span>' + esc(label || t("\u5C55\u5F00")) + '</summary><div class="ex-body">' + (innerHtml || "") + "</div></details>";
   }
 
   // node_modules/marked/lib/marked.esm.js
@@ -10063,8 +10119,6 @@ ${text2}</tr>
   function faces() {
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
-  var CHAT = { sessionId: "", timer: 0, pending: [], titles: /* @__PURE__ */ new Map() };
-  var LAST = { route: "", paramKey: "", locale: "" };
   function blocksOf(content) {
     const out = { text: "", reasoning: "", toolCalls: [] };
     if (!Array.isArray(content)) return out;
@@ -10087,149 +10141,324 @@ ${text2}</tr>
       const type2 = String(ev.type || "");
       const data = ev.data && typeof ev.data === "object" ? ev.data : {};
       const seq2 = Number(ev.seq) || 0;
+      const time = Number(ev.time) || 0;
       if (type2 === "user/message") {
         const src = data.source && typeof data.source === "object" ? String(data.source.kind || "") : "";
         if (src === "compact-checkpoint") continue;
         const b = blocksOf(data.content);
-        nodes.push({ kind: "user", seq: seq2, time: ev.time, text: b.text, injected: src !== "user" });
+        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: src !== "user" });
       } else if (type2 === "assistant/message") {
-        const b = blocksOf(data.message && Array.isArray(data.message.content) ? data.message.content : data.content);
+        const b = blocksOf(data.content);
         for (const tc of b.toolCalls) order.push(tc.id);
-        nodes.push({ kind: "assistant", seq: seq2, time: ev.time, text: b.text, reasoning: b.reasoning });
+        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning });
       } else if (type2 === "tool/call") {
         const id = String(data.callId || data.id || "");
-        if (!tools.has(id)) tools.set(id, { seq: seq2, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "" });
+        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "" });
         order.push(id);
       } else if (type2 === "tool/result") {
         const id = String(data.callId || data.id || "");
         const t2 = tools.get(id);
         if (t2) t2.result = typeof data.content === "string" ? data.content : data.output != null ? String(typeof data.output === "string" ? data.output : JSON.stringify(data.output)) : "";
       } else if (type2 === "system/message" || type2 === "developer/message") {
-        nodes.push({ kind: "system", seq: seq2, time: ev.time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
+        nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
       }
     }
     for (const id of order) {
       const t2 = tools.get(id);
       if (!t2) continue;
-      nodes.push({ kind: "tool", seq: t2.seq, name: t2.name || t("\u5DE5\u5177"), args: t2.args, result: t2.result });
+      nodes.push({ kind: "tool", seq: t2.seq, time: t2.time, name: t2.name || t("\u5DE5\u5177"), args: t2.args, result: t2.result });
     }
     nodes.sort((a, b) => a.seq - b.seq);
     return nodes;
   }
+  function nextBatch(nodes, paintedKeys, firstPaint) {
+    const rows = Array.isArray(nodes) ? nodes : [];
+    if (firstPaint) return rows;
+    const out = rows.filter((n) => !paintedKeys.has(nodeKey(n)));
+    return out;
+  }
+  function nodeKey(n) {
+    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
+  }
+  function modeForState(st) {
+    return !!(st && st.running === true) ? "steer" : "queue";
+  }
+  function dayGroupOf(updatedAt, nowMs) {
+    const t2 = Number(updatedAt) || 0;
+    if (!t2) return "earlier";
+    const now = Number(nowMs) || Date.now();
+    const startOf = new Date(now);
+    startOf.setHours(0, 0, 0, 0);
+    return now - t2 < 24 * 3600 * 1e3 && startOf.getTime() <= t2 ? "today" : "earlier";
+  }
+  var CHAT = {
+    sessionId: "",
+    // 当前会话（宿主发 id——零手填）
+    timer: 0,
+    // 轮询定时器（导航离开即清）
+    pending: [],
+    // 待达回声 {text, requestId, at}（C-05 按 requestId 销账）
+    lastSeq: 0,
+    // 已渲染转录尾（增量分派锚）
+    painted: /* @__PURE__ */ new Set(),
+    // 已渲染节点键（nodeKey 族）
+    seenSeq: /* @__PURE__ */ new Map(),
+    // 会话 id → 已见尾 seq（未读点 highwater）
+    state: null,
+    // 最近一次 chat-state 词形
+    el: null
+    // 当前屏根（路由切换换引用）
+  };
+  var LAST = { route: "", paramKey: "", locale: "" };
   function nodeHtml(n, names) {
     if (n.kind === "user") {
-      if (n.injected && !n.pending) {
-        return '<div class="cc-msg tool">' + expandBlock(
-          '<div class="mono small" style="white-space:pre-wrap">' + esc(trunc(String(n.text || ""), 1200)) + "</div>",
-          t("\u6CE8\u5165\u4E0A\u4E0B\u6587\uFF08") + trunc(String(n.text || ""), 60) + t("\u2026\uFF09")
-        ) + "</div>";
-      }
-      return '<div class="cc-msg user"><div class="cc-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">\u2026</span>') + "</div>" + (n.pending ? '<div class="cc-meta faint">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : "") + "</div>";
+      const pending = n.pending ? '<div class="chat-pending">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="chat-pending">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "";
+      const err = n.error ? '<div class="chat-err"><span>' + esc(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(n.error) + t("\uFF09")) + '</span><button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || "")) + '">' + esc(t("\u91CD\u8BD5")) + "</button></div>" : "";
+      return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '"><div class="chat-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">\u2026</span>') + "</div>" + (pending || err ? "<div>" + pending + err + "</div>" : "") + "</div>";
     }
     if (n.kind === "assistant") {
-      return '<div class="cc-msg ai"><div class="cc-avatar">\u25C6</div><div class="cc-body">' + (n.reasoning ? expandBlock('<div class="msg-text faint">' + linkifyRefs(n.reasoning, names) + "</div>", t("\u601D\u8003\u8FC7\u7A0B")) : "") + (n.text ? '<div class="cc-md md-body">' + renderMarkdown(n.text) + "</div>" : '<div class="cc-md faint">' + esc(t("\uFF08\u7A7A\u56DE\u590D\uFF09")) + "</div>") + "</div></div>";
+      const reasoning = n.reasoning ? '<details class="chat-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u6DF1\u5EA6\u601D\u8003")) + '</summary><div class="ex-body">' + linkifyRefs(n.reasoning, names) + "</div></details>" : "";
+      const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + "</div>" : '<div class="chat-md faint">' + esc(t("\uFF08\u7A7A\u56DE\u590D\uFF09")) + "</div>";
+      return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + "</div>";
     }
     if (n.kind === "tool") {
-      const detail = '<div class="mono small" style="white-space:pre-wrap">' + esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n\u2500\u2500\u2500\u2500\n" + esc(trunc(String(n.result), 800)) : "") + "</div>";
-      return '<div class="cc-msg tool">' + expandBlock(detail, t("\u5DE5\u5177\uFF1A") + n.name) + "</div>";
+      const detail = esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n" + t("\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500") + "\n" + esc(trunc(String(n.result), 800)) : "");
+      const done = n.result ? '<span class="chat-tool-ok">' + esc(t("\u5B8C\u6210")) + "</span>" : '<span class="chat-tool-none">' + esc(t("\u6267\u884C\u4E2D\u2026")) + "</span>";
+      return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u8C03\u7528")) + ' <span class="chat-tool-name">' + esc(n.name) + "</span> " + done + '</summary><div class="ex-body">' + detail + "</div></details>";
     }
-    return '<div class="cc-meta faint">' + (n.dev ? esc(t("\u5F00\u53D1\u8005")) + " \xB7 " : "") + esc(trunc(String(n.text || ""), 200)) + "</div>";
+    const label = (n.dev ? t("\u5F00\u53D1\u8005") + " \xB7 " : "") + trunc(String(n.text || ""), 200);
+    return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '">' + esc(label) + "</div>";
   }
-  function transcriptHtml(nodes, names) {
-    if (!nodes.length) {
-      return '<div class="cc-empty">' + esc(t("\u8F6C\u5F55\u4E3A\u7A7A\u2014\u2014\u4E0B\u65B9\u53D1\u7B2C\u4E00\u6761\u6D88\u606F\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\u3002")) + "</div>";
+  function pendingNodes() {
+    return CHAT.pending.map((p) => ({ kind: "user", seq: Number.MAX_SAFE_INTEGER, text: p.text, pending: true, requestId: p.requestId }));
+  }
+  function liveRowHtml(st) {
+    if (!st || st.running !== true) return "";
+    const tool = String(st.currentTool || "");
+    let dur = "";
+    if (tool && Number(st.currentToolSince) > 0) {
+      const s = Math.max(0, Math.round((Date.now() - Number(st.currentToolSince)) / 1e3));
+      dur = "\uFF08" + esc(t("\u5DF2 {n} \u79D2").replace("{n}", String(s))) + "\uFF09";
     }
-    return nodes.map((n) => nodeHtml(n, names)).join("");
+    const qd = Number(st.queueDepth) || 0;
+    const sd = Number(st.steerDepth) || 0;
+    const queue = qd ? ' <span class="chip acc tiny">' + esc(t("\u6392\u961F {n}").replace("{n}", String(qd))) + "</span>" : "";
+    const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u63D2\u8BDD {n}").replace("{n}", String(sd))) + "</span>" : "";
+    const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("agent \u8FD0\u884C\u4E2D\u2026");
+    return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + "</span>" + queue + steer + "</div>";
   }
-  function sessionRowHtml2(s, cur, display, pick) {
-    const id = String(pick != null ? pick : s.sessionId || "");
-    const label = String(display || id);
-    const sel = id === cur ? ' style="outline:1px solid var(--accent);background:var(--panel-2);border-radius:8px"' : "";
-    const flag = s.blank ? chip(t("\u7A7A\u767D"), "mute") : s.running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : "";
-    return '<div class="dash-row" data-sess-pick="' + esc(id) + '" role="link"' + sel + '><div class="dr-main"><b class="mono">' + esc(trunc(label, 24)) + '</b></div><div class="dr-side">' + flag + (s.updatedAt ? '<span class="small faint">' + esc(relAge(new Date(Number(s.updatedAt)).toISOString()) || "") + "</span>" : "") + "</div></div>";
+  function emptyStateHtml() {
+    const samples = [
+      t("\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"),
+      t("\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"),
+      t("\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981"),
+      t("\u68C0\u67E5 workflow \u5F15\u64CE\u7684\u8FD0\u884C\u8BB0\u5F55\uFF0C\u6807\u51FA\u5931\u8D25\u539F\u56E0")
+    ];
+    return '<div class="chat-empty"><div class="chat-empty-hi">' + esc(t("\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u5FD9\u7684\uFF1F")) + '</div><div class="chat-empty-sub">' + esc(t("\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\uFF0F\u63D0\u4EA4\u9700\u6C42\u2014\u2014\u4F1A\u8BDD\u7531\u5BBF\u4E3B\u5EFA\u6863\uFF0C\u8F6C\u5F55\u5373\u771F\u5B9E journal\u3002")) + '</div><div class="chat-samples">' + samples.map((s) => '<button class="chat-sample" data-cc-sample>' + esc(s) + "</button>").join("") + "</div></div>";
   }
-  function sessionsHtml(items, cur) {
-    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
-    if (!rows.length) return '<div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002")) + "</div>";
-    const head = rows.slice(0, 40).map((s) => {
-      const title = CHAT.titles.get(String(s.sessionId));
-      return sessionRowHtml2(s, cur, title, String(s.sessionId));
-    }).join("");
-    return head + (rows.length > 40 ? '<div class="small faint" style="padding:4px 6px">' + esc(t("\u2026\u5171 ") + rows.length + t(" \u4F1A\u8BDD\uFF08\u6700\u8FD1 40 \u6761\uFF09")) + "</div>" : "");
+  function stateChipsHtml(st) {
+    if (!st) return "";
+    const running = st.running === true;
+    const chips = [running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : chip(t("\u7A7A\u95F2"), "mute")];
+    const qd = Number(st.queueDepth) || 0;
+    if (qd) chips.push(chip(t("\u6392\u961F {n}").replace("{n}", String(qd)), "llm"));
+    return chips.join(" ");
   }
-  async function hydrateTitles(el, f, items) {
-    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)).slice(0, 10);
-    let dirty = false;
-    await Promise.all(rows.map(async (s) => {
-      const id = String(s.sessionId);
-      if (CHAT.titles.has(id) || s.blank) return;
-      try {
-        const r = await f.transcript(id, 12);
-        if (r.status !== 200 || !Array.isArray(r.data && r.data.events)) return;
-        const firstUser = r.data.events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join(" ") || "")).filter(Boolean)[0];
-        if (firstUser) {
-          CHAT.titles.set(id, trunc(firstUser, 24));
-          dirty = true;
-        }
-      } catch {
+  function sessionRowHtml2(s, cur, highwater) {
+    const id = String(s.sessionId || "");
+    const seen = Number(highwater instanceof Map ? highwater.get(id) : 0) || 0;
+    const unread = !s.blank && Number(s.updatedAt) > seen && id !== cur;
+    const live = s.running === true;
+    const dot = live ? " live" : unread ? " unread" : "";
+    const title = String(s.title || "");
+    return '<div class="chat-sess' + (id === cur ? " active" : "") + '" data-sess-pick="' + esc(id) + '" role="link"><span class="chat-dot' + dot + '"></span><div class="chat-sess-main"><div class="chat-sess-id">' + esc(trunc(title || id, 26)) + "</div>" + (title ? '<div class="chat-sess-sub mono">' + esc(trunc(id, 26)) + "</div>" : "") + '</div><div class="chat-sess-side">' + (live ? chip(t("\u8FD0\u884C\u4E2D"), "ok") : s.blank ? chip(t("\u7A7A\u767D"), "mute") : "") + (s.updatedAt ? '<span class="chat-sess-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</div></div>";
+  }
+  function sessionsHtml(items, cur, seenSeq) {
+    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId);
+    if (!rows.length) return '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002")) + "</div>";
+    const today = rows.filter((s) => dayGroupOf(s.updatedAt) === "today");
+    const earlier = rows.filter((s) => dayGroupOf(s.updatedAt) !== "today");
+    const out = [];
+    if (today.length) {
+      out.push('<div class="chat-sess-day">' + esc(t("\u4ECA\u5929")) + "</div>");
+      out.push(today.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
+    }
+    if (earlier.length) {
+      out.push('<div class="chat-sess-day">' + esc(t("\u66F4\u65E9")) + "</div>");
+      out.push(earlier.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
+    }
+    return out.join("");
+  }
+  function composerHtmlInner(can, running) {
+    const mode = running ? "steer" : "queue";
+    return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="chat-foot">' + esc(running ? t("Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295") : t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62")) + "</div>";
+  }
+  function screenShell(can) {
+    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
+  }
+  function streamEl(el) {
+    return el.querySelector("[data-cc-tr]");
+  }
+  function nearBottom(box) {
+    return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  }
+  function followBottom(box) {
+    box.scrollTop = box.scrollHeight;
+  }
+  function applyIncremental(el, nodes) {
+    const box = streamEl(el);
+    if (!box) return { appended: 0, jumpVisible: false };
+    let col = box.querySelector("[data-cc-col]");
+    if (!col) {
+      box.innerHTML = '<div class="chat-col" data-cc-col></div>';
+      col = box.querySelector("[data-cc-col]");
+    }
+    const wasBottom = nearBottom(box);
+    const fresh = nextBatch(nodes, CHAT.painted, CHAT.lastSeq === 0);
+    if (CHAT.lastSeq === 0 && !CHAT.painted.size) {
+      col.innerHTML = "";
+    }
+    for (const n of fresh) {
+      CHAT.painted.add(nodeKey(n));
+      if (Number(n.seq) && Number(n.seq) !== Number.MAX_SAFE_INTEGER && Number(n.seq) > CHAT.lastSeq) CHAT.lastSeq = Number(n.seq);
+      col.insertAdjacentHTML("beforeend", nodeHtml(n, null));
+    }
+    const pendBox = box.querySelector("[data-cc-pend]");
+    const pendHtml = pendingNodes().map((n) => nodeHtml(n, null)).join("");
+    if (pendHtml) {
+      if (!pendBox) {
+        col.insertAdjacentHTML("beforeend", "<div data-cc-pend>" + pendHtml + "</div>");
+      } else {
+        pendBox.innerHTML = pendHtml;
       }
-    }));
-    if (dirty) refreshSessions(el, f);
+    } else if (pendBox) {
+      pendBox.remove();
+    }
+    const empty = box.querySelector("[data-cc-empty]");
+    const isEmpty = !nodes.length && !CHAT.pending.length;
+    if (isEmpty && !empty) col.insertAdjacentHTML("afterbegin", emptyStateHtml());
+    else if (!isEmpty && empty) empty.remove();
+    const jump = el.querySelector("[data-cc-jump]");
+    if (wasBottom) {
+      followBottom(box);
+      if (jump) {
+        jump.hidden = true;
+      }
+      return { appended: fresh.length, jumpVisible: false };
+    }
+    if (jump && fresh.length) {
+      jump.hidden = false;
+      const n = jump.querySelector("[data-cc-jump-n]");
+      const prev = Number(n && n.textContent) || 0;
+      if (n) n.textContent = String(prev + fresh.length);
+    }
+    return { appended: fresh.length, jumpVisible: !!(jump && !jump.hidden) };
   }
   async function refreshSessions(el, f) {
     const box = el.querySelector("[data-cc-sessions]");
     if (!box) return;
     const r = await f.sessions();
     if (r.status === 200) {
-      box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId);
-      hydrateTitles(el, f, r.data && r.data.items);
+      box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId, CHAT.seenSeq);
     } else {
-      box.innerHTML = '<div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
+      box.innerHTML = '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
     }
     box.querySelectorAll("[data-sess-pick]").forEach((row) => {
       row.addEventListener("click", () => {
-        CHAT.sessionId = String(row.getAttribute("data-sess-pick") || "");
-        refreshSessions(el, f);
-        refreshTranscript(el, f, true);
-        ensureCtxBar(el, CHAT.sessionId);
+        pickSession(el, f, String(row.getAttribute("data-sess-pick") || ""));
       });
     });
   }
-  async function refreshState(el, f) {
+  function pickSession(el, f, id) {
+    if (!id || id === CHAT.sessionId) return;
+    CHAT.sessionId = id;
+    CHAT.lastSeq = 0;
+    CHAT.painted = /* @__PURE__ */ new Set();
+    CHAT.state = null;
+    paintState(el);
+    refreshSessions(el, f);
+    refreshTranscript(el, f);
+    ensureCtxBar(el, id);
+  }
+  function paintState(el) {
     const slot = el.querySelector("[data-cc-state]");
-    if (!slot || !CHAT.sessionId) {
-      if (slot) slot.innerHTML = "";
+    if (slot) slot.innerHTML = stateChipsHtml(CHAT.state);
+    const live = el.querySelector("[data-cc-live]");
+    const st = CHAT.state;
+    if (st && st.running === true) {
+      const html3 = liveRowHtml(st);
+      if (live) {
+        live.innerHTML = html3;
+      } else {
+        const box = streamEl(el);
+        if (box) {
+          const col = box.querySelector("[data-cc-col]");
+          (col || box).insertAdjacentHTML("afterbegin", "<div data-cc-live>" + html3 + "</div>");
+        }
+      }
+    } else if (live) {
+      live.remove();
+    }
+    const btn = el.querySelector("[data-cc-send]");
+    const ta = el.querySelector("[data-cc-text]");
+    const running = !!(st && st.running === true);
+    if (btn && running !== (btn.dataset.mode === "steer")) {
+      btn.dataset.mode = running ? "steer" : "queue";
+      btn.title = running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001");
+      const ico = btn.querySelector(".chat-send-ico");
+      if (ico) ico.textContent = running ? "\u25A0" : "\u2191";
+      btn.classList.toggle("stop", running);
+    }
+    if (ta) {
+      const ph = running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026");
+      if (ta.placeholder !== ph) ta.placeholder = ph;
+    }
+  }
+  async function refreshState(el, f) {
+    if (!CHAT.sessionId) {
+      CHAT.state = null;
+      paintState(el);
       return;
     }
     const r = await f.state(CHAT.sessionId);
     if (r.status !== 200 || !r.data || typeof r.data !== "object") {
-      slot.innerHTML = "";
       return;
     }
-    const d = r.data;
-    slot.innerHTML = d.running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : chip(t("\u7A7A\u95F2"), "mute");
+    CHAT.state = r.data;
+    paintState(el);
+    paintSendModeNote(el);
+  }
+  function paintSendModeNote(el) {
+    const note = el.querySelector("[data-cc-note]");
+    if (!note) return;
+    const st = CHAT.state;
+    const running = !!(st && st.running === true);
+    note.textContent = running ? t("\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09") : t("\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09");
   }
   async function refreshTranscript(el, f) {
-    const box = el.querySelector("[data-cc-tr]");
+    const box = streamEl(el);
     if (!box) return;
     if (!CHAT.sessionId) {
-      box.innerHTML = '<div class="cc-empty">' + esc(t("\u5DE6\u4FA7\u9009\u62E9\u4F1A\u8BDD\uFF0C\u6216\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u2014\u2014\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B\u3002")) + "</div>";
+      box.innerHTML = '<div class="chat-col" data-cc-col>' + emptyStateHtml() + "</div>";
       return;
     }
     const r = await f.transcript(CHAT.sessionId, 80);
     if (r.status !== 200) {
-      box.innerHTML = '<div class="cc-empty">' + esc(t("\u8F6C\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + (r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
+      box.innerHTML = '<div class="chat-col" data-cc-col><div class="chat-empty"><div class="chat-empty-sub">' + esc(t("\u8F6C\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + (r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div></div></div>";
+      CHAT.lastSeq = 0;
+      CHAT.painted = /* @__PURE__ */ new Set();
       return;
     }
     const events = r.data && Array.isArray(r.data.events) ? r.data.events : [];
     if (CHAT.pending.length) {
-      const seen = new Set(events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n"))));
-      CHAT.pending = CHAT.pending.filter((p) => !seen.has(p.text));
+      const byReq = new Set(events.map((e) => String(e && e.data && e.data.requestId || "")));
+      const texts = new Set(events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n"))));
+      CHAT.pending = CHAT.pending.filter((p) => !(p.requestId && byReq.has(p.requestId)) && !texts.has(p.text));
     }
     const nodes = mapTranscript(events);
-    for (const p of CHAT.pending) nodes.push({ kind: "user", seq: Number.MAX_SAFE_INTEGER, text: p.text, pending: true });
-    box.innerHTML = transcriptHtml(nodes, null);
-    box.scrollTop = box.scrollHeight;
+    const lastEvSeq = events.reduce((m, e) => Math.max(m, Number(e && e.seq) || 0), 0);
+    if (lastEvSeq) CHAT.seenSeq.set(CHAT.sessionId, Math.max(CHAT.seenSeq.get(CHAT.sessionId) || 0, lastEvSeq));
+    applyIncremental(el, nodes);
     refreshState(el, f);
   }
   function ensureCtxBar(el, sessionId) {
@@ -10240,10 +10469,224 @@ ${text2}</tr>
       return;
     }
     if (!holder.querySelector("[data-ctx-panel]")) {
-      holder.innerHTML = '<details class="ex-block" style="margin:0 0 10px;background:var(--panel-2)"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></div></div></details>";
+      holder.innerHTML = '<details class="ex-block chat-ctx"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u6CE8\u6C34\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></details>";
       const ctx2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
       if (ctx2) mountSessionCtx(el, ctx2, sessionId);
     }
+  }
+  async function doSend(el, f, textOverride) {
+    const ta = el.querySelector("[data-cc-text]");
+    const text2 = String(textOverride != null ? textOverride : ta ? ta.value : "").trim();
+    if (!text2) return;
+    if (!CHAT.sessionId) {
+      const cr = await f.create();
+      if (cr.status === 200 && cr.data && cr.data.sessionId) {
+        CHAT.sessionId = String(cr.data.sessionId);
+        refreshSessions(el, f);
+        ensureCtxBar(el, CHAT.sessionId);
+      } else {
+        const note = el.querySelector("[data-cc-note]");
+        if (note) note.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(cr.status) + t("\uFF09");
+        return;
+      }
+    }
+    if (ta && textOverride == null) ta.value = "";
+    autoGrow(ta);
+    const mode = modeForState(CHAT.state);
+    const requestId = "cc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    CHAT.pending.push({ text: text2, requestId, at: Date.now() });
+    applyIncremental(el, []);
+    let r;
+    try {
+      r = await (mode === "steer" && typeof f.send === "function" ? f.send(CHAT.sessionId, text2, "steer") : f.send(CHAT.sessionId, text2));
+    } catch (e) {
+      r = { status: 0, data: { error: String(e && e.message || e) } };
+    }
+    if (!(r && r.status === 200)) {
+      failPending(requestId, String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : ""));
+      applyIncremental(el, []);
+    }
+    setTimeout(() => refreshTranscript(el, f), 900);
+    setTimeout(() => refreshTranscript(el, f), 3e3);
+  }
+  function failPending(requestId, errText) {
+    const p = CHAT.pending.find((x) => x.requestId === requestId);
+    if (p) CHAT.pending = CHAT.pending.filter((x) => x !== p);
+    CHAT.failed = CHAT.failed || [];
+    CHAT.failed.push({ text: p ? p.text : "", requestId, error: errText || "0" });
+  }
+  function bindRetry(el, f) {
+    el.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-cc-retry]");
+      if (!btn) return;
+      const requestId = String(btn.getAttribute("data-cc-retry") || "");
+      const p = (CHAT.failed || []).find((x) => x.requestId === requestId);
+      if (!p) return;
+      CHAT.failed = (CHAT.failed || []).filter((x) => x !== p);
+      doSend(el, f, p.text);
+    });
+  }
+  async function doStop(el, f) {
+    const note = el.querySelector("[data-cc-note]");
+    if (!CHAT.sessionId) return;
+    if (typeof f.stop !== "function") {
+      if (note) note.textContent = t("\u505C\u6B62\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js.stop \u7F3A\u5E2D\uFF09\u2014\u2014\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002");
+      return;
+    }
+    let r;
+    try {
+      r = await f.stop(CHAT.sessionId);
+    } catch (e) {
+      r = { status: 0, data: { error: String(e && e.message || e) } };
+    }
+    if (r && r.status === 200) {
+      if (note) note.textContent = t("\u5DF2\u8BF7\u6C42\u505C\u6B62\u2014\u2014\u4F1A\u8BDD\u56DE\u5230\u7A7A\u95F2\u540E\u8F6C\u5F55\u53EF\u89C1\u4E2D\u65AD\u8BCD\u5F62\u3002");
+    } else {
+      if (note) note.textContent = t("\u505C\u6B62\u5931\u8D25\uFF08") + String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09");
+    }
+    setTimeout(() => refreshState(el, f), 800);
+  }
+  function autoGrow(ta) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    const lh = 24;
+    const max = lh * 8 + 8;
+    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+  }
+  function dialogScreen(el, ctx2) {
+    const f = faces();
+    const can = !!(f && typeof f.send === "function");
+    CHAT.el = el;
+    el.innerHTML = screenShell(can);
+    el.classList.add("route-chat");
+    const paintLinks = () => {
+      const slot = el.querySelector("[data-sess-backlinks-slot]");
+      if (slot) slot.innerHTML = sessBacklinksHtml(ctx2.store, CHAT.sessionId);
+      slot && slot.querySelectorAll("[data-go]").forEach((n) => {
+        n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
+      });
+    };
+    paintLinks();
+    const unsubLinks = ctx2.store.subscribe(() => {
+      paintLinks();
+      refreshSessionsSoon(el, f);
+    });
+    el.addEventListener("disconnected", () => {
+      try {
+        unsubLinks();
+      } catch {
+      }
+      CHAT.el = null;
+    }, { once: true });
+    const newBtn = el.querySelector("[data-cc-new]");
+    if (newBtn) newBtn.addEventListener("click", async () => {
+      newBtn.disabled = true;
+      const r = await f.create();
+      newBtn.disabled = false;
+      if (r.status === 200 && r.data && r.data.sessionId) {
+        CHAT.sessionId = String(r.data.sessionId);
+        CHAT.lastSeq = 0;
+        CHAT.painted = /* @__PURE__ */ new Set();
+        refreshSessions(el, f);
+        refreshTranscript(el, f);
+        ensureCtxBar(el, CHAT.sessionId);
+      } else {
+        const note = el.querySelector("[data-cc-note]");
+        if (note) note.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09");
+      }
+    });
+    const sendBtn = el.querySelector("[data-cc-send]");
+    const textTa = el.querySelector("[data-cc-text]");
+    if (sendBtn && textTa) {
+      sendBtn.addEventListener("click", () => {
+        if (sendBtn.dataset.mode === "steer" && CHAT.state && CHAT.state.running === true) {
+          doStop(el, f);
+        } else {
+          doSend(el, f);
+        }
+      });
+      textTa.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" && !ev.shiftKey) {
+          ev.preventDefault();
+          doSend(el, f);
+        }
+      });
+      textTa.addEventListener("input", () => autoGrow(textTa));
+    }
+    el.addEventListener("click", (ev) => {
+      const s = ev.target.closest("[data-cc-sample]");
+      if (!s) return;
+      const ta = el.querySelector("[data-cc-text]");
+      if (ta) {
+        ta.value = s.textContent.trim();
+        autoGrow(ta);
+        ta.focus();
+      }
+    });
+    const jump = el.querySelector("[data-cc-jump]");
+    if (jump) jump.addEventListener("click", () => {
+      const box = streamEl(el);
+      if (box) followBottom(box);
+      jump.hidden = true;
+      const n = jump.querySelector("[data-cc-jump-n]");
+      if (n) n.textContent = "";
+    });
+    bindRetry(el, f);
+    ensureCtxBar(el, CHAT.sessionId);
+    refreshSessions(el, f);
+    refreshTranscript(el, f);
+    if (CHAT.timer) clearInterval(CHAT.timer);
+    CHAT.timer = setInterval(() => {
+      const root = CHAT.el && CHAT.el.isConnected ? CHAT.el : document.querySelector(".route-chat");
+      if (!root || !root.isConnected) {
+        clearInterval(CHAT.timer);
+        CHAT.timer = 0;
+        return;
+      }
+      const f2 = faces();
+      if (!f2) return;
+      refreshTranscript(root, f2);
+      refreshSessionsSoon(root, f2);
+    }, 3500);
+  }
+  var sessTick = 0;
+  function refreshSessionsSoon(el, f) {
+    sessTick++;
+    if (sessTick % 4 !== 1) return;
+    refreshSessions(el, f);
+  }
+  function render(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    const agent = ctx2.params && ctx2.params.agent;
+    const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
+    const fresh = LAST.route !== String(ctx2.route || "") || LAST.paramKey !== paramKey || LAST.locale !== getLocale();
+    LAST.route = String(ctx2.route || "");
+    LAST.paramKey = paramKey;
+    LAST.locale = getLocale();
+    if (fresh) {
+      if (id != null && id !== "") CHAT.sessionId = String(id);
+      else CHAT.sessionId = "";
+      CHAT.pending = [];
+      CHAT.failed = [];
+      CHAT.lastSeq = 0;
+      CHAT.painted = /* @__PURE__ */ new Set();
+      dialogScreen(el, ctx2);
+      if (id == null && agent) {
+        const f2 = faces();
+        if (f2) setTimeout(async () => {
+          if (CHAT.sessionId) return;
+          const r = await f2.sessions();
+          const items = r.status === 200 && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+          const pick = items.filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))[0];
+          if (pick && !CHAT.sessionId && CHAT.el === el) {
+            pickSession(el, f2, String(pick.sessionId));
+          }
+        }, 700);
+      }
+      return;
+    }
+    const f = faces();
+    if (f) refreshTranscript(el, f);
   }
   function sessBacklinksHtml(store2, sessionId) {
     const sid = String(sessionId || "");
@@ -10263,145 +10706,23 @@ ${text2}</tr>
     if (!taskChips && !evChips) {
       return '<div class="small faint" data-sess-backlinks="1">' + esc(t("\u5FEB\u7167\u4E09\u6E90\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u53CD\u67E5\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002")) + "</div>";
     }
-    return '<div class="small" data-sess-backlinks="1" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="faint">' + esc(t("\u5173\u8054\uFF1A")) + "</span>" + taskChips + evChips + "</div>";
-  }
-  function dialogScreen(el, ctx2) {
-    const f = faces();
-    const can = !!(f && typeof f.sessions === "function");
-    el.innerHTML = '<div class="view-inner">' + screenHead(
-      t("\u4F1A\u8BDD"),
-      t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B"),
-      '<button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button>"
-    ) + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot style="margin-bottom:6px">' + sessBacklinksHtml(ctx2.store, CHAT.sessionId) + '</div><div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start"><aside class="card" style="padding:8px;max-height:calc(100vh - 160px);overflow:auto"><div class="small faint" style="padding:2px 6px 8px;font-weight:700">' + esc(t("\u4F1A\u8BDD")) + '</div><div data-cc-sessions><div class="small faint" style="padding:4px 6px">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><section style="min-width:0;display:flex;flex-direction:column;gap:10px"><div data-cc-ctx></div><div data-cc-state style="min-height:22px"></div><div class="card cc-tr" data-cc-tr style="max-height:calc(100vh - 260px);overflow:auto;padding:14px"><div class="small faint">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><div class="cc-composer"><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea>' + sendBtnHtml(can) + '</div><div class="small faint">' + esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\u2014\u2014\u9001\u8FBE\u5BBF\u4E3B agent \u4F1A\u8BDD\uFF08durable journal\uFF1B\u8F6C\u5F55\u533A\u968F\u540E\u53EF\u89C1\u53CC\u65B9\u6D88\u606F\uFF09")) + "</div></div></section></div></div>";
-    if (!can) return;
-    window.__CC_CONSOLE_CTX__ = ctx2;
-    const paintLinks = () => {
-      const slot = el.querySelector("[data-sess-backlinks-slot]");
-      if (slot) slot.innerHTML = sessBacklinksHtml(ctx2.store, CHAT.sessionId);
-      slot && slot.querySelectorAll("[data-go]").forEach((n) => {
-        n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
-      });
-    };
-    paintLinks();
-    const unsubLinks = ctx2.store.subscribe(paintLinks);
-    el.addEventListener("disconnected", () => {
-      try {
-        unsubLinks();
-      } catch {
-      }
-    }, { once: true });
-    const newBtn = el.querySelector("[data-cc-new]");
-    if (newBtn) newBtn.addEventListener("click", async () => {
-      newBtn.disabled = true;
-      const r = await f.create();
-      newBtn.disabled = false;
-      if (r.status === 200 && r.data && r.data.sessionId) {
-        CHAT.sessionId = String(r.data.sessionId);
-        await refreshSessions(el, f);
-        refreshTranscript(el, f);
-        ensureCtxBar(el, CHAT.sessionId);
-      } else {
-        const slot = el.querySelector("[data-cc-state]");
-        if (slot) slot.innerHTML = chip(t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09"), "esc");
-      }
-    });
-    const sendBtn = el.querySelector("[data-cc-send]");
-    const textTa = el.querySelector("[data-cc-text]");
-    if (sendBtn && textTa) {
-      const doSend = async () => {
-        const text2 = textTa.value.trim();
-        if (!text2) return;
-        if (!CHAT.sessionId) {
-          const cr = await f.create();
-          if (cr.status === 200 && cr.data && cr.data.sessionId) CHAT.sessionId = String(cr.data.sessionId);
-          else return;
-        }
-        textTa.value = "";
-        CHAT.pending.push({ text: text2 });
-        refreshTranscript(el, f);
-        const r = await f.send(CHAT.sessionId, text2);
-        if (!(r && r.status === 200)) {
-          CHAT.pending = CHAT.pending.filter((p) => p.text !== text2);
-          const slot = el.querySelector("[data-cc-state]");
-          if (slot) slot.innerHTML = chip(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(r && r.status) + t("\uFF09"), "esc");
-        }
-        setTimeout(() => refreshTranscript(el, f), 900);
-        setTimeout(() => refreshTranscript(el, f), 3e3);
-      };
-      sendBtn.addEventListener("click", doSend);
-      textTa.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && !ev.shiftKey) {
-          ev.preventDefault();
-          doSend();
-        }
-      });
-    }
-    ensureCtxBar(el, CHAT.sessionId);
-    refreshSessions(el, f);
-    refreshTranscript(el, f);
-    if (CHAT.timer) clearInterval(CHAT.timer);
-    CHAT.timer = setInterval(() => {
-      const trBox = document.querySelector("[data-cc-tr]");
-      if (!trBox || !trBox.isConnected) {
-        clearInterval(CHAT.timer);
-        CHAT.timer = 0;
-        return;
-      }
-      const f2 = faces();
-      if (f2) refreshTranscript(document, f2);
-    }, 3500);
-  }
-  function render(el, ctx2) {
-    const id = ctx2.params && ctx2.params.id;
-    const agent = ctx2.params && ctx2.params.agent;
-    const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
-    const fresh = LAST.route !== String(ctx2.route || "") || LAST.paramKey !== paramKey || LAST.locale !== getLocale();
-    LAST.route = String(ctx2.route || "");
-    LAST.paramKey = paramKey;
-    LAST.locale = getLocale();
-    if (fresh) {
-      if (id != null && id !== "") CHAT.sessionId = String(id);
-      else CHAT.sessionId = "";
-      CHAT.pending = [];
-      dialogScreen(el, ctx2);
-      if (id == null && agent) {
-        const f2 = faces();
-        if (f2) setTimeout(async () => {
-          if (CHAT.sessionId) return;
-          const r = await f2.sessions();
-          const items = r.status === 200 && r.data && Array.isArray(r.data.items) ? r.data.items : [];
-          const pick = items.filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))[0];
-          if (pick && !CHAT.sessionId) {
-            CHAT.sessionId = String(pick.sessionId);
-            refreshSessions(el, f2);
-            refreshTranscript(el, f2);
-            ensureCtxBar(el, CHAT.sessionId);
-          }
-        }, 700);
-      }
-      return;
-    }
-    const f = faces();
-    if (f) refreshTranscript(el, f);
+    return '<div class="small" data-sess-backlinks="1"><span class="faint">' + esc(t("\u5173\u8054\uFF1A")) + "</span> " + taskChips + " " + evChips + "</div>";
   }
   function sessionOptions() {
     return '<option value="root" selected>' + esc(t("root \u4F1A\u8BDD\uFF08\u9ED8\u8BA4\uFF09")) + "</option>";
-  }
-  function sendBtnHtml(enabled) {
-    return '<button class="btn btn-primary" data-cc-send' + (enabled ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + "</button>";
   }
   function composerHtml(ctx2, curSession) {
     const f = faces();
     const canSend = !!(f && typeof f.send === "function");
     void ctx2;
     void curSession;
-    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions() + '</select></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea>' + sendBtnHtml(canSend) + '</div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE root agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
+    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions() + '</select></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn btn-primary" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 queue \u8BED\u4E49\uFF08\u9001\u8FBE root agent \u4F1A\u8BDD\uFF1B\u7ED3\u8BBA\u7531 agent \u843D\u6587\u6863\u540E\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\uFF09")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
   }
   function bindComposer(el, ctx2, rootEl) {
     const sendBtn = rootEl.querySelector("[data-cc-send]");
     const textTa = rootEl.querySelector("[data-cc-text]");
     if (!sendBtn || !textTa) return;
-    const doSend = async () => {
+    const doSend2 = async () => {
       const text2 = textTa.value.trim();
       if (!text2) return;
       const f = faces();
@@ -10414,11 +10735,11 @@ ${text2}</tr>
       sendBtn.parentElement.appendChild(note);
       setTimeout(() => note.remove(), 6e3);
     };
-    sendBtn.addEventListener("click", doSend);
+    sendBtn.addEventListener("click", doSend2);
     textTa.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && !ev.shiftKey) {
         ev.preventDefault();
-        doSend();
+        doSend2();
       }
     });
   }
@@ -11973,7 +12294,7 @@ ${text2}</tr>
     paintRail(key.key, ctx2);
     paintMeta(key.key);
   }
-  function bindRetry(keyStr) {
+  function bindRetry2(keyStr) {
     document.querySelectorAll("[data-ed-retry]").forEach((b) => {
       if (b.getAttribute("data-ed-retry-bound")) return;
       b.setAttribute("data-ed-retry-bound", "1");
@@ -11995,7 +12316,7 @@ ${text2}</tr>
     if (!ed) slot.innerHTML = esc(t("\u6CE8\u6C34\u4E2D\u2026"));
     else if (ed.faceFail) {
       slot.innerHTML = '<span class="chip esc tiny">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</span> <button class="btn btn-secondary sm" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button>";
-      bindRetry(keyStr);
+      bindRetry2(keyStr);
     } else if (ed.faceAbsent) slot.innerHTML = esc(t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09"));
     else slot.innerHTML = "r" + ed.faceRV + esc(t("\uFF08\u4E50\u89C2\u9501\u57FA\u51C6\uFF09"));
   }
@@ -12005,7 +12326,7 @@ ${text2}</tr>
     if (!el || !ed) return;
     if (ed.faceFail) {
       el.innerHTML = '<div class="empty"><div class="e-title">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</div><div class="small faint">' + esc(t("face \u73B0\u8BFB\u672A\u6210\u529F\u2014\u2014\u4E50\u89C2\u9501\u57FA\u51C6\u672A\u77E5\uFF0C\u7F16\u8F91/Apply \u5DF2\u505C\u7528\uFF08\u96F6\u88C5\u5047\uFF09\uFF1B\u70B9\u91CD\u8BD5\u91CD\u8DD1\u6CE8\u6C34\u3002")) + '</div><div class="e-act"><button class="btn btn-secondary sm" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button></div></div>";
-      bindRetry(key);
+      bindRetry2(key);
       return;
     }
     el.innerHTML = ed.view === "render" ? isMarkdownDoc(ed.ref.kind, ed.ref.name) ? (function() {
