@@ -6,12 +6,20 @@
  *   以及既有只读 GET 面（objects/drafts/workflows/sessions/inbox/proposals/approvals/design-docs）
  *   与唯一写通路 POST /v1/apply、草稿 POST /v1/drafts。 */
 
-export function createApi(base = '') {
+export function createApi(base = '', paths = {}) {
   const B = String(base || '').replace(/\/+$/, '');
   const enc = encodeURIComponent;
+  /* 写通路词位（部署基路径注入——dsh 插件代理部署：apply/drafts 走宿主注入主体路由
+   * /core-console/{apply,drafts}，不经只读代理前缀；直连同源部署=缺省 v1 词位）。 */
+  const P = {
+    apply: paths.apply || 'v1/apply',
+    drafts: paths.drafts || 'v1/drafts',
+  };
 
   async function request(path, opts = {}) {
-    const url = B + '/' + String(path).replace(/^\/+/, '');
+    /* `/`开头=绝对词位（部署注入的宿主路由，如 /core-console/apply）不拼 base；其余相对 B。 */
+    const p = String(path);
+    const url = p.startsWith('/') ? p : B + '/' + p.replace(/^\/+/, '');
     try {
       const res = await fetch(url, {
         method: opts.method || 'GET',
@@ -62,7 +70,7 @@ export function createApi(base = '') {
     designDocs: () => request('v1/design-docs'),
     designDoc: (repo, path) => request('v1/design-docs/' + enc(repo) + '/' + enc(path)),
     /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
-    apply: (payload) => request('v1/apply', { method: 'POST', body: payload }),
-    saveDraft: (payload) => request('v1/drafts', { method: 'POST', body: payload }),
+    apply: (payload) => request(P.apply, { method: 'POST', body: payload }),
+    saveDraft: (payload) => request(P.drafts, { method: 'POST', body: payload }),
   };
 }

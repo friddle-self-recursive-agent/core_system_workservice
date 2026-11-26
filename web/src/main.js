@@ -23,8 +23,11 @@ import * as approvals from './screens/approvals.js';
 import * as workflows from './screens/workflows.js';
 import * as misc from './screens/misc.js';
 
+/* 部署基路径注入（window.__CORE_CONSOLE_BASES__: api/ws/apply/drafts——直连同源部署缺省
+ * 全空=内置词位不变；dsh 插件代理部署由 v2 壳页预置代理词位，见 plugin routes/console-v2.ts）。 */
+const BASES = (typeof window !== 'undefined' && window.__CORE_CONSOLE_BASES__) || {};
 const store = createStore();
-const api = createApi('');
+const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.drafts });
 const router = createRouter({ defaultRoute: 'welcome' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
 
@@ -141,7 +144,8 @@ export function mount(root, opts = {}) {
 
   // WS 主通路（patch 失败=整段 re-fetch 回退）；onState 经 store 广播（同帧触发重绘）
   const stream = connectStream({
-    url: wsUrlOf(opts.location || (typeof location !== 'undefined' ? location : null)),
+    url: BASES.ws || wsUrlOf(opts.location || (typeof location !== 'undefined' ? location : null)),
+    base: BASES.api || '',
     onSnapshot: (s) => { store.setConn('connected'); store.init(s); hydrateDocs(); },
     onPatch: (patch, msg) => {
       if (!store.applyPatch(patch, msg)) {
