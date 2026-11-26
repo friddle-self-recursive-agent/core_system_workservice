@@ -134,6 +134,8 @@ func usage(w io.Writer) {
   proposals [name]                    提案列表/详情
   tasks [--phase P] [--scope S]       任务队列简表（status 投影）
   task <scope>/<name>                 任务详情（spec+status 投影+原文）
+  find "查询词" [--tags t1,t2] [--k N] 上下文相关性检索（score 0-100）
+  trace <kind>/<scope>/<name>         文档 trace 双向聚合（implements/implemented_by/verified_by）
 
 写入（与桌面同一条 Apply/Event/权限链）：
   apply -f <file> [--kind K] [--scope S] [--name N] [--rv N] [--dry-run] [--field-manager M]
@@ -184,6 +186,10 @@ func (a *app) dispatch(cmd string, args []string) int {
 		return a.cmdTasks(args)
 	case "task":
 		return a.cmdTask(args)
+	case "find":
+		return a.cmdFind(args)
+	case "trace":
+		return a.cmdTrace(args)
 	case "tick":
 		return a.cmdTick(args)
 	case "loop":
@@ -954,6 +960,58 @@ func (a *app) cmdEventPublish(args []string) int {
 	raw, err := a.request(http.MethodPost, "/v1/events", eventBody{
 		Type: *typ, Involved: *involved, Level: *level, DedupKey: *dedup, Scope: *scope, Subject: &a.subject,
 	})
+	if err != nil {
+		return fail(a, err)
+	}
+	return a.emit(raw)
+}
+
+// cmdFind 上下文相关性检索（/v1/context/find——B2 判据的 CLI 面：score 恒 0-100）。
+func (a *app) cmdFind(args []string) int {
+	fs := flag.NewFlagSet("find", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	tags := fs.String("tags", "", "Tag 过滤（逗号分隔，形如 doc:acceptance 或裸 tag）")
+	k := fs.Int("k", 10, "TopK（≤50）")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	q := url.Values{}
+	if rest := fs.Args(); len(rest) > 0 {
+		q.Set("q", strings.Join(rest, " "))
+	}
+	if *tags != "" {
+		q.Set("tags", *tags)
+	}
+	q.Set("k", fmt.Sprint(*k))
+	path := "/v1/context/find"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	raw, err := a.request(http.MethodGet, path, nil)
+	if err != nil {
+		return fail(a, err)
+	}
+	return a.emit(raw)
+}
+
+// cmdTrace 文档 trace 双向聚合（/v1/trace——R-DOC-9 / B11：implements/implemented_by/verified_by）。
+func (a *app) cmdTrace(args []string) int {
+	fs := flag.NewFlagSet("trace", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprintln(a.err, "用法：corectl trace <kind>/<scope>/<name>")
+		return 2
+	}
+	parts := strings.SplitN(rest[0], "/", 3)
+	if len(parts) != 3 {
+		fmt.Fprintln(a.err, "错误：键须为 kind/scope/name 三段（scope 可含多段时用 kind = 前缀、末段为 name 亦可）")
+		return 2
+	}
+	raw, err := a.request(http.MethodGet, "/v1/trace/"+parts[0]+"/"+parts[1]+"/"+parts[2], nil)
 	if err != nil {
 		return fail(a, err)
 	}

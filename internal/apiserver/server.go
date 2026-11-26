@@ -193,6 +193,13 @@ type options struct {
 	designDocs      DesignDocs
 	sessionLiveness SessionLivenessFace
 	agentScopes     flowbind.AgentEventScopes // Agent 事件 scope 声明解析（BUG-010 消费闸——GET /v1/events?agent=）
+	contextIdx      contextIdxFace
+}
+
+// WithContextIdx 注入上下文索引读面（v0.65 context P0 数据面 + trace 1:N 追踪——
+// /v1/context/* 与 /v1/trace/*；contextidx.Index 满足；nil=面缺席 503 同款防御面）。
+func WithContextIdx(f contextIdxFace) Option {
+	return func(o *options) { o.contextIdx = f }
 }
 
 // ProposalsSource 提案枚举源（v0.56 /v1/inbox 组装输入——读面走 ObjectSource.List 现读 +
@@ -300,6 +307,10 @@ var (
 //	GET /v1/doc-history/{kind}/{name}?scope=s 逐次正文翻页清单（R-DOC-7 规则 4 doc_history 落地面：
 //	                                     rev/翻页时刻/写者/字节数，不含正文——sqlite 后端装配；
 //	                                     face 缺席 503）
+//	GET /v1/context/index|find|relevance  上下文索引投影/TopK 检索/相关性调试面（v0.65 context
+//	                                     P0 数据面——0–100 全局相关性；face 缺席 503）
+//	GET /v1/trace/{kind}/{scope}/{name}   trace 1:N 双向聚合（v0.65 R-DOC-9；无 trace 段=空
+//	                                     聚合 200 不 404；对象缺席才 404；face 缺席 503）
 //	GET /v1/approvals                    审批判定账面查询面（v0.46 审批独立账：approval_log
 //	                                     rv 降序；decision/obj/limit）
 //	GET /v1/drafts                      草稿清单（瘦身；查询面恒开）
@@ -1237,8 +1248,8 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 				"ts": e.Ts.UTC().Format(time.RFC3339Nano), "eventId": e.EventID,
 				"type": e.Type, "source": e.Source, "involved": e.Involved,
 				"dedupKey": e.DedupKey, "level": e.Severity, "routedTo": e.RoutedTo,
-				"scope": e.Scope, // metadata.scope 投影（BUG-010——归档行强制携带，旧行读侧推导兜底）
-				"tier": tier, "visibility": visibility, // 分层/展示词形随行（规则 18——机读判据）
+				"scope": e.Scope,                        // metadata.scope 投影（BUG-010——归档行强制携带，旧行读侧推导兜底）
+				"tier":  tier, "visibility": visibility, // 分层/展示词形随行（规则 18——机读判据）
 			})
 		}
 		resp := map[string]any{"count": len(items), "events": items}
@@ -1545,6 +1556,10 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 调试暴露面（JSON body，subject 记录审计行；只读语义由实现侧契约保证，handler 体见
 	// connectops_face.go）。
 	registerConnectOpsRoutes(mux)
+	// 上下文读面（v0.65 context P0 数据面 + trace 1:N 追踪——context_face.go）：四路由全 GET
+	// 恒开（/v1/context/index|find|relevance + /v1/trace/{kind}/{scope}/{name}）；face 缺席=503
+	// 防御面；旧构建（路由未注册）经兜底 handler 405=代际判别器。
+	registerContextRoutes(mux, o.contextIdx)
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
@@ -1649,7 +1664,7 @@ type eventsRequest struct {
 	Involved string          `json:"involved"`
 	Level    string          `json:"level"`
 	DedupKey string          `json:"dedupKey"`
-	Scope    string          `json:"scope"` // 可选：metadata.scope 四层词显式声明（BUG-010；越词 400，缺席按 involved 推导）
+	Scope    string          `json:"scope"`  // 可选：metadata.scope 四层词显式声明（BUG-010；越词 400，缺席按 involved 推导）
 	Source   string          `json:"source"` // 载荷声明不采纳：非 human 值直接拒绝（来源=服务侧判定）
 	Subject  *subjectRequest `json:"subject"`
 }
