@@ -84,7 +84,10 @@ func TestSessionsHeartbeatWriteGate(t *testing.T) {
 		t.Fatalf("心跳未入账=%+v", live.beats)
 	}
 	// 缺 sessionId=400。
-	res3, _ := http.Post(ts2.URL+"/v1/sessions/heartbeat", "application/json", strings.NewReader(`{"phase":"x"}`))
+	res3, err := http.Post(ts2.URL+"/v1/sessions/heartbeat", "application/json", strings.NewReader(`{"phase":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer res3.Body.Close()
 	if res3.StatusCode != http.StatusBadRequest {
 		t.Fatalf("缺 sessionId=%d（期望 400）", res3.StatusCode)

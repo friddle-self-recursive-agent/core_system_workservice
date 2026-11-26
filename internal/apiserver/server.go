@@ -283,6 +283,8 @@ var (
 //	DELETE /v1/secrets/{name}           秘密删除（--allow-apply 门控；幂等）
 //	POST /v1/apply                      文档写入口（--allow-apply 显式开启；未开启=405；fromDraft=true 走草稿）
 //	POST /v1/events                     事件注入面（v0.20 发布面；--allow-apply 门控；未开启=405；event.md 规则 8）
+//	POST /v1/connectops/{name}/{op}     ops 调试面（R-TYPE-3：connectops-code-audit audit/findings；
+//	                                    正式通路=workflow Verify 接线待接入——connectops_face.go §头注）
 //
 // objects 为 nil（cored 未配置 --docs）时 /v1/objects/* 返回 503；
 // applier 为 nil（未开启 --allow-apply）时 POST /v1/apply 与草稿写操作返回 405（缺省只读面不变；
@@ -1375,6 +1377,12 @@ func New(sch *scheme.Scheme, objects ObjectSource, applier Applier, drafts Draft
 	// 对话式录入与三重 dry-run 预检面（v0.53 能力 D + R-UX-1/R-UX-2——cored-bridge.md §2.5）：
 	// GET /v1/intake/sessions* 恒开（旧构建 405=代际判别器）；POST /v1/intake/turn 与 /generate 随 --allow-apply 门控。
 	registerIntakeRoutes(mux, sch, objects, applier)
+	// ops 调试面（R-TYPE-3 rule-verification.md——POST /v1/connectops/{name}/{op}）：
+	// 正式通路=workflow Verify 接线（dev-delivery Verifying 相位硬 gate 经 ConnectorOps 调
+	// connectops-code-audit audit/findings），待 workflow 侧接入；本路由=通路建成前的最小
+	// 调试暴露面（JSON body，subject 记录审计行；只读语义由实现侧契约保证，handler 体见
+	// connectops_face.go）。
+	registerConnectOpsRoutes(mux)
 	// 其余路径与方法一律 404/405，保持查询面最小。
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/v1/") && r.URL.Path != "/healthz" {
