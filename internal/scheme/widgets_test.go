@@ -1,13 +1,24 @@
 package scheme
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
 
+// coreSchemePath CORE_SYSTEM_SCHEME 环境变量优先（与 cored 启动旗标同源）；缺省=仓库相对
+// 布局（workservice 与 core_design 同级 clone——Mac 侧布局）。
+func coreSchemePath() string {
+	if v := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SCHEME")); v != "" {
+		return v
+	}
+	return filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+}
+
 func TestDescribeKindWidgets_RUX2AllEightWidgetTypes(t *testing.T) {
-	schPath := filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+	schPath := coreSchemePath()
 	sch, err := LoadFile(schPath)
 	if err != nil {
 		t.Fatalf("LoadFile(%s): %v", schPath, err)
@@ -65,7 +76,7 @@ func TestDescribeKindWidgets_RUX2AllEightWidgetTypes(t *testing.T) {
 }
 
 func TestSchemeReplaceHotReload(t *testing.T) {
-	schPath := filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+	schPath := coreSchemePath()
 	sch, err := LoadFile(schPath)
 	if err != nil {
 		t.Fatalf("LoadFile: %v", err)

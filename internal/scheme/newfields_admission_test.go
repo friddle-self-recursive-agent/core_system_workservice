@@ -5,13 +5,19 @@
 package scheme
 
 import (
+	"os"
+	"strings"
 	"testing"
 )
 
 // loadCoreScheme 读本机 core_design scheme.yaml（绝对路径注入，避免测试依赖仓库相对布局）。
 func loadCoreScheme(t *testing.T) *Scheme {
 	t.Helper()
-	const path = "/Users/friddle/Project/self-recursive-agent/core_design/core/scheme.yaml"
+	// CORE_SYSTEM_SCHEME 环境变量优先（与 cored 启动旗标同源词形；缺省=Mac 侧开发机布局）。
+	path := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SCHEME"))
+	if path == "" {
+		path = "/Users/friddle/Project/self-recursive-agent/core_design/core/scheme.yaml"
+	}
 	sch, err := LoadFile(path)
 	if err != nil {
 		t.Fatalf("装载 scheme：%v", err)

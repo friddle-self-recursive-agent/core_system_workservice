@@ -2,6 +2,7 @@ package intake
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,7 +13,10 @@ import (
 
 func loadRealScheme(t *testing.T) *scheme.Scheme {
 	t.Helper()
-	p := filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+	p := os.Getenv("CORE_SYSTEM_SCHEME")
+	if strings.TrimSpace(p) == "" {
+		p = filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+	}
 	sch, err := scheme.LoadFile(p)
 	if err != nil {
 		t.Fatalf("LoadFile(%s): %v", p, err)

@@ -15,6 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// schemeSrcPath 权威 scheme.yaml 解析：CORE_SYSTEM_SCHEME 环境变量优先（与 cored 启动旗标
+// 同源词形）；缺省=仓库相对布局（workservice 与 core_design 同级 clone——Mac 侧布局）。
+func schemeSrcPath() string {
+	if v := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SCHEME")); v != "" {
+		return v
+	}
+	return filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+}
+
 func mustRealScheme(t *testing.T) *Scheme {
 	t.Helper()
 	s, err := Load([]byte(fixtureSchemeYAML))
@@ -196,7 +205,7 @@ func TestValidateSpecUnknownAndProsePass(t *testing.T) {
 // to: Phase}`）的校验闸门在位——好对象放行（apply 落库通道）、非数组拦、行非映射拦。
 func TestValidateWorkflowTransitions(t *testing.T) {
 	// 权威声明直读（fixture=冻结快照滞后于 v0.25 新增字段；同 TestValidateDocAuthoritativeScheme 口径）。
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml"))
+	raw, err := os.ReadFile(schemeSrcPath())
 	if errors.Is(err, fs.ErrNotExist) {
 		t.Skipf("权威 scheme.yaml 不可达（standalone 检出）: %v", err)
 	}
@@ -320,7 +329,7 @@ func TestValidateDocLiveDocsConform(t *testing.T) {
 // TestValidateDocAuthoritativeScheme checker 直读 core_design 权威声明（相对路径；
 // standalone 检出缺仓 skip）。权威声明引入 checker 不可机读形态时此处先红（R-TYPE 对账锚点）。
 func TestValidateDocAuthoritativeScheme(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "core_design", "core", "scheme.yaml")
+	path := schemeSrcPath()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

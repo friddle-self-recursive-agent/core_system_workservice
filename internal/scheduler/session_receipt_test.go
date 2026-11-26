@@ -19,7 +19,7 @@ import (
 // newReceiptFixture 真 sqlite 仓库 + 真 ops DB 的 Tick 装配（会话终结判定源挂接）。
 func newReceiptFixture(t *testing.T) (context.Context, *repository.SQLiteRepo, *Scheduler, *opslog.SQLiteStore) {
 	t.Helper()
-	sch, err := scheme.LoadFile(coreSchemePath)
+	sch, err := scheme.LoadFile(coreSchemePath())
 	if err != nil {
 		t.Fatalf("装载 scheme: %v", err)
 	}

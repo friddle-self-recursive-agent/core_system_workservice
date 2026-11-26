@@ -5,6 +5,8 @@ package scheduler
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,10 +15,17 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
-const coreSchemePath = "/Users/friddle/Project/self-recursive-agent/core_design/core/scheme.yaml"
+// coreSchemePath 测试装载 core/scheme.yaml（CORE_SYSTEM_SCHEME 环境变量优先——与 cored
+// 启动旗标同源词形；缺省=Mac 侧开发机布局。非该布局机器设 CORE_SYSTEM_SCHEME 即绿）。
+func coreSchemePath() string {
+	if v := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SCHEME")); v != "" {
+		return v
+	}
+	return "/Users/friddle/Project/self-recursive-agent/core_design/core/scheme.yaml"
+}
 
 func TestTickMigratesFreshTaskToReady(t *testing.T) {
-	sch, err := scheme.LoadFile(coreSchemePath)
+	sch, err := scheme.LoadFile(coreSchemePath())
 	if err != nil {
 		t.Fatalf("装载 scheme: %v", err)
 	}
