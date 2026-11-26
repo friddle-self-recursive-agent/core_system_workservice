@@ -7,6 +7,7 @@
 import '../styles/base.css';
 import '../styles/components.css';
 import '../styles/screens.css';
+import '../styles/theme-dsh.css';
 
 import { esc } from './core/format.js';
 import { createStore } from './core/store.js';

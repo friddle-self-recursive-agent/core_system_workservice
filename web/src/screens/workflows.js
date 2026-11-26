@@ -130,7 +130,8 @@ function detailScreen(el, ctx, name) {
   }).join('');
   el.innerHTML = '<div class="view-inner">' + head +
     tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
-    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run, ctx) + '</div></div>' +
+    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b" data-pg-box>') +
+    (phaseGraphHtml(run, ctx)) + '</div></div>' +
     tr('<h2 class="sec-title">运行记录</h2>') +
     (runRows ? '<div class="card">' + runRows + '</div>' : tr('<div class="small faint">该 workflow 暂无运行记录（空态显式）。</div>')) +
     '</div>';
@@ -159,7 +160,8 @@ function runScreen(el, ctx, name, no) {
   const steps = Array.isArray(run.steps) ? run.steps : [];
   el.innerHTML = '<div class="view-inner">' + head +
     tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
-    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run, ctx) + '</div></div>' +
+    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b" data-pg-box>') +
+    (phaseGraphHtml(run, ctx)) + '</div></div>' +
     (steps.length
       ? tr('<h2 class="sec-title">步骤</h2><div class="card">') + steps.map((s) =>
         '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || tr('步骤'))) + ' ' + runChip(s) + '</div>' +
@@ -168,6 +170,18 @@ function runScreen(el, ctx, name, no) {
       : tr('<div class="small faint">契约未携带步骤明细——不显示不编造。</div>')) +
     '</div>';
   bindPhaseGraph(el, ctx, run);
+  // 全量行注水（snapshot.runs.recent 不带 phases——/v1/workflows/runs 面才有；注水后重绘节点图）
+  ctx.api.workflowRuns().then((r) => {
+    if (!r.ok || !el.isConnected) return;
+    const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : (Array.isArray(r.data) ? r.data : []);
+    const full = arr.find((x) => String(x && (x.run != null ? x.run : '')) === String(no)) ||
+      arr.find((x) => String(x && (x.workflow || '')) === String(name));
+    if (!full) return;
+    const box = el.querySelector('[data-pg-box]');
+    if (!box) return;
+    box.innerHTML = phaseGraphHtml(full, ctx);
+    bindPhaseGraph(el, ctx, full);
+  });
 }
 
 export function render(el, ctx) {

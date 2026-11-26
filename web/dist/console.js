@@ -858,7 +858,9 @@ var CoreConsole = (() => {
       },
       runs() {
         const r = state && (state.runs !== void 0 ? state.runs : state.workflowRuns);
-        return Array.isArray(r) ? r : arrOf(r && r.runs);
+        if (Array.isArray(r)) return r;
+        if (r && Array.isArray(r.recent)) return r.recent;
+        return arrOf(r && r.runs);
       },
       workflows() {
         const w = state && state.workflows;
@@ -10057,7 +10059,7 @@ ${text2}</tr>
       const no = r.no != null ? r.no : runs.length - i;
       return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
     }).join("");
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
+    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\uFF08\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div>')) + "</div>";
     el.querySelectorAll(".mini-row[data-go]").forEach((row) => {
       row.addEventListener("click", () => ctx2.go(row.dataset.go));
     });
@@ -10082,10 +10084,20 @@ ${text2}</tr>
     if (run2.finishedAt || run2.doneAt) rows.push([t("\u7ED3\u675F\u4E8E"), timeHtml(run2.finishedAt || run2.doneAt)]);
     if (run2.error) rows.push([t("\u9519\u8BEF"), chip(trunc(String(run2.error), 160), "esc")]);
     const steps = Array.isArray(run2.steps) ? run2.steps : [];
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b">') + phaseGraphHtml(run2, ctx2) + "</div></div>" + (steps.length ? t('<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">') + steps.map(
+    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run2, ctx2) + "</div></div>" + (steps.length ? t('<h2 class="sec-title">\u6B65\u9AA4</h2><div class="card">') + steps.map(
       (s) => '<div class="mini-row"><div class="mr-main"><div>' + esc(String(s && (s.name || s.step) || t("\u6B65\u9AA4"))) + " " + runChip(s) + '</div><div class="mr-sub small mono">' + esc(trunc(String(s && (s.detail || s.message) || ""), 120)) + "</div></div></div>"
     ).join("") + "</div>" : t('<div class="small faint">\u5951\u7EA6\u672A\u643A\u5E26\u6B65\u9AA4\u660E\u7EC6\u2014\u2014\u4E0D\u663E\u793A\u4E0D\u7F16\u9020\u3002</div>')) + "</div>";
     bindPhaseGraph(el, ctx2, run2);
+    ctx2.api.workflowRuns().then((r) => {
+      if (!r.ok || !el.isConnected) return;
+      const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
+      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no)) || arr.find((x) => String(x && (x.workflow || "")) === String(name));
+      if (!full) return;
+      const box = el.querySelector("[data-pg-box]");
+      if (!box) return;
+      box.innerHTML = phaseGraphHtml(full, ctx2);
+      bindPhaseGraph(el, ctx2, full);
+    });
   }
   function render3(el, ctx2) {
     const p = ctx2.params || {};

@@ -120,7 +120,9 @@ export function createStore() {
     },
     runs() {
       const r = state && (state.runs !== undefined ? state.runs : (state.workflowRuns));
-      return Array.isArray(r) ? r : arrOf(r && r.runs);
+      if (Array.isArray(r)) return r;
+      if (r && Array.isArray(r.recent)) return r.recent; // snapshot.runs=统计对象，条目在 recent
+      return arrOf(r && r.runs);
     },
     workflows() {
       const w = state && state.workflows;
