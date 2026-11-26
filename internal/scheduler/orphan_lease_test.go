@@ -105,3 +105,42 @@ func mustGet(t *testing.T, ctx context.Context, repo *repository.SQLiteRepo, sco
 	o := obj2(t, ctx, repo, scope, name)
 	return o.Content
 }
+
+// L87-01 认领归档域收窄锚：running 在册但本库归档无 running 判定（跨域=另一实例判定面，
+// loop-87 18:00 活体实证：authority core-system.db 无 17:35 running 行、executor
+// core-headless.db 有）→ 不认领租约起点、不进 TTL 回收路（不误判 failed）。
+func TestAdoptOrphanLeases_CrossDomainRunningNotAdopted(t *testing.T) {
+	sch := func(t *testing.T) *scheme.Scheme {
+		t.Helper()
+		sch, err := scheme.LoadFile(coreSchemePath())
+		if err != nil {
+			t.Fatalf("装载 scheme: %v", err)
+		}
+		return sch
+	}(t)
+	repo, err := repository.OpenSQLite(t.TempDir()+"/docs.db", sch, nil, "")
+	if err != nil {
+		t.Fatalf("打开 sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	// 认领方 ops 库（模拟 authority）：空档——无该任务的 running 判定行。
+	ops, err := opslog.OpenSQLite(t.TempDir() + "/ops-authority.db")
+	if err != nil {
+		t.Fatalf("打开 ops DB: %v", err)
+	}
+	t.Cleanup(func() { _ = ops.Close() })
+	ctx := context.Background()
+	writeTaskObject(t, ctx, repo, "self-recursive-core", "cross-domain-probe", "running", "")
+	fresh := New(repo, eventbus.NewBus(&eventbus.Options{Ops: ops}), sch, ops, ops, Options{Sessions: ops})
+	fresh.Tick(ctx)
+	fresh.mu.Lock()
+	_, leased := fresh.leases["self-recursive-core/cross-domain-probe"]
+	adopted := fresh.adopted
+	fresh.mu.Unlock()
+	if !adopted {
+		t.Fatalf("首拍应扫档（adopted=true）")
+	}
+	if leased {
+		t.Fatalf("跨域 running（本库归档无 running 判定）不应认领租约——认领即 TTL 到点误判 failed（loop-87 活体缺口复现）")
+	}
+}
