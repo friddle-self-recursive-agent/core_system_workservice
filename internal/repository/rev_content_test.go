@@ -84,13 +84,14 @@ func TestRevContentSnapshotAcrossRevisions(t *testing.T) {
 	if err := os.WriteFile(path, []byte(manual), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gitEnv := append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
 	cmd := exec.Command("git", "-C", r.Root(), "add", "-A")
-	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	cmd.Env = gitEnv
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v (%s)", err, out)
 	}
 	cmd = exec.Command("git", "-C", r.Root(), "-c", "commit.gpgsign=false", "commit", "-m", "manual edit outside cored")
-	cmd.Env = cmd.Env
+	cmd.Env = gitEnv
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v (%s)", err, out)
 	}
