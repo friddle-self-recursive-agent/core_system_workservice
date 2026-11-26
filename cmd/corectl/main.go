@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -47,7 +48,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, out, errOut io.Writer) int {
 	gs := flag.NewFlagSet("corectl", flag.ContinueOnError)
 	gs.SetOutput(errOut)
-	server := gs.String("server", os.Getenv("CORED_ADDR"), "cored 地址（缺省读 CORED_ADDR，如 http://127.0.0.1:<port>）")
+	server := gs.String("server", defaultServer(), "cored 地址（缺省读 CORED_ADDR / ~/.dsh/cored.addr）")
 	user := gs.String("subject", envOr("CORECTL_SUBJECT", "console-operator"), "请求级主体 user")
 	var roles, groups stringList
 	gs.Var(&roles, "role", "主体 role（可重复；缺省 role/global/admin）")
@@ -64,7 +65,7 @@ func run(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 	if strings.TrimSpace(*server) == "" {
-		fmt.Fprintln(errOut, "错误：缺 --server 或 CORED_ADDR（cored 监听地址属部署侧，不入公开仓）")
+		fmt.Fprintln(errOut, "错误：缺 cored 地址（--server / CORED_ADDR / ~/.dsh/cored.addr；地址属部署侧）")
 		return 2
 	}
 	if len(roles) == 0 {
@@ -88,13 +89,29 @@ func envOr(k, def string) string {
 	return def
 }
 
+// defaultServer cored 地址发现：CORED_ADDR → ~/.dsh/cored.addr（插件就绪后写入，R-UX-8）。
+func defaultServer() string {
+	if v := strings.TrimSpace(os.Getenv("CORED_ADDR")); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".dsh", "cored.addr"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 func usage(w io.Writer) {
 	fmt.Fprint(w, `corectl — core_system 命令行（桌面同源控制面）
 
 用法：corectl [全局参数] <命令> [参数]
 
 全局参数：
-  --server <url>     cored 地址（或 CORED_ADDR；必填）
+  --server <url>     cored 地址（缺省 CORED_ADDR 或 ~/.dsh/cored.addr）
   --subject <user>   请求级主体（缺省 console-operator）
   --role <role>      主体 role，可重复（缺省 role/global/admin）
   --group <group>    主体 group，可重复

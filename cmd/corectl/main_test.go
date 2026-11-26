@@ -134,6 +134,21 @@ func TestLoopPublishesLoopRequested(t *testing.T) {
 	}
 }
 
+func TestDefaultServerFromFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".dsh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".dsh", "cored.addr"), []byte("http://127.0.0.1:1234\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("CORED_ADDR", "")
+	if got := defaultServer(); got != "http://127.0.0.1:1234" {
+		t.Fatalf("defaultServer=%q", got)
+	}
+}
+
 func TestParseDocHeader(t *testing.T) {
 	kind, scope, name := parseDocHeader("---\nname: x\nscope: s\ndocType: Rule\n---\n")
 	if kind != "Rule" || scope != "s" || name != "x" {
