@@ -99,3 +99,12 @@ test('mdCodeBlock：语言标签|缺省「代码块」∧ 文本转义 ∧ 复�
   const plain = mdCodeBlock('x', '')
   assert.ok(plain.includes('代码块'), '缺省=代码块标签')
 })
+
+test('looksLikePath 活体纠偏：纯数字段串（HTTP 码）拒绝 ∧ 无扩展名目录段拒绝', () => {
+  assert.equal(looksLikePath('200/200/200/405/401'), false, 'HTTP 码串不是路径')
+  assert.equal(looksLikePath('189/0'), false)
+  assert.equal(looksLikePath('acceptance/loop-'), false, '截断无扩展名拒绝')
+  assert.equal(looksLikePath('core/scheme.yaml'), true)
+  assert.equal(looksLikePath('~/x/loop-next.md'), true)
+  assert.equal(looksLikePath('/abs/dir/file.go'), true)
+})

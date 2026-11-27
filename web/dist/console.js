@@ -13883,7 +13883,13 @@ ${text2}</tr>
     const t2 = String(s || "").trim().replace(/[),.;:」』）】]+$/, "");
     if (!t2 || t2.length > 160 || /\s/.test(t2) || t2.includes("`") || t2.includes("*")) return false;
     if (/[“”'"<>|\\]/.test(t2)) return false;
-    if (/^(?:~\/|\.{1,2}\/|(?:[\w@.-]+\/)+)[\w@.-]+$/.test(t2)) return true;
+    if (!/[A-Za-z]/.test(t2)) return false;
+    if (/^(?:~\/|\.{1,2}\/|(?:[\w@.-]+\/)+)[\w@.-]+$/.test(t2)) {
+      const segs = t2.split("/");
+      const last = segs[segs.length - 1];
+      if (!/\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(last) && !/^(?:~\/|\.{1,2}\/)/.test(t2)) return false;
+      return true;
+    }
     return /\.(md|markdown|yaml|yml|json|ts|tsx|js|mjs|go|py|sh|toml|css|html|sql)$/i.test(t2);
   }
   function extractFilePaths(text2, cap = 8) {

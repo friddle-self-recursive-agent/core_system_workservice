@@ -14,12 +14,20 @@ import { t as tr } from '../core/i18n.js';
 
 /* ---------- B1：引用抽取（纯函数） ---------- */
 
-/** 文件路径词形判定（保守：含 / 或已知扩展名；无空白；≤160 字）。 */
+/** 文件路径词形判定（保守：含 / 或已知扩展名；无空白；≤160 字；末段须带字母扩展名——
+ * 2026-11-27 活体纠偏：纯数字段词形（HTTP 码串 200/200/405）不是路径，拒绝）。 */
 export function looksLikePath(s) {
   const t = String(s || '').trim().replace(/[),.;:」』）】]+$/, '');
   if (!t || t.length > 160 || /\s/.test(t) || t.includes('`') || t.includes('*')) return false;
   if (/[“”'"<>|\\]/.test(t)) return false;
-  if (/^(?:~\/|\.{1,2}\/|(?:[\w@.-]+\/)+)[\w@.-]+$/.test(t)) return true;
+  if (!/[A-Za-z]/.test(t)) return false; // 全数字/符号串拒绝
+  if (/^(?:~\/|\.{1,2}\/|(?:[\w@.-]+\/)+)[\w@.-]+$/.test(t)) {
+    // 目录词形须至少一段含字母；末段带字母扩展名（open 面需要文件）或首段是家/相对根
+    const segs = t.split('/');
+    const last = segs[segs.length - 1];
+    if (!/\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(last) && !/^(?:~\/|\.{1,2}\/)/.test(t)) return false;
+    return true;
+  }
   return /\.(md|markdown|yaml|yml|json|ts|tsx|js|mjs|go|py|sh|toml|css|html|sql)$/i.test(t);
 }
 
