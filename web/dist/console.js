@@ -13704,11 +13704,15 @@ ${text2}</tr>
       }
     }
     const seenToolIds = /* @__PURE__ */ new Set();
+    let lastTurnEndSeq = 0;
+    for (const n of nodes) if (n.kind === "turntail" && Number(n.seq) > lastTurnEndSeq) lastTurnEndSeq = Number(n.seq);
     for (const id of order) {
       if (seenToolIds.has(id)) continue;
       seenToolIds.add(id);
       const t2 = tools.get(id);
       if (!t2) continue;
+      const interrupted = !t2.result && lastTurnEndSeq > 0 && t2.seq < lastTurnEndSeq;
+      const state = interrupted ? "stopped" : toolStateOf(!!t2.result, t2.error, t2.meta, t2.name);
       nodes.push({
         kind: "tool",
         seq: t2.seq,
@@ -13718,7 +13722,7 @@ ${text2}</tr>
         result: t2.result,
         error: t2.error,
         meta: t2.meta,
-        state: toolStateOf(!!t2.result, t2.error, t2.meta, t2.name),
+        state,
         title: toolTitle(t2.name),
         summary: toolSummary(t2.name, t2.args),
         metaLine: metaSummary(t2.name, t2.meta)
@@ -15608,6 +15612,7 @@ ${text2}</tr>
   var api = createApi(BASES.api || "", { apply: BASES.apply, drafts: BASES.drafts });
   var router = createRouter({ defaultRoute: "home" });
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
+  if (typeof window !== "undefined") window.__CC_CONSOLE_CTX__ = ctx;
   var NAV_TREE = [
     {
       level: "sys",

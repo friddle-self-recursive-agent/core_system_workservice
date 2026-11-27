@@ -355,15 +355,20 @@ export function mapTranscript(events) {
   // callId 去重：assistant 消息里的 tool-call block 与独立 tool/call 事件可能同时携带
   // 同一 callId，不去重会渲染两个「已调用 X」节点（2026-11-27 实测）。
   const seenToolIds = new Set();
+  let lastTurnEndSeq = 0;
+  for (const n of nodes) if (n.kind === 'turntail' && Number(n.seq) > lastTurnEndSeq) lastTurnEndSeq = Number(n.seq);
   for (const id of order) {
     if (seenToolIds.has(id)) continue;
     seenToolIds.add(id);
     const t = tools.get(id);
     if (!t) continue;
+    // 中断合成（上游 tool.ts 同族）：turn/end 已过而调用未闭合=本轮中断遗留——已停止，不冒充运行中
+    const interrupted = !t.result && lastTurnEndSeq > 0 && t.seq < lastTurnEndSeq;
+    const state = interrupted ? 'stopped' : toolStateOf(!!t.result, t.error, t.meta, t.name);
     nodes.push({
       kind: 'tool', seq: t.seq, time: t.time, name: t.name || tr('工具'), args: t.args,
       result: t.result, error: t.error, meta: t.meta,
-      state: toolStateOf(!!t.result, t.error, t.meta, t.name),
+      state,
       title: toolTitle(t.name), summary: toolSummary(t.name, t.args),
       metaLine: metaSummary(t.name, t.meta),
     });

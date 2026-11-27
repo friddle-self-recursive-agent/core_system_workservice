@@ -285,3 +285,16 @@ test('mapTranscript：tool-only assistant 轮次不产生空回复气泡', () =>
   assert.equal(assistants[0].text, '结论')
   assert.equal(nodes.filter((n) => n.kind === 'tool').length, 1, '工具调用去重后只有一个节点')
 })
+
+test('D5 补：turn/end 后未闭合调用=已停止（中断合成，上游同族）', () => {
+  const nodes = mapTranscript([
+    { seq: 1, type: 'turn/start', data: { turn: 1 }, time: 1 },
+    { seq: 2, type: 'tool/call', data: { callId: 'x', name: 'bash', arguments: '{"command":"tail"}' }, time: 2 },
+    { seq: 3, type: 'turn/end', data: { turn: 1, reason: 'error' }, time: 3 },
+    { seq: 4, type: 'turn/start', data: { turn: 2 }, time: 4 },
+    { seq: 5, type: 'tool/call', data: { callId: 'y', name: 'bash', arguments: '{"command":"live"}' }, time: 5 },
+  ])
+  const tools = Object.fromEntries(nodes.filter((n) => n.kind === 'tool').map((n) => [n.summary, n]))
+  assert.equal(tools['tail'].state, 'stopped', '轮已终=中断遗留')
+  assert.equal(tools['live'].state, 'running', '新轮未闭合=真运行中')
+})

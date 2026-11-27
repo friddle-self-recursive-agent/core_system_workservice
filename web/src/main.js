@@ -38,6 +38,9 @@ const store = createStore();
 const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.drafts });
 const router = createRouter({ defaultRoute: 'home' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
+/* 2026-11-27 D 批修复：console ctx 全局出借（sessionctx/chat-refs 消费面——此前只建不借，
+ * 上下文条恒空壳「加载中」，引用条/详情弹窗无 api 面。），零新依赖。 */
+if (typeof window !== 'undefined') window.__CC_CONSOLE_CTX__ = ctx;
 
 /* 两级控制台（2026-11-26 用户裁决）：系统控制台=系统视角（总览大屏+操作面）；
  * 业务控制台=占位级（后续 ServiceAgent 登录的业务面，先不加东西）。
