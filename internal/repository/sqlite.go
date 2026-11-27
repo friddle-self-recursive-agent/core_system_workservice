@@ -69,7 +69,7 @@ func OpenSQLite(dbPath string, sch *scheme.Scheme, opts *Options, seedRoot strin
 				return nil, fmt.Errorf("repository: 建 docs DB 目录 %s: %w", dir, err)
 			}
 		}
-		dsn = "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+		dsn = sqliteDSN(path)
 	}
 	db, err := sql.Open(sqliteDriver, dsn)
 	if err != nil {
@@ -117,6 +117,15 @@ func OpenSQLite(dbPath string, sch *scheme.Scheme, opts *Options, seedRoot strin
 
 // sqliteDriver 驱动名（modernc.org/sqlite 注册名；与 opslog 包同驱动同进程注册一次）。
 const sqliteDriver = "sqlite"
+
+// sqliteDSN 文件库 DSN：WAL + busy_timeout + _txlock=immediate。_txlock 使 sql.Begin
+// 以 BEGIN IMMEDIATE 起事务——事务开启即持写锁，事务内首条 SELECT 读到的现行行与随后的
+// 翻页写入原子（loop-88 A 象修复：跨进程 read-modify-write TOCTOU——SELECT 事务外时，
+// 他进程可在读与写之间翻页，同基 rv 双写双行/rv 回退/已删行复活；Git 后端以 HEAD 为基准
+// 天然防竞，本参数补齐 SQLite 后端防御对称）。
+func sqliteDSN(path string) string {
+	return "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_txlock=immediate"
+}
 
 // sqliteReadPool 文件库读连接池上限（G-15 读侧高性能——WAL 模式读者不阻塞写者；写面单
 // goroutine 串行队列=单写者，池只放大读路径并行度；busy_timeout=5000 兜底残余写互斥窗口）。
@@ -230,23 +239,28 @@ func (r *SQLiteRepo) applyDelete(req *writeReq) (int64, error) {
 	}
 	var storedRV int64
 	var storedCanon string
-	err := r.db.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
+	// L88-02（loop-88 A 象修复同拍）：现行行读取移入立即事务——删除判定的读与删原子；
+	// 跨进程写面在本事务持锁期间不得插入翻页/复活行。
+	tx, terr := r.db.Begin()
+	if terr != nil {
+		return 0, fmt.Errorf("repository: docs DB 事务: %w", terr)
+	}
+	err := tx.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
 		d.kind, d.scope, d.name).Scan(&storedCanon, &storedRV)
 	if errors.Is(err, sql.ErrNoRows) {
+		_ = tx.Rollback()
 		r.logApply(&Object{Kind: d.kind, Scope: d.scope, Name: d.name}, 0, "delete-missing", req)
 		return 0, fmt.Errorf("%w: %s/%s/%s", ErrNotFound, d.kind, d.scope, d.name)
 	}
 	if err != nil {
+		_ = tx.Rollback()
 		return 0, fmt.Errorf("repository: docs DB 查询: %w", err)
 	}
 	if d.expectRV > 0 && d.expectRV != storedRV {
+		_ = tx.Rollback()
 		r.logApply(&Object{Kind: d.kind, Scope: d.scope, Name: d.name}, storedRV, "conflict", req)
 		return 0, &ConflictError{Kind: d.kind, Scope: d.scope, Name: d.name,
 			Expected: d.expectRV, Current: storedRV}
-	}
-	tx, terr := r.db.Begin()
-	if terr != nil {
-		return 0, fmt.Errorf("repository: docs DB 事务: %w", terr)
 	}
 	if _, err := tx.Exec(`INSERT INTO doc_history
 	(kind, scope, name, rev, content, applied_at, field_manager)
@@ -356,25 +370,37 @@ func (r *SQLiteRepo) applyWrite(req *writeReq) (int64, string, error) {
 		return 0, "", err
 	}
 
+	// L88-02/L88-01（loop-88 A 象修复）：SELECT 移入立即事务——BEGIN IMMEDIATE 即持写锁，
+	// 读到的现行行与翻页写入原子；跨进程第二写面（共享同一 docs 库的 authority/执行体）
+	// 在本事务持锁期间被拒（busy_timeout 等锁/超时重试），杜绝「读到基线 rv→他进程翻页→
+	// 陈旧基线覆盖提交」的 TOCTOU 窗口（防御与 Git 后端 HEAD 基准对称）。
 	var storedRV int64
 	var storedCanon string
-	err = r.db.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
+	tx, terr := r.db.Begin()
+	if terr != nil {
+		return 0, "", fmt.Errorf("repository: docs DB 事务: %w", terr)
+	}
+	err = tx.QueryRow(`SELECT content, resource_version FROM doc WHERE kind=? AND scope=? AND name=?`,
 		o.Kind, o.Scope, o.Name).Scan(&storedCanon, &storedRV)
 	switch {
 	case err == nil:
 		// 库内存的是落库后的完整原文（含 resourceVersion）；幂等比对用去 rv 规范文本。
 		cur, cerr := canonicalWithoutRV([]byte(storedCanon))
 		if cerr != nil {
+			_ = tx.Rollback()
 			return 0, "", fmt.Errorf("repository: docs DB 现行内容解析: %w", cerr)
 		}
 		if inCanon == cur {
+			_ = tx.Rollback()
 			r.logApply(o, storedRV, "noop", req) // 幂等重入：内容一致 → no-op
 			return storedRV, "noop", nil
 		}
 		if o.ResourceVersion == 0 {
+			_ = tx.Rollback()
 			return 0, "", fmt.Errorf("%w: %s/%s/%s 现版本 %d", ErrAlreadyExists, o.Kind, o.Scope, o.Name, storedRV)
 		}
 		if o.ResourceVersion != storedRV {
+			_ = tx.Rollback()
 			r.logApply(o, storedRV, "conflict", req)
 			return 0, "", &ConflictError{Kind: o.Kind, Scope: o.Scope, Name: o.Name,
 				Expected: o.ResourceVersion, Current: storedRV}
@@ -382,11 +408,13 @@ func (r *SQLiteRepo) applyWrite(req *writeReq) (int64, string, error) {
 	case errors.Is(err, sql.ErrNoRows):
 		if o.ResourceVersion != 0 {
 			// 写者读到过它、如今已不在：并发删除语义，按冲突处理（与 git 后端同口径）。
+			_ = tx.Rollback()
 			r.logApply(o, 0, "conflict", req)
 			return 0, "", &ConflictError{Kind: o.Kind, Scope: o.Scope, Name: o.Name,
 				Expected: o.ResourceVersion, Current: 0}
 		}
 	default:
+		_ = tx.Rollback()
 		return 0, "", fmt.Errorf("repository: docs DB 查询: %w", err)
 	}
 
@@ -403,15 +431,12 @@ func (r *SQLiteRepo) applyWrite(req *writeReq) (int64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	// 权威落库 + 逐次正文历史捕获同一事务（单写者连接=事务即串行边界）：update 动作先把
+	// 权威落库 + 逐次正文历史捕获同事务（事务上方已开——SELECT 与写入原子，loop-88 A 象
+	// 修复）：update 动作先把
 	// 旧内容落 doc_history 一行（R-DOC-7 规则 4——逐次账非周期快照；rev=旧内容自带的
 	// resourceVersion、正文=库内原文逐字节、field_manager=本次翻页写者、applied_at=翻页时刻），
 	// 再 upsert 现行行；任一步失败同滚——不产生「现行已翻页、历史缺席」的缺口。
 	// create 无历史起点（第一版即现行，读现行 rv=现行正文）；noop/conflict 不落（无翻页发生）。
-	tx, terr := r.db.Begin()
-	if terr != nil {
-		return 0, "", fmt.Errorf("repository: docs DB 事务: %w", terr)
-	}
 	if action == "update" {
 		if _, err := tx.Exec(`INSERT INTO doc_history
 	(kind, scope, name, rev, content, applied_at, field_manager)

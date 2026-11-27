@@ -27,6 +27,18 @@ func newSQLiteRepo(t *testing.T) (*SQLiteRepo, *memOps) {
 	return r, ops
 }
 
+// newSQLiteRepoAt 定点建库（跨进程 TOCTOU 锚测试用——第二进程句柄需打开同一文件）。
+func newSQLiteRepoAt(t *testing.T, dir string) (*SQLiteRepo, *memOps) {
+	t.Helper()
+	ops := &memOps{}
+	r, err := OpenSQLite(filepath.Join(dir, "docs.db"), mustScheme(t), &Options{Ops: ops}, "")
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	return r, ops
+}
+
 // memOps 最小 ops 双写钩子（记录 result 序列，供乐观锁/幂等断言）。
 type memOps struct {
 	mu    sync.Mutex
