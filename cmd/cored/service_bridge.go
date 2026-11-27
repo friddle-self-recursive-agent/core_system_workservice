@@ -150,7 +150,16 @@ func (b *serviceSpawnBridge) ServiceSignal(rec workflow.TriggerRecord) {
 		if r.Workflow != name || r.Status != workflow.RunSuspended || r.SuspendWhy != workflow.SuspendService {
 			continue
 		}
-		runN, node = r.Run, r.Phase
+		runN = r.Run
+		// 节点名按落点相位反查节点投影（spawn 记录键=node.Name 非相位词——
+		// Executing≠developer-system；活体教训 2026-11-27：相位词直查 MarkCompleted 落空 noop）。
+		node = r.Phase
+		for _, nv := range r.Nodes {
+			if nv.Phase == r.Phase && nv.Unit == "service" {
+				node = nv.Name
+				break
+			}
+		}
 		break
 	}
 	if runN == 0 {
