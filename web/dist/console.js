@@ -928,7 +928,9 @@ var CoreConsoleWeb = (() => {
     ["\u9AA8\u67B6", "Skeleton"],
     ["\u751F\u6548", "Effective"],
     ["\u8FD0\u884C\u4F1A\u8BDD", "Run session"],
-    ["\u4EFB\u52A1\u4F1A\u8BDD", "Task session"]
+    ["\u4EFB\u52A1\u4F1A\u8BDD", "Task session"],
+    ["\u65E0\u4F1A\u8BDD\uFF08\u672A\u5230\u8FBE\uFF09", "No session (not reached)"],
+    ["\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD", "{n} real sessions"]
   ];
 
   // src/core/i18n.js
@@ -3259,9 +3261,6 @@ var CoreConsoleWeb = (() => {
     if (!ranked.length || ranked[0].d > SESSION_MATCH_WINDOW_MS) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
     return { sid: String(ranked[0].x.sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
   }
-  function wfRealSession(run, task, sessionRows) {
-    return wfSessionAnchor(run, task, sessionRows).sid;
-  }
   function wfSessionChip(sid, label) {
     const s = String(sid || "");
     if (!s) return '<span class="small faint">' + esc(t("\u4F1A\u8BDD\u672A\u8BB0\u5F55")) + "</span>";
@@ -3348,7 +3347,12 @@ var CoreConsoleWeb = (() => {
       const t2 = x.task;
       const title = t2 ? String(t2.title || t2.name || x.key) : x.key;
       const ph = t2 ? String(t2.phase || "") : "";
-      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + "</b> " + (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || "mute") : "") + '</div><div class="mr-sub small mono">Task/' + esc(x.key) + " \xB7 " + esc(t("runs") + " " + x.runs.length) + '</div></div><div class="mr-side">' + wfSessionChip(wfRealSession(x.runs[0], t2, sessionRows), "\u4EFB\u52A1\u4F1A\u8BDD") + " " + chipGo(t("\u4EFB\u52A1"), "task/" + encodeURIComponent(x.key), "mute", true) + "</div></div>";
+      const taskSessions = (Array.isArray(sessionRows) ? sessionRows : []).filter((r) => r && r.taskId === x.key && /^session[-_]/i.test(String(r.sessionId || ""))).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+      const latest = taskSessions[0] || null;
+      const direct = /^session[-_]/i.test(String(t2 && t2.agentSession || "")) ? String(t2.agentSession) : "";
+      const sid = latest ? String(latest.sessionId) : direct;
+      const sessionHtml = wfSessionChip(sid, "\u4EFB\u52A1\u4F1A\u8BDD") + (taskSessions.length > 1 ? '<span class="small faint">' + esc(t("\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD").replace("{n}", String(taskSessions.length))) + "</span>" : "");
+      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + "</b> " + (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || "mute") : "") + '</div><div class="mr-sub small mono">Task/' + esc(x.key) + " \xB7 " + esc(t("runs") + " " + x.runs.length) + '</div></div><div class="mr-side">' + sessionHtml + " " + chipGo(t("\u4EFB\u52A1"), "task/" + encodeURIComponent(x.key), "mute", true) + "</div></div>";
     }).join("");
     return '<h2 class="sec-title">' + esc(t("\u4EFB\u52A1")) + '</h2><div class="card">' + rows + "</div>";
   }

@@ -905,4 +905,6 @@ export const enEntries = [
   ["生效", "Effective"],
   ["运行会话", "Run session"],
   ["任务会话", "Task session"],
+  ["无会话（未到达）", "No session (not reached)"],
+  ["共 {n} 个真实会话", "{n} real sessions"],
 ];

@@ -445,10 +445,18 @@ function wfTasksHtml(runs, taskIdx, sessionRows = []) {
     const t = x.task;
     const title = t ? String(t.title || t.name || x.key) : x.key;
     const ph = t ? String(t.phase || '') : '';
+    const taskSessions = (Array.isArray(sessionRows) ? sessionRows : [])
+      .filter((r) => r && r.taskId === x.key && /^session[-_]/i.test(String(r.sessionId || '')))
+      .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+    const latest = taskSessions[0] || null;
+    const direct = /^session[-_]/i.test(String((t && t.agentSession) || '')) ? String(t.agentSession) : '';
+    const sid = latest ? String(latest.sessionId) : direct;
+    const sessionHtml = wfSessionChip(sid, '任务会话') +
+      (taskSessions.length > 1 ? '<span class="small faint">' + esc(tr('共 {n} 个真实会话').replace('{n}', String(taskSessions.length))) + '</span>' : '');
     return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + '</b> ' +
       (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || 'mute') : '') + '</div>' +
       '<div class="mr-sub small mono">Task/' + esc(x.key) + ' · ' + esc(tr('runs') + ' ' + x.runs.length) + '</div></div>' +
-      '<div class="mr-side">' + wfSessionChip(wfRealSession(x.runs[0], t, sessionRows), '任务会话') + ' ' +
+      '<div class="mr-side">' + sessionHtml + ' ' +
       chipGo(tr('任务'), 'task/' + encodeURIComponent(x.key), 'mute', true) + '</div></div>';
   }).join('');
   return '<h2 class="sec-title">' + esc(tr('任务')) + '</h2><div class="card">' + rows + '</div>';
