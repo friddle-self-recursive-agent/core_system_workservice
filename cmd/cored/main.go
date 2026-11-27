@@ -22,6 +22,7 @@ import (
 
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/approvaldiff"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/contextidx"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/docrepo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
@@ -333,7 +334,30 @@ func run() error {
 	// 16）：文档库挂载即注入对象 spec 解析面（object 源 run 相位序列/声明表按文档库 spec
 	// 投影，零缓存=apply 落库即生效；相位投影即点亮既有表驱动判定——判定器零改动）。未挂
 	// 文档库=能力缺席，既有行为面不变。
+	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
+	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
+	// 缺省纯内存语义不变（重启即清，草稿可重放）。
+	var draftOpts *draft.Options
+	if *opsDB != "" {
+		draftOpts = &draft.Options{Persistence: draftOpsStore{store}}
+	}
+	drafts := draft.NewStore(draftOpts)
+	// 审批判决文档生成面（2026-11-28 用户裁定 ops_core_inner_agent——「审批裁定的时候走一个小内置 agent[调用 llm 即可]整理下 DocumentDiff。生成 Diff 文档。告诉我改了什么」）：
+	// 文档库在册即挂接（读稿+现值→Provider low 档调 LLM 整理→DocumentDiff 落库，workflow-engine writer；同名幂等防重）；
+	// 秘密库缺席=secret: 引用解析缺口可见（判决降级为缺席注记不编造）。声明面=scheme docTypes DocumentDiff+
+	// Workflow.spec.approval.diffSummary（diffAgent=ops_core_inner_agent 词形）。
+	diffGen := &approvaldiff.Generator{Repo: nil, Drafts: drafts, Secrets: secrets, Logf: func(f string, a ...any) {
+		fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
+	}}
+	diffAgentState := "off（未挂文档库——人审挂起不生成判决文档）"
+	if repo != nil {
+		diffAgentState = "on（ops_core_inner_agent：人审挂起即读稿+现值调 LLM 生成 DocumentDiff）"
+	}
 	runOpts := &workflow.RunOptions{}
+	if repo != nil {
+		diffGen.Repo = repo
+		runOpts.DiffSummarizer = diffGen
+	}
 	runOpts.Store = rtStore              // 运行态投影写穿透+启动恢复（G-01——六类投影第一段：run/触发/送达/唤醒）
 	runOpts.Brakes.Enabled = *brakesFlag // 刹车闸挂接态（缺省关断=零刹车既有行为面零翻转）
 	// service 节点 session 拉起面（2026-11-27 用户裁决「builtin 的 service 的 agent 可以用
@@ -526,15 +550,8 @@ func run() error {
 		brakesState = "on(" + brakesResolverState + ")"
 	}
 	fmt.Fprintf(os.Stderr, "cored: 刹车闸=%s（--brakes；on=受理路径冷却门（同锚同 involved cooldown 窗口内触发不落 run——braked 计数可见；跨 involved 不互踩）+推进拍变更上限（每拍每锚 run 相位变更数受生效刹车值约束——capped 计数可见，超限本拍零动作下拍续推）——workflow.md 规则 17；刹车值=spec.brakes 声明收紧，宽松方向钳回强制默认（可收紧不可关闭）；off=关断零刹车缺省不改行为面）\n", brakesState)
+	fmt.Fprintf(os.Stderr, "cored: 判决文档生成面=%s（ops_core_inner_agent）\n", diffAgentState)
 	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 解析 v0.27 表投影+v0.28 相位投影与迁移判定接线——object 源 run 相位/声明表按文档库 spec 投影，声明了 phases 的对象参与既有表驱动判定；未声明 phases=零投影既有行为面不变）\n", objSpecState)
-	// 草稿缓存（apply.md §1 编辑与发布分离）：进程内存为底，读面恒开，写操作随写面开关。
-	// --ops-db 给定=持久化部署：落稿/弃稿写穿 ops DB draft 表 + 启动恢复（ops-log.md §2）；
-	// 缺省纯内存语义不变（重启即清，草稿可重放）。
-	var draftOpts *draft.Options
-	if *opsDB != "" {
-		draftOpts = &draft.Options{Persistence: draftOpsStore{store}}
-	}
-	drafts := draft.NewStore(draftOpts)
 	if draftOpts != nil {
 		restored, skipped, err := drafts.Restore()
 		if err != nil {
