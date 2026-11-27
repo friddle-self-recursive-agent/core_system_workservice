@@ -3040,6 +3040,7 @@ var CoreConsoleWeb = (() => {
     if (!box) return;
     if (!draftR.ok) {
       box.innerHTML = t('<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(draftR.error || draftR.status)) + t("\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>");
+      hydrateVerdict(ctx2, d);
       return;
     }
     const dr = draftR.data && typeof draftR.data === "object" ? draftR.data : {};
@@ -3055,6 +3056,9 @@ var CoreConsoleWeb = (() => {
     }
     const stats = diffStats(diffLines2(base, working));
     box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div><div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>";
+    hydrateVerdict(ctx2, d);
+  }
+  async function hydrateVerdict(ctx2, d) {
     try {
       const ddName = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const ddR = await ctx2.api.object("DocumentDiff", "global", ddName);

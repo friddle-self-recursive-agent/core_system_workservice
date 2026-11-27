@@ -198,6 +198,7 @@ async function hydrateDiff(ctx, d) {
   if (!box) return;
   if (!draftR.ok) {
     box.innerHTML = tr('<div class="small faint">正文暂不可读（') + esc(String(draftR.error || draftR.status)) + tr('）——重进即恢复。</div>');
+    hydrateVerdict(ctx, d); // 判决文档独立注水（稿消费后 diff 缺席——判决恰是此时最有用）
     return;
   }
   const dr = draftR.data && typeof draftR.data === 'object' ? draftR.data : {};
@@ -216,9 +217,13 @@ async function hydrateDiff(ctx, d) {
     '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + tr(' · 稿 ') + working.length + tr('B vs 落库值 ') + base.length + tr('B（现读，不缓存） · ') +
     '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div>' +
     '<div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(tr('判决文档（ops_core_inner_agent）现读中…')) + '</div></div>';
-  // 判决文档注水（2026-11-28 用户裁定 ops_core_inner_agent：审批裁定走小内置 agent 整理
-  // DocumentDiff 生成 Diff 文档——引擎人审挂起即生成，同名幂等 docdiff-<kind>-<name>；
-  // 在册=渲染判决正文；缺席=诚实词形（生成中/未生成，不编造））。
+  hydrateVerdict(ctx, d);
+}
+
+/** 判决文档注水（2026-11-28 用户裁定 ops_core_inner_agent：审批裁定走小内置 agent 整理
+ * DocumentDiff 生成 Diff 文档——引擎人审挂起即生成，同名幂等 docdiff-<kind>-<name>；
+ * 在册=渲染判决正文；缺席=诚实词形（生成中/未生成，不编造））。 */
+async function hydrateVerdict(ctx, d) {
   try {
     const ddName = 'docdiff-' + String(d.kind + '-' + d.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const ddR = await ctx.api.object('DocumentDiff', 'global', ddName);
