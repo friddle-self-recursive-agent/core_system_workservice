@@ -21,6 +21,7 @@ type Runner struct {
 // RunInner 执行一个 inner 节点：LLM 整理节点任务（op+run 上下文）→产物 DocumentDiff 落库
 // （name=inneragent-<node>-run<run>）。err 非 nil=引擎留挂起。
 func (r *Runner) RunInner(run workflow.RunRecord, node workflow.NodeView) error {
+	r.G.trace("inner enter run=" + fmt.Sprint(run.Run) + " node=" + node.Name + " op=" + node.Op)
 	if r.G == nil || r.G.Repo == nil {
 		return fmt.Errorf("inneragent: 未挂接文档库（Repo 缺席）")
 	}
@@ -35,7 +36,9 @@ func (r *Runner) RunInner(run workflow.RunRecord, node workflow.NodeView) error 
 	}
 	sys := "你是 workflow 内置轻量 agent（ops_core_inner_agent——低智商环节的润滑剂）。直接完成节点任务并输出简要执行结论（做了什么/结果/下一步建议），中文 ≤200 字，不编造。"
 	user := fmt.Sprintf("run=%d 对象=%s 节点=%s 相位=%s unit=%s op=%s\n请按 op 语义完成本节点轻量任务并输出执行结论。", run.Run, run.Involved, node.Name, node.Phase, node.Unit, node.Op)
+	r.G.trace("inner llm-call model=" + model)
 	out := r.G.complete(ctx, cfg, model, sys, user)
+	r.G.trace("inner llm-done len=" + fmt.Sprint(len(out)))
 	docName := fmt.Sprintf("inneragent-%s-run%d", node.Name, run.Run)
 	if _, err := r.G.Repo.Get(ctx, "DocumentDiff", "global", docName); err == nil {
 		return nil // 幂等：同节点同 run 产物在册
@@ -50,6 +53,7 @@ func (r *Runner) RunInner(run workflow.RunRecord, node workflow.NodeView) error 
 	if _, _, err := r.G.Repo.Write(ctx, &repository.Object{Kind: "DocumentDiff", Scope: "global", Name: docName, Content: []byte(content)}, "workflow-engine", "inner-agent:"+node.Name); err != nil {
 		return fmt.Errorf("inneragent: 产物落库失败: %w", err)
 	}
+	r.G.trace("inner saved " + docName)
 	r.G.Logf("inneragent: 节点 %s (run %d) 执行完成，产物 %s", node.Name, run.Run, docName)
 	return nil
 }

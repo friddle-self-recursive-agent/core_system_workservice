@@ -8,7 +8,11 @@
 // dsh）=既有行为面零翻转。
 package workflow
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"time"
+)
 
 // EdgeInnerSpawn / EdgeInnerResume 轨迹行词形（新载荷键=代际判别器）。
 const (
@@ -19,21 +23,40 @@ const (
 // SuspendInner 挂起因由词（RunRecord.SuspendWhy——内置轻量 agent 执行窗口）。
 const SuspendInner = "inner-agent"
 
-// landInnerLocked 落点判定：executor=inner 的 agent/service 节点→挂起+派发请求。
-// 调用方持 r.mu；InnerAgent 缺席=零翻转（返回 nil 走 applyAdvanceLocked 既有语义）。
-func (r *RunLog) landInnerLocked(run *RunRecord, next string) *spawnReq {
+// innerGateLocked 停留门：当前相位=executor=inner 的 agent/service 节点且未执行过
+// （History 无 inner-spawn 行）→挂起（suspendWhy=inner-agent）+派发请求。执行完成
+// InnerDone 翻 running，下拍本门放行（History 标记防重）沿表 advance 离开。
+// 调用方持 r.mu；InnerAgent 缺席=零翻转（返回 nil 既有行为面不变）。
+func (r *RunLog) innerGateLocked(run *RunRecord) *spawnReq {
 	if r.opts.InnerAgent == nil {
+		trace("gate-skip nil-inner-agent run=" + fmt.Sprint(run.Run))
 		return nil
 	}
-	node, ok := nodeOfPhase(run.Nodes, next)
-	if !ok || (node.Unit != "agent" && node.Unit != "service") || node.Executor != "inner" {
+	node, ok := nodeOfPhase(run.Nodes, run.Phase)
+	if !ok {
+		trace("gate-skip no-node run=" + fmt.Sprint(run.Run) + " phase=" + run.Phase + " nodes=" + fmt.Sprint(len(run.Nodes)))
 		return nil
+	}
+	if node.Executor != "inner" {
+		trace("gate-skip exec=" + node.Executor + " unit=" + node.Unit + " phase=" + run.Phase)
+		return nil
+	}
+	if node.Unit != "agent" && node.Unit != "service" {
+		trace("gate-skip unit=" + node.Unit)
+		return nil
+	}
+	for _, h := range run.History {
+		if h.On == EdgeInnerSpawn && h.To == run.Phase {
+			return nil // 已执行过（InnerDone 续行回本相位）——放行 advance 离开
+		}
 	}
 	at := stampNano(time.Now())
-	run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: EdgeInnerSpawn, At: at})
-	run.Phase = next
+	run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: EdgeInnerSpawn, At: at})
 	run.Status = RunSuspended
 	run.SuspendWhy = SuspendInner
+	if r.opts.Store != nil {
+		persistAppend("run 内置 agent 挂起", r.opts.Store.AppendRun(runToRow(*run)))
+	}
 	return &spawnReq{kind: spawnKindInner, run: *run, node: node}
 }
 
@@ -69,5 +92,13 @@ func (r *RunLog) InnerDone(runID int64, note string) {
 			persistAppend("run 内置 agent 续行", r.opts.Store.AppendRun(runToRow(*run)))
 		}
 		return
+	}
+}
+
+// trace 部署探针（stderr 黑洞——文件尾随取证；R-ENG-8 tmp 口径）。
+func trace(msg string) {
+	if f, err := os.OpenFile("/tmp/approvaldiff.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05"), msg)
+		f.Close()
 	}
 }

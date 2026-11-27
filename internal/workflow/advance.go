@@ -81,6 +81,10 @@ func (r *RunLog) Advance() int {
 			cands = append(cands, gateCand{run: *run})
 			continue
 		}
+		if isp := r.innerGateLocked(run); isp != nil {
+			spawnQ = append(spawnQ, *isp) // executor=inner 轻量执行单元（2026-11-28 润滑剂裁定）：当前相位停留执行——挂起+锁外派发
+			continue
+		}
 		if sp := r.landAfterAdvanceLocked(run, next); sp != nil {
 			spawnQ = append(spawnQ, *sp) // service 执行单元落点：挂起+拉起请求（出锁派发）
 		}
@@ -219,9 +223,6 @@ func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
 			run.SuspendWhy = SuspendService
 			return &spawnReq{kind: spawnKindService, run: *run, node: node}
 		}
-	}
-	if sp := r.landInnerLocked(run, next); sp != nil {
-		return sp // executor=inner 的轻量执行单元：挂起+锁外派发（2026-11-28 润滑剂裁定）
 	}
 	r.applyAdvanceLocked(run, next)
 	// 审批判决文档触发窗口：本拍刚落人审挂起（挂起 run 后续拍被 Status!=RunRunning 跳过，
