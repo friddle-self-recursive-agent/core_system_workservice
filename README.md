@@ -18,7 +18,7 @@ internal/
   permission/    权限系统 v0.9（Role/Group 对象装载 + 请求级主体 Check + A44 硬规则）
   opslog/        SQLite ops 日志（apply_log/event_log 双轨，instance 仓 runtime/ops-log.md）
 connectors/      gitfs / dsh —— builtin 幂等驱动实现（五方法契约；类型绑定在 WorkService 六面体 connector 面，A53）
-                 用法型驱动（onedev/nas/oss 等）不进本仓：放部署侧仓 sybran_usage_connector（rule.md R-ENG-3）
+                 用法型驱动（onedev/nas/oss 等）不进本仓：放部署侧用法仓（rule.md R-ENG-3，私域）
 internal/workservice/ WorkService 六面体（连接/观测/数据/流程/运行状态/工具，A53）
 internal/refresolve/ 声明式 Ref 运行时解析（v0.10：逻辑声明→owning system 返回真实地址，A46）
 internal/workflow/ Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹车+成本，A41）
@@ -31,9 +31,9 @@ internal/workflow/ Workflow 引擎（v0.8 吸收 Loop：触发规则+态机+刹�
 | builtin 服务 | 代码位置 |
 |---|---|
 | self-recursive-core | cmd/igniter, cmd/cored, internal/* |
-| builtin-developer-system | connectors/dsh；onedev 驱动在 sybran_usage_connector 仓 |
+| builtin-developer-system | connectors/dsh（onedev 驱动=workflow 节点变体绑定，部署侧用法仓） |
 | builtin-deploy-system | plugins/execlocal, connectors/gitfs |
-| builtin-storage-system | connectors/gitfs；nas/oss 驱动在 sybran_usage_connector 仓 |
+| builtin-storage-system | connectors/gitfs（nas/oss 驱动=部署方可选外接，部署侧用法仓） |
 
 ## 命令行 corectl
 
@@ -52,6 +52,6 @@ corectl tick          # = 发布 ReconcileTick（系统事件触发 core-workflo
 ## 开发约定
 
 - 设计先行：任何本仓代码必须能指回 core_system 的一条声明或 instance 仓的一份设计（P1：没有文档的对象是黑箱）。
-- 驱动分仓（rule.md R-ENG-3）：本仓 connectors/ 只收 builtin 驱动（gitfs/dsh）；用法型驱动放部署侧仓（如 sybran_usage_connector），依赖方向恒为用法仓→本仓。
+- 驱动分仓（rule.md R-ENG-3）：本仓 connectors/ 只收 builtin 驱动（gitfs/dsh）；用法型驱动放部署侧用法仓（私域），依赖方向恒为用法仓→本仓。
 - 契约测试：Provider 五方法三例（首跑/重跑幂等/失败路径）先于实现；Ops 是运行时挂载（环境+op子集+Workflow），不写死在驱动里。
 - 骨架期的每个 `// TODO` 都对应 open-questions 或落地顺序里的一项（instance 仓 feasibility.md §12）。

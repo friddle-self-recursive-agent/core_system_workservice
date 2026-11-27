@@ -4,7 +4,7 @@
 // OpsConnector 就是一份可执行的 ops 实现（notify/send-email、IM 通知、未来 webhook 等）。
 //
 // 仓库归属（rule.md R-ENG-3）：本包只放 builtin 契约+注册表；通用类实现（notify/email）
-// 在部署侧独立仓 common_connector，用法类实现（onedev/nas/oss）在 sybran_usage_connector
+// 在部署侧独立仓 common_connector，用法类实现（onedev/nas/oss）在部署侧用法仓（R-ENG-3，私域）
 // ——依赖方向恒为 **connector 仓 → 本包**（本仓不 import 连接器仓，装配在部署侧）。
 //
 // 与资源域 ProviderImpl 的分野（同一包两契约，两物）：ProviderImpl=资源域幂等驱动

@@ -67,7 +67,7 @@ func TestLoadObjectsAndCheck(t *testing.T) {
 	if err := s.Check(sub, "global", "write", ByRole); err == nil {
 		t.Fatal("scope 外应拒绝")
 	}
-	if err := s.Check(sub, "kube-inner", "write", ByRole); err == nil {
+	if err := s.Check(sub, "other-system", "write", ByRole); err == nil {
 		t.Fatal("跨系统域应拒绝")
 	}
 	// 未知 role 名=断言不产生权限（授权只来自 Role 对象）。

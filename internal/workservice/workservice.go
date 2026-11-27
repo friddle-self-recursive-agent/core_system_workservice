@@ -1,7 +1,7 @@
 // Package workservice 六面体（v0.13，A53）：外部系统的完整管理描述。
 // 设计依据：core_system/concepts/workservice.md。
 // 六面：connector（含原 ConnectorProvider）/ observation / data / flows / runtime / tools。
-// 层级判例：System=deploy_system → 实例=sybran 开发实例 → WorkService=jenkins/onedev/bug-management。
+// 层级判例：System=deploy_system → 实例=业务域开发实例 → WorkService=jenkins/onedev/bug-management。
 package workservice
 
 // ConnectorFacet 连接面（原 ConnectorProvider 并入，A53）。

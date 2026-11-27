@@ -103,12 +103,13 @@ export function safeLink(label, href, cls = 'lk') {
  *   - git://<org>/<repo>          → https://github.com/<org>/<repo>
  *   - github.com/<org>/<repo>[…]  → 透传 https 化
  *   - 常见内部仓名（core_design/core_system_instance/core_system_workservice/core_system_dsh_plugin/
- *     common_connector/sybran_usage_connector…）→ 默认 org 仓（前端注入 window.__CC.repoBase 可覆写）。
+ *     common_connector…）→ 默认 org 仓；部署侧私有仓名由前端注入 window.__CC.repoBase/repoNames 覆写（不入公开仓）.
  * 不匹配=空串（调用方降级纯文本——不编造外链）。 */
 const DEFAULT_ORG = (typeof window !== 'undefined' && window.__CC && window.__CC.repoOrg) || 'friddle-self-recursive-agent';
 const REPO_NAMES = [
   'core_system', 'core_design', 'core_system_instance', 'core_system_workservice', 'core_system_dsh_plugin',
-  'common_connector', 'sybran_usage_connector', 'sybran-developer-system', 'sybran-business-system',
+  'common_connector',
+  // 部署侧私有仓名经 window.__CC.repoNames 注入（R-PUB：不入公开仓）
 ];
 
 /** repoRef → 外部仓库 URL（纯函数——node 单测可机械直测；不匹配=空串）。

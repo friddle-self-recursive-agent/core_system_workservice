@@ -2570,10 +2570,8 @@ var CoreConsoleWeb = (() => {
     "core_system_instance",
     "core_system_workservice",
     "core_system_dsh_plugin",
-    "common_connector",
-    "sybran_usage_connector",
-    "sybran-developer-system",
-    "sybran-business-system"
+    "common_connector"
+    /* 部署侧私有仓名经 window.__CC.repoNames 注入（R-PUB：不入公开仓） */
   ];
   function repoUrl(ref) {
     const r = String(ref || "").trim().replace(/^"+|"+$/g, "");

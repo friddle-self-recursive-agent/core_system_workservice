@@ -9,7 +9,7 @@ const fixtureSchemeYAML = `
 # 依据：concepts/ 全部概念文档 §3。标注：! = 必填；? = 可选；a|b = 枚举；已采纳的墓碑概念不注册。
 # 机读语义（checker=scheme.ValidateDoc，R-TYPE 有规则即有 checker）：无标注=不强制必填但出现即校验形状
 # （类型/枚举/嵌套）；子字段必填=decl 后缀 !（先例 ref!）；未知字段放行（只增不破坏）；散文声明透明放行。
-# 层级判例：System=deploy_system → 实例=sybran 开发实例 → WorkService=jenkins/onedev/bug-management
+# 层级判例：System=deploy_system → 实例=业务域开发实例 → WorkService=jenkins/onedev/bug-management
 apiVersion: core/v1
 kind: Scheme
 metadata:
