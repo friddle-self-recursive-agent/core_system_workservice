@@ -930,7 +930,85 @@ var CoreConsoleWeb = (() => {
     ["\u8FD0\u884C\u4F1A\u8BDD", "Run session"],
     ["\u4EFB\u52A1\u4F1A\u8BDD", "Task session"],
     ["\u65E0\u4F1A\u8BDD\uFF08\u672A\u5230\u8FBE\uFF09", "No session (not reached)"],
-    ["\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD", "{n} real sessions"]
+    ["\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD", "{n} real sessions"],
+    // —— D 批（2026-11-27 DeepSeek harness 展示类型对账，chat-ds.md）——
+    ["\u540E\u53F0\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0", "Background job update"],
+    ["\u63D2\u4EF6\u72B6\u6001\u66F4\u65B0", "Plugin update"],
+    ["\u81EA\u52A8\u5316\u4EFB\u52A1", "Scheduled task"],
+    ["\u5B50\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0", "Subtask update"],
+    ["\u5B50\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\u4EFB\u52A1", "Subagent finished the task"],
+    ["\u5B50\u667A\u80FD\u4F53\u4EFB\u52A1\u5DF2\u505C\u6B62", "Subagent task stopped"],
+    ["\u5B50\u667A\u80FD\u4F53\u6267\u884C\u5931\u8D25", "Subagent failed"],
+    ["\u5B50\u667A\u80FD\u4F53\u5DF2\u8FBE token \u4E0A\u9650", "Subagent hit the token cap"],
+    ["\u5B50\u667A\u80FD\u4F53\u62D2\u7EDD\u6267\u884C", "Subagent refused"],
+    ["\u6536\u5230\u6267\u884C\u8BF7\u6C42", "Execution request received"],
+    ["\u7EE7\u7EED\u6267\u884C\u76EE\u6807", "Continuing the goal"],
+    ["\u6536\u5230\u4EFB\u52A1\u6D88\u606F", "Task message received"],
+    ["\u6536\u5230\u56E2\u961F\u6D88\u606F", "Team message received"],
+    ["\u6536\u5230 GitHub \u4E8B\u4EF6", "GitHub event received"],
+    ["\u6536\u5230\u5916\u90E8\u4E8B\u4EF6", "External event received"],
+    ["\u8FD9\u6761\u901A\u77E5\u89E6\u53D1\u4E86\u672C\u8F6E\u56DE\u590D\u3002", "This notice triggered this turn."],
+    ["\u4E0A\u4E0B\u6587\u6CE8\u5165", "Context injection"],
+    ["\u8DE8\u4F1A\u8BDD\u53EC\u56DE", "Cross-session recall"],
+    ["\u5DF2\u5B8C\u6210\uFF0C\u7528\u65F6 ", "Completed in "],
+    ["\u5904\u7406\u5931\u8D25", "Failed"],
+    ["\u5DF2\u505C\u6B62", "Stopped"],
+    ["\u5DF2\u8FBE\u5230\u8F93\u51FA token \u4E0A\u9650", "Output token cap reached"],
+    ["\u56DE\u7B54\u88AB\u622A\u65AD\uFF0C\u5DF2\u6709\u8F93\u51FA\u4FDD\u7559\u5728\u5BF9\u8BDD\u4E2D\u3002\u53D1\u9001\u300C\u7EE7\u7EED\u300D\u53EF\u8BA9\u6A21\u578B\u63A5\u7740\u8F93\u51FA\u3002", "The reply was truncated; what was generated stays in the thread. Send \u201Ccontinue\u201D to let the model resume."],
+    ["\u6DF1\u5EA6\u6C42\u7D22\u4E2D\u2026", "Deep thinking\u2026"],
+    ["\u5C0F\u65F6", "h"],
+    ["\u5206", "m"],
+    ["\u79D2", "s"],
+    ["{m}\u6708{d}\u65E5", "{m}/{d}"],
+    ["{y}\u5E74{m}\u6708{d}\u65E5", "{y}/{m}/{d}"],
+    ["\u8FD0\u884C\u547D\u4EE4", "Run command"],
+    ["\u8BFB\u53D6", "Read"],
+    ["\u8BFB\u53D6\u56FE\u7247", "Read image"],
+    ["\u5199\u5165", "Write"],
+    ["\u7F16\u8F91", "Edit"],
+    ["\u641C\u7D22\u6587\u4EF6\u5185\u5BB9", "Search file contents"],
+    ["\u67E5\u627E\u6587\u4EF6", "Find files"],
+    ["\u7F51\u9875\u641C\u7D22", "Web search"],
+    ["\u7F51\u9875\u83B7\u53D6", "Web fetch"],
+    ["\u66F4\u65B0\u4EFB\u52A1\u6E05\u5355", "Update task list"],
+    ["\u63D0\u95EE", "Ask"],
+    ["\u5931\u8D25", "Failed"],
+    ["\u9000\u51FA\u7801 {code}", "Exit code {code}"],
+    ["\u4FE1\u53F7 {signal}", "Signal {signal}"],
+    ["\u5931\u8D25\u539F\u56E0\uFF1A", "Failure: "],
+    ["{n} \u884C", "{n} lines"],
+    ["{n} \u4E2A\u6587\u4EF6\u53D8\u66F4", "{n} file changes"],
+    ["{shown} \u5904\u5339\u914D \xB7 {files} \u4E2A\u6587\u4EF6", "{shown} matches \xB7 {files} files"],
+    ["{shown} \u4E2A\u8DEF\u5F84", "{shown} paths"],
+    ["\u65E0\u7ED3\u679C", "No results"],
+    ["\u7528\u91CF {total}", "Usage {total}"],
+    ["\u672C\u8F6E\u7528\u91CF", "Turn usage"],
+    ["\u672A\u7F13\u5B58\u8F93\u5165", "Uncached input"],
+    ["\u7F13\u5B58\u8BFB\u53D6", "Cache read"],
+    ["\u7F13\u5B58\u5199\u5165", "Cache write"],
+    ["\u8F93\u51FA", "Output"],
+    ["\uFF08\u5176\u4E2D\u63A8\u7406 {tokens}\uFF09", "(reasoning {tokens})"],
+    ["\u601D\u8003", "Thought"],
+    ["{done}/{total} \u5DF2\u5B8C\u6210", "{done}/{total} done"],
+    ["\u6B63\u5728\u91CD\u8BD5\u6A21\u578B\u8BF7\u6C42", "Retrying model request"],
+    ["\u5DF2\u8BF7\u6C42\u7EE7\u7EED\u751F\u6210", "Continuation requested"],
+    ["{label}\uFF08{retry}/{maximum}\uFF09", "{label} ({retry}/{maximum})"],
+    ["\u590D\u5236", "Copy"],
+    ["\u590D\u5236\u6210\u529F", "Copied"],
+    ["\u4EE3\u7801\u5757", "Code"],
+    ["\u81EA\u52A8\u6362\u884C", "Wrap"],
+    ["\u53D6\u6D88\u81EA\u52A8\u6362\u884C", "Unwrap"],
+    ["\u5F15\u7528", "Cited"],
+    ["\u4E0A\u4E0B\u6587", "Context"],
+    ["\u6253\u5F00", "Open"],
+    ["\u5173\u95ED", "Close"],
+    ["\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00", "Open in doc library"],
+    ["\u73B0\u8BFB\u4E2D\u2026", "Reading\u2026"],
+    ["\u73B0\u8BFB\u5931\u8D25\uFF08", "Read failed ("],
+    ["\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002", "This document has no body yet."],
+    ["\u672A\u5728\u6587\u6863\u5E93\u547D\u4E2D\uFF08design-docs \u767D\u540D\u5355\u4ED3\u6811\u65E0\u6B64\u8DEF\u5F84\uFF09\u2014\u2014\u6765\u6E90\u6458\u5F55\u89C1\u5BF9\u8BDD\u539F\u6587\u3002", "Not found in the doc library (no such path in the design-docs whitelist tree) \u2014 see the source excerpt in the thread."],
+    ["\u5BF9\u8C61\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08", "Object face unreadable ("],
+    ["\u6587\u6863\u76F4\u8BFB\u5931\u8D25\uFF08", "Doc read failed ("]
   ];
 
   // src/core/i18n.js
@@ -11847,9 +11925,10 @@ ${text2}</tr>
       "th",
       "td",
       "span",
-      "img"
+      "img",
+      "button"
     ],
-    ALLOWED_ATTR: ["href", "src", "alt", "title"],
+    ALLOWED_ATTR: ["href", "src", "alt", "title", "type"],
     ALLOW_DATA_ATTR: false
     // URI 白名单沿用 DOMPurify 默认（http(s)/mailto/相对——javascript:/data: 默认已封）。
   };
@@ -11860,6 +11939,18 @@ ${text2}</tr>
     if (!purifySupported()) return "";
     return purify_default.sanitize(String(html3 == null ? "" : html3), PURIFY_CFG);
   }
+  function mdCodeBlock(text2, lang) {
+    const label = String(lang || "").trim() || t("\u4EE3\u7801\u5757");
+    return '<div class="md-code-block wrap"><div class="md-code-head"><span class="md-code-lang">' + esc(trunc(label, 24)) + '</span><span class="md-code-acts"><button type="button" class="md-code-btn md-code-wrap">' + esc(t("\u81EA\u52A8\u6362\u884C")) + '</button><button type="button" class="md-code-btn md-code-copy">' + esc(t("\u590D\u5236")) + '</button></span></div><pre class="md-pre"><code>' + esc(String(text2 == null ? "" : text2)) + "</code></pre></div>";
+  }
+  marked.use({
+    renderer: {
+      code(tok) {
+        const t2 = tok && typeof tok === "object" ? tok : { text: tok };
+        return mdCodeBlock(t2.text, t2.lang);
+      }
+    }
+  });
   function inline2(s) {
     let out = String(s).replace(/`([^`]+)`/g, '<code class="md-code">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text2, href) => {
@@ -11889,6 +11980,7 @@ ${text2}</tr>
       }
       if (/^\s*```/.test(line)) {
         flush();
+        const langM = /^\s*```(\S*)/.exec(line);
         const buf = [];
         i += 1;
         while (i < lines.length && !/^\s*```/.test(lines[i])) {
@@ -11896,7 +11988,7 @@ ${text2}</tr>
           i += 1;
         }
         i += 1;
-        out.push('<pre class="md-pre">' + esc(buf.join("\n")) + "</pre>");
+        out.push(mdCodeBlock(buf.join("\n"), langM ? langM[1] : ""));
         continue;
       }
       const h = /^(#{1,6})\s+(.*)$/.exec(line);
@@ -13032,54 +13124,6 @@ ${text2}</tr>
     editorScreen(el, ctx2, key);
   }
 
-  // src/render/refs.js
-  var REF_KINDS = "Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event";
-  function refRoute(kind, scope, name) {
-    const k = encodeURIComponent(kind);
-    const s = encodeURIComponent(scope || "global");
-    const n = encodeURIComponent(name);
-    return "obj/" + k + "/" + s + "/" + n;
-  }
-  function linkifyRefs(text2, names) {
-    const s = String(text2 || "");
-    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
-    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
-    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
-    let html3 = "";
-    let last = 0;
-    const spans = [];
-    let m;
-    while ((m = re.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
-    }
-    while ((m = connRe.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
-    }
-    spans.sort((a, b) => a.i - b.i);
-    for (const sp of spans) {
-      if (sp.i < last) continue;
-      html3 += esc(s.slice(last, sp.i));
-      if (sp.conn) {
-        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
-      } else {
-        const route = refRoute(sp.kind, sp.scope, sp.name);
-        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
-      }
-      last = sp.i + sp.len;
-    }
-    html3 += esc(s.slice(last));
-    if (nameSet && nameSet.size) {
-      for (const nm of nameSet) {
-        const needle = esc(nm);
-        if (!needle || !html3.includes(needle)) continue;
-        html3 = html3.split(needle).join(
-          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
-        );
-      }
-    }
-    return html3;
-  }
-
   // src/screens/chat-links.js
   function sessBacklinksHtml(store2, sessionId) {
     const sid = String(sessionId || "");
@@ -13359,10 +13403,7 @@ ${text2}</tr>
     paint(box, ctx2, id, normalizeContext(r.data));
   }
 
-  // src/screens/chat.js
-  function faces2() {
-    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
-  }
+  // src/screens/chat-nodes.js
   function blocksOf(content) {
     const out = { text: "", reasoning: "", toolCalls: [] };
     if (!Array.isArray(content)) return out;
@@ -13374,38 +13415,292 @@ ${text2}</tr>
     }
     return out;
   }
+  function nodeKey(n) {
+    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
+  }
+  function resultTextOf(data) {
+    const d = data && typeof data === "object" ? data : {};
+    if (typeof d.content === "string" && d.content) return d.content;
+    const msg = d.message && typeof d.message === "object" ? d.message : null;
+    if (msg && Array.isArray(msg.content)) {
+      const text2 = msg.content.filter((b) => b && b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
+      if (text2) return text2;
+    }
+    if (d.output != null) return typeof d.output === "string" ? d.output : JSON.stringify(d.output);
+    return "";
+  }
+  function triggerOf(source) {
+    const s = source && typeof source === "object" ? source : {};
+    const kind = String(s.kind || "");
+    if (kind === "tool-jobs") return { id: "job" };
+    if (kind === "cordis-host-runner") return { id: "plugin" };
+    if (kind === "schedule") return { id: "schedule" };
+    if (kind === "subagent-settled") return { id: "subagent", stopReason: String(s.stopReason || "") };
+    if (kind === "goal") return { id: "goal" };
+    if (kind === "agent-message") return { id: "agent" };
+    if (kind === "team-message") return { id: "team" };
+    if (kind === "webhook") return String(s.provider || "") === "github" ? { id: "github" } : { id: "webhook" };
+    if (kind === "retry") return { id: "retry" };
+    const form = String(s.form || "");
+    if (form === "recall" || kind === "session-recall") return { id: "recall" };
+    return { id: "inject", form };
+  }
+  var TRIGGER_TITLES = {
+    job: () => t("\u540E\u53F0\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0"),
+    plugin: () => t("\u63D2\u4EF6\u72B6\u6001\u66F4\u65B0"),
+    schedule: () => t("\u81EA\u52A8\u5316\u4EFB\u52A1"),
+    goal: () => t("\u7EE7\u7EED\u6267\u884C\u76EE\u6807"),
+    agent: () => t("\u6536\u5230\u4EFB\u52A1\u6D88\u606F"),
+    team: () => t("\u6536\u5230\u56E2\u961F\u6D88\u606F"),
+    github: () => t("\u6536\u5230 GitHub \u4E8B\u4EF6"),
+    webhook: () => t("\u6536\u5230\u5916\u90E8\u4E8B\u4EF6"),
+    retry: () => t("\u5DF2\u8BF7\u6C42\u7EE7\u7EED\u751F\u6210"),
+    inject: () => t("\u4E0A\u4E0B\u6587\u6CE8\u5165"),
+    recall: () => t("\u8DE8\u4F1A\u8BDD\u53EC\u56DE")
+  };
+  var SUBAGENT_TITLES = {
+    completed: () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\u4EFB\u52A1"),
+    aborted: () => t("\u5B50\u667A\u80FD\u4F53\u4EFB\u52A1\u5DF2\u505C\u6B62"),
+    error: () => t("\u5B50\u667A\u80FD\u4F53\u6267\u884C\u5931\u8D25"),
+    "max-tokens": () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u8FBE token \u4E0A\u9650"),
+    refusal: () => t("\u5B50\u667A\u80FD\u4F53\u62D2\u7EDD\u6267\u884C")
+  };
+  function noticeTitle(tg) {
+    if (tg.id === "subagent") return (SUBAGENT_TITLES[tg.stopReason] || (() => t("\u5B50\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0")))();
+    return (TRIGGER_TITLES[tg.id] || TRIGGER_TITLES.inject)();
+  }
+  function noticeSummary(source) {
+    const s = source && typeof source === "object" ? source : {};
+    if (String(s.form || "") === "notice" && typeof s.summary === "string" && s.summary) {
+      const t2 = String(s.summary);
+      return t2.length > 120 ? t2.slice(0, 119) + "\u2026" : t2;
+    }
+    return "";
+  }
+  function producerLabel(source) {
+    const s = source && typeof source === "object" ? source : {};
+    if (typeof s.plugin === "string" && s.plugin) return s.plugin;
+    const kind = String(s.kind || "");
+    return kind && kind !== "user" ? kind : "";
+  }
+  function formatRunDuration(ms) {
+    const total = Math.floor(Number(ms) || 0);
+    if (total < 1e3) return "";
+    const h = Math.floor(total / 36e5);
+    const m = Math.floor(total % 36e5 / 6e4);
+    const s = Math.floor(total % 6e4 / 1e3);
+    const parts = [];
+    if (h) parts.push(h + t("\u5C0F\u65F6"));
+    if (m) parts.push(m + t("\u5206"));
+    parts.push(s + t("\u79D2"));
+    return parts.join("");
+  }
+  var pad2 = (n) => String(n).padStart(2, "0");
+  function formatClock(time, now) {
+    const d = new Date(Number(time) || 0);
+    const n = new Date(Number(now) || Date.now());
+    if (!Number(time) || isNaN(d.getTime())) return "";
+    const clock = pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+    if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) return clock;
+    const md = d.getFullYear() === n.getFullYear() ? t("{m}\u6708{d}\u65E5").replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate())) : t("{y}\u5E74{m}\u6708{d}\u65E5").replace("{y}", String(d.getFullYear())).replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate()));
+    return md + " " + clock;
+  }
+  function turnTailOf(reason, durationMs) {
+    const r = String(reason || "");
+    if (r === "interrupted") return { word: t("\u5DF2\u505C\u6B62"), duration: "", hint: "", cls: "stopped" };
+    if (r === "max-tokens") return { word: t("\u5DF2\u8FBE\u5230\u8F93\u51FA token \u4E0A\u9650"), duration: "", hint: t("\u56DE\u7B54\u88AB\u622A\u65AD\uFF0C\u5DF2\u6709\u8F93\u51FA\u4FDD\u7559\u5728\u5BF9\u8BDD\u4E2D\u3002\u53D1\u9001\u300C\u7EE7\u7EED\u300D\u53EF\u8BA9\u6A21\u578B\u63A5\u7740\u8F93\u51FA\u3002"), cls: "maxtok" };
+    if (r && r !== "complete" && r !== "completed" && r !== "end_turn" && r !== "stop-sequence") {
+      return { word: t("\u5904\u7406\u5931\u8D25"), duration: "", hint: "", cls: "failed" };
+    }
+    const dur = formatRunDuration(durationMs);
+    return { word: dur ? t("\u5DF2\u5B8C\u6210\uFF0C\u7528\u65F6 ") + dur : t("\u5DF2\u5B8C\u6210"), duration: dur, hint: "", cls: "ok" };
+  }
+  function todoModel(todos) {
+    const rows = (Array.isArray(todos) ? todos : []).filter((x) => x && typeof x.content === "string");
+    const done = rows.filter((x) => x.status === "completed").length;
+    const active = rows.find((x) => x.status === "in_progress");
+    return { rows, done, total: rows.length, active: active ? active.content : "" };
+  }
+  var TOOL_TITLES = {
+    bash: () => t("\u8FD0\u884C\u547D\u4EE4"),
+    pwsh: () => t("\u8FD0\u884C\u547D\u4EE4"),
+    read: () => t("\u8BFB\u53D6"),
+    read_image: () => t("\u8BFB\u53D6\u56FE\u7247"),
+    write: () => t("\u5199\u5165"),
+    edit: () => t("\u7F16\u8F91"),
+    apply_patch: () => t("\u7F16\u8F91"),
+    grep: () => t("\u641C\u7D22\u6587\u4EF6\u5185\u5BB9"),
+    glob: () => t("\u67E5\u627E\u6587\u4EF6"),
+    web_search: () => t("\u7F51\u9875\u641C\u7D22"),
+    web_fetch: () => t("\u7F51\u9875\u83B7\u53D6"),
+    todo_write: () => t("\u66F4\u65B0\u4EFB\u52A1\u6E05\u5355"),
+    ask_user_question: () => t("\u63D0\u95EE")
+  };
+  function toolTitle(name) {
+    const fn = TOOL_TITLES[String(name || "").toLowerCase()];
+    return fn ? fn() : "";
+  }
+  var SUMMARY_KEYS = ["file_path", "path", "command", "url", "query", "pattern", "note"];
+  function toolSummary(name, argsRaw) {
+    let obj = null;
+    try {
+      obj = JSON.parse(String(argsRaw || ""));
+    } catch {
+    }
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const k of SUMMARY_KEYS) {
+        const v = obj[k];
+        if (typeof v === "string" && v.trim()) return trunc(v.trim(), 90);
+      }
+    }
+    const s = String(argsRaw || "").trim();
+    return s ? trunc(s.split("\n")[0], 90) : "";
+  }
+  function toolStateOf(hasResult, errorObj, meta, name) {
+    if (!hasResult) return "running";
+    if (meta && typeof meta === "object" && meta.stopped === true) return "stopped";
+    if (errorObj) return "error";
+    const nm = String(name || "").toLowerCase();
+    if ((nm === "bash" || nm === "pwsh") && meta && typeof meta === "object") {
+      const code = Number(meta.exitCode);
+      if (Number.isFinite(code) && code !== 0) return "error";
+      if (typeof meta.signal === "string" && meta.signal) return "error";
+    }
+    return "ok";
+  }
+  function metaSummary(name, meta) {
+    if (!meta || typeof meta !== "object") return "";
+    const nm = String(name || "").toLowerCase();
+    if (nm === "grep" || nm === "glob") {
+      if (meta.shape === "paths" && Number.isFinite(Number(meta.total))) {
+        return t("{shown} \u4E2A\u8DEF\u5F84").replace("{shown}", String(meta.truncated != null ? Number(meta.shown ?? meta.total) : Number(meta.total)));
+      }
+      if (Number.isFinite(Number(meta.total))) {
+        if (Number(meta.total) === 0) return t("\u65E0\u7ED3\u679C");
+        const files = Number.isFinite(Number(meta.files)) ? Number(meta.files) : null;
+        return t("{shown} \u5904\u5339\u914D \xB7 {files} \u4E2A\u6587\u4EF6").replace("{shown}", String(Number(meta.shown ?? meta.total))).replace("{files}", files != null ? String(files) : "\u2014");
+      }
+      return "";
+    }
+    if (nm === "read" && Array.isArray(meta.lines) && meta.lines.length) {
+      return t("{n} \u884C").replace("{n}", String(meta.lines.length));
+    }
+    if ((nm === "edit" || nm === "apply_patch" || nm === "write") && Array.isArray(meta.diffs)) {
+      return meta.diffs.length ? t("{n} \u4E2A\u6587\u4EF6\u53D8\u66F4").replace("{n}", String(meta.diffs.length)) : "";
+    }
+    if (nm === "web_fetch" && Number.isFinite(Number(meta.statusCode))) {
+      return "HTTP " + String(meta.statusCode);
+    }
+    return "";
+  }
+  function usageTotal(usage) {
+    const u = usage && typeof usage === "object" ? usage : {};
+    return ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"].reduce((sum, k) => sum + (Number.isFinite(Number(u[k])) ? Number(u[k]) : 0), 0);
+  }
+  function usageDetail(usage) {
+    const u = usage && typeof usage === "object" ? usage : {};
+    const lines = [];
+    if (Number.isFinite(Number(u.inputTokens))) lines.push(t("\u672A\u7F13\u5B58\u8F93\u5165") + " " + u.inputTokens);
+    if (Number.isFinite(Number(u.cacheReadTokens))) lines.push(t("\u7F13\u5B58\u8BFB\u53D6") + " " + u.cacheReadTokens);
+    if (Number.isFinite(Number(u.cacheWriteTokens))) lines.push(t("\u7F13\u5B58\u5199\u5165") + " " + u.cacheWriteTokens);
+    if (Number.isFinite(Number(u.outputTokens))) lines.push(t("\u8F93\u51FA") + " " + u.outputTokens);
+    if (Number.isFinite(Number(u.reasoningTokens))) lines.push(t("\uFF08\u5176\u4E2D\u63A8\u7406 {tokens}\uFF09").replace("{tokens}", String(u.reasoningTokens)));
+    return lines.join(" \xB7 ");
+  }
   function mapTranscript(events) {
     const nodes = [];
     const tools = /* @__PURE__ */ new Map();
     const order = [];
     const rows = Array.isArray(events) ? [...events] : [];
     rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
+    const turnStarts = /* @__PURE__ */ new Map();
+    let emittedSinceTurnStart = 0;
+    let lastBoundaryTurnStart = false;
     for (const ev of rows) {
       if (!ev || typeof ev !== "object") continue;
       const type2 = String(ev.type || "");
       const data = ev.data && typeof ev.data === "object" ? ev.data : {};
       const seq2 = Number(ev.seq) || 0;
       const time = Number(ev.time) || 0;
+      if (type2 === "turn/start") {
+        turnStarts.set(Number(data.turn) || 0, time);
+        emittedSinceTurnStart = 0;
+        lastBoundaryTurnStart = true;
+        continue;
+      }
       if (type2 === "user/message") {
-        const src = data.source && typeof data.source === "object" ? String(data.source.kind || "") : "";
-        if (src === "compact-checkpoint") continue;
+        const src = data.source && typeof data.source === "object" ? data.source : null;
+        const kind = String(src && src.kind || "");
+        if (kind === "compact-checkpoint") continue;
         const b = blocksOf(data.content);
-        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: src !== "user" });
+        if (kind !== "user") {
+          const tg = triggerOf(src);
+          const waking = lastBoundaryTurnStart && emittedSinceTurnStart === 0;
+          nodes.push({
+            kind: "notice",
+            seq: seq2,
+            time,
+            text: b.text,
+            waking,
+            trigger: tg,
+            title: noticeTitle(tg),
+            summary: noticeSummary(src),
+            producer: producerLabel(src)
+          });
+          emittedSinceTurnStart += 1;
+          lastBoundaryTurnStart = false;
+          continue;
+        }
+        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: false });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
       } else if (type2 === "assistant/message") {
         const b = blocksOf(data.content);
         for (const tc of b.toolCalls) order.push(tc.id);
-        if (!b.text && !b.reasoning && b.toolCalls.length) continue;
-        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning });
+        if (!b.text && !b.reasoning && b.toolCalls.length) {
+          emittedSinceTurnStart += 1;
+          lastBoundaryTurnStart = false;
+          continue;
+        }
+        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning, usage: data.usage ?? null });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
       } else if (type2 === "tool/call") {
         const id = String(data.callId || data.id || "");
-        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "" });
+        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "", error: null, meta: null });
         order.push(id);
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
       } else if (type2 === "tool/result") {
         const id = String(data.callId || data.id || "");
         const t2 = tools.get(id);
-        if (t2) t2.result = typeof data.content === "string" ? data.content : data.output != null ? String(typeof data.output === "string" ? data.output : JSON.stringify(data.output)) : "";
+        if (t2) {
+          t2.result = resultTextOf(data);
+          if (data.error && typeof data.error === "object") t2.error = { name: String(data.error.name || ""), code: String(data.error.code || "") };
+          if (data.meta && typeof data.meta === "object") t2.meta = data.meta;
+          if (!t2.error && data.message && typeof data.message === "object") {
+            const bad = Array.isArray(data.message.content) && data.message.content.some((b) => b && typeof b === "object" && b.isError === true);
+            if (bad) t2.error = { name: "", code: "" };
+          }
+        }
+      } else if (type2 === "turn/end") {
+        const turn = Number(data.turn) || 0;
+        const startedAt = turnStarts.get(turn) || 0;
+        nodes.push({ kind: "turntail", seq: seq2, time, reason: String(data.reason ?? ""), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
+        emittedSinceTurnStart = 0;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "todo/write") {
+        nodes.push({ kind: "todo", seq: seq2, time, todos: Array.isArray(data.todos) ? data.todos : [] });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "llm/retry") {
+        nodes.push({ kind: "retry", seq: seq2, time, data });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
       } else if (type2 === "system/message" || type2 === "developer/message") {
         nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
       }
     }
     const seenToolIds = /* @__PURE__ */ new Set();
@@ -13414,19 +13709,393 @@ ${text2}</tr>
       seenToolIds.add(id);
       const t2 = tools.get(id);
       if (!t2) continue;
-      nodes.push({ kind: "tool", seq: t2.seq, time: t2.time, name: t2.name || t("\u5DE5\u5177"), args: t2.args, result: t2.result });
+      nodes.push({
+        kind: "tool",
+        seq: t2.seq,
+        time: t2.time,
+        name: t2.name || t("\u5DE5\u5177"),
+        args: t2.args,
+        result: t2.result,
+        error: t2.error,
+        meta: t2.meta,
+        state: toolStateOf(!!t2.result, t2.error, t2.meta, t2.name),
+        title: toolTitle(t2.name),
+        summary: toolSummary(t2.name, t2.args),
+        metaLine: metaSummary(t2.name, t2.meta)
+      });
     }
     nodes.sort((a, b) => a.seq - b.seq);
     return nodes;
+  }
+
+  // src/render/refs.js
+  var REF_KINDS = "Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Doc|Template|Event";
+  function refRoute(kind, scope, name) {
+    const k = encodeURIComponent(kind);
+    const s = encodeURIComponent(scope || "global");
+    const n = encodeURIComponent(name);
+    return "obj/" + k + "/" + s + "/" + n;
+  }
+  function linkifyRefs(text2, names) {
+    const s = String(text2 || "");
+    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
+    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
+    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
+    let html3 = "";
+    let last = 0;
+    const spans = [];
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
+    }
+    while ((m = connRe.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
+    }
+    spans.sort((a, b) => a.i - b.i);
+    for (const sp of spans) {
+      if (sp.i < last) continue;
+      html3 += esc(s.slice(last, sp.i));
+      if (sp.conn) {
+        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
+      } else {
+        const route = refRoute(sp.kind, sp.scope, sp.name);
+        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
+      }
+      last = sp.i + sp.len;
+    }
+    html3 += esc(s.slice(last));
+    if (nameSet && nameSet.size) {
+      for (const nm of nameSet) {
+        const needle = esc(nm);
+        if (!needle || !html3.includes(needle)) continue;
+        html3 = html3.split(needle).join(
+          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
+        );
+      }
+    }
+    return html3;
+  }
+
+  // src/screens/chat-views.js
+  var N_ICONS = {
+    job: '<rect x="2" y="3.5" width="12" height="2.2" rx="1.1"/><rect x="2" y="7.4" width="8.5" height="2.2" rx="1.1"/><rect x="2" y="11.3" width="5.5" height="2.2" rx="1.1"/>',
+    plugin: '<rect x="3" y="3" width="10" height="10" rx="2.5"/><path d="M8 6.2v3.6M6.2 8h3.6"/>',
+    schedule: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5.2V8l2 1.6"/>',
+    subagent: '<circle cx="5.6" cy="5.8" r="2.1"/><path d="M2.4 13c.5-2.4 1.8-3.4 3.2-3.4s2.7 1 3.2 3.4"/><circle cx="11" cy="6.6" r="1.7"/><path d="M10.4 9.7c1.6.4 2.5 1.5 2.9 3.3"/>',
+    goal: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.2"/>',
+    agent: '<path d="M2.5 8 13.5 3 11 13 8 9.5 2.5 8z"/><path d="M8 9.5 13.5 3"/>',
+    team: '<circle cx="5.6" cy="5.8" r="2.1"/><path d="M2.4 13c.5-2.4 1.8-3.4 3.2-3.4s2.7 1 3.2 3.4"/><circle cx="11" cy="6.6" r="1.7"/><path d="M10.4 9.7c1.6.4 2.5 1.5 2.9 3.3"/>',
+    github: '<circle cx="4.5" cy="4" r="1.7"/><circle cx="4.5" cy="12" r="1.7"/><circle cx="11.5" cy="8" r="1.7"/><path d="M4.5 5.7v4.6M6.2 8h3.6"/>',
+    webhook: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c2.6 2.6 2.6 8.4 0 11-2.6-2.6-2.6-8.4 0-11"/>',
+    retry: '<path d="M3 8a5 5 0 1 1 1.5 3.5"/><path d="M3 12.5V8.5h4"/>',
+    inject: '<rect x="2.5" y="5.5" width="11" height="8" rx="2"/><path d="M8 2v5M6 5l2 2 2-2"/>',
+    recall: '<path d="M5 2.5h6a1 1 0 0 1 1 1V14l-4-2.6L4 14V3.5a1 1 0 0 1 1-1z"/>'
+  };
+  function noticeIcon(id) {
+    return '<svg class="chat-n-ico" viewBox="0 0 16 16" aria-hidden="true">' + (N_ICONS[id] || N_ICONS.inject) + "</svg>";
+  }
+  function clockAttr(n) {
+    const c = formatClock(n.time);
+    return c ? ' title="' + esc(c) + '"' : "";
+  }
+  function noticeHtml(n, names) {
+    const head = "<summary>" + noticeIcon(n.trigger && n.trigger.id) + '<span class="chat-n-title">' + esc(n.title) + "</span>" + (n.producer ? '<span class="chat-n-sep">\xB7</span><span class="chat-n-producer mono">' + esc(n.producer) + "</span>" : "") + (n.summary ? '<span class="chat-n-sep">\xB7</span><span class="chat-n-summary">' + esc(n.summary) + "</span>" : "") + (n.time ? '<time class="chat-n-time">' + esc(formatClock(n.time)) + "</time>" : "") + '<span class="ex-chev">\u25B8</span></summary>';
+    const body = '<div class="ex-body">' + (n.waking ? '<div class="chat-n-exp">' + esc(t("\u8FD9\u6761\u901A\u77E5\u89E6\u53D1\u4E86\u672C\u8F6E\u56DE\u590D\u3002")) + "</div>" : "") + '<div class="chat-n-text">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">\u2026</span>') + "</div></div>";
+    return '<details class="chat-notice' + (n.waking ? " chat-trigger" : "") + '" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + ">" + head + body + "</details>";
+  }
+  function reasoningFold(reasoning, names) {
+    const preview = String(reasoning || "").split("\n").map((l) => l.replace(/\*\*/g, "")).find((l) => l.trim()) || "";
+    return '<details class="chat-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u601D\u8003")) + (preview ? '<span class="chat-think-preview">' + esc(trunc(preview.trim(), 72)) + "</span>" : "") + '</summary><div class="ex-body">' + linkifyRefs(reasoning, names) + "</div></details>";
+  }
+  function usagePill(usage) {
+    const total = usageTotal(usage);
+    if (!total) return "";
+    const detail = usageDetail(usage);
+    return '<span class="chat-usage" title="' + esc(detail || t("\u672C\u8F6E\u7528\u91CF")) + '">' + esc(t("\u7528\u91CF {total}").replace("{total}", fmtNum(total))) + "</span>";
+  }
+  function toolHtml(n) {
+    const st = n.state || "ok";
+    let stateHtml = "";
+    if (st === "running") stateHtml = '<span class="chat-tool-run">' + esc(t("\u8FD0\u884C\u4E2D")) + "</span>";
+    else if (st === "error") {
+      stateHtml = '<span class="chat-tool-err">' + esc(t("\u5931\u8D25")) + "</span>";
+      const code = Number(n.meta && n.meta.exitCode);
+      if (n.meta && Number.isFinite(code) && code !== 0) {
+        stateHtml += '<span class="chat-tool-exit">' + esc(t("\u9000\u51FA\u7801 {code}").replace("{code}", String(n.meta.exitCode))) + "</span>";
+      } else if (n.meta && typeof n.meta.signal === "string" && n.meta.signal) {
+        stateHtml += '<span class="chat-tool-exit">' + esc(t("\u4FE1\u53F7 {signal}").replace("{signal}", n.meta.signal)) + "</span>";
+      }
+    } else if (st === "stopped") stateHtml = '<span class="chat-tool-stop">' + esc(t("\u5DF2\u505C\u6B62")) + "</span>";
+    const head = '<summary><span class="ex-chev">\u25B8</span>' + (n.title ? '<span class="chat-tool-title">' + esc(n.title) + "</span>" : "<span>" + esc(t("\u5DF2\u8C03\u7528")) + '</span> <span class="chat-tool-name">' + esc(n.name) + "</span>") + (n.summary ? '<span class="chat-tool-arg">' + esc(n.summary) + "</span>" : "") + (n.metaLine ? '<span class="chat-tool-metaline">' + esc(n.metaLine) + "</span>" : "") + " " + stateHtml + "</summary>";
+    const linesPrev = n.meta && Array.isArray(n.meta.lines) && n.meta.lines.length ? '<div class="chat-tool-lines">' + n.meta.lines.slice(0, 24).map((l) => '<span class="chat-tool-ln">' + esc(String((l && l.number) != null ? l.number : "")) + '</span><span class="chat-tool-lt">' + esc(String((l && l.text) != null ? l.text : "")) + "</span>").join("") + "</div>" : "";
+    const errLine = n.error && (n.error.name || n.error.code) ? "\n" + t("\u5931\u8D25\u539F\u56E0\uFF1A") + [n.error.name, n.error.code].filter(Boolean).join("/") : "";
+    const detail = linesPrev + '<div class="chat-tool-io">' + esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n" + t("\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500") + "\n" + esc(trunc(String(n.result), 1200)) : "") + errLine + "</div>";
+    return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '" data-state="' + esc(st) + '"' + clockAttr(n) + ">" + head + '<div class="ex-body">' + detail + "</div></details>";
+  }
+  function turnTailHtml(n) {
+    const tt = turnTailOf(n.reason, n.durationMs);
+    return '<div class="chat-turntail-wrap" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + '><div class="chat-turntail ' + esc(tt.cls) + '"><span class="chat-tt-dot"></span><span class="chat-tt-word">' + esc(tt.word) + "</span>" + (n.time ? '<time class="chat-n-time">' + esc(formatClock(n.time)) + "</time>" : "") + "</div>" + (tt.hint ? '<div class="chat-tt-hint">' + esc(tt.hint) + "</div>" : "") + "</div>";
+  }
+  function todoHtml(n) {
+    const m = todoModel(n.todos);
+    if (!m.total) return "";
+    const dot = (s) => '<span class="chat-todo-dot ' + (s === "completed" ? "done" : s === "in_progress" ? "act" : "idle") + '"></span>';
+    return '<details class="chat-fold chat-todo" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + '><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u66F4\u65B0\u4EFB\u52A1\u6E05\u5355")) + ' <span class="chat-todo-count">' + esc(t("{done}/{total} \u5DF2\u5B8C\u6210").replace("{done}", String(m.done)).replace("{total}", String(m.total))) + "</span>" + (m.active ? '<span class="chat-todo-active">' + esc(trunc(m.active, 44)) + "</span>" : "") + '</summary><div class="ex-body chat-todo-list">' + m.rows.map((r) => '<div class="chat-todo-row">' + dot(r.status) + "<span>" + esc(r.content) + "</span></div>").join("") + "</div></details>";
+  }
+  function retryHtml(n) {
+    const d = n.data && typeof n.data === "object" ? n.data : {};
+    const fail = d.failure && typeof d.failure === "object" ? String(d.failure.message || "") : String(d.message || "");
+    const label = typeof d.label === "string" && d.label ? d.label : t("\u6B63\u5728\u91CD\u8BD5\u6A21\u578B\u8BF7\u6C42");
+    const extra = [];
+    if (Number.isFinite(Number(d.attempt)) && Number.isFinite(Number(d.maximum))) {
+      extra.push(t("{label}\uFF08{retry}/{maximum}\uFF09").replace("{label}", label).replace("{retry}", String(d.attempt)).replace("{maximum}", String(d.maximum)));
+      if (Number.isFinite(Number(d.seconds))) extra.push(String(d.seconds) + "s");
+    } else extra.push(label);
+    return '<div class="chat-sysrow chat-retry" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + ">" + esc(extra.join(" \xB7 ")) + (fail ? " \xB7 " + esc(t("\u5931\u8D25\u539F\u56E0\uFF1A") + trunc(fail, 120)) : "") + "</div>";
+  }
+  function nodeHtml(n, names) {
+    if (n.kind === "user") {
+      const pending = n.pending ? '<div class="chat-pending">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="chat-pending">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "";
+      const err = n.error ? '<div class="chat-err"><span>' + esc(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(n.error) + t("\uFF09")) + '</span><button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || "")) + '">' + esc(t("\u91CD\u8BD5")) + "</button></div>" : "";
+      return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + '><div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">\u2026</span>') + "</div>" + (pending || err ? "<div>" + pending + err + "</div>" : "") + "</div>";
+    }
+    if (n.kind === "notice") return noticeHtml(n, names);
+    if (n.kind === "assistant") {
+      if (!n.text && !n.reasoning) return "";
+      const reasoning = n.reasoning ? reasoningFold(n.reasoning, names) : "";
+      const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + "</div>" : "";
+      return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + ">" + reasoning + body + usagePill(n.usage) + "</div>";
+    }
+    if (n.kind === "tool") return toolHtml(n);
+    if (n.kind === "turntail") return turnTailHtml(n);
+    if (n.kind === "todo") return todoHtml(n);
+    if (n.kind === "retry") return retryHtml(n);
+    const label = (n.dev ? t("\u5F00\u53D1\u8005") + " \xB7 " : "") + trunc(String(n.text || ""), 200);
+    return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '"' + clockAttr(n) + ">" + esc(label) + "</div>";
+  }
+
+  // src/screens/chat-refs.js
+  function looksLikePath(s) {
+    const t2 = String(s || "").trim().replace(/[),.;:」』）】]+$/, "");
+    if (!t2 || t2.length > 160 || /\s/.test(t2) || t2.includes("`") || t2.includes("*")) return false;
+    if (/[“”'"<>|\\]/.test(t2)) return false;
+    if (/^(?:~\/|\.{1,2}\/|(?:[\w@.-]+\/)+)[\w@.-]+$/.test(t2)) return true;
+    return /\.(md|markdown|yaml|yml|json|ts|tsx|js|mjs|go|py|sh|toml|css|html|sql)$/i.test(t2);
+  }
+  function extractFilePaths(text2, cap = 8) {
+    const s = String(text2 || "");
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const re = /(?:~\/|\.{1,2}\/)?(?:[\w@.-]+\/)+[\w@.-]+|[\w@.-]+\.(?:md|markdown|yaml|yml|json|ts|tsx|js|mjs|go|py|sh|toml|css|html|sql)/g;
+    let m;
+    while ((m = re.exec(s)) !== null && out.length < cap * 3) {
+      const p = m[0].replace(/[),.;:」』）】]+$/, "");
+      if (!looksLikePath(p) || seen.has(p)) continue;
+      seen.add(p);
+      out.push(p);
+      if (out.length >= cap) break;
+    }
+    return out;
+  }
+  function extractDocRefs(text2, cap = 12) {
+    const s = String(text2 || "");
+    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    let m;
+    while ((m = re.exec(s)) !== null && out.length < cap) {
+      const key = m[0];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ type: "obj", kind: m[1], scope: m[2], name: m[3], label: key });
+    }
+    return out;
+  }
+  var ARGS_PATH_KEYS = ["file_path", "path", "note_path", "cwd"];
+  function extractRefs(nodes) {
+    const docs = [];
+    const docSeen = /* @__PURE__ */ new Set();
+    const files = [];
+    const fileSeen = /* @__PURE__ */ new Set();
+    const addDoc = (d) => {
+      const key = d.kind + "/" + d.scope + "/" + d.name;
+      if (docSeen.has(key) || docs.length >= 12) return;
+      docSeen.add(key);
+      docs.push({ ...d, label: key });
+    };
+    const addFile = (p) => {
+      if (!p || fileSeen.has(p) || files.length >= 8) return;
+      fileSeen.add(p);
+      files.push({ type: "file", path: p, label: p });
+    };
+    for (const n of Array.isArray(nodes) ? nodes : []) {
+      if (!n || typeof n !== "object") continue;
+      if (typeof n.text === "string" && n.text) {
+        extractDocRefs(n.text).forEach(addDoc);
+        extractFilePaths(n.text).forEach(addFile);
+      }
+      if (n.kind === "tool" && n.args) {
+        try {
+          const a = JSON.parse(String(n.args));
+          if (a && typeof a === "object") {
+            for (const k of ARGS_PATH_KEYS) {
+              if (typeof a[k] === "string" && looksLikePath(a[k])) {
+                addFile(a[k].trim());
+                break;
+              }
+            }
+          }
+        } catch {
+        }
+      }
+    }
+    return { docs, files };
+  }
+  var refChipHtml = (r, i, group) => '<button class="chat-ref" data-cc-ref-g="' + esc(group) + '" data-cc-ref-i="' + i + '" title="' + esc(r.label) + '"><span class="chat-ref-name">' + esc(trunc(r.label, 56)) + "</span>" + (r.score ? '<span class="chat-ref-score">' + esc(String(Math.round(r.score))) + "</span>" : "") + '<span class="chat-ref-open">' + esc(t("\u6253\u5F00")) + "</span></button>";
+  function refsStripHtml(refs) {
+    const r = refs && typeof refs === "object" ? refs : {};
+    const cited = [].concat(Array.isArray(r.docs) ? r.docs : [], Array.isArray(r.files) ? r.files : []);
+    const chunks = Array.isArray(r.chunks) ? r.chunks : [];
+    if (!cited.length && !chunks.length) return "";
+    const groups = [];
+    if (cited.length) {
+      groups.push('<span class="chat-refs-h">' + esc(t("\u5F15\u7528")) + "</span>" + cited.map((x, i) => refChipHtml(x, i, "cited")).join(""));
+    }
+    if (chunks.length) {
+      groups.push('<span class="chat-refs-h">' + esc(t("\u4E0A\u4E0B\u6587")) + "</span>" + chunks.map((x, i) => refChipHtml(x, i, "chunk")).join(""));
+    }
+    return '<div class="chat-refs">' + groups.join("") + "</div>";
+  }
+  function refTarget(refs, g, i) {
+    const r = refs && typeof refs === "object" ? refs : {};
+    const gi = Number(i);
+    if (!Number.isFinite(gi)) return null;
+    if (g === "cited") {
+      const cited = [].concat(Array.isArray(r.docs) ? r.docs : [], Array.isArray(r.files) ? r.files : []);
+      return cited[gi] || null;
+    }
+    if (g === "chunk") {
+      return (Array.isArray(r.chunks) ? r.chunks : [])[gi] || null;
+    }
+    return null;
+  }
+  function modalShell() {
+    return '<div class="chat-modal" data-cc-modal hidden><div class="chat-modal-mask" data-cc-modal-close></div><div class="chat-modal-panel" role="dialog" aria-modal="true"><div class="chat-modal-head"><span class="chat-modal-title mono" data-cc-modal-title></span><span class="chat-modal-acts"><button class="btn btn-ghost sm" data-cc-modal-go hidden>' + esc(t("\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00")) + '</button><button class="btn btn-ghost sm" data-cc-modal-close>' + esc(t("\u5173\u95ED")) + '</button></span></div><div class="chat-modal-body" data-cc-modal-body></div></div></div>';
+  }
+  async function fetchObjContent(ctxc, ref) {
+    const r = await ctxc.api.object(ref.kind, ref.scope, ref.name);
+    if (!r || !r.ok && r.status !== 200) return { ok: false, note: t("\u5BF9\u8C61\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09") };
+    const d = r.data && typeof r.data === "object" ? r.data : {};
+    const content = d.content != null ? String(d.content) : "";
+    if (!content.trim()) return { ok: false, note: t("\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002") };
+    return { ok: true, content };
+  }
+  async function fetchFileContent(ctxc, ref, tree) {
+    const p = String(ref.path || "");
+    const rows = tree && Array.isArray(tree.docs) ? tree.docs : [];
+    const hit = rows.find((d2) => d2 && d2.path === p) || rows.find((d2) => d2 && (d2.path === p || d2.path.endsWith("/" + p) || p.endsWith("/" + String(d2.path))));
+    if (!hit || !hit.repo) return { ok: false, note: t("\u672A\u5728\u6587\u6863\u5E93\u547D\u4E2D\uFF08design-docs \u767D\u540D\u5355\u4ED3\u6811\u65E0\u6B64\u8DEF\u5F84\uFF09\u2014\u2014\u6765\u6E90\u6458\u5F55\u89C1\u5BF9\u8BDD\u539F\u6587\u3002") };
+    const r = await ctxc.api.designDoc(hit.repo, hit.path);
+    if (!r || !r.ok && r.status !== 200) return { ok: false, note: t("\u6587\u6863\u76F4\u8BFB\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09") };
+    const d = r.data && typeof r.data === "object" ? r.data : {};
+    const content = d.content != null ? String(d.content) : typeof r.data === "string" ? r.data : "";
+    if (!content.trim()) return { ok: false, note: t("\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002") };
+    return { ok: true, content, repo: hit.repo, path: hit.path };
+  }
+  function renderDocBody(content) {
+    const { fm, body } = splitFrontmatter(content);
+    return '<div data-md-render="1">' + (fm ? schemeChips(fm) : "") + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
+  }
+  function mountRefs(el, ctxc) {
+    const slot = el.querySelector("[data-cc-refs]");
+    if (!slot || !ctxc) return () => {
+    };
+    if (!el.querySelector("[data-cc-modal]")) slot.insertAdjacentHTML("afterend", modalShell());
+    const modal = el.querySelector("[data-cc-modal]");
+    const body = modal.querySelector("[data-cc-modal-body]");
+    const title = modal.querySelector("[data-cc-modal-title]");
+    const goBtn = modal.querySelector("[data-cc-modal-go]");
+    let tree = null;
+    let treeTried = false;
+    const closeModal = () => {
+      modal.hidden = true;
+      body.innerHTML = "";
+    };
+    modal.querySelector("[data-cc-modal-close].btn").addEventListener("click", closeModal);
+    modal.querySelector(".chat-modal-mask").addEventListener("click", closeModal);
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && !modal.hidden) closeModal();
+    });
+    const openTarget = async (ref) => {
+      if (!ref) return;
+      modal.hidden = false;
+      title.textContent = ref.label || (ref.type === "file" ? ref.path : "");
+      goBtn.hidden = true;
+      body.innerHTML = '<div class="small faint">' + esc(t("\u73B0\u8BFB\u4E2D\u2026")) + "</div>";
+      try {
+        const res = ref.type === "file" ? await fetchFileContent(ctxc, ref, tree) : await fetchObjContent(ctxc, ref);
+        if (modal.hidden) return;
+        if (res.ok) {
+          body.innerHTML = renderDocBody(res.content);
+          if (res.repo && res.path) goBtn.dataset.ccGo = "designdoc/" + encodeURIComponent(res.repo) + "/" + encodeURIComponent(res.path);
+          else if (ref.type === "obj") goBtn.dataset.ccGo = refRoute(ref.kind, ref.scope, ref.name);
+          else goBtn.dataset.ccGo = "";
+          goBtn.hidden = !goBtn.dataset.ccGo;
+        } else {
+          body.innerHTML = '<div class="chat-modal-miss"><div class="mono small">' + esc(ref.label || "") + '</div><div class="small faint">' + esc(res.note) + "</div></div>";
+        }
+      } catch (e) {
+        body.innerHTML = '<div class="small faint">' + esc(t("\u73B0\u8BFB\u5931\u8D25\uFF08") + String(e && e.message || e) + t("\uFF09")) + "</div>";
+      }
+    };
+    el.addEventListener("click", (ev) => {
+      const chip2 = ev.target.closest("[data-cc-ref-g]");
+      if (chip2 && slot.contains(chip2)) {
+        openTarget(refTarget(el.__chatRefs || {}, chip2.getAttribute("data-cc-ref-g"), chip2.getAttribute("data-cc-ref-i")));
+        return;
+      }
+      const mention = ev.target.closest("[data-cc-mention]");
+      if (mention) {
+        openTarget({ type: "file", path: String(mention.getAttribute("data-cc-mention") || ""), label: String(mention.getAttribute("data-cc-mention") || "") });
+        return;
+      }
+      const go = ev.target.closest("[data-cc-modal-go]");
+      if (go && go.dataset.ccGo && ctxc.go) ctxc.go(go.dataset.ccGo);
+    });
+    const paint2 = (refs) => {
+      el.__chatRefs = refs || {};
+      if (slot) slot.innerHTML = refsStripHtml(refs);
+      if (!treeTried && ctxc.api && typeof ctxc.api.designDocs === "function") {
+        treeTried = true;
+        ctxc.api.designDocs().then((r) => {
+          if (r && (r.ok || r.status === 200)) tree = r.data || r;
+        }).catch(() => {
+        });
+      }
+    };
+    return paint2;
+  }
+  function classifyMentions(root) {
+    if (!root || typeof root.querySelectorAll !== "function") return root;
+    root.querySelectorAll(".chat-md code:not(.md-mention)").forEach((c) => {
+      const t2 = String(c.textContent || "").trim();
+      if (t2 && looksLikePath(t2) && t2.length <= 160) {
+        c.classList.add("md-mention");
+        c.setAttribute("data-cc-mention", t2);
+      }
+    });
+    return root;
+  }
+
+  // src/screens/chat.js
+  function faces2() {
+    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   function nextBatch(nodes, paintedKeys, firstPaint) {
     const rows = Array.isArray(nodes) ? nodes : [];
     if (firstPaint) return rows;
     const out = rows.filter((n) => !paintedKeys.has(nodeKey(n)));
     return out;
-  }
-  function nodeKey(n) {
-    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
   }
   function modeForState(st) {
     return !!(st && st.running === true) ? "steer" : "queue";
@@ -13454,30 +14123,18 @@ ${text2}</tr>
     // 会话 id → 已见尾 seq（未读点 highwater）
     state: null,
     // 最近一次 chat-state 词形
-    el: null
+    el: null,
     // 当前屏根（路由切换换引用）
+    lastNodes: [],
+    // 最近映射节点（B1 引用抽取源）
+    refs: {},
+    // 引用条模型 {docs, files, chunks}（B2）
+    refsChunks: [],
+    // ContextPack chunks（B4 同源，会话切换时懒拉）
+    paintRefs: null
+    // mountRefs 返回的条重绘 fn（B3 挂载后可用）
   };
   var LAST = { route: "", paramKey: "", locale: "" };
-  function nodeHtml(n, names) {
-    if (n.kind === "user") {
-      const pending = n.pending ? '<div class="chat-pending">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="chat-pending">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "";
-      const err = n.error ? '<div class="chat-err"><span>' + esc(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(n.error) + t("\uFF09")) + '</span><button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || "")) + '">' + esc(t("\u91CD\u8BD5")) + "</button></div>" : "";
-      return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '"><div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">\u2026</span>') + "</div>" + (pending || err ? "<div>" + pending + err + "</div>" : "") + "</div>";
-    }
-    if (n.kind === "assistant") {
-      if (!n.text && !n.reasoning) return "";
-      const reasoning = n.reasoning ? '<details class="chat-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u6DF1\u5EA6\u601D\u8003")) + '</summary><div class="ex-body">' + linkifyRefs(n.reasoning, names) + "</div></details>" : "";
-      const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + "</div>" : "";
-      return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + "</div>";
-    }
-    if (n.kind === "tool") {
-      const detail = esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n" + t("\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500") + "\n" + esc(trunc(String(n.result), 800)) : "");
-      const done = n.result ? '<span class="chat-tool-ok">' + esc(t("\u5B8C\u6210")) + "</span>" : '<span class="chat-tool-none">' + esc(t("\u6267\u884C\u4E2D\u2026")) + "</span>";
-      return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u8C03\u7528")) + ' <span class="chat-tool-name">' + esc(n.name) + "</span> " + done + '</summary><div class="ex-body">' + detail + "</div></details>";
-    }
-    const label = (n.dev ? t("\u5F00\u53D1\u8005") + " \xB7 " : "") + trunc(String(n.text || ""), 200);
-    return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '">' + esc(label) + "</div>";
-  }
   function pendingNodes() {
     return CHAT.pending.map((p) => ({ kind: "user", seq: Number.MAX_SAFE_INTEGER, text: p.text, pending: true, requestId: p.requestId }));
   }
@@ -13493,7 +14150,7 @@ ${text2}</tr>
     const sd = Number(st.steerDepth) || 0;
     const queue = qd ? ' <span class="chip acc tiny">' + esc(t("\u6392\u961F {n}").replace("{n}", String(qd))) + "</span>" : "";
     const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u63D2\u8BDD {n}").replace("{n}", String(sd))) + "</span>" : "";
-    const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("agent \u8FD0\u884C\u4E2D\u2026");
+    const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("\u6DF1\u5EA6\u6C42\u7D22\u4E2D\u2026");
     return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + "</span>" + queue + steer + "</div>";
   }
   function emptyStateHtml() {
@@ -13543,10 +14200,31 @@ ${text2}</tr>
     return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(running ? t("Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295") : t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62")) + "</div>";
   }
   function screenShell(can) {
-    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
+    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
   }
   function streamEl(el) {
     return el.querySelector("[data-cc-tr]");
+  }
+  function paintRefs(el) {
+    CHAT.refs = { ...extractRefs(CHAT.lastNodes), chunks: CHAT.refsChunks };
+    if (CHAT.paintRefs) CHAT.paintRefs(CHAT.refs);
+  }
+  async function refreshCtxChunks(el) {
+    const cc = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
+    if (!cc || !cc.api || typeof cc.api.sessionContext !== "function" || !CHAT.sessionId) {
+      CHAT.refsChunks = [];
+      paintRefs(el);
+      return;
+    }
+    try {
+      const r = await cc.api.sessionContext(CHAT.sessionId);
+      const d = r && (r.ok || r.status === 200) && r.data && typeof r.data === "object" ? r.data : {};
+      const pack = d.pack && typeof d.pack === "object" ? d.pack : {};
+      CHAT.refsChunks = (Array.isArray(pack.chunks) ? pack.chunks : []).map((c) => ({ kind: String(c && c.kind || ""), scope: String(c && c.scope || "global"), name: String(c && c.name || ""), score: Number(c && c.score || 0) })).filter((c) => c.name);
+    } catch {
+      CHAT.refsChunks = [];
+    }
+    paintRefs(el);
   }
   function nearBottom(box) {
     return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
@@ -13572,6 +14250,8 @@ ${text2}</tr>
       if (Number(n.seq) && Number(n.seq) !== Number.MAX_SAFE_INTEGER && Number(n.seq) > CHAT.lastSeq) CHAT.lastSeq = Number(n.seq);
       col.insertAdjacentHTML("beforeend", nodeHtml(n, null));
     }
+    classifyMentions(col);
+    paintRefs(el);
     const pendBox = box.querySelector("[data-cc-pend]");
     const pendHtml = pendingNodes().map((n) => nodeHtml(n, null)).join("");
     if (pendHtml) {
@@ -13623,11 +14303,14 @@ ${text2}</tr>
     CHAT.sessionId = id;
     CHAT.lastSeq = 0;
     CHAT.painted = /* @__PURE__ */ new Set();
+    CHAT.lastNodes = [];
+    CHAT.refsChunks = [];
     CHAT.state = null;
     paintState(el);
     refreshSessions(el, f);
     refreshTranscript(el, f);
     ensureCtxBar(el, id);
+    refreshCtxChunks(el);
   }
   function paintState(el) {
     const slot = el.querySelector("[data-cc-state]");
@@ -13705,6 +14388,7 @@ ${text2}</tr>
       CHAT.pending = CHAT.pending.filter((p) => !(p.requestId && byReq.has(p.requestId)) && !texts.has(p.text));
     }
     const nodes = mapTranscript(events);
+    CHAT.lastNodes = nodes;
     const lastEvSeq = events.reduce((m, e) => Math.max(m, Number(e && e.seq) || 0), 0);
     if (lastEvSeq) CHAT.seenSeq.set(CHAT.sessionId, Math.max(CHAT.seenSeq.get(CHAT.sessionId) || 0, lastEvSeq));
     applyIncremental(el, nodes);
@@ -13733,6 +14417,7 @@ ${text2}</tr>
         CHAT.sessionId = String(cr.data.sessionId);
         refreshSessions(el, f);
         ensureCtxBar(el, CHAT.sessionId);
+        refreshCtxChunks(el);
       } else {
         const note2 = el.querySelector("[data-cc-note]");
         if (note2) note2.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(cr.status) + t("\uFF09");
@@ -13893,9 +14578,12 @@ ${text2}</tr>
         CHAT.sessionId = String(r.data.sessionId);
         CHAT.lastSeq = 0;
         CHAT.painted = /* @__PURE__ */ new Set();
+        CHAT.lastNodes = [];
+        CHAT.refsChunks = [];
         refreshSessions(el, f);
         refreshTranscript(el, f);
         ensureCtxBar(el, CHAT.sessionId);
+        refreshCtxChunks(el);
       } else {
         const note2 = el.querySelector("[data-cc-note]");
         if (note2) note2.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09");
@@ -13939,7 +14627,40 @@ ${text2}</tr>
     });
     bindRetry2(el, f);
     bindImageUpload(el, f);
+    const cc = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
+    if (cc && cc.api) {
+      CHAT.paintRefs = mountRefs(el, { api: cc.api, go: (x) => ctx2.go(x) });
+    }
+    el.addEventListener("click", (ev) => {
+      const copy = ev.target.closest(".md-code-copy");
+      if (copy) {
+        const block2 = copy.closest(".md-code-block");
+        const code = block2 ? block2.querySelector("pre code") : null;
+        const text2 = code ? String(code.textContent || "") : "";
+        if (text2 && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          navigator.clipboard.writeText(text2).then(() => {
+            copy.textContent = t("\u590D\u5236\u6210\u529F");
+            copy.classList.add("ok");
+            setTimeout(() => {
+              copy.textContent = t("\u590D\u5236");
+              copy.classList.remove("ok");
+            }, 1e3);
+          }).catch(() => {
+          });
+        }
+        return;
+      }
+      const wrap = ev.target.closest(".md-code-wrap");
+      if (wrap) {
+        const block2 = wrap.closest(".md-code-block");
+        if (block2) {
+          const on = block2.classList.toggle("wrap");
+          wrap.textContent = on ? t("\u81EA\u52A8\u6362\u884C") : t("\u53D6\u6D88\u81EA\u52A8\u6362\u884C");
+        }
+      }
+    });
     ensureCtxBar(el, CHAT.sessionId);
+    refreshCtxChunks(el);
     refreshSessions(el, f);
     refreshTranscript(el, f);
     if (CHAT.timer) clearInterval(CHAT.timer);
@@ -13977,6 +14698,9 @@ ${text2}</tr>
       CHAT.failed = [];
       CHAT.lastSeq = 0;
       CHAT.painted = /* @__PURE__ */ new Set();
+      CHAT.lastNodes = [];
+      CHAT.refsChunks = [];
+      CHAT.paintRefs = null;
       dialogScreen(el, ctx2);
       if (id == null && agent) {
         const f2 = faces2();

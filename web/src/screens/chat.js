@@ -1,109 +1,41 @@
-/* chat.js —— 会话屏 v4（2026-11-26 C 批）：DeepSeek 对话版型 × 通路接满。
- * 数据面=window.__CC.chatFaces（plugin 转录桥）：sessions（会话清单）/create（宿主发 id——
- * 零手填）/transcript（durable journal 词形投影）/state（running/queue/queueDepth/currentTool/
- * currentToolSince/lastSeq——C-03 活体）/send({mode})（C-01 steer|queue）/stop（C-02 cancel）。
- * 交互纪律（C-04）：转录增量渲染——只 append seq>lastSeq 新节点；贴底才跟随，上翻时右下浮标
- * 「↓ N 条新消息」点击回底；轮询 3.5s 只动转录区与会话行（composer 焦点保真）。
- * 销账纪律（C-05）：pending={text, requestId, at}——按 requestId 主匹配销账、文本兜底；
- * 失败行内「重试」钮。受理词形如实区分：运行中=steer（立即注入）、空闲=queue（排队落投）。
- * 视觉（C-B）：三段式全高布局/转录列居中 800px/用户泡 panel-2/助手全宽无泡/思考与工具折叠/
- * 空态示例 chips 真实可发/零 inline style——chat 域样式唯一真源=styles/chat.css。
- * 转录映射（dsh-client-ui-chat conversation-nodes 同族词形）：user/message(source.user)→用户泡；
- * assistant/message→AI 消息（text=md 渲染；reasoning=已深度思考折叠）；tool/call+tool/result 按
- * callId 归组=已调用 X 折叠行；system/developer/message=灰行；delta/live-chunk 已由桥剥除。 */
+/* chat.js —— 会话屏 v5（2026-11-27 D 批）：DeepSeek harness 展示类型对账（chat-ds.md）。
+ * v4（C 批）通路底座全保留：chatFaces 桥/增量渲染/贴底跟随/requestId 销账/steer|queue/停止。
+ * v5 新词族（映射纯函数拆 chat-nodes.js——上游 locale.ts zh 段+conversation-nodes 逐条对账）：
+ *   notice（D1 轮触发行卡：后台任务状态更新/自动化任务/子任务状态更新…+D2 上下文注入行：
+ *   form=notice 摘要一行）/turntail（D3 已完成，用时 X/处理失败/已停止/max-tokens+hint）/
+ *   todo（D4 更新任务清单 {done}/{total}）/retry（D8）/tool 五态+专名标题+关键参数摘要+
+ *   meta 计数（D5/D6/D7）+usage pill（D10）+时钟（D13）。
+ *   病根修复：tool/result 结果词形=data.message.content 块（旧读 data.content——「执行中…」卡死）。
+ * B 批（用户点名）：chat-refs.js——引用条（图2 词形 chip+打开）+详情弹窗；md.js 代码块头横幅
+ * （语言/复制/换行，D11）；思考行对齐「思考」+首行预览（D12）。 */
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip } from '../render/chips.js';
-import { linkifyRefs } from '../render/refs.js';
-import { renderMarkdown } from '../render/md.js';
 import { sessBacklinksHtml } from './chat-links.js';
 export { sessBacklinksHtml } from './chat-links.js';
 import { mountSessionCtx } from './sessionctx.js';
 import { t as tr, getLocale } from '../core/i18n.js';
+import {
+  mapTranscript, blocksOf, nodeKey, turnTailOf, todoModel, usageTotal, usageDetail, formatClock,
+} from './chat-nodes.js';
+import { nodeHtml } from './chat-views.js';
+import { extractRefs, chunkRefs, mountRefs, classifyMentions } from './chat-refs.js';
+export { blocksOf, mapTranscript, nodeKey };
 
 function faces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
 }
 
-/* ---------- 纯函数（node 单测机械直测） ---------- */
-
-/** content 块 → {text, reasoning, toolCalls[]}（user/assistant 两族共用块词形）。 */
-export function blocksOf(content) {
-  const out = { text: '', reasoning: '', toolCalls: [] };
-  if (!Array.isArray(content)) return out;
-  for (const b of content) {
-    if (!b || typeof b !== 'object') continue;
-    if (b.type === 'text' && typeof b.text === 'string') out.text += (out.text ? '\n' : '') + b.text;
-    else if (b.type === 'reasoning' && typeof b.text === 'string') out.reasoning += (out.reasoning ? '\n' : '') + b.text;
-    else if (b.type === 'tool-call') out.toolCalls.push({ id: String(b.id || b.callId || ''), name: String(b.name || ''), argsRaw: typeof b.arguments === 'string' ? b.arguments : JSON.stringify(b.arguments ?? b.args ?? '') });
-  }
-  return out;
-}
-
-/** journal 事件 → 渲染节点族（seq 升序；工具组按首次 call 顺序排在其后）。 */
-export function mapTranscript(events) {
-  const nodes = [];
-  const tools = new Map(); // callId → {seq, name, args, result}
-  const order = [];
-  const rows = Array.isArray(events) ? [...events] : [];
-  rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
-  for (const ev of rows) {
-    if (!ev || typeof ev !== 'object') continue;
-    const type = String(ev.type || '');
-    const data = (ev.data && typeof ev.data === 'object') ? ev.data : {};
-    const seq = Number(ev.seq) || 0;
-    const time = Number(ev.time) || 0;
-    if (type === 'user/message') {
-      const src = (data.source && typeof data.source === 'object') ? String(data.source.kind || '') : '';
-      if (src === 'compact-checkpoint') continue; // 压缩检查点=替换面事件，不渲染
-      const b = blocksOf(data.content);
-      nodes.push({ kind: 'user', seq, time, text: b.text, injected: src !== 'user' });
-    } else if (type === 'assistant/message') {
-      const b = blocksOf(data.content);
-      for (const tc of b.toolCalls) order.push(tc.id);
-      // 工具轮次（只有 tool-call、无 text/reasoning）不生成助手节点——
-      // 工具本身会作为 kind:'tool' 节点渲染（「已调用 bash」），
-      // 否则每条工具调用都多一个「（空回复）」气泡，转录被空壳刷屏（2026-11-27 实测 bug）。
-      if (!b.text && !b.reasoning && b.toolCalls.length) continue;
-      nodes.push({ kind: 'assistant', seq, time, text: b.text, reasoning: b.reasoning });
-    } else if (type === 'tool/call') {
-      const id = String(data.callId || data.id || '');
-      if (!tools.has(id)) tools.set(id, { seq, time, name: String(data.name || ''), args: typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ''), result: '' });
-      order.push(id);
-    } else if (type === 'tool/result') {
-      const id = String(data.callId || data.id || '');
-      const t = tools.get(id);
-      if (t) t.result = typeof data.content === 'string' ? data.content : (data.output != null ? String(typeof data.output === 'string' ? data.output : JSON.stringify(data.output)) : '');
-    } else if (type === 'system/message' || type === 'developer/message') {
-      nodes.push({ kind: 'system', seq, time, text: String(data.text ?? data.content ?? ''), dev: type === 'developer/message' });
-    }
-  }
-  // callId 去重：assistant 消息里的 tool-call block 与独立 tool/call 事件可能同时携带
-  // 同一 callId，不去重会渲染两个「已调用 X」节点（2026-11-27 实测）。
-  const seenToolIds = new Set();
-  for (const id of order) {
-    if (seenToolIds.has(id)) continue;
-    seenToolIds.add(id);
-    const t = tools.get(id);
-    if (!t) continue;
-    nodes.push({ kind: 'tool', seq: t.seq, time: t.time, name: t.name || tr('工具'), args: t.args, result: t.result });
-  }
-  nodes.sort((a, b) => a.seq - b.seq);
-  return nodes;
-}
+/* ---------- 纯函数（chat-nodes.js v5 权威——顶部 import+export 已兼容旧测试锚） ---------- */
 
 /** 增量分派（C-04）：nodeKey(seq+kind) 已渲染的不重出；返回真正的新节点尾片。
- * 全量分片词形（firstPaint=true 或 seq 回退）=整列重画（路由切换/重连兜底）。 */
+ * 全量分片词形（firstPaint=true 或 seq 回退）=整列重画（路由切换/重连兜底）。
+ * nodeKey 权威在 chat-nodes.js（chat-views 依赖）——此处 re-export 兼容旧测试锚。 */
 export function nextBatch(nodes, paintedKeys, firstPaint) {
   const rows = Array.isArray(nodes) ? nodes : [];
   if (firstPaint) return rows;
   const out = rows.filter((n) => !paintedKeys.has(nodeKey(n)));
   return out;
-}
-
-/** 节点渲染去重键（seq+kind——同 seq 双族不互撞）。 */
-export function nodeKey(n) {
-  return String(Number(n && n.seq) || 0) + ':' + String((n && n.kind) || '');
 }
 
 /** 发送模式判别（C-01）：state.running=true → steer（立即注入），否则 queue（排队落投）。
@@ -132,49 +64,15 @@ const CHAT = {
   seenSeq: new Map(),  // 会话 id → 已见尾 seq（未读点 highwater）
   state: null,         // 最近一次 chat-state 词形
   el: null,            // 当前屏根（路由切换换引用）
+  lastNodes: [],       // 最近映射节点（B1 引用抽取源）
+  refs: {},            // 引用条模型 {docs, files, chunks}（B2）
+  refsChunks: [],      // ContextPack chunks（B4 同源，会话切换时懒拉）
+  paintRefs: null,     // mountRefs 返回的条重绘 fn（B3 挂载后可用）
 };
 
 const LAST = { route: '', paramKey: '', locale: '' };
 
-/* ---------- 渲染 ---------- */
-
-function nodeHtml(n, names) {
-  if (n.kind === 'user') {
-    const pending = n.pending
-      ? '<div class="chat-pending">' + esc(tr('送达中…')) + '</div>'
-      : (n.injected ? '<div class="chat-pending">' + esc(tr('注入上下文')) + '</div>' : '');
-    const err = n.error
-      ? '<div class="chat-err"><span>' + esc(tr('送达失败（') + String(n.error) + tr('）')) + '</span>' +
-        '<button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || '')) + '">' + esc(tr('重试')) + '</button></div>'
-      : '';
-    return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '">' +
-      '<div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">…</span>') + '</div>' +
-      (pending || err ? '<div>' + pending + err + '</div>' : '') +
-      '</div>';
-  }
-  if (n.kind === 'assistant') {
-    // 无正文助手节点不渲染（工具轮次已在 mapTranscript 过滤，这里是纯空流防御）。
-    if (!n.text && !n.reasoning) return '';
-    const reasoning = n.reasoning
-      ? '<details class="chat-fold"><summary><span class="ex-chev">▸</span>' + esc(tr('已深度思考')) + '</summary>' +
-        '<div class="ex-body">' + linkifyRefs(n.reasoning, names) + '</div></details>'
-      : '';
-    const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + '</div>' : '';
-    return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + '</div>';
-  }
-  if (n.kind === 'tool') {
-    const detail = esc(trunc(String(n.args || ''), 800)) +
-      (n.result ? '\n' + tr('──── 结果 ────') + '\n' + esc(trunc(String(n.result), 800)) : '');
-    const done = n.result
-      ? '<span class="chat-tool-ok">' + esc(tr('完成')) + '</span>'
-      : '<span class="chat-tool-none">' + esc(tr('执行中…')) + '</span>';
-    return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '">' +
-      '<summary><span class="ex-chev">▸</span>' + esc(tr('已调用')) + ' <span class="chat-tool-name">' + esc(n.name) + '</span> ' + done + '</summary>' +
-      '<div class="ex-body">' + detail + '</div></details>';
-  }
-  const label = (n.dev ? tr('开发者') + ' · ' : '') + trunc(String(n.text || ''), 200);
-  return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '">' + esc(label) + '</div>';
-}
+/* ---------- 渲染（nodeHtml v5 权威=chat-views.js——import 已在文件头） ---------- */
 
 /** 待达回声 → 渲染节点（无 seq——气泡恒显示，入账即摘）。 */
 function pendingNodes() {
@@ -196,7 +94,7 @@ export function liveRowHtml(st) {
   const steer = sd ? ' <span class="chip llm tiny">' + esc(tr('插话 {n}').replace('{n}', String(sd))) + '</span>' : '';
   const body = tool
     ? tr('正在调用') + ' <span class="chat-live-tool">' + esc(tool) + '</span>… ' + dur
-    : tr('agent 运行中…');
+    : tr('深度求索中…');
   return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + '</span>' + queue + steer + '</div>';
 }
 
@@ -307,6 +205,7 @@ function screenShell(can) {
     '<button class="chat-jump" data-cc-jump hidden>↓ <span data-cc-jump-n></span></button>' +
     '</div></div>' +
     '<div class="chat-dock">' +
+    '<div class="chat-refs-slot" data-cc-refs></div>' +
     '<div data-cc-ctx></div>' +
     composerHtmlInner(can, false) +
     '<div class="chat-note" data-cc-note></div>' +
@@ -316,6 +215,33 @@ function screenShell(can) {
 /* ---------- 数据面 ---------- */
 
 function streamEl(el) { return el.querySelector('[data-cc-tr]'); }
+
+/** 引用条重绘（B2）：模型=最近节点抽取 + ContextPack chunks 同源（B4）。 */
+function paintRefs(el) {
+  CHAT.refs = { ...extractRefs(CHAT.lastNodes), chunks: CHAT.refsChunks };
+  if (CHAT.paintRefs) CHAT.paintRefs(CHAT.refs);
+}
+
+/** ContextPack chunks 懒拉（B4——会话切换时一次；面缺席=空组不冒充）。 */
+async function refreshCtxChunks(el) {
+  const cc = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
+  if (!cc || !cc.api || typeof cc.api.sessionContext !== 'function' || !CHAT.sessionId) {
+    CHAT.refsChunks = [];
+    paintRefs(el);
+    return;
+  }
+  try {
+    const r = await cc.api.sessionContext(CHAT.sessionId);
+    const d = (r && (r.ok || r.status === 200) && r.data && typeof r.data === 'object') ? r.data : {};
+    const pack = (d.pack && typeof d.pack === 'object') ? d.pack : {};
+    CHAT.refsChunks = (Array.isArray(pack.chunks) ? pack.chunks : [])
+      .map((c) => ({ kind: String((c && c.kind) || ''), scope: String((c && c.scope) || 'global'), name: String((c && c.name) || ''), score: Number((c && c.score) || 0) }))
+      .filter((c) => c.name);
+  } catch {
+    CHAT.refsChunks = []; // 面缺席=诚实空组
+  }
+  paintRefs(el);
+}
 
 /** 贴底判别（C-04 滚动锚）：距底 <48px=贴底。 */
 function nearBottom(box) {
@@ -345,6 +271,8 @@ export function applyIncremental(el, nodes) {
     if (Number(n.seq) && Number(n.seq) !== Number.MAX_SAFE_INTEGER && Number(n.seq) > CHAT.lastSeq) CHAT.lastSeq = Number(n.seq);
     col.insertAdjacentHTML('beforeend', nodeHtml(n, null));
   }
+  classifyMentions(col); // B3 联动：内联 code 路径词形 → 可点提及 chip
+  paintRefs(el); // B2 引用条随转录刷新
   // 待达回声区（无 seq——按 requestId 键渲染在尾）
   const pendBox = box.querySelector('[data-cc-pend]');
   const pendHtml = pendingNodes().map((n) => nodeHtml(n, null)).join('');
@@ -399,11 +327,14 @@ function pickSession(el, f, id) {
   CHAT.sessionId = id;
   CHAT.lastSeq = 0;
   CHAT.painted = new Set();
+  CHAT.lastNodes = [];
+  CHAT.refsChunks = [];
   CHAT.state = null;
   paintState(el);
   refreshSessions(el, f);
   refreshTranscript(el, f);
   ensureCtxBar(el, id);
+  refreshCtxChunks(el); // B4 chunks 同源懒拉
 }
 
 /** 状态面（顶条 chips + 活体行 + composer 词形随态换 C-01/C-03）。 */
@@ -485,6 +416,7 @@ async function refreshTranscript(el, f) {
     CHAT.pending = CHAT.pending.filter((p) => !(p.requestId && byReq.has(p.requestId)) && !texts.has(p.text));
   }
   const nodes = mapTranscript(events);
+  CHAT.lastNodes = nodes; // B1 引用抽取源随转录更新
   // 未读 highwater：清单侧已见尾 seq（当前会话实时更新）
   const lastEvSeq = events.reduce((m, e) => Math.max(m, Number(e && e.seq) || 0), 0);
   if (lastEvSeq) CHAT.seenSeq.set(CHAT.sessionId, Math.max(CHAT.seenSeq.get(CHAT.sessionId) || 0, lastEvSeq));
@@ -519,6 +451,7 @@ async function doSend(el, f, textOverride) {
       CHAT.sessionId = String(cr.data.sessionId);
       refreshSessions(el, f);
       ensureCtxBar(el, CHAT.sessionId);
+      refreshCtxChunks(el);
     } else {
       const note = el.querySelector('[data-cc-note]');
       if (note) note.textContent = tr('新会话失败（') + String(cr.status) + tr('）');
@@ -678,9 +611,11 @@ function dialogScreen(el, ctx) {
     if (r.status === 200 && r.data && r.data.sessionId) {
       CHAT.sessionId = String(r.data.sessionId);
       CHAT.lastSeq = 0; CHAT.painted = new Set();
+      CHAT.lastNodes = []; CHAT.refsChunks = [];
       refreshSessions(el, f);
       refreshTranscript(el, f);
       ensureCtxBar(el, CHAT.sessionId);
+      refreshCtxChunks(el);
     } else {
       const note = el.querySelector('[data-cc-note]');
       if (note) note.textContent = tr('新会话失败（') + String(r.status) + tr('）');
@@ -722,7 +657,38 @@ function dialogScreen(el, ctx) {
 
   bindRetry(el, f);
   bindImageUpload(el, f);
+  // B 批：引用条+详情弹窗挂载（ctxc=console 全局 ctx 的 api 面；go 优先路由 ctx）
+  const cc = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
+  if (cc && cc.api) {
+    CHAT.paintRefs = mountRefs(el, { api: cc.api, go: (x) => ctx.go(x) });
+  }
+  // D11 代码块头横幅：复制（成功闪词 1s）+自动换行切换（类名驱动——零 data:* 面）
+  el.addEventListener('click', (ev) => {
+    const copy = ev.target.closest('.md-code-copy');
+    if (copy) {
+      const block = copy.closest('.md-code-block');
+      const code = block ? block.querySelector('pre code') : null;
+      const text = code ? String(code.textContent || '') : '';
+      if (text && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(() => {
+          copy.textContent = tr('复制成功');
+          copy.classList.add('ok');
+          setTimeout(() => { copy.textContent = tr('复制'); copy.classList.remove('ok'); }, 1000);
+        }).catch(() => { /* 剪贴板缺席=静默（不冒充成功） */ });
+      }
+      return;
+    }
+    const wrap = ev.target.closest('.md-code-wrap');
+    if (wrap) {
+      const block = wrap.closest('.md-code-block');
+      if (block) {
+        const on = block.classList.toggle('wrap');
+        wrap.textContent = on ? tr('自动换行') : tr('取消自动换行');
+      }
+    }
+  });
   ensureCtxBar(el, CHAT.sessionId);
+  refreshCtxChunks(el);
   refreshSessions(el, f);
   refreshTranscript(el, f);
   if (CHAT.timer) clearInterval(CHAT.timer);
@@ -758,6 +724,9 @@ export function render(el, ctx) {
     CHAT.failed = [];
     CHAT.lastSeq = 0;
     CHAT.painted = new Set();
+    CHAT.lastNodes = [];
+    CHAT.refsChunks = [];
+    CHAT.paintRefs = null;
     dialogScreen(el, ctx);
     if (id == null && agent) {
       // #/chat/<agent>：清单到账后选最新一条（宿主档案；blank 优先复用）——零手填

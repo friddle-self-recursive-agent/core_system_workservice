@@ -4,7 +4,9 @@
  * （node 单测）=降级 minimalRender（先全转义再结构包装——安全由构造保证）。
  * yamlToCards：js-yaml 解析 → 字段卡 HTML（一切值 esc 后入卡、嵌套深度有界 ≤4、
  * 列表 chip 有界 ≤24）——语义移植旧 console-md.js（代码全部重写）。
- * 裸 YAML 转储恒为折叠次级（rawDisclosure——首屏禁裸转储）。 */
+ * 裸 YAML 转储恒为折叠次级（rawDisclosure——首屏禁裸转储）。
+ * 2026-11-27 D11：代码块头横幅（语言标签|缺省「代码块」+复制+自动换行）——上游 ui-primitives
+ * CodeBlock/CodeToolbar 词形；复制/换行走类名事件委托（chat.js 屏侧绑定），零 data:* 注入面。 */
 
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -14,11 +16,12 @@ import { t as tr } from '../core/i18n.js';
 
 marked.setOptions({ gfm: true, breaks: true, async: false });
 
-/* sanitize 白名单：文档面常用标签 + 安全属性；ALLOW_DATA_ATTR=false（零 data:* 注入面）。 */
+/* sanitize 白名单：文档面常用标签 + 安全属性；ALLOW_DATA_ATTR=false（零 data:* 注入面）。
+ * D11：button/type 入白名单（代码块头横幅两钮——类名驱动，零属性参数）。 */
 const PURIFY_CFG = {
   ALLOWED_TAGS: ['a', 'p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
-    'blockquote', 'pre', 'code', 'em', 'strong', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'img'],
-  ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
+    'blockquote', 'pre', 'code', 'em', 'strong', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'img', 'button'],
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'type'],
   ALLOW_DATA_ATTR: false,
   // URI 白名单沿用 DOMPurify 默认（http(s)/mailto/相对——javascript:/data: 默认已封）。
 };
@@ -33,6 +36,30 @@ export function sanitizeHtml(html) {
   if (!purifySupported()) return '';
   return DOMPurify.sanitize(String(html == null ? '' : html), PURIFY_CFG);
 }
+
+/* ---------- D11 代码块（纯函数——node 单测直测；marked renderer 与 minimalRender 共用） ---------- */
+
+/** 围栏代码块 → 头横幅卡 HTML（语言标签缺省「代码块」+自动换行+复制；文本恒 esc）。 */
+export function mdCodeBlock(text, lang) {
+  const label = String(lang || '').trim() || tr('代码块');
+  return '<div class="md-code-block wrap"><div class="md-code-head">' +
+    '<span class="md-code-lang">' + esc(trunc(label, 24)) + '</span>' +
+    '<span class="md-code-acts">' +
+    '<button type="button" class="md-code-btn md-code-wrap">' + esc(tr('自动换行')) + '</button>' +
+    '<button type="button" class="md-code-btn md-code-copy">' + esc(tr('复制')) + '</button>' +
+    '</span></div>' +
+    '<pre class="md-pre"><code>' + esc(String(text == null ? '' : text)) + '</code></pre></div>';
+}
+
+/** marked 15 renderer.code 覆写（token 词形 {text, lang}）。 */
+marked.use({
+  renderer: {
+    code(tok) {
+      const t = (tok && typeof tok === 'object') ? tok : { text: tok };
+      return mdCodeBlock(t.text, t.lang);
+    },
+  },
+});
 
 /* ---------- 行内格式（minimalRender 用——输入恒为已转义文本，只做词形包装） ---------- */
 function inline(s) {
@@ -59,13 +86,14 @@ export function minimalRender(src) {
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) { flush(); i += 1; continue; }
-    if (/^\s*```/.test(line)) { // 围栏代码块（纯转义零行内格式）
+    if (/^\s*```/.test(line)) { // 围栏代码块（D11：头横幅卡——语言|缺省「代码块」+复制+换行）
       flush();
+      const langM = /^\s*```(\S*)/.exec(line);
       const buf = [];
       i += 1;
       while (i < lines.length && !/^\s*```/.test(lines[i])) { buf.push(lines[i]); i += 1; }
       i += 1;
-      out.push('<pre class="md-pre">' + esc(buf.join('\n')) + '</pre>');
+      out.push(mdCodeBlock(buf.join('\n'), langM ? langM[1] : ''));
       continue;
     }
     const h = /^(#{1,6})\s+(.*)$/.exec(line);

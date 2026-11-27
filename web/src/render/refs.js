@@ -5,8 +5,9 @@
 import { esc } from '../core/format.js';
 import { t as tr } from '../core/i18n.js';
 
-/** 已知 kind 词表（ref 识别用——V-08 补齐 Runbook/DriftReport/DocReview）。 */
-const REF_KINDS = 'Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event';
+/** 已知 kind 词表（ref 识别用——V-08 补齐 Runbook/DriftReport/DocReview；2026-11-27 B 批补裸
+ * Doc kind——对话引用条与 chip 链接化需要命中 Doc/global/name 词形）。chat-refs 抽取共用。 */
+export const REF_KINDS = 'Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Doc|Template|Event';
 
 /** ref 深链词形（与 objRoute 同构——此处自带避免循环依赖）。 */
 export function refRoute(kind, scope, name) {

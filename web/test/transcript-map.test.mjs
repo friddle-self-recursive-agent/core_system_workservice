@@ -7,6 +7,7 @@ import {
   blocksOf, mapTranscript, nextBatch, nodeKey, modeForState,
   liveRowHtml, sessionRowHtml, sessionsHtml, dayGroupOf, emptyStateHtml,
 } from '../src/screens/chat.js'
+import { turnTailOf, todoModel, toolTitle, toolSummary, metaSummary, usageTotal, usageDetail, formatClock } from '../src/screens/chat-nodes.js'
 
 test('mapTranscript：user/assistant/tool 三族映射 ∧ delta 剥除 ∧ callId 归组带结果', () => {
   const nodes = mapTranscript([
@@ -27,15 +28,140 @@ test('mapTranscript：user/assistant/tool 三族映射 ∧ delta 剥除 ∧ call
   assert.equal(nodes[2].reasoning, 'think')
 })
 
-test('mapTranscript：compact-checkpoint 不渲染 ∧ 注入词形标记 ∧ 空页=空', () => {
+test('mapTranscript：compact-checkpoint 不渲染 ∧ 非 user 源=notice 行 ∧ 空页=空', () => {
   const nodes = mapTranscript([
     { seq: 1, type: 'user/message', data: { source: { kind: 'compact-checkpoint' }, content: [{ type: 'text', text: 'x' }] } },
     { seq: 2, type: 'user/message', data: { source: { kind: 'system' }, content: [{ type: 'text', text: '注入' }] } },
   ])
   assert.equal(nodes.length, 1)
-  assert.equal(nodes[0].injected, true)
+  assert.equal(nodes[0].kind, 'notice', '非 user 源=notice 行（D1/D2 词族）')
+  assert.equal(nodes[0].text, '注入')
+  assert.equal(nodes[0].waking, false, '无 turn/start 前缀=过程注入（非轮触发）')
   assert.deepEqual(mapTranscript([]), [])
   assert.deepEqual(mapTranscript(null), [])
+})
+
+/* ---------- D 批（2026-11-27：chat-ds.md 对账锚） ---------- */
+
+test('D1 轮触发行：turn/start 后首条注入=trigger 词形（tool-jobs→后台任务状态更新）', () => {
+  const nodes = mapTranscript([
+    { seq: 1, type: 'turn/start', data: { turn: 1 } },
+    { seq: 2, type: 'user/message', data: { source: { kind: 'tool-jobs', form: 'notice', summary: 'bash (sleep 120) finished [status: completed]' }, content: [{ type: 'text', text: 'background job j1 finished [status: completed]. Output:\nALL DONE' }] } },
+  ])
+  assert.equal(nodes.length, 1)
+  const n = nodes[0]
+  assert.equal(n.kind, 'notice')
+  assert.equal(n.waking, true, 'turn/start 后未出节点=轮触发')
+  assert.equal(n.title, '后台任务状态更新')
+  assert.equal(n.summary, 'bash (sleep 120) finished [status: completed]')
+  assert.ok(n.text.includes('ALL DONE'))
+})
+
+test('D1 词族映射：schedule/subagent-settled(终态变体)/goal/webhook(github)', () => {
+  const t = (src) => mapTranscript([{ seq: 1, type: 'user/message', data: { source: src, content: [{ type: 'text', text: 'x' }] } }])[0].title
+  assert.equal(t({ kind: 'schedule' }), '自动化任务')
+  assert.equal(t({ kind: 'subagent-settled', stopReason: 'completed' }), '子智能体已完成任务')
+  assert.equal(t({ kind: 'subagent-settled', stopReason: 'max-tokens' }), '子智能体已达 token 上限')
+  assert.equal(t({ kind: 'subagent-settled' }), '子任务状态更新', '未知终态=通用词不冒充')
+  assert.equal(t({ kind: 'goal' }), '继续执行目标')
+  assert.equal(t({ kind: 'webhook', provider: 'github' }), '收到 GitHub 事件')
+  assert.equal(t({ kind: 'webhook' }), '收到外部事件')
+  assert.equal(t({ kind: 'cordis-host-runner' }), '插件状态更新')
+})
+
+test('D2 注入行：notice form 摘要 ≤120 ∧ producer 标签', () => {
+  const rows = mapTranscript([
+    { seq: 1, type: 'user/message', data: { source: { kind: 'plugin', plugin: 'my-plug', form: 'notice', summary: 'x'.repeat(200) }, content: [{ type: 'text', text: 'body' }] } },
+  ])
+  const n = rows[0]
+  assert.equal(n.kind, 'notice')
+  assert.equal(n.summary.length, 120, 'summary 按上游契约封顶 120')
+  assert.equal(n.producer, 'my-plug')
+})
+
+test('D3 轮汇总：已完成，用时 ∧ 失败/停止/max-tokens 词形', () => {
+  const nodes = mapTranscript([
+    { seq: 1, type: 'turn/start', data: { turn: 1 }, time: 1000 },
+    { seq: 2, type: 'assistant/message', data: { content: [{ type: 'text', text: 'hi' }] }, time: 2000 },
+    { seq: 3, type: 'turn/end', data: { turn: 1, reason: 'complete' }, time: 105000 },
+  ])
+  const tail = nodes.find((n) => n.kind === 'turntail')
+  assert.ok(tail, 'turn/end → turntail 节点')
+  assert.equal(tail.durationMs, 104000)
+  assert.ok(turnTailOf(tail.reason, tail.durationMs).word.includes('已完成，用时'), '词形=已完成，用时')
+  assert.equal(turnTailOf('complete', 104000).word, '已完成，用时 1分44秒')
+  assert.equal(turnTailOf('complete', 500).word, '已完成', '<1s 无用时段')
+  assert.equal(turnTailOf('interrupted', 0).word, '已停止')
+  assert.equal(turnTailOf('error', 0).word, '处理失败')
+  const mt = turnTailOf('max-tokens', 0)
+  assert.equal(mt.cls, 'maxtok')
+  assert.ok(mt.hint.includes('继续'), 'max-tokens 附 hint')
+})
+
+test('D4 待办：todo/write → todo 节点 ∧ {done}/{total} 模型', () => {
+  const nodes = mapTranscript([
+    { seq: 5, type: 'todo/write', data: { todos: [{ content: 'a', status: 'completed' }, { content: 'b', status: 'in_progress' }, { content: 'c', status: 'pending' }] } },
+  ])
+  const n = nodes[0]
+  assert.equal(n.kind, 'todo')
+  const m = todoModel(n.todos)
+  assert.deepEqual([m.done, m.total, m.active], [1, 3, 'b'])
+  assert.deepEqual(todoModel(null), { rows: [], done: 0, total: 0, active: '' })
+})
+
+test('D5+病根：tool/result 结果词形=message.content 块 ∧ error→失败态 ∧ meta.stopped→已停止', () => {
+  const nodes = mapTranscript([
+    { seq: 1, type: 'tool/call', data: { callId: 'c1', name: 'bash', arguments: '{"command":"ls"}' } },
+    { seq: 2, type: 'tool/result', data: { callId: 'c1', message: { role: 'tool', content: [{ type: 'text', text: 'file1\nfile2' }] } } },
+    { seq: 3, type: 'tool/call', data: { callId: 'c2', name: 'grep', arguments: '{"pattern":"x"}' } },
+    { seq: 4, type: 'tool/result', data: { callId: 'c2', message: { role: 'tool', content: [{ type: 'text', text: 'boom' }] }, error: { name: 'ToolError', code: 'E1' } } },
+    { seq: 5, type: 'tool/call', data: { callId: 'c3', name: 'bash', arguments: '{"command":"sleep"}' } },
+    { seq: 6, type: 'tool/result', data: { callId: 'c3', message: { role: 'tool', content: [{ type: 'text', text: 'part' }] }, meta: { stopped: true } } },
+    { seq: 7, type: 'tool/call', data: { callId: 'c4', name: 'bash', arguments: '{"command":"exit3"}' } },
+    { seq: 8, type: 'tool/result', data: { callId: 'c4', message: { role: 'tool', content: [{ type: 'text', text: 'out' }] }, meta: { exitCode: 3 } } },
+  ])
+  const byId = Object.fromEntries(nodes.filter((n) => n.kind === 'tool').map((n) => [n.summary, n]))
+  assert.equal(byId['ls'].state, 'ok')
+  assert.equal(byId['ls'].result, 'file1\nfile2', '结果词形=message.content 块（2026-11-27 执行中卡死病根）')
+  assert.equal(byId['x'].state, 'error')
+  assert.equal(byId['sleep'].state, 'stopped')
+  assert.equal(byId['exit3'].state, 'error', 'bash 退出码≠0=失败态（上游 terminalFailed 同族）')
+  assert.equal(byId['exit3'].meta.exitCode, 3)
+  assert.equal(byId['x'].error.code, 'E1')
+})
+
+test('D6/D7 专名标题+关键参数摘要+meta 计数', () => {
+  assert.equal(toolTitle('bash'), '运行命令')
+  assert.equal(toolTitle('read'), '读取')
+  assert.equal(toolTitle('grep'), '搜索文件内容')
+  assert.equal(toolTitle('todo_write'), '更新任务清单')
+  assert.equal(toolTitle('nope'), '')
+  assert.equal(toolSummary('read', '{"file_path":"/a/b/c.md","limit":5}'), '/a/b/c.md')
+  assert.equal(toolSummary('bash', 'not-json'), 'not-json')
+  assert.equal(metaSummary('grep', { total: 12, files: 3 }), '12 处匹配 · 3 个文件')
+  assert.equal(metaSummary('grep', { shape: 'paths', total: 5 }), '5 个路径')
+  assert.equal(metaSummary('grep', { total: 0 }), '无结果')
+  assert.equal(metaSummary('read', { lines: [{ number: 1, text: 'a' }, { number: 2, text: 'b' }] }), '2 行')
+  assert.equal(metaSummary('read', {}), '')
+  assert.equal(metaSummary('web_fetch', { statusCode: 200 }), 'HTTP 200')
+})
+
+test('D10 用量：usage 求和 ∧ 明细词形', () => {
+  const u = { inputTokens: 100, outputTokens: 40, cacheReadTokens: 10, cacheWriteTokens: 1, reasoningTokens: 7 }
+  assert.equal(usageTotal(u), 151)
+  assert.equal(usageTotal(null), 0)
+  const d = usageDetail(u)
+  assert.ok(d.includes('缓存读取 10'))
+  assert.ok(d.includes('（其中推理 7）'))
+})
+
+test('D13 时钟：当天 HH:MM ∧ 同年 M月D日 ∧ 跨年 Y年M月D日', () => {
+  const now = new Date('2026-11-27T18:00:00')
+  const t = (iso) => formatClock(new Date(iso).getTime(), now.getTime())
+  assert.match(t('2026-11-27T12:46:00'), /12:46/)
+  assert.match(t('2026-10-20T12:46:00'), /10月20日 12:46/)
+  assert.match(t('2025-10-20T12:46:00'), /2025年10月20日 12:46/)
+  assert.equal(formatClock(0, now.getTime()), '')
 })
 
 test('blocksOf：text/reasoning 拼接 ∧ tool-call 参数词形（string 透传/object 序列化）', () => {
@@ -96,7 +222,7 @@ test('liveRowHtml：非 running=空 ∧ running 带工具词形+耗时 ∧ queue
   const steer = liveRowHtml({ running: true, steerDepth: 1 })
   assert.ok(steer.includes('插话 1'), 'steer 深度 chip')
   const bare = liveRowHtml({ running: true })
-  assert.ok(bare.includes('agent 运行中'), '无工具=运行中泛词形')
+  assert.ok(bare.includes('深度求索中'), '无工具=深度求索中泛词形（D 批上游对齐）')
 })
 
 /* ---------- C-06 会话行（未读点/分组） ---------- */
