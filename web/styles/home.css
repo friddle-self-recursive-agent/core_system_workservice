@@ -1,0 +1,115 @@
+/* home.css —— 首页=对话（2026-11-27 用户裁决「做成 DeepSeek 的 chat 模式」）：
+ * DeepSeek 新对话版型 × style.md token：居中 hero + 大圆角玻璃 composer + 真实示例 pill +
+ * 圆形品牌蓝发送 + 最近会话。暗色已冻结；裸色值只许落在品牌蓝/白碱度上（沿用 token）。 */
+
+.cc-app .home {
+  /* 负边距吃掉 .view 的 24/64 padding——整屏铺满，背景渐变/网格直贴视口 */
+  margin: -24px -24px -64px;
+  min-height: calc(100vh - 48px - 1px);
+  position: relative;
+  display: flex; flex-direction: column;
+  background:
+    radial-gradient(900px 420px at 50% -8%, rgba(77, 107, 254, .10), transparent 62%),
+    radial-gradient(700px 380px at 10% 105%, rgba(77, 107, 254, .06), transparent 60%),
+    radial-gradient(620px 320px at 88% 8%, rgba(120, 160, 255, .07), transparent 65%),
+    var(--bg);
+}
+.cc-app .home::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(30, 50, 90, .055) 1px, transparent 1px);
+  background-size: 20px 20px;
+  mask-image: radial-gradient(ellipse at 50% 35%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 35%, #000 0%, transparent 72%);
+}
+.cc-app .home-hero {
+  position: relative; z-index: 1;
+  flex: 1; width: 100%; max-width: 980px; margin: 0 auto;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding: 56px 24px 40px;
+}
+.cc-app .home-title {
+  font-size: 30px; font-weight: 600; letter-spacing: -.4px;
+  text-align: center; color: var(--text);
+}
+.cc-app .home-sub {
+  margin-top: 10px; max-width: 640px; text-align: center;
+  color: var(--text-3); font-size: var(--fs-small); line-height: 1.6;
+}
+
+/* ---------- 大 composer（DeepSeek 新对话卡） ---------- */
+.cc-app .home-box {
+  width: 100%; max-width: 880px; margin: 28px auto 0;
+  background: rgba(255, 255, 255, .88);
+  border: 1px solid var(--border-2); border-radius: 26px;
+  box-shadow: 0 18px 50px rgba(30, 50, 90, .10), 0 2px 8px rgba(0, 0, 0, .04);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 18px 20px 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.cc-app .home-box:focus-within {
+  border-color: var(--ds-accent-border);
+  box-shadow: 0 20px 60px rgba(30, 50, 90, .14), 0 0 0 4px var(--ds-accent-ring-soft);
+}
+.cc-app .home-text {
+  display: block; width: 100%; min-height: 64px; max-height: 204px;
+  border: 0; background: transparent; resize: none; outline: none;
+  color: var(--text); font: inherit; font-size: 17px; line-height: 1.6;
+}
+.cc-app .home-text::placeholder { color: var(--text-3); }
+.cc-app .home-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.cc-app .home-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.cc-app .home-tool {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px;
+  border: 1px solid var(--border-2); border-radius: var(--rad-pill);
+  background: rgba(255, 255, 255, .70); color: var(--text-2);
+  font-family: var(--sans); font-size: var(--fs-small); font-weight: 500;
+  cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, color .12s;
+}
+.cc-app .home-tool:hover {
+  border-color: var(--ds-accent-border); color: var(--accent); background: var(--accent-dim);
+}
+.cc-app .home-img { cursor: pointer; }
+.cc-app .home-send {
+  margin-left: auto; flex: none;
+  width: 42px; height: 42px; border: 0; border-radius: var(--rad-round);
+  background: var(--accent); color: #fff; font-size: 20px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 6px 16px rgba(77, 107, 254, .28);
+  transition: background .12s, transform .12s, box-shadow .12s;
+}
+.cc-app .home-send:hover { background: var(--ds-accent-text); transform: translateY(-1px); }
+.cc-app .home-send:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+.cc-app .home-note {
+  min-height: 18px; margin-top: 10px; text-align: center;
+  color: var(--text-3); font-size: var(--fs-micro);
+}
+.cc-app .home-note:empty { min-height: 0; margin-top: 0; }
+
+/* ---------- 最近会话（真实清单；空=不渲染） ---------- */
+.cc-app .home-recent { width: 100%; max-width: 880px; margin: 26px auto 0; }
+.cc-app .home-recent:empty { display: none; }
+.cc-app .home-recent-h {
+  font-size: var(--fs-micro); font-weight: 600; color: var(--text-3);
+  letter-spacing: .04em; margin-bottom: 8px; text-align: center;
+}
+.cc-app .home-recent-list { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.cc-app .home-recent-chip {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 300px;
+  height: 34px; padding: 0 14px; border: 1px solid var(--border);
+  border-radius: var(--rad-pill); background: rgba(255, 255, 255, .62);
+  color: var(--text-2); font-family: var(--sans); font-size: var(--fs-small);
+  cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+}
+.cc-app .home-recent-chip:hover { background: var(--panel); border-color: var(--border-2); color: var(--text); }
+.cc-app .home-recent-chip.all { color: var(--accent); border-color: var(--ds-accent-border); background: var(--accent-dim); }
+.cc-app .home-recent-dot { width: 7px; height: 7px; border-radius: var(--rad-round); background: var(--text-3); flex: none; }
+.cc-app .home-recent-dot.live { background: var(--ok); }
+.cc-app .home-recent-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-app .home-recent-time { color: var(--text-3); font-size: var(--fs-micro); flex: none; }
+
+@media (max-width: 700px) {
+  .cc-app .home-hero { padding: 36px 16px 28px; }
+  .cc-app .home-title { font-size: 24px; }
+  .cc-app .home-box { margin-top: 22px; border-radius: 22px; padding: 14px 14px 12px; }
+  .cc-app .home-tool { padding: 0 10px; }
+}

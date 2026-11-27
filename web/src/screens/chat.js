@@ -16,6 +16,8 @@ import { esc, trunc, relAge } from '../core/format.js';
 import { chip } from '../render/chips.js';
 import { linkifyRefs } from '../render/refs.js';
 import { renderMarkdown } from '../render/md.js';
+import { sessBacklinksHtml } from './chat-links.js';
+export { sessBacklinksHtml } from './chat-links.js';
 import { mountSessionCtx } from './sessionctx.js';
 import { t as tr, getLocale } from '../core/i18n.js';
 
@@ -777,84 +779,4 @@ export function render(el, ctx) {
   if (f) refreshTranscript(el, f);
 }
 
-/* ---------- V-10 回链（快照三源反查——词形不变，样式类迁 chat.css） ---------- */
 
-export function sessBacklinksHtml(store, sessionId) {
-  const sid = String(sessionId || '');
-  if (!sid) return '';
-  const tasks = (store.tasks() || []).filter((t) => String((t && t.status && (t.status.agentSession || t.status.sessionId)) || '') === sid);
-  const evs = (store.events() || []).filter((e) => {
-    const s = String((e && (e.agentSession || e.session)) || '');
-    return s === sid;
-  }).slice(0, 4);
-  const taskChips = tasks.slice(0, 3).map((t) => {
-    const id = String((t && t.scope) || 'global') + '/' + String((t && t.name) || '');
-    const title = String((t && t.spec && t.spec.title) || (t && t.name) || id);
-    const ph = String((t && t.status && (t.status.phase || t.status)) || '');
-    return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + tr('——任务详情') + '">Task: ' +
-      esc(trunc(title, 22)) + (ph ? ' · ' + esc(ph) : '') + '</span>';
-  }).join(' ');
-  const evChips = evs.map((e) =>
-    '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(e.id ?? '')) + '" title="' + esc(tr('事件详情')) + '">' +
-    esc(trunc(String(e.type || ''), 26)) + '</span>').join(' ');
-  if (!taskChips && !evChips) {
-    return '<div class="small faint" data-sess-backlinks="1">' + esc(tr('快照三源（Task.agentSession ∪ 事件 agentSession）反查无在册关联——会话型独立会话（零编造）。')) + '</div>';
-  }
-  return '<div class="small" data-sess-backlinks="1">' +
-    '<span class="faint">' + esc(tr('关联：')) + '</span> ' + taskChips + ' ' + evChips + '</div>';
-}
-
-/* ---------- composer 导出（总览大屏在用——同版型词形） ---------- */
-
-function sessionOptions() {
-  /* 正常服务没有手填 session id（用户裁决）：总览 composer 恒发 root 会话。
-   * 会话选择在会话屏（宿主发 id）。 */
-  return '<option value="root" selected>' + esc(tr('root 会话（默认）')) + '</option>';
-}
-
-/** 对话 composer（总览大屏在用）。 */
-export function composerHtml(ctx, curSession) {
-  const f = faces();
-  const canSend = !!(f && typeof f.send === 'function');
-  void ctx; void curSession;
-  return '<div class="cc-composer">' +
-    '<div class="cc-comp-row">' +
-    '<select class="inp cc-sess" data-cc-sess>' + sessionOptions() + '</select>' +
-    '</div>' +
-    '<div class="cc-comp-row">' +
-    '<textarea class="inp cc-text" data-cc-text rows="2" placeholder="' +
-    esc(tr('提交需求／找文档／更新文档——例如：进行代码审核，看看实际和文档差距有多大，并进行修复')) + '"></textarea>' +
-    '<button class="btn btn-primary" data-cc-send' + (canSend ? '' : ' disabled') + '>' + esc(tr('发送')) + '</button>' +
-    '</div>' +
-    '<div class="small faint">' +
-    (canSend
-      ? esc(tr('Enter 发送 · 消息送达系统会话；处理结论以文档与流程状态呈现'))
-      : esc(tr('对话通路未注入（chatfaces.js 缺席）——送达面显式缺席，不冒充已发送'))) +
-    '</div></div>';
-}
-
-/** 绑定 composer 行为（总览大屏——root 会话 queue 落投；回执 requestId 销账同 C-05 词形）。 */
-export function bindComposer(el, ctx, rootEl) {
-  const sendBtn = rootEl.querySelector('[data-cc-send]');
-  const textTa = rootEl.querySelector('[data-cc-text]');
-  if (!sendBtn || !textTa) return;
-  const doSend = async () => {
-    const text = textTa.value.trim();
-    if (!text) return;
-    const f = faces();
-    if (!f || typeof f.send !== 'function') return;
-    textTa.value = '';
-    const r = await f.send('root', text);
-    const note = document.createElement('div');
-    note.className = 'small faint';
-    note.textContent = r && r.status === 200
-      ? tr('已送达（queue）——root agent 会话已受理；结论经状态徽与节点图可见。')
-      : tr('送达失败（') + String(r && r.status) + tr('）');
-    sendBtn.parentElement.appendChild(note);
-    setTimeout(() => note.remove(), 6000);
-  };
-  sendBtn.addEventListener('click', doSend);
-  textTa.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); doSend(); }
-  });
-}

@@ -58,7 +58,7 @@ test('createRouter：mount 前不触 DOM/location（node 可构造）', () => {
 test('词形全量兼容抽样（旧 console 路由表）', () => {
   const router = createRouter();
   const table = [
-    'welcome', 'obj', 'obj/:kind', 'obj/:kind/:scope/:name', 'events', 'event/:id',
+    'home', 'welcome', 'obj', 'obj/:kind', 'obj/:kind/:scope/:name', 'events', 'event/:id',
     'tasks', 'task/:id', 'report', 'doc/:name', 'doc/:kind/:scope/:name',
     'chat/:agent', 'session/:id', 'approvals', 'inbox', 'proposals',
     'workflows', 'wf/:name', 'wf/:name/r/:n', 'tree', 'docs',

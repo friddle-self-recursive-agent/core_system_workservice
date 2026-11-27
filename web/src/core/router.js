@@ -46,8 +46,8 @@ export function createRouter(opts = {}) {
   function notFoundHtml(segs) {
     return '<div class="view-inner">' +
       '<div class="empty"><div class="e-title">未知路径（' + segs.map((s) => s).join('/') + '）</div>' +
-      '<div class="small faint">路由词形见控制台导航——或从 Welcome 进入。</div>' +
-      '<div class="e-act"><button class="btn btn-primary" data-go="welcome">回 Welcome</button></div></div></div>';
+      '<div class="small faint">路由词形见控制台导航——或从首页对话进入。</div>' +
+      '<div class="e-act"><button class="btn btn-primary" data-go="home">回首页</button></div></div></div>';
   }
 
   const api = {
@@ -75,7 +75,7 @@ export function createRouter(opts = {}) {
     render() {
       if (!viewEl || typeof location === 'undefined') return null;
       const segs = parseHash(location.hash);
-      if (!segs.length) segs.push(opts.defaultRoute || 'welcome');
+      if (!segs.length) segs.push(opts.defaultRoute || 'home');
       const hit = resolve(segs);
       if (!hit) {
         current = { route: '404', pattern: '', segs, params: {} };

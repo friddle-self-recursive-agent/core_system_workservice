@@ -8,6 +8,7 @@ import '../styles/base.css';
 import '../styles/components.css';
 import '../styles/screens.css';
 import '../styles/chat.css';
+import '../styles/home.css';
 import '../styles/theme-dsh.css';
 
 import { esc } from './core/format.js';
@@ -16,6 +17,7 @@ import { createApi } from './core/api.js';
 import { createRouter } from './core/router.js';
 import { connectStream, wsUrlOf } from './core/ws.js';
 
+import * as home from './screens/home.js';
 import * as welcome from './screens/welcome.js';
 import * as events from './screens/events.js';
 import * as objects from './screens/objects.js';
@@ -34,7 +36,7 @@ import { getLocale, onLocaleChange, setLocale, t as tr } from './core/i18n.js';
 const BASES = (typeof window !== 'undefined' && window.__CORE_CONSOLE_BASES__) || {};
 const store = createStore();
 const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.drafts });
-const router = createRouter({ defaultRoute: 'welcome' });
+const router = createRouter({ defaultRoute: 'home' });
 const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: '' };
 
 /* 两级控制台（2026-11-26 用户裁决）：系统控制台=系统视角（总览大屏+操作面）；
@@ -49,7 +51,8 @@ const NAV_TREE = [
   {
     level: 'sys', label: 'Core Console', icon: '▣',
     items: [
-      ['welcome', '首页', '⌂'],
+      ['home', '对话', '✧'],
+      ['welcome', '总览', '⌂'],
       ['tasks', '工作与流程', '⊞'],
       ['workflows', '流程运行', '⟳'],
       ['approvals', '审批中心', '✓'],
@@ -273,7 +276,7 @@ export function mount(root, opts = {}) {
     if (lv) { ev.preventDefault(); curLevel = lv.dataset.level; try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
       const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml();
       const tabs = root.querySelector('[data-level-tabs]'); if (tabs) tabs.innerHTML = levelTabsHtml();
-      router.go('welcome'); return; }
+      router.go('home'); return; }
     const fold = ev.target.closest('[data-fold]');
     if (fold) { ev.preventDefault(); const g = fold.dataset.fold; foldState[g] = !foldState[g];
       const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml(); return; }
@@ -295,6 +298,7 @@ export function mount(root, opts = {}) {
   });
 
   router
+    .route('home', screenOf(home.render))
     .route('welcome', screenOf(welcome.render))
     .route('obj', screenOf(objects.render))
     .route('obj/:kind', screenOf(objects.render))

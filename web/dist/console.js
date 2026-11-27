@@ -762,7 +762,6 @@ var CoreConsoleWeb = (() => {
     ["\u6B63\u5728\u8DD1\u7684 Workflows", "Running workflows"],
     ["\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279", "Approvals needed recently"],
     ["\u6838\u5FC3 Agent", "Core agents"],
-    ["\u603B\u89C8", "Overview"],
     ["\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB", "System-view dashboard \u2014 running tasks, approvals needed, core agents at a glance"],
     ["Service", "Service"],
     ["Service \u89C6\u89D2\u5927\u5C4F\uFF08\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u5373\u843D\u6B64\u89C6\u56FE\uFF09", "Service-view dashboard (same layout as the system one \u2014 a later ServiceAgent login lands here)"],
@@ -852,7 +851,30 @@ var CoreConsoleWeb = (() => {
     ["root \u4F1A\u8BDD\uFF08\u9ED8\u8BA4\uFF09", "root session (default)"],
     ["Enter \u53D1\u9001 \xB7 \u6D88\u606F\u9001\u8FBE\u7CFB\u7EDF\u4F1A\u8BDD\uFF1B\u5904\u7406\u7ED3\u8BBA\u4EE5\u6587\u6863\u4E0E\u6D41\u7A0B\u72B6\u6001\u5448\u73B0", "Enter to send \xB7 queue semantics (delivered to the root agent session; the conclusion lands in docs by the agent, visible via status badge and node graph)"],
     ["\u5DF2\u9001\u8FBE\uFF08queue\uFF09\u2014\u2014root agent \u4F1A\u8BDD\u5DF2\u53D7\u7406\uFF1B\u7ED3\u8BBA\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\u3002", "Delivered (queue) \u2014 root agent session accepted; watch the status badge and node graph for the conclusion."],
-    ["\uFF09", ")"]
+    ["\uFF09", ")"],
+    /* ── 2026-11-27 首页=对话（DeepSeek chat 模式）── */
+    ["\u5BF9\u8BDD", "Chat"],
+    ["\u603B\u89C8", "Overview"],
+    ["\u56DE\u9996\u9875", "Back to home"],
+    ["\u76F4\u63A5\u8BF4\u9700\u6C42\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u3001\u63D0\u4EA4\u53D8\u66F4\uFF1B\u7ED3\u8BBA\u843D\u5230\u6587\u6863\u4E0E\u6D41\u7A0B\u3002", "Just ask \u2014 find docs, update docs, submit changes; results land in docs and workflows."],
+    ["\u63D0\u4EA4\u9700\u6C42\u3001\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u2026\u2026", "Ask for a change, find docs, update docs\u2026"],
+    ["\u5BF9\u8BDD\u8F93\u5165", "Chat input"],
+    ["\u627E\u6587\u6863", "Find docs"],
+    ["\u66F4\u65B0\u6587\u6863", "Update docs"],
+    ["\u56FE\u7247", "Image"],
+    ["\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09", "Attach image (\u22648MB)"],
+    ["\u6B63\u5728\u521B\u5EFA\u4F1A\u8BDD\u2026", "Creating chat\u2026"],
+    ["\u65B0\u4F1A\u8BDD\u521B\u5EFA\u5931\u8D25", "Failed to create chat"],
+    ["\u6B63\u5728\u53D1\u9001\u2026", "Sending\u2026"],
+    ["\u5DF2\u9001\u8FBE\uFF0C\u6B63\u5728\u6253\u5F00\u4F1A\u8BDD\u2026", "Delivered \u2014 opening chat\u2026"],
+    ["\u53D1\u9001\u5931\u8D25", "Send failed"],
+    ["\u56FE\u7247\u4E0A\u4F20\u901A\u8DEF\u672A\u6CE8\u5165", "Image upload path not injected"],
+    ["\u56FE\u7247\u4E0A\u4F20\u4E2D\u2026", "Uploading image\u2026"],
+    ["\u56FE\u7247\u5DF2\u9644\u52A0\uFF08\u968F\u6D88\u606F\u53D1\u9001\uFF09", "Image attached (sent with your message)"],
+    ["\u56FE\u7247\u4E0A\u4F20\u5931\u8D25", "Image upload failed"],
+    ["\u56FE\u7247\u8D85\u8FC7 8MB \u4E0A\u9650", "Image exceeds the 8MB limit"],
+    ["\u6700\u8FD1\u4F1A\u8BDD", "Recent chats"],
+    ["\u5168\u90E8\u4F1A\u8BDD", "All chats"]
   ];
 
   // src/core/i18n.js
@@ -1920,7 +1942,7 @@ var CoreConsoleWeb = (() => {
       return null;
     }
     function notFoundHtml(segs) {
-      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + segs.map((s) => s).join("/") + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE Welcome \u8FDB\u5165\u3002</div><div class="e-act"><button class="btn btn-primary" data-go="welcome">\u56DE Welcome</button></div></div></div>';
+      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + segs.map((s) => s).join("/") + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE\u9996\u9875\u5BF9\u8BDD\u8FDB\u5165\u3002</div><div class="e-act"><button class="btn btn-primary" data-go="home">\u56DE\u9996\u9875</button></div></div></div>';
     }
     const api2 = {
       /** 注册屏（pattern 如 'wf/:name/r/:n'；fn(viewEl, params, ctx)）。 */
@@ -1952,7 +1974,7 @@ var CoreConsoleWeb = (() => {
       render() {
         if (!viewEl || typeof location === "undefined") return null;
         const segs = parseHash(location.hash);
-        if (!segs.length) segs.push(opts.defaultRoute || "welcome");
+        if (!segs.length) segs.push(opts.defaultRoute || "home");
         const hit = resolve(segs);
         if (!hit) {
           current = { route: "404", pattern: "", segs, params: {} };
@@ -2170,6 +2192,153 @@ var CoreConsoleWeb = (() => {
     };
   }
 
+  // src/screens/home.js
+  function faces() {
+    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
+  }
+  var SAMPLES = [
+    ["\u4EE3\u7801\u5BA1\u6838", "\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"],
+    ["\u627E\u6587\u6863", "\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"],
+    ["\u66F4\u65B0\u6587\u6863", "\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981\u5E76\u66F4\u65B0\u76F8\u5173\u6587\u6863"]
+  ];
+  function heroComposerHtml() {
+    return '<div class="home-box" data-home-box><textarea class="home-text" data-home-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\u3001\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '" aria-label="' + esc(t("\u5BF9\u8BDD\u8F93\u5165")) + '"></textarea><div class="home-bar"><div class="home-tools">' + SAMPLES.map(([label, full]) => '<button type="button" class="home-tool" data-home-sample="' + esc(full) + '">' + esc(t(label)) + "</button>").join("") + '<label class="home-tool home-img" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-home-img hidden></label></div><button type="button" class="home-send" data-home-send aria-label="' + esc(t("\u53D1\u9001")) + '" title="' + esc(t("\u53D1\u9001")) + '"><span aria-hidden="true">\u2191</span></button></div></div><div class="home-note" data-home-note aria-live="polite"></div>';
+  }
+  function recentSessionsHtml(items) {
+    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)).slice(0, 6);
+    if (!rows.length) return "";
+    return '<div class="home-recent-h">' + esc(t("\u6700\u8FD1\u4F1A\u8BDD")) + '</div><div class="home-recent-list">' + rows.map((s) => {
+      const id = String(s.sessionId);
+      const title = String(s.title || "").trim() || id;
+      return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '"><span class="home-recent-dot' + (s.running === true ? " live" : "") + '"></span><span class="home-recent-t">' + esc(trunc(title, 30)) + "</span>" + (s.updatedAt ? '<span class="home-recent-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</button>";
+    }).join("") + '<button type="button" class="home-recent-chip all" data-go="chat/core-headless">' + esc(t("\u5168\u90E8\u4F1A\u8BDD")) + " \u2192</button></div>";
+  }
+  function sessionRoute(sessionId) {
+    return "session/" + encodeURIComponent(String(sessionId));
+  }
+  function note(el, msg) {
+    const n = el.querySelector("[data-home-note]");
+    if (n) n.textContent = String(msg || "");
+  }
+  function autoGrow(ta) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    const max = 24 * 8 + 12;
+    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+  }
+  async function submitHome(el, ctx2) {
+    const ta = el.querySelector("[data-home-text]");
+    const btn = el.querySelector("[data-home-send]");
+    const text2 = String(ta && ta.value || "").trim();
+    if (!text2) return false;
+    const f = faces();
+    if (!f || typeof f.send !== "function" || typeof f.create !== "function") {
+      note(el, t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"));
+      return false;
+    }
+    if (btn) btn.disabled = true;
+    note(el, t("\u6B63\u5728\u521B\u5EFA\u4F1A\u8BDD\u2026"));
+    let sid = "";
+    let crStatus = 0;
+    try {
+      const cr = await f.create();
+      crStatus = Number(cr && cr.status || 0);
+      if (crStatus === 200 && cr.data && cr.data.sessionId) sid = String(cr.data.sessionId);
+    } catch {
+    }
+    if (!sid) {
+      if (btn) btn.disabled = false;
+      note(el, t("\u65B0\u4F1A\u8BDD\u521B\u5EFA\u5931\u8D25") + "\uFF08" + (crStatus || "\u2014") + "\uFF09");
+      return false;
+    }
+    note(el, t("\u6B63\u5728\u53D1\u9001\u2026"));
+    let r;
+    try {
+      r = await f.send(sid, text2);
+    } catch (e) {
+      r = { status: 0, data: { error: String(e && e.message || e) } };
+    }
+    if (r && r.status === 200) {
+      if (ta) ta.value = "";
+      note(el, t("\u5DF2\u9001\u8FBE\uFF0C\u6B63\u5728\u6253\u5F00\u4F1A\u8BDD\u2026"));
+      ctx2.go(sessionRoute(sid));
+      return true;
+    }
+    if (btn) btn.disabled = false;
+    note(el, t("\u53D1\u9001\u5931\u8D25") + "\uFF08" + String(r && r.status || 0) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + "\uFF09");
+    return false;
+  }
+  function bindImage(el) {
+    const input = el.querySelector("[data-home-img]");
+    const ta = el.querySelector("[data-home-text]");
+    if (!input || !ta) return;
+    input.addEventListener("change", async () => {
+      const file = (input.files || [])[0];
+      input.value = "";
+      if (!file || !String(file.type || "").startsWith("image/")) return;
+      if (file.size > 8 << 20) {
+        note(el, t("\u56FE\u7247\u8D85\u8FC7 8MB \u4E0A\u9650"));
+        return;
+      }
+      const f = faces();
+      if (!f || typeof f.uploadImage !== "function") {
+        note(el, t("\u56FE\u7247\u4E0A\u4F20\u901A\u8DEF\u672A\u6CE8\u5165"));
+        return;
+      }
+      note(el, t("\u56FE\u7247\u4E0A\u4F20\u4E2D\u2026"));
+      try {
+        const url = await f.uploadImage(file);
+        const tag2 = "![image](" + url + ")";
+        ta.value = ta.value.trimEnd() + (ta.value.trimEnd() ? "\n" : "") + tag2;
+        autoGrow(ta);
+        note(el, t("\u56FE\u7247\u5DF2\u9644\u52A0\uFF08\u968F\u6D88\u606F\u53D1\u9001\uFF09"));
+      } catch (e) {
+        note(el, t("\u56FE\u7247\u4E0A\u4F20\u5931\u8D25") + "\uFF08" + String(e && e.message || e) + "\uFF09");
+      }
+    });
+  }
+  function bindHeroComposer(el, ctx2) {
+    const ta = el.querySelector("[data-home-text]");
+    const btn = el.querySelector("[data-home-send]");
+    if (!ta || !btn) return;
+    ta.addEventListener("input", () => autoGrow(ta));
+    ta.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        submitHome(el, ctx2);
+      }
+    });
+    btn.addEventListener("click", () => submitHome(el, ctx2));
+    el.querySelectorAll("[data-home-sample]").forEach((b) => {
+      b.addEventListener("click", () => {
+        const full = String(b.getAttribute("data-home-sample") || "");
+        if (!full) return;
+        ta.value = full;
+        autoGrow(ta);
+        ta.focus();
+      });
+    });
+    bindImage(el);
+    autoGrow(ta);
+  }
+  async function loadRecent(el) {
+    const box = el.querySelector("[data-home-recent]");
+    const f = faces();
+    if (!box || !f || typeof f.sessions !== "function") return;
+    try {
+      const r = await f.sessions();
+      if (!el.isConnected) return;
+      const items = r && r.status === 200 && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+      box.innerHTML = recentSessionsHtml(items);
+    } catch {
+    }
+  }
+  function render(el, ctx2) {
+    el.innerHTML = '<div class="home"><div class="home-hero"><h1 class="home-title">' + esc(t("\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u5FD9\u7684\uFF1F")) + '</h1><div class="home-sub">' + esc(t("\u76F4\u63A5\u8BF4\u9700\u6C42\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u3001\u63D0\u4EA4\u53D8\u66F4\uFF1B\u7ED3\u8BBA\u843D\u5230\u6587\u6863\u4E0E\u6D41\u7A0B\u3002")) + "</div>" + heroComposerHtml() + '<div class="home-recent" data-home-recent></div></div></div>';
+    bindHeroComposer(el, ctx2);
+    loadRecent(el);
+  }
+
   // src/render/chips.js
   function chip(label, cls = "mute", tiny = true, attrs = "") {
     return '<span class="chip ' + esc(cls) + (tiny ? " tiny" : "") + '"' + (attrs ? " " + attrs : "") + ">" + esc(label) + "</span>";
@@ -2279,52 +2448,1021 @@ var CoreConsoleWeb = (() => {
     return chip("\u540C\u6B65\u4E2D", "acc");
   }
 
-  // src/render/refs.js
-  var REF_KINDS = "Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event";
-  function refRoute(kind, scope, name) {
-    const k = encodeURIComponent(kind);
-    const s = encodeURIComponent(scope || "global");
-    const n = encodeURIComponent(name);
-    return "obj/" + k + "/" + s + "/" + n;
+  // src/screens/welcome.js
+  function taskPhaseOf(x) {
+    const s = x && x.status;
+    return String(s && (s.phase || s) || x && x.phase || "");
   }
-  function linkifyRefs(text2, names) {
-    const s = String(text2 || "");
-    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
-    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
-    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
-    let html3 = "";
-    let last = 0;
-    const spans = [];
-    let m;
-    while ((m = re.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
-    }
-    while ((m = connRe.exec(s)) !== null) {
-      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
-    }
-    spans.sort((a, b) => a.i - b.i);
-    for (const sp of spans) {
-      if (sp.i < last) continue;
-      html3 += esc(s.slice(last, sp.i));
-      if (sp.conn) {
-        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
+  function statCard(label, num, sub, route, cls) {
+    return '<div class="stat ' + esc(cls || "") + '" data-go="' + esc(route) + '" role="link"><div class="st-num">' + esc(fmtNum(num)) + '</div><div class="st-label">' + esc(label) + '<span class="small faint">' + esc(sub || "") + "</span></div></div>";
+  }
+  function loopCardHtml(data) {
+    const d = data && typeof data === "object" ? data : {};
+    const fields = [
+      [t("\u5FAA\u73AF"), d.loop != null ? d.loop : d.id],
+      [t("\u76F8\u4F4D"), d.phase || d.state],
+      [t("\u8D1F\u8D23"), d.agent || d.route],
+      [t("\u5F00\u59CB\u4E8E"), d.startedAt ? relAge(d.startedAt) || String(d.startedAt) : d.started_at ? relAge(d.started_at) || String(d.started_at) : null],
+      [t("\u89E6\u53D1"), d.trigger || d.reason]
+    ].filter(([, v]) => v != null && v !== "");
+    const chips = fields.map(([k, v]) => chip(k + ": " + v, "mute")).join("");
+    return '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "acc") + chips + '<span class="report-loop-acts"><span data-ignite-note></span><button class="btn btn-secondary sm" data-ignite="1">' + esc(t("\u89E6\u53D1\u4E8B\u4EF6")) + "</button></span></div></div></div>";
+  }
+  function bindIgnite(el, ctx2) {
+    const btn = el.querySelector("[data-ignite]");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
+      const note2 = el.querySelector("[data-ignite-note]");
+      btn.disabled = true;
+      btn.textContent = t("\u70B9\u706B\u4E2D\u2026");
+      const r = await ctx2.api.eventPub({
+        type: "LoopRequested",
+        involved: "ServiceDesc/core/core_system",
+        dedupKey: "console-ignite-" + Date.now()
+      });
+      if (!el.isConnected) return;
+      if (r && r.ok) {
+        if (note2) note2.innerHTML = chip(t("\u5DF2\u6CE8\u5165 LoopRequested\uFF08queue \u8BED\u4E49\u2014\u2014\u6865\u63A5\u9762\u62C9\u8D77\u5FAA\u73AF\uFF09"), "ok");
+        setTimeout(() => {
+          if (el.isConnected) hydrateLoop(el, ctx2);
+        }, 3e3);
       } else {
-        const route = refRoute(sp.kind, sp.scope, sp.name);
-        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
-      }
-      last = sp.i + sp.len;
-    }
-    html3 += esc(s.slice(last));
-    if (nameSet && nameSet.size) {
-      for (const nm of nameSet) {
-        const needle = esc(nm);
-        if (!needle || !html3.includes(needle)) continue;
-        html3 = html3.split(needle).join(
-          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
+        btn.disabled = false;
+        btn.textContent = t("\u89E6\u53D1\u4E8B\u4EF6");
+        if (note2) note2.innerHTML = chip(
+          t("\u70B9\u706B\u5931\u8D25\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014\u53EF\u91CD\u8BD5"),
+          "danger"
         );
       }
+    });
+  }
+  async function hydrateLoop(el, ctx2) {
+    const box = el.querySelector("[data-loop-box]");
+    if (!box) return;
+    const r = await ctx2.api.loopCurrent();
+    if (!el.isConnected || box.getAttribute("data-loop-box") === "stale") return;
+    if (!r.ok) {
+      box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>");
+      return;
     }
-    return html3;
+    if (!r.data || !r.data.loop && !r.data.id && !r.data.phase) {
+      box.innerHTML = '<div class="card report-loop" data-report-loop="idle"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u672C\u5468\u671F\u6682\u65E0\u5FAA\u73AF\u8BB0\u5F55\u3002\u70B9\u706B\u4E0B\u4E00\u8F6E\uFF1A<code class="mono">corectl loop</code></span></div></div></div>');
+      return;
+    }
+    box.innerHTML = loopCardHtml(r.data);
+    bindIgnite(el, ctx2);
+  }
+  function zoneHead(label, route) {
+    return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
+  }
+  function runningWorkflowsHtml(ctx2, scope) {
+    const runs = ctx2.store.runs().filter((r) => {
+      if (scope) {
+        let hay = "";
+        try {
+          hay = JSON.stringify([r && r.scope, r && r.ownerScope, r && r.involved, r && r.route, r && r.workflow]);
+        } catch {
+          hay = "";
+        }
+        if (!hay.includes(scope)) return false;
+      }
+      const st = String(r && (r.status || r.state) || "");
+      return st && st !== "done" && st !== "failed" && st !== "canceled";
+    }).slice(0, 8);
+    const rows = runs.map((r) => {
+      const wf = String(r.workflow || r.wf || "\u2014");
+      const phase = String(r.phase || r.state || "\u2014");
+      const st = String(r.status || "");
+      const started = r.startedAt ? relAge(r.startedAt) || "" : "";
+      const route = r.workflow ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(r.run != null ? r.run : "")) : "workflows";
+      return '<div class="dash-row" data-go="' + esc(route) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b><span class="small faint">#' + esc(String(r.run != null ? r.run : "\u2014")) + '</span></div><div class="dr-side">' + chip(phase, st === "running" ? "acc" : "mute") + (started ? '<span class="small faint">' + esc(started) + "</span>" : "") + "</div></div>";
+    }).join("");
+    return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
+  }
+  function runOwnerScope(r) {
+    const inv = String(r && (r.involved || r.route || "") || "");
+    const m = /^Workflow\/([^/\s]+)\//.exec(inv);
+    if (m) return m[1];
+    return String(r && (r.scope || r.ownerScope) || "") || "global";
+  }
+  function pendingRunsOf(ctx2) {
+    return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval"));
+  }
+  function pendingRunRowHtml(x) {
+    const btnAttrs = (t2) => " data-appr-" + t2 + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) + '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
+    return '<div class="dash-row appr-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + '</div><div class="appr-acts">' + /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
+     * 人批准前看不到 run 全貌）。 */
+    (x.wf && x.run != null && x.run !== "" ? '<button class="btn btn-ghost sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + "/r/" + encodeURIComponent(String(x.run)) + '">' + esc(t("\u8FD0\u884C\u8BE6\u60C5")) + "</button>" : "") + '<button class="btn btn-chip sm"' + btnAttrs("grant") + ">" + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button><button class="btn btn-ghost btn-danger sm"' + btnAttrs("reject") + ">" + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div>";
+  }
+  function bindApprovalGates(el, ctx2) {
+    const act = async (btn, type2) => {
+      if (btn.disabled) return;
+      const wf = btn.getAttribute("data-appr-wf") || "";
+      const scope = btn.getAttribute("data-appr-scope") || "global";
+      const run = btn.getAttribute("data-appr-run") || "";
+      const key = btn.getAttribute("data-appr-key") || run;
+      const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
+      if (!window.confirm(ask + wf + " #" + run)) return;
+      btn.disabled = true;
+      const r = await ctx2.api.eventPub({
+        type: type2,
+        involved: "Workflow/" + (scope || "global") + "/" + wf,
+        dedupKey: "console-" + key
+      });
+      if (r && r.ok) {
+        const row = btn.closest("[data-appr-row]");
+        if (row) {
+          const grant = type2 === "ApprovalGranted";
+          row.innerHTML = '<div class="dr-main">' + chip(grant ? t("\u5DF2\u6279\u51C6\uFF08ApprovalGranted \u5DF2\u53D1\u5E03\uFF09") : t("\u5DF2\u9A73\u56DE\uFF08ApprovalRejected \u5DF2\u53D1\u5E03\uFF09"), "ok") + '<span class="small faint">' + esc(t("\u5224\u5B9A\u5DF2\u843D\u5BA1\u6279\u53F0\u8D26\u2014\u2014\u5FEB\u7167\u91CD\u57FA\u540E\u884C\u96C6\u5237\u65B0\u3002")) + '</span></div><div class="dr-side">' + chipGo(t("\u67E5\u770B\u5DF2\u51B3\u53F0\u8D26 \u2192"), "approvals", "acc", true, t("\u5BA1\u6279\u9875\u5DF2\u51B3\u53F0\u8D26")) + "</div>";
+        }
+        ctx2.api.snapshot().then((s) => {
+          if (s && s.ok) ctx2.store.init(s.data);
+        });
+      } else {
+        btn.disabled = false;
+        const verb = type2 === "ApprovalGranted" ? t("\u6279\u51C6\u5931\u8D25") : t("\u9A73\u56DE\u5931\u8D25");
+        window.alert(verb + t("\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014run \u4ECD\u5728\u7B49\u5BA1\u6279\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+      }
+    };
+    el.querySelectorAll("[data-appr-grant]").forEach((btn) => btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      act(btn, "ApprovalGranted");
+    }));
+    el.querySelectorAll("[data-appr-reject]").forEach((btn) => btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      act(btn, "ApprovalRejected");
+    }));
+  }
+  function pendingApprovalsHtml(ctx2, scope) {
+    const runRows = pendingRunsOf(ctx2).slice(0, 8).map((r) => {
+      const wf = String(r.workflow || r.wf || "");
+      if (!wf) return "";
+      if (scope) {
+        const sc = runOwnerScope(r);
+        if (sc !== scope) return "";
+      }
+      const run = String(r.run != null ? r.run : "");
+      const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run;
+      return pendingRunRowHtml({
+        wf,
+        run,
+        key,
+        scope: runOwnerScope(r),
+        phase: String(r.phase || r.state || "AwaitingApproval"),
+        started: r.startedAt ? relAge(r.startedAt) || "" : ""
+      });
+    }).filter(Boolean);
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).filter((d) => !scope || String(d.scope || "global") === scope).map((d) => ({
+      src: "draft",
+      t: d.updatedAt || d.ts || null,
+      go: "doc/" + encodeURIComponent(d.kind) + "/" + encodeURIComponent(d.scope || "global") + "/" + encodeURIComponent(d.name),
+      title: d.kind + "/" + (d.scope || "global") + "/" + d.name,
+      tag: t("\u7A3F")
+    }));
+    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).filter((e) => !scope || String(e.involved || "").includes(scope)).slice(0, 8).map((e) => ({
+      src: "ev",
+      t: e.ts || null,
+      go: "event/" + encodeURIComponent(String(e.id ?? "")),
+      title: e.type + " \xB7 " + String(e.involved || ""),
+      tag: e.type === "ApprovalNeeded" ? t("\u5F85\u5BA1") : t("\u5347\u7EA7")
+    }));
+    const rest = drafts.concat(evs).sort((a, b) => String(b.t || "").localeCompare(String(a.t || ""))).slice(0, 8).map((x) => '<div class="dash-row" data-go="' + esc(x.go) + '" role="link"><div class="dr-main">' + chip(x.tag, x.src === "draft" ? "warn" : "esc") + '<b class="mono">' + esc(trunc(x.title, 34)) + "</b></div>" + (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || "") + "</span></div>" : "") + "</div>").join("");
+    const rows = runRows.join("") + rest;
+    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A")) + "</div></div>";
+    return '<div class="card">' + rows + "</div>";
+  }
+  var AG_SESS = { list: null, at: 0 };
+  var AG_SESS_TTL_MS = 6e4;
+  async function sessionsCached(ctx2) {
+    if (AG_SESS.list && Date.now() - AG_SESS.at < AG_SESS_TTL_MS) return AG_SESS.list;
+    const r = await ctx2.api.sessions();
+    if (r && r.ok && Array.isArray(r.data && r.data.sessions)) {
+      AG_SESS = { list: r.data.sessions, at: Date.now() };
+      return AG_SESS.list;
+    }
+    return null;
+  }
+  function sessStateCls(st) {
+    return st === "escalated" ? "esc" : st === "running" ? "acc" : st === "suspected-stall" ? "warn" : "mute";
+  }
+  function sessHitOf(list2, name) {
+    const byId = list2.find((s) => String(s && s.sessionId || "").includes(name));
+    if (byId) return byId;
+    return list2.find((s) => {
+      try {
+        return JSON.stringify([s && s.involved, s && s.route, s && s.agent]).includes(name);
+      } catch {
+        return false;
+      }
+    });
+  }
+  function sessLiveHtml(hit) {
+    if (!hit) return chip(t("\u65E0\u4F1A\u8BDD"), "mute");
+    const st = String(hit.state || "");
+    const sid = String(hit.sessionId || hit.id || "");
+    const sub = [
+      String(hit.phase || ""),
+      trunc(String(hit.lastAction || ""), 18),
+      hit.lastBeat ? relAge(hit.lastBeat) || "" : ""
+    ].filter(Boolean).join(" \xB7 ");
+    const stChip = st ? sid ? chipGo(st, "session/" + encodeURIComponent(sid), sessStateCls(st), true, t("\u4F1A\u8BDD\u8BE6\u60C5\u2014\u2014\u6D3B\u6027\u8D26\u73B0\u8BFB")) : chip(st, sessStateCls(st)) : "";
+    return stChip + (sub ? '<span class="small faint">' + esc(sub) + "</span>" : "");
+  }
+  async function hydrateAgentLive(el, ctx2) {
+    const slots = el.querySelectorAll("[data-agent-live]");
+    if (!slots.length) return;
+    const list2 = await sessionsCached(ctx2);
+    if (!el.isConnected) return;
+    if (!list2) {
+      slots.forEach((slot) => {
+        slot.innerHTML = chip(t("\u4F1A\u8BDD\u6D3B\u6027\u6682\u4E0D\u53EF\u8BFB"), "mute");
+      });
+      return;
+    }
+    slots.forEach((slot) => {
+      const name = String(slot.getAttribute("data-agent-live") || "");
+      if (!name) return;
+      slot.innerHTML = sessLiveHtml(sessHitOf(list2, name));
+    });
+  }
+  function agentsHtml(ctx2, filterAgents) {
+    const objs = ctx2.store.objects();
+    let agents = objs.filter((o) => o.kind === "Agent").map((o) => ({ name: o.name, scope: o.scope || "global", route: objRoute("Agent", o.scope || "global", o.name) }));
+    if (filterAgents && filterAgents.length) agents = agents.filter((a) => filterAgents.includes(a.name));
+    const sessions = ctx2.store.sessions();
+    const rows = agents.map((a) => {
+      const sess = sessions.find((s) => String(s && (s.agent || s.route) || "").includes(a.name)) || sessions.find((s) => String(s && s.id || "") === a.name);
+      const state = sess ? String(sess.state || sess.status || "") : "";
+      const sid = sess ? String(sess.sessionId || sess.id || "") : "";
+      const liveChip = state ? sid ? chipGo(state, "session/" + encodeURIComponent(sid), state === "escalated" || state === "suspected-stall" ? "esc" : "acc", true, t("\u4F1A\u8BDD\u8BE6\u60C5")) : chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : chip(t("\u65E0\u4F1A\u8BDD"), "mute");
+      return '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(a.name)) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b><span class="small faint">' + esc(a.scope) + '</span></div><div class="dr-side" data-agent-live="' + esc(a.name) + '">' + liveChip + "</div></div>";
+    }).join("");
+    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u6682\u65E0\u5BF9\u8C61")) + "</div></div>";
+    return '<div class="card">' + rows + "</div>";
+  }
+  function dashLayout(ctx2, opts) {
+    const store2 = ctx2.store;
+    const scope = opts.scope || "";
+    const inScope = (o) => !scope || String(o && (o.scope || o.raw && o.raw.scope) || "") === scope;
+    const inbox = store2.inbox();
+    const inboxItems = inbox ? (Array.isArray(inbox) ? inbox : inbox && inbox.items || []) || [] : [];
+    const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
+    const inboxCard = inbox ? statCard(
+      t("\u6536\u4EF6\u7BB1"),
+      inboxScoped.length,
+      t("\u5F85\u4F60\u5904\u7406"),
+      "inbox",
+      ""
+    ) : "";
+    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).filter(inScope).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).filter((e) => !scope || String(e.involved || "").includes(scope)).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).filter((d) => !scope || String(d.scope || "global") === scope).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded" && (!scope || String(e.involved || "").includes(scope))).length, t("\u5F85\u5BA1\u660E\u7EC6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(taskPhaseOf(x))).filter(inScope).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
+    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + heroComposerHtml() + "</div>" : "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
+  }
+  function render2(el, ctx2) {
+    el.innerHTML = dashLayout(ctx2, {
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>",
+      composer: true
+    });
+    bindHeroComposer(el, ctx2);
+    hydrateLoop(el, ctx2);
+    bindApprovalGates(el, ctx2);
+    hydrateAgentLive(el, ctx2);
+  }
+  function renderService(el, ctx2) {
+    const name = String(ctx2.params.name || "");
+    const sd = ctx2.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
+    el.innerHTML = dashLayout(ctx2, {
+      scope: name,
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08scope=" + name + " \u6536\u7A84\u6295\u5F71\u2014\u2014\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\uFF09")) + "</span></div>",
+      coreAgents: null,
+      foot: '<div class="card"><div class="card-b"><div class="small faint" data-sd-note>' + esc(t("ServiceDesc \u6B63\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u58F0\u660E agents=agent://<name> \u8BCD\u5F62\u89E3\u6790\uFF09")) + "</div></div></div>"
+    });
+    hydrateLoop(el, ctx2);
+    bindApprovalGates(el, ctx2);
+    hydrateAgentLive(el, ctx2);
+    (async () => {
+      const note2 = el.querySelector("[data-sd-note]");
+      if (!note2) return;
+      let content = "";
+      const cached = sd && ctx2.store.cachedDoc ? ctx2.store.cachedDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv) : null;
+      if (cached && typeof cached.content === "string") {
+        content = cached.content;
+      } else if (ctx2.api && typeof ctx2.api.object === "function") {
+        const r = await ctx2.api.object("ServiceDesc", sd && sd.scope || "global", name);
+        if (!el.isConnected) return;
+        if (r && r.ok) {
+          const data = r.data && typeof r.data === "object" ? r.data : {};
+          content = data.content != null ? String(data.content) : "";
+          if (sd && ctx2.store.cacheDoc) ctx2.store.cacheDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv, content);
+        }
+      }
+      const agents = [...content.matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
+      note2.textContent = sd ? content ? t("ServiceDesc \u5728\u518C\u2014\u2014agents=") + (agents.join(", ") || "\u2014") : t("ServiceDesc \u5728\u518C\u2014\u2014\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08agents \u89E3\u6790\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\uFF09") : t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09");
+    })().catch(() => {
+    });
+  }
+
+  // src/screens/tasks.js
+  var PHASE_VIEW = {
+    running: { label: t("\u6B63\u5728\u505A"), chip: "acc" },
+    verifying: { label: t("\u9A8C\u8BC1\u4E2D"), chip: "acc" },
+    queued: { label: t("\u6392\u961F\u4E2D"), chip: "mute" },
+    ready: { label: t("\u5F85\u542F\u52A8"), chip: "mute" },
+    pending: { label: t("\u7B49\u5F85\u62C9\u8D77"), chip: "mute" },
+    blocked: { label: t("\u53D7\u963B"), chip: "warn" },
+    failed: { label: t("\u5931\u8D25"), chip: "esc" },
+    done: { label: t("\u5DF2\u5B8C\u6210"), chip: "ok" },
+    canceled: { label: t("\u5DF2\u53D6\u6D88"), chip: "mute" }
+  };
+  function statusOf(t2) {
+    const s = t2 && t2.status || {};
+    const flat = (k) => s[k] != null ? s[k] : t2 ? t2[k] : void 0;
+    return {
+      phase: flat("phase"),
+      attempts: flat("attempts"),
+      agentSession: flat("agentSession"),
+      sessionId: flat("sessionId"),
+      agent: flat("agent"),
+      lastAction: flat("lastAction"),
+      lastError: flat("lastError"),
+      dependsOn: s.dependsOn != null ? s.dependsOn : t2 && t2.dependsOn
+    };
+  }
+  function specOf(t2) {
+    return t2 && t2.spec || {};
+  }
+  function phaseChip(t2) {
+    const phase = String(statusOf(t2).phase || "");
+    const v = PHASE_VIEW[phase];
+    if (!v) return chip(phase || t("\u72B6\u6001\u672A\u77E5"), "mute");
+    return chip(v.label, v.chip);
+  }
+  function humanWait(t2) {
+    const s = statusOf(t2);
+    return /审批|批准|待审|等待人|approval|approve/i.test(String(s.lastError || "") + " " + String(s.lastAction || ""));
+  }
+  function groupOf(t2) {
+    const phase = String(statusOf(t2).phase || "");
+    if (phase === "running" || phase === "verifying") return "doing";
+    if (phase === "done" || phase === "canceled") return "done";
+    if (phase === "blocked" || phase === "failed") return humanWait(t2) ? "waiting" : "stuck";
+    return "queued";
+  }
+  var GROUPS = [
+    { id: "doing", label: t("\u6B63\u5728\u505A") },
+    { id: "waiting", label: t("\u7B49\u4EBA") },
+    { id: "stuck", label: t("\u5361\u4F4F") },
+    { id: "done", label: t("\u5B8C\u6210") },
+    { id: "queued", label: t("\u6392\u961F") }
+  ];
+  function groupTasks(tasks) {
+    const out = { doing: [], waiting: [], stuck: [], done: [], queued: [] };
+    (tasks || []).forEach((t2) => {
+      out[groupOf(t2)].push(t2);
+    });
+    return out;
+  }
+  function taskIdOf(t2) {
+    if (!t2) return "";
+    if (t2.taskId) return String(t2.taskId);
+    return (t2.scope || "global") + "/" + String(t2.name || "");
+  }
+  function taskTitle(t2) {
+    const spec = specOf(t2);
+    return String(spec.title || t2 && t2.title || t2 && t2.name || t("\u672A\u547D\u540D\u4EFB\u52A1"));
+  }
+  var cancelReq = /* @__PURE__ */ new Set();
+  function cancellable(t2) {
+    const phase = String(statusOf(t2).phase || "");
+    return !phase || phase === "queued" || phase === "pending";
+  }
+  function cancelBtnHtml(t2) {
+    const id = taskIdOf(t2);
+    if (cancelReq.has(id)) return chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn");
+    if (!cancellable(t2)) return "";
+    return '<button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(id) + '">' + esc(t("\u53D6\u6D88")) + "</button>";
+  }
+  function requestCancel(el, ctx2, t2) {
+    const name = String(t2 && t2.name || "");
+    const scope = String(t2 && t2.scope || "global") || "global";
+    if (!name) {
+      alert(t("\u4EFB\u52A1\u7F3A name\u2014\u2014\u65E0\u6CD5\u6784\u9020 Task/<scope>/<name> \u8BCD\u5F62\uFF0C\u53D6\u6D88\u672A\u53D1\u5E03"));
+      return;
+    }
+    const ok = confirm(t("\u53D6\u6D88\u4EFB\u52A1 ") + name + t("\uFF1F\u53D1\u5E03 TaskCancelRequested\uFF08\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39\u2014\u2014\u4E0D\u4FDD\u8BC1\u5DF2\u5728\u8DD1\u7684\u8FDB\u7A0B\u7ACB\u523B\u7EC8\u6B62\uFF09"));
+    if (!ok) return;
+    ctx2.api.eventPub({
+      type: "TaskCancelRequested",
+      involved: "Task/" + scope + "/" + name,
+      dedupKey: "console-cancel-" + name + "-" + Date.now()
+    }).then((r) => {
+      if (r && r.ok) {
+        cancelReq.add(taskIdOf(t2));
+        ctx2.api.snapshot().then((s) => {
+          if (s && s.ok) ctx2.store.init(s.data);
+        }).catch(() => {
+        });
+        if (el.isConnected) render3(el, ctx2);
+      } else {
+        alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38")));
+      }
+    }).catch((err) => {
+      alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(err && err.message || err || t("\u7F51\u7EDC\u5F02\u5E38")));
+    });
+  }
+  function depRoute(d, defaultKind = "") {
+    const s = String(d || "").trim();
+    if (!s) return "";
+    const m = /^(Task|task|Workflow|workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(s);
+    if (m) {
+      return m[1].toLowerCase() === "task" ? "task/" + encodeURIComponent(m[2] + "/" + m[3]) : "wf/" + encodeURIComponent(m[3]);
+    }
+    const m2 = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(s);
+    if (m2) {
+      if (defaultKind === "workflow") return "wf/" + encodeURIComponent(m2[2]);
+      return "task/" + encodeURIComponent(m2[1] + "/" + m2[2]);
+    }
+    if (defaultKind === "workflow" && /^[A-Za-z0-9_.-]+$/.test(s)) return "wf/" + encodeURIComponent(s);
+    return "";
+  }
+  function depChips(deps, defaultKind = "") {
+    return (deps || []).map((d) => {
+      const r = depRoute(d, defaultKind);
+      return r ? chipGo(String(d), r, "mute", true, t("\u4F9D\u8D56\u2014\u2014\u70B9\u51FB\u8FDB\u8BE6\u60C5")) : chip(String(d), "mute");
+    }).join(" ");
+  }
+  function taskRow(t2) {
+    const id = taskIdOf(t2);
+    const s = statusOf(t2);
+    const spec = specOf(t2);
+    const depList = spec.dependsOn || s.dependsOn || [];
+    const agent = String(s.agent || spec.agent || "").trim();
+    const sess = String(s.agentSession || s.sessionId || "").trim();
+    const last = String(s.lastAction || "").trim();
+    const unknown = !String(s.phase || "");
+    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
+  }
+  function tasksScreen(el, ctx2) {
+    const tasks = ctx2.store.tasks();
+    const g = groupTasks(tasks);
+    const body = GROUPS.map((grp) => {
+      const rows = g[grp.id] || [];
+      return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + "</span>" + chip(String(rows.length) + t(" \u9879"), rows.length ? "acc" : "mute") + "</div>" + (rows.length ? '<div class="card-b">' + rows.map(taskRow).join("") + "</div>" : '<div class="card-b small faint">' + esc(grp.label) + t("\uFF1A\u6682\u65E0\u3002</div>")) + "</div>";
+    }).join("");
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4EFB\u52A1\u4E2D\u5FC3"), t("\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5"), chipGo(t("\u5173\u6CE8\u62A5\u544A"), "report", "acc", false)) + '<div class="grid cols-2">' + body + "</div></div>";
+    el.querySelectorAll(".task-row").forEach((row, i) => {
+      let n = 0;
+      for (const grp of GROUPS) {
+        const rows = g[grp.id] || [];
+        if (i < n + rows.length) {
+          const t2 = rows[i - n];
+          row.style.cursor = "pointer";
+          row.addEventListener("click", (ev) => {
+            if (ev.target && ev.target.closest("[data-go],[data-task-cancel]")) return;
+            ctx2.go("task/" + encodeURIComponent(taskIdOf(t2)));
+          });
+          return;
+        }
+        n += rows.length;
+      }
+    });
+    const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
+    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const t2 = byId.get(btn.dataset.taskCancel);
+        if (t2) requestCancel(el, ctx2, t2);
+      });
+    });
+  }
+  function taskDetailScreen(el, ctx2, id) {
+    const tasks = ctx2.store.tasks();
+    const t2 = tasks.find((x) => taskIdOf(x) === String(id));
+    const head = screenHead(t("\u4EFB\u52A1\u8BE6\u60C5"), "id=" + String(id), chipGo(t("\u2190 \u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false));
+    if (!t2) {
+      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u4EFB\u52A1\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u4EFB\u52A1\uFF08\u53EF\u80FD\u5DF2\u5B8C\u6210\u5F52\u6863\u6216 id \u6709\u8BEF\uFF09\u3002")) + "</div>";
+      return;
+    }
+    const s = statusOf(t2);
+    const spec = specOf(t2);
+    const rows = [
+      [t("\u76F8\u4F4D"), phaseChip(t2)],
+      [t("\u6807\u9898"), esc(taskTitle(t2))],
+      ["id", esc(taskIdOf(t2))]
+    ];
+    if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
+    const sessId = String(s.agentSession || s.sessionId || "").trim();
+    if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    if (s.lastAction) rows.push([t("\u6700\u8FD1\u52A8\u4F5C"), esc(trunc(String(s.lastAction), 200))]);
+    if (s.lastError) rows.push([t("\u6700\u8FD1\u9519\u8BEF"), chip(trunc(String(s.lastError), 120), "esc")]);
+    if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u65E5\u5FD7\uFF09"))]);
+    const deps = spec.dependsOn || s.dependsOn || [];
+    if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
+    if (cancelReq.has(taskIdOf(t2))) rows.push([t("\u53D6\u6D88"), chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn")]);
+    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + (cancellable(t2) && !cancelReq.has(taskIdOf(t2)) ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t2)) + '">' + esc(t("\u53D6\u6D88")) + '</button><span class="small faint" style="margin-left:8px">' + esc(t("\u53D1\u5E03 TaskCancelRequested\u2014\u2014\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39")) + "</span></div>" : "") + "</div></div></div>";
+    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
+      btn.addEventListener("click", () => requestCancel(el, ctx2, t2));
+    });
+  }
+  var SEV_VIEW = { critical: { label: t("\u4E25\u91CD"), chip: "esc" }, high: { label: t("\u91CD\u8981"), chip: "warn" }, medium: { label: t("\u4E00\u822C"), chip: "mute" } };
+  function sevView(sev) {
+    return SEV_VIEW[String(sev || "")] || { label: String(sev || t("\u672A\u5206\u7EA7")), chip: "mute" };
+  }
+  function sevRank(sev) {
+    const s = String(sev || "");
+    return s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
+  }
+  function sortAttention(list2) {
+    return (list2 || []).slice().sort((a, b) => sevRank(a && a.severity) - sevRank(b && b.severity));
+  }
+  function evidenceRoute(ref) {
+    const r = String(ref || "").trim();
+    if (!r) return "";
+    if (r.startsWith("#/")) {
+      const segs = r.slice(2).split("/").filter(Boolean);
+      if (!segs.length) return "";
+      if (segs[0] === "inbox") return "inbox";
+      if (segs[0] === "approvals") return "approvals";
+      if (segs[0] === "tasks") return "tasks";
+      if (["s", "wf"].includes(segs[0]) && segs.length >= 2) return segs.map((x) => encodeURIComponent(x)).join("/");
+      if (["event", "task", "session"].includes(segs[0]) && segs.length >= 2) return segs[0] + "/" + encodeURIComponent(segs.slice(1).join("/"));
+      if (segs[0] === "obj" && segs.length >= 4) return segs.map((x) => encodeURIComponent(x)).join("/");
+      return "";
+    }
+    return involvedRoute(r);
+  }
+  function attentionCard(a) {
+    if (!a) return "";
+    const sev = sevView(a.severity);
+    const evs = (a.evidence || []).map((ev) => {
+      const ref = String(ev && ev.ref || "");
+      const route2 = evidenceRoute(ref);
+      return route2 ? chipGo(ref, route2, "mute", true, t("\u8BC1\u636E\u2014\u2014\u70B9\u51FB\u8FDB\u5165")) : chip(ref || ev && ev.kind || t("\u8BC1\u636E"), "mute");
+    }).filter(Boolean);
+    const action = a.action || {};
+    const route = action.target ? String(action.target).replace(/^#\/?/, "") : "";
+    return '<div class="att-card sev-' + esc(String(a.severity || "unknown")) + '"><div class="att-h">' + chip(sev.label, sev.chip) + (a.category ? chip(a.category, "mute") : "") + "<b>" + esc(String(a.title || t("\u672A\u547D\u540D\u5173\u6CE8\u9879"))) + "</b></div>" + (a.why ? '<div class="att-why small">' + esc(String(a.why)) + "</div>" : "") + '<div class="att-ev">' + (evs.length ? evs.join(" ") : t('<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>')) + "</div>" + (route ? '<div class="att-acts"><button class="btn btn-secondary sm" data-go="' + esc(route) + '">' + esc(String(action.label || t("\u53BB\u5904\u7406"))) + "</button></div>" : "") + "</div>";
+  }
+  function reportFooter(body) {
+    const b = body || {};
+    const dq = b.dataQuality || {};
+    const missing = dq.missing;
+    const missText = Array.isArray(missing) ? missing.map((m) => String(m)).join("\u3001") : String(missing || "");
+    const gb = String(b.generatedBy || "");
+    const gbLabel = gb === "llm" ? t("\u667A\u80FD\u5F52\u7EB3") : gb === "rules" ? t("\u57FA\u7840\u6C47\u603B") : gb || t("\u751F\u6210\u65B9\u5F0F\u672A\u6CE8\u660E");
+    return t('<div class="report-foot small faint">\u62A5\u544A\u8BF4\u660E\uFF1A') + esc(gbLabel) + t(" \xB7 \u68C0\u67E5\u8303\u56F4 ") + esc(String(b.scope || "global")) + (b.asOf ? t(" \xB7 \u622A\u81F3 ") + esc(String(b.asOf)) : "") + (missText ? t(" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A") + esc(missText) : "") + t(" \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>");
+  }
+  function reportScreen(el, ctx2) {
+    const st = ctx2.store;
+    let att = st.attention();
+    let degradedNote = "";
+    if (!att.length) {
+      const evs = st.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate"));
+      att = evs.map((e) => ({
+        severity: e.type === "Escalate" ? "high" : "medium",
+        category: e.type,
+        title: String(e.summary || e.type),
+        evidence: e.involved ? [{ ref: String(e.involved) }] : []
+      }));
+      if (!evs.length) degradedNote = t('<div class="small faint" style="margin-bottom:10px">\u5F53\u524D\u6CA1\u6709\u9700\u8981\u4F60\u5173\u6CE8\u7684\u4E8B\u9879\u3002</div>');
+      else degradedNote = t('<div class="small faint" style="margin-bottom:10px">\u4EE5\u4E0B\u4E8B\u9879\u6765\u81EA\u6700\u8FD1\u4E8B\u4EF6\u3002</div>');
+    }
+    const sorted = sortAttention(att);
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5173\u6CE8\u62A5\u544A"), t("severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F"), chipGo(t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false)) + degradedNote + '<div data-loop-box="pending"></div>' + (sorted.length ? '<div class="att-list">' + sorted.map(attentionCard).join("") + "</div>" : emptyBox(t("\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879"), t("\u5F53\u524D\u6CA1\u6709\u9700\u8981\u5173\u6CE8\u7684\u98CE\u9669\u9879\u3002"))) + reportFooter(st.get("attention") && st.get("attention").dataQuality) + "</div>";
+    hydrateLoop(el, ctx2);
+  }
+  function render3(el, ctx2) {
+    if (ctx2.params && ctx2.params.id != null && ctx2.params.id !== "") taskDetailScreen(el, ctx2, String(ctx2.params.id));
+    else tasksScreen(el, ctx2);
+  }
+  function renderReport(el, ctx2) {
+    reportScreen(el, ctx2);
+  }
+
+  // src/screens/workflows.js
+  function wfAnchorOfRoute(route) {
+    const r = String(route || "");
+    if (!r) return "";
+    if (r.startsWith("workflows/")) return r.slice("workflows/".length);
+    if (/-workflow$/.test(r)) return "core-workflow";
+    return "";
+  }
+  function phaseGraphHtml(run, ctx2) {
+    const phases = Array.isArray(run.phases) ? run.phases : [];
+    const cur = String(run.phase || "");
+    const st = String(run.status || "");
+    const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
+    const isTerminal = st === "done" || st === "converged";
+    const nodeHtml2 = (p, i) => {
+      const active = p === cur && !isTerminal;
+      const done = visited.has(p) && (p !== cur || isTerminal);
+      const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
+      return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
+    };
+    const body = phases.length ? phases.map((p, i) => nodeHtml2(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run) + "</div>";
+    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u67E5\u770B\u8BE5\u9636\u6BB5\u7684\u4E8B\u4EF6\u4E0E\u6D89\u53CA\u6587\u6863\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
+  }
+  function bindPhaseGraph(el, ctx2, run) {
+    el.querySelectorAll("[data-pg-node]").forEach((n) => {
+      n.addEventListener("click", () => {
+        const ph = String(n.getAttribute("data-pg-node") || "");
+        const drawer = el.querySelector("[data-pg-drawer]");
+        if (!drawer) return;
+        const evs = ctx2.store.events().filter((e) => {
+          const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+          return hay.includes(String(run.workflow || "")) || hay.includes(ph);
+        }).slice(0, 10);
+        const involved = String(run.involved || "");
+        const evRows = evs.length ? evs.map((e) => {
+          const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
+          const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
+          return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div><b>' + esc(String(e.type || "")) + '</b></div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + '</div></div><span class="small faint">' + esc(relAge(e.ts) || "") + "</span></div>";
+        }).join("") : '<div class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\u3002")) + "</div>";
+        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' + (involved ? '<div class="mr-sub">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + involved.split(",").map((x) => {
+          const parts = x.trim().split("/");
+          return parts.length >= 3 ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + "/" + esc(parts[1]) + "/" + esc(parts[2]) + '">' + esc(x.trim()) + "</span>" : '<span class="small faint mono">' + esc(x.trim()) + "</span>";
+        }).join(" ") + "</div>" : "") + '<div class="small faint">' + esc(t("\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A")) + "</div>" + evRows + "</div></div>";
+      });
+    });
+  }
+  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
+  function isTerminalRun(st) {
+    return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
+  }
+  var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
+  var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
+  function runChip(r) {
+    const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
+    return chip(st, RUN_CLS[st] || "mute");
+  }
+  function phChip(ph) {
+    const p = String(ph || "");
+    return chip(p || "\u2014", PH_CLS[p.toLowerCase()] || "mute");
+  }
+  function wfDesignRoute() {
+    return "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("concepts/workflow.md");
+  }
+  function realTplCardHtml(o) {
+    const scope = o.scope || "global";
+    return '<div class="card"><div class="card-h"><span class="h-title mono">' + esc(o.name) + '</span><span class="h-right">' + chip("Template", "acc") + " " + chip("r" + String(o.rv || 0), "mute") + '</span></div><div class="card-b"><div class="small mono faint">scope: ' + esc(scope) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Template", scope, o.name), "acc", true, t("\u67E5\u770B Template \u58F0\u660E")) + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute("Template", scope, o.name), "mute", true, t("\u67E5\u770B\u6B63\u6587")) + "</div></div></div>";
+  }
+  function templatesSectionHtml(ctx2) {
+    const tpls = ctx2.store.refs("Template");
+    const bugWf = ctx2.store.refs("Workflow").find((w) => w && w.name === "bug-lifecycle");
+    const bugRuns = ctx2.store.runs().filter((r) => r && String(r.workflow || r.name || "") === "bug-lifecycle");
+    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="small">' + esc(t("\u7F3A\u9677\u95ED\u73AF\u771F\u5B9E Workflow \u5BF9\u8C61\uFF08BugReport\u2192\u4E34\u65F6 BugDoc\u2192\u9A8C\u8BC1\u2192\u5173\u95ED\uFF09\u3002")) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
+    const tplBlock = tpls.length ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join("") + "</div>" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u6D41\u7A0B\u6A21\u677F\uFF08Template \u5BF9\u8C61\u5728\u518C\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002")) + " " + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + "</div></div></div>";
+    return bugBlock + tplBlock;
+  }
+  function listScreen(el, ctx2) {
+    const state = { rows: [], filter: "", err: "" };
+    const snapRuns = ctx2.store.runs().slice(0, 8);
+    const runRowHtml = (r) => {
+      const wf = String(r && (r.workflow || r.name) || "");
+      const no = r && (r.run != null ? r.run : r.no != null ? r.no : "");
+      if (!wf && (no == null || no === "")) return "";
+      const started = r && (r.startedAt || r.at || r.ts);
+      const invChips = String(r && r.involved || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 3).map((x) => {
+        const rt = involvedRoute(x);
+        return rt ? chipGo(trunc(x, 36), rt, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : '<span class="chip mute tiny">' + esc(trunc(x, 36)) + "</span>";
+      }).join(" ");
+      const go = wf && no != null && no !== "" ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(no)) : "";
+      return "<tr" + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : "") + '><td class="mono small">#' + esc(String(no != null && no !== "" ? no : "\u2014")) + '</td><td class="mono small">' + esc(wf || "\u2014") + "</td><td>" + phChip(r && r.phase) + "</td><td>" + runChip(r) + '</td><td class="small mono">' + esc(relAge(started) || (started ? String(started).slice(0, 16) : "\u2014")) + '</td><td class="small">' + (invChips || '<span class="faint">\u2014</span>') + "</td></tr>";
+    };
+    const paintRuns = () => {
+      const slot = el.querySelector("[data-wf-runs]");
+      if (!slot) return;
+      const seen = /* @__PURE__ */ new Set();
+      const merged = [];
+      for (const r of state.rows.concat(snapRuns)) {
+        const k = String(r && (r.workflow || r.name) || "") + "#" + String(r && (r.run != null ? r.run : r.no != null ? r.no : ""));
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(r);
+      }
+      const shown = (state.filter ? merged.filter((r) => String(r && (r.workflow || r.name) || "") === state.filter) : merged).slice(0, 50);
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto"><div style="margin-bottom:6px">' + chip(merged.length + t(" \u6761\u8FD0\u884C\u8BB0\u5F55"), "mute") + " " + (state.filter ? chipGo(t("\u6E05\u9664\u8FC7\u6EE4\uFF1A") + state.filter, "workflows", "warn", true, t("\u6E05\u9664\u8FC7\u6EE4\u5E76\u56DE\u5168\u8868")) : "") + "</div>" + (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(state.err) + esc(t("\uFF09\u2014\u2014\u4E0B\u8868\u4EC5\u6982\u89C8\u884C\u3002")) + "</div>" : "") + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(t("\u5DE5\u4F5C\u6D41")) + "</th><th>" + esc(t("\u76F8\u4F4D")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u5F00\u59CB")) + "</th><th>" + esc(t("\u6D89\u53CA")) + "</th></tr></thead><tbody>" + shown.map(runRowHtml).join("") + '</tbody></table><div class="small faint" style="margin-top:6px">' + esc(t("\u884C\u70B9\u51FB\u8FDB\u8FD0\u884C\u8BE6\u60C5\uFF1Binvolved chip=\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u6DF1\u94FE\u3002")) + "</div>" : '<div class="small faint">' + esc(state.filter ? t("\u8BE5 workflow \u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\u3002") : t("\u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002"))) + "</div></div>";
+    };
+    el.innerHTML = '<div class="view-inner">' + screenHead(
+      t("\u5DE5\u4F5C\u6D41"),
+      t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
+      chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
+    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + "</div>";
+    paintRuns();
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const slot = el.querySelector("[data-wf-reg]");
+      const r = await ctx2.api.workflows();
+      if (!slot || !slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(String(r.error || r.status)) + esc(t("\uFF09\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5\u3002")) + "</div></div></div>";
+        return;
+      }
+      const data = r.data && typeof r.data === "object" ? r.data : {};
+      const rows = Array.isArray(data.workflows) ? data.workflows : [];
+      if (!rows.length) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41\u3002")) + "</div></div></div>";
+        return;
+      }
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' + chip((data.count != null ? data.count : rows.length) + t(" \u6761\u5728\u518C"), "acc") + " " + (data.scanCapped ? chip(t("\u626B\u63CF\u622A\u65AD\uFF08\u7A97\u53E3\u5185 ") + String(data.scanned != null ? data.scanned : "?") + t(" \u6761\uFF09"), "warn") : "") + '<table class="tbl" style="margin-top:8px"><thead><tr><th>' + esc(t("\u540D\u79F0")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u8FDE\u63A5")) + "</th><th>" + esc(t("\u6700\u8FD1")) + "</th><th></th></tr></thead><tbody>" + rows.map((w) => {
+        const name = String(w && w.name || "");
+        const ex = w && w.execution || {};
+        const exState = String(ex.state || "");
+        const connTxt = String(ex.connector || "") + (ex.connectorScope ? "/" + String(ex.connectorScope) : "");
+        const connCell = connTxt ? chipGo(connTxt, "connectors", "mute", true, t("\u8FDE\u63A5\u5C42\u2014\u2014\u67E5\u770B\u7ED1\u5B9A connector")) : '<span class="faint">\u2014</span>';
+        const latest = w && w.latest;
+        const latestTxt = typeof latest === "string" ? latest : String(latest && (latest.summary || latest.note || latest.status || latest.state) || "");
+        return '<tr><td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + "</span>" : "\u2014") + "</td><td>" + chip(exState || "\u2014", REG_CLS[exState.toLowerCase()] || "mute") + '</td><td class="mono small">' + connCell + '</td><td class="small">' + esc(trunc(latestTxt || "\u2014", 60)) + '</td><td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(t("\u8FC7\u6EE4\u672C\u9875\u8FD0\u884C\u8BB0\u5F55")) + '">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + "</span>" : "") + "</td></tr>";
+      }).join("") + "</tbody></table></div></div>";
+      slot.querySelectorAll("[data-wf-runfilter]").forEach((c) => {
+        c.addEventListener("click", () => {
+          state.filter = String(c.getAttribute("data-wf-runfilter") || "");
+          paintRuns();
+          const rs = el.querySelector("[data-wf-runs]");
+          if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    })();
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const r = await ctx2.api.workflowRuns();
+      if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        state.err = String(r.error || r.status);
+      } else {
+        const data = r.data && typeof r.data === "object" ? r.data : {};
+        state.rows = Array.isArray(data.runs) ? data.runs : [];
+      }
+      paintRuns();
+    })();
+  }
+  function detailScreen(el, ctx2, name) {
+    const wfs = ctx2.store.workflows();
+    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
+    const wf = wfs.find((w) => String(w && (w.name || w.workflow || "")) === String(name));
+    const head = screenHead(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "name=" + String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false));
+    if (!wf && !runs.length) {
+      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + "</div>";
+      return;
+    }
+    const rows = [];
+    if (wf) {
+      if (wf.scope) rows.push(["scope", esc(String(wf.scope))]);
+      if (wf.resourceVersion != null) rows.push(["rv", esc(String(wf.resourceVersion))]);
+      if (wf.spec && wf.spec.title) rows.push([t("\u6807\u9898"), esc(String(wf.spec.title))]);
+      if (wf.spec && wf.spec.goalRef) rows.push([t("\u76EE\u6807"), chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || "docs", "mute", true, t("\u76EE\u6807\u6587\u6863"))]);
+      const impl = wf.spec && wf.spec.impl || wf.execution && wf.execution.impl || "";
+      const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : "";
+      if (repoChip) rows.push([t("\u5B9E\u73B0\u4ED3\u5E93"), repoChip]);
+    }
+    if (wf && wf.spec && wf.spec.dependsOn) rows.push([t("\u4F9D\u8D56"), depChips(wf.spec.dependsOn, "workflow")]);
+    rows.push([t("\u8FD0\u884C"), chip(runs.length + t(" \u6B21"), runs.length ? "acc" : "mute")]);
+    const runRows = runs.map((r, i) => {
+      const no = r.run != null ? r.run : r.no != null ? r.no : runs.length - i;
+      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
+    }).join("");
+    const run0 = runs[0] || { workflow: String(name), phases: [], phase: "", status: "" };
+    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run0, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002</div>')) + "</div>";
+    bindPhaseGraph(el, ctx2, run0);
+  }
+  function bindDocLinks(scopeEl, ctx2) {
+    scopeEl.querySelectorAll("[data-go]").forEach((n) => {
+      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
+    });
+  }
+  function runScreen(el, ctx2, name, no) {
+    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
+    const run = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
+    if (!run) {
+      el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u8FD0\u884C\u8BB0\u5F55\uFF08\u53EF\u80FD\u5DF2\u5F52\u6863\uFF09\u3002")) + "</div>";
+      return;
+    }
+    const st = String(run.status || "");
+    const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+    const startedAt = run.startedAt || run.at || run.ts;
+    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
+    const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
+    const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
+    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
+    const sel = { idx: 0, phases: [] };
+    const lineEl = el.querySelector("[data-step-line]");
+    const paintLine = () => {
+      const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")];
+      sel.phases = phases;
+      const curIdx = phases.indexOf(run.phase);
+      if (curIdx >= 0) sel.idx = curIdx;
+      const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
+      const isTerminal = st === "done" || st === "converged";
+      lineEl.innerHTML = phases.map((p, i) => {
+        const done = visited.has(p) && (p !== run.phase || isTerminal);
+        const active = i === curIdx && !isTerminal;
+        const dot = done ? "\u2713" : active ? "" : String(i + 1);
+        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
+        return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
+      }).join("");
+      el.querySelectorAll("[data-step]").forEach((n) => {
+        n.addEventListener("click", () => {
+          sel.idx = Number(n.getAttribute("data-step"));
+          paintNow();
+          paintSel();
+        });
+      });
+      paintSel();
+    };
+    const paintSel = () => {
+      el.querySelectorAll("[data-step]").forEach((n, i) => n.classList.toggle("sel", i === sel.idx));
+    };
+    const nowEl = el.querySelector("[data-run-now]");
+    const tlEl = el.querySelector("[data-run-tl]");
+    const paintNow = () => {
+      const phases = sel.phases.length ? sel.phases : [run.phase || t("\u5355\u8282\u70B9")];
+      const ph = phases[sel.idx] || run.phase || t("\u5355\u8282\u70B9");
+      const isCur = ph === run.phase;
+      const involved = String(run.involved || "");
+      const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
+        const p2 = x.split("/");
+        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
+      }).join(" ");
+      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? isTerminalRun(st) ? t("\u8BE5\u76F8\u4F4D\u5DF2\u6536\u675F\u2014\u2014\u5355\u6B21\u8FD0\u884C\u7ED3\u675F") : t("\u8FDB\u884C\u4E2D\u2014\u2014\u72B6\u6001\u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u6309\u8FD0\u884C\u8F68\u8FF9\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
+      bindDocLinks(nowEl, ctx2);
+    };
+    const paintTl = () => {
+      const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
+      const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u9636\u6BB5\u63A8\u8FDB\u8BB0\u5F55\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
+        const at = String(x && (x.at || x.ts || x.time) || "");
+        const from = String(x && (x.from || x.fromPhase) || "\u2014");
+        const to = String(x && (x.to || x.toPhase || x.phase) || "\u2014");
+        return '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(from) + " \u2192 " + esc(to) + '</b></div><div class="tl-time mono">' + esc(relAge(at) || (at ? at.slice(0, 16) : "")) + "</div></div>";
+      }).join("") + "</div>" : "";
+      const evs = ctx2.store.events().filter((e) => {
+        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+        return hay.includes(String(run.workflow || "")) || hay.includes(String(run.phase || ""));
+      }).slice(0, 12);
+      tlEl.innerHTML = transHtml + (evs.length ? '<div class="tl">' + evs.map((e) => {
+        const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
+        const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
+        return '<div class="tl-row"' + goAttr + '><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>";
+      }).join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u6682\u65E0\u76F8\u5173\u4E8B\u4EF6\u2014\u2014\u6D41\u7A0B\u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u66F4\u65B0\u3002")) + "</div>");
+    };
+    paintLine();
+    paintNow();
+    paintTl();
+    const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
+      if (!r.ok || !el.isConnected) return;
+      const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
+      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
+      if (!full) return;
+      run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
+      run.phase = full.phase || run.phase;
+      run.status = full.status || run.status;
+      run.involved = full.involved || run.involved;
+      run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
+      run.history = Array.isArray(full.history) ? full.history : run.history;
+      paintLine();
+      paintNow();
+      paintTl();
+    });
+    refreshFace();
+    el.querySelectorAll("[data-gate-act]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const grant = btn.getAttribute("data-gate-act") === "grant";
+        const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+        if (!confirmed) return;
+        btn.disabled = true;
+        btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
+        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor });
+        if (!r.ok) {
+          btn.disabled = false;
+          btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
+          window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+          return;
+        }
+        refreshFace();
+        ctx2.api.snapshot().then((s) => {
+          if (s.ok) ctx2.store.init(s.data);
+        });
+      });
+    });
+  }
+  function render4(el, ctx2) {
+    const p = ctx2.params || {};
+    if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
+    else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
+    else listScreen(el, ctx2);
+  }
+
+  // src/screens/events.js
+  var filter = { level: "", q: "" };
+  var LEVEL_CLS = { critical: "esc", error: "esc", warn: "warn", warning: "warn", info: "mute", debug: "mute" };
+  function clean(x) {
+    return String(x == null ? "" : x).replace(/^"+|"+$/g, "");
+  }
+  function levelChip(e) {
+    const lv = String(e && e.level || "info");
+    return chip(lv, LEVEL_CLS[lv] || "mute");
+  }
+  function involvedHtml(e) {
+    const s = clean(e && e.involved);
+    if (!s) return chip("involved\uFF1A\u2014", "mute");
+    return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
+      const p = part.trim();
+      const route = involvedRoute(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : chip(p, "mute");
+    }).join(" ");
+  }
+  function linksHtml(e) {
+    const out = [];
+    const route = String(e && e.route || "");
+    const wf = wfAnchorOfRoute(route);
+    if (wf) out.push(chipGo(t("workflow \u951A ") + wf, "wf/" + encodeURIComponent(wf), "acc", true, "route " + route + t(" \u2192 \u5DE5\u4F5C\u6D41")));
+    if (e && e.run) out.push(chipGo("run #" + e.run, route && wf ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(e.run)) : "workflows", "mute", true, t("\u5173\u8054\u8FD0\u884C")));
+    const sess = clean(e && (e.agentSession || e.session));
+    if (sess) out.push(chipGo(t("\u4F1A\u8BDD ") + trunc(sess, 18), "session/" + encodeURIComponent(sess), "mute", true, t("\u4F1A\u8BDD\u8BE6\u60C5")));
+    const wake = e && (e.wake != null ? e.wake : e.loopId != null ? e.loopId : null);
+    if (wake != null) out.push(chipGo(t("\u5FAA\u73AF\u5524\u9192 #") + wake, "welcome", "mute", true, t("\u603B\u89C8\u5FAA\u73AF\u5361\u2014\u2014loop \u5524\u9192\u5173\u8054")));
+    return out.join(" ");
+  }
+  function eventRow(e) {
+    const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
+    const involved = clean(e && e.involved);
+    const parts = involved.split(/[,;]\s*/).filter(Boolean);
+    const invHtml = parts.length ? parts.map((part) => {
+      const p = part.trim();
+      const route = involvedRoute(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : '<span class="mono">' + esc(p) + "</span>";
+    }).join(" ") : '<span class="mono">\u2014</span>';
+    const hasClipboard = typeof navigator !== "undefined" && !!(navigator.clipboard && navigator.clipboard.writeText);
+    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + invHtml + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + '</span><button class="btn btn-ghost sm" data-copy-id="' + esc(String(id)) + '"' + (hasClipboard ? "" : ' disabled title="' + esc(t("\u526A\u8D34\u677F\u4E0D\u53EF\u7528")) + '"') + ">" + esc(t("\u590D\u5236 id")) + "</button></div>";
+  }
+  function listScreen2(el, ctx2) {
+    let rows = ctx2.store.events().slice();
+    if (filter.level) rows = rows.filter((e) => String(e && e.level || "") === filter.level);
+    if (filter.q) {
+      const q = filter.q.toLowerCase();
+      rows = rows.filter((e) => String(e && (e.type || "") + " " + (e.involved || "") + " " + (e.summary || e.message || "")).toLowerCase().includes(q));
+    }
+    const fbar = '<div class="filter-bar">' + t('<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="') + esc(filter.q) + '">' + ["", "error", "warn", "info"].map(
+      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc(lv) + '">' + esc(lv || t("\u5168\u90E8\u7EA7\u522B")) + "</span>"
+    ).join("") + "</div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u6D41"), t("\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09")) + fbar + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u6682\u65E0\u4E8B\u4EF6"), filter.q || filter.level ? t("\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002") : t("\u6682\u65E0\u4E8B\u4EF6\u3002"))) + "</div>";
+    const inp = el.querySelector("#ev-q");
+    if (inp) {
+      inp.addEventListener("input", () => {
+        filter.q = inp.value;
+        listScreen2(el, ctx2);
+      });
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") ev.preventDefault();
+      });
+    }
+    el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
+      c.addEventListener("click", () => {
+        filter.level = c.dataset.lv || "";
+        listScreen2(el, ctx2);
+      });
+    });
+    el.querySelectorAll("[data-copy-id]").forEach((btn) => {
+      if (btn.disabled) return;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const raw = String(btn.dataset.copyId || "");
+        navigator.clipboard.writeText(raw).then(() => {
+          btn.textContent = t("\u5DF2\u590D\u5236");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        }).catch(() => {
+          btn.textContent = t("\u590D\u5236\u5931\u8D25");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        });
+      });
+    });
+  }
+  async function detailScreen2(el, ctx2, id) {
+    const stamp = typeof location !== "undefined" ? location.hash : "";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u8BE6\u60C5"), "id=" + id) + '<div class="card"><div class="card-b">' + kv([[t("\u72B6\u6001"), chip(t("\u73B0\u8BFB\u4E2D\u2026"), "mute")]]) + '</div></div><div class="dh-actions" style="margin-top:10px">' + chipGo(t("\u2190 \u56DE\u4E8B\u4EF6\u6D41"), "events", "mute", false) + "</div></div>";
+    const r = await ctx2.api.event(id);
+    if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    const box = el.querySelector(".card .card-b");
+    if (!box) return;
+    if (!r.ok) {
+      box.innerHTML = t('<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>");
+      return;
+    }
+    const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
+    const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
+    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => {
+      const v = k === "involved" || k === "summary" || k === "message" || k === "agentSession" || k === "session" ? clean(e[k]) : String(e[k]);
+      return [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(v, 200))];
+    });
+    box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
+  }
+  function render5(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
+    else listScreen2(el, ctx2);
   }
 
   // node_modules/marked/lib/marked.esm.js
@@ -9949,1972 +11087,6 @@ ${text2}</tr>
     return out;
   }
 
-  // src/screens/sessionctx.js
-  var PANEL = /* @__PURE__ */ new Map();
-  function parseTagInput(raw) {
-    return String(raw == null ? "" : raw).split(/[\s,，、]+/).map((t2) => t2.trim()).filter(Boolean);
-  }
-  function capTags(tags, maxTotal = 20, maxPerType = 5) {
-    const kept = [];
-    const dropped = [];
-    const seen = /* @__PURE__ */ new Set();
-    const perType = /* @__PURE__ */ new Map();
-    for (const raw of Array.isArray(tags) ? tags : []) {
-      const key = String(raw || "").trim();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const c = key.indexOf(":");
-      const typ = c > 0 ? key.slice(0, c) : "";
-      const n = perType.get(typ) || 0;
-      if (kept.length >= maxTotal || n >= maxPerType) {
-        dropped.push(key);
-        continue;
-      }
-      perType.set(typ, n + 1);
-      kept.push(key);
-    }
-    return { kept, dropped };
-  }
-  function normalizeContext(data) {
-    const d = data && typeof data === "object" ? data : {};
-    const pack = d.pack && typeof d.pack === "object" ? d.pack : {};
-    const pol = d.policy && typeof d.policy === "object" ? d.policy : {};
-    const sess = d.session && typeof d.session === "object" ? d.session : null;
-    const ov = d.override && typeof d.override === "object" ? d.override : null;
-    const chunks = (Array.isArray(pack.chunks) ? pack.chunks : []).map((c) => {
-      const row = c && typeof c === "object" ? c : {};
-      return {
-        kind: String(row.kind || ""),
-        scope: String(row.scope || ""),
-        name: String(row.name || ""),
-        score: Number(row.score) || 0,
-        why: String(row.why || "")
-      };
-    });
-    const shards = (Array.isArray(d.shards) ? d.shards : []).map((s) => {
-      const row = s && typeof s === "object" ? s : {};
-      return {
-        tagKey: String(row.tagKey || ""),
-        docs: Number(row.docs) || 0,
-        topDocs: (Array.isArray(row.topDocs) ? row.topDocs : []).map(String),
-        stale: !!row.stale
-      };
-    });
-    const stats = d.shardsStats && typeof d.shardsStats === "object" ? {
-      total: Number(d.shardsStats.total) || 0,
-      stale: Number(d.shardsStats.stale) || 0,
-      threshold: Number(d.shardsStats.rebuildThreshold) || 0
-    } : null;
-    return {
-      present: !!(d.sessionId || d.pack || d.policy),
-      sessionId: String(d.sessionId || ""),
-      session: sess ? {
-        state: String(sess.state || ""),
-        phase: String(sess.phase || ""),
-        lastAction: String(sess.lastAction || ""),
-        heartbeats: Number(sess.heartbeats) || 0,
-        lastBeat: String(sess.lastBeat || "")
-      } : null,
-      takeBudget: Number(pack.takeBudget) || 0,
-      takeBudgetDefault: Number(pack.takeBudgetDefault) || 0,
-      tags: (Array.isArray(pack.tagSig) ? pack.tagSig : []).map((t2) => String((t2 && typeof t2 === "object" ? t2.tagKey : t2) || "")).filter(Boolean),
-      tagSigSource: String(pack.tagSigSource || "none"),
-      chunks,
-      shards,
-      stats,
-      shardsFacePresent: Array.isArray(d.shards),
-      degraded: pack.degraded !== false,
-      degradedReason: String(pack.degradedReason || ""),
-      policy: {
-        shardMaxTokens: Number(pol.shardMaxTokens) || 0,
-        minTakeBudget: Number(pol.minTakeBudget) || 0,
-        maxTakeBudget: Number(pol.maxTakeBudget) || 0,
-        maxTagsPerType: Number(pol.maxTagsPerType) || 5,
-        maxTagsTotal: Number(pol.maxTagsTotal) || 20
-      },
-      override: ov ? {
-        revision: Number(ov.revision) || 0,
-        takeBudget: Number(ov.takeBudget) || 0,
-        updatedAt: String(ov.updatedAt || ""),
-        note: String(ov.note || ""),
-        by: String(ov.by || "")
-      } : null,
-      canRevert: !!d.canRevert,
-      writeOpen: !(d.writeGate && d.writeGate.open === false)
-    };
-  }
-  function buildSavePayload(model, input) {
-    const pol = model && model.policy || {};
-    const min = Number(pol.minTakeBudget) || 0;
-    const max = Number(pol.maxTakeBudget) || 0;
-    const budget = Number(input && input.takeBudget);
-    if (!Number.isFinite(budget) || budget < min || budget > max) {
-      return { ok: false, error: t("takeBudget \u987B\u4E3A ") + min + "\u2013" + max + t(" \u7684\u6570\u503C\uFF08ContextPolicy \u9884\u7B97\u57DF\uFF09") };
-    }
-    const { kept, dropped } = capTags(
-      parseTagInput(input && input.tagList),
-      Number(pol.maxTagsTotal) || 20,
-      Number(pol.maxTagsPerType) || 5
-    );
-    return {
-      ok: true,
-      dropped,
-      payload: {
-        takeBudget: Math.round(budget),
-        tagSig: kept,
-        note: String((input && input.note) == null ? "" : input.note).slice(0, 512),
-        by: "console:web",
-        baseRevision: model && model.override ? Number(model.override.revision) || 0 : 0
-      }
-    };
-  }
-  function sessionRowHtml(m) {
-    if (!m.session) {
-      return t('<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u5951\u7EA6\u9762\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>');
-    }
-    const s = m.session;
-    const cls = s.state === "suspected-stall" || s.state === "escalated" ? "esc" : s.state ? "acc" : "mute";
-    return kv([
-      ["state", s.state ? chip(s.state, cls) : '<span class="faint">\u2014</span>'],
-      ["phase", esc(s.phase || "\u2014")],
-      [t("\u5FC3\u8DF3"), esc(fmtNum(s.heartbeats)) + t(" \u6B21") + (s.lastBeat ? t(" \xB7 \u6700\u8FD1 ") + esc(relAge(s.lastBeat) || t("\u65F6\u95F4\u672A\u77E5")) : "")],
-      [t("\u52A8\u4F5C"), esc(trunc(s.lastAction || "\u2014", 80))]
-    ]);
-  }
-  function chunksHtml(m) {
-    if (!m.chunks.length) {
-      return t('<div class="small faint">\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002</div>');
-    }
-    return m.chunks.map((c) => {
-      const key = [c.kind, c.scope, c.name].filter(Boolean).join("/");
-      const go = c.kind && c.name ? objRoute(c.kind, c.scope || "global", c.name) : "";
-      const titleHtml = go ? '<span class="lk mono" data-go="' + esc(go) + '">' + esc(trunc(key, 64)) + "</span>" : '<b class="mono">' + esc(trunc(key, 64)) + "</b>";
-      return '<div class="mini-row"' + (go ? ' data-go="' + esc(go) + '"' : "") + '><div class="mr-main"><div>' + titleHtml + " " + chip(String(Math.round(c.score)), c.score >= 60 ? "ok" : "mute") + "</div>" + (c.why ? '<div class="mr-sub small">' + esc(trunc(c.why, 90)) + "</div>" : "") + "</div></div>";
-    }).join("");
-  }
-  function topDocRoute(d) {
-    const s = String(d || "").trim();
-    if (!s) return "";
-    const p = s.split("/");
-    if (p.length >= 3) return objRoute(p[0], p[1], p.slice(2).join("/"));
-    if (p.length === 1) return docRoute("Doc", "global", s);
-    return "";
-  }
-  function shardsHtml(m) {
-    if (!m.shardsFacePresent) {
-      return t('<div class="small faint">\u5206\u7247\u7F13\u5B58\u9762\u7F3A\u5E2D\uFF08contextidx \u672A\u66B4\u9732 Shards\u2014\u2014\u8BDA\u5B9E\u964D\u7EA7\uFF0C\u4E0D\u5192\u5145\u7A7A\u7F13\u5B58\uFF09\u3002</div>');
-    }
-    if (!m.shards.length) {
-      return t('<div class="small faint">\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002</div>');
-    }
-    return m.shards.map((s) => {
-      const topHtml = s.topDocs.length ? s.topDocs.slice(0, 4).map((d) => {
-        const go = topDocRoute(d);
-        return go ? '<span class="lk mono small" data-go="' + esc(go) + '">' + esc(trunc(String(d), 40)) + "</span>" : '<span class="mono small faint">' + esc(trunc(String(d), 40)) + "</span>";
-      }).join(" \xB7 ") : "";
-      return '<div class="mini-row"><div class="mr-main"><div>' + chipGo(s.tagKey, tagRoute(s.tagKey), "mute", true, t("\u770B\u540C tag \u6587\u6863")) + " " + (s.stale ? chip("stale", "warn") : chip("fresh", "ok")) + "</div>" + t('<div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ') + esc(fmtNum(s.docs)) + t(" \u4E2A") + (topHtml ? " \xB7 " + topHtml : "") + "</div></div></div>";
-    }).join("");
-  }
-  function formHtml(m) {
-    if (!m.writeOpen) {
-      return t('<div class="small faint">\u5199\u9762\u5173\u65AD\uFF08--allow-apply \u672A\u5F00\u542F\uFF09\u2014\u2014\u7F16\u8F91\u5206\u53C9\u4E0D\u53EF\u7528\uFF08\u4E0E\u5FC3\u8DF3\u6CE8\u518C\u9762\u540C\u5F00\u5173\uFF0C\u4E0D\u5192\u5145\u53EF\u7F16\u8F91\uFF09\u3002</div>');
-    }
-    return '<div class="filter-bar" data-ctx-form><input class="inp" data-ctx-budget type="number" min="' + m.policy.minTakeBudget + '" max="' + m.policy.maxTakeBudget + '" step="500" value="' + m.takeBudget + t('" title="\u63D0\u53D6\u9884\u7B97\uFF08token \u6570\uFF09">') + t('<input class="inp" data-ctx-tags placeholder="tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u2264') + m.policy.maxTagsPerType + t(" \u603B\u2264") + m.policy.maxTagsTotal + '\uFF09">' + t('<input class="inp" data-ctx-note placeholder="\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09">') + t('<button class="btn btn-secondary sm" data-ctx-save>\u4FDD\u5B58\u5206\u53C9</button>') + '<button class="btn btn-ghost sm" data-ctx-revert' + (m.canRevert ? "" : " disabled") + t(">\u64A4\u9500\u4E0A\u6B21</button>") + "</div>";
-  }
-  function renderSessionCtx(m) {
-    const headChips = (m.degraded ? chip(t("\u7D22\u5F15\u5019\u9009\u6295\u5F71"), "warn") : "") + (m.writeOpen ? chip(t("\u5199\u9762\u5F00"), "ok") : chip(t("\u5199\u9762\u5173\u65AD"), "esc")) + (m.canRevert ? chip(t("\u53EF\u64A4\u9500"), "acc") : "");
-    const ovLine = m.override ? t('<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ') + esc(fmtNum(m.override.revision)) + " \xB7 takeBudget " + esc(fmtNum(m.override.takeBudget)) + " \xB7 by " + esc(m.override.by || "\u2014") + (m.override.note ? t(" \xB7 \u5907\u6CE8 ") + esc(trunc(m.override.note, 60)) : "") + (m.override.updatedAt ? " \xB7 " + esc(relAge(m.override.updatedAt) || "") : "") + "</div>" : t('<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>');
-    return t('<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">') + headChips + '</span></div><div class="card-b">' + sessionRowHtml(m) + '<div style="margin-top:10px">' + kv([
-      ["takeBudget", '<b class="mono">' + esc(fmtNum(m.takeBudget)) + t('</b> <span class="small faint">\uFF08\u7F3A\u7701 ') + esc(fmtNum(m.takeBudgetDefault)) + t(" \xB7 \u57DF ") + m.policy.minTakeBudget + "\u2013" + m.policy.maxTakeBudget + "\uFF09</span>"],
-      ["tagSig", m.tags.length ? m.tags.map((t2) => chipGo(t2, tagRoute(t2), "mute", true, t("\u770B\u540C tag \u6587\u6863"))).join(" ") : t('<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=') + esc(m.tagSigSource) + "\uFF09</span>"],
-      [t("\u5206\u7247\u7F13\u5B58"), m.stats ? t("\u5171 ") + esc(fmtNum(m.stats.total)) + t(" \u7247 \xB7 stale ") + esc(fmtNum(m.stats.stale)) + t(" \xB7 \u91CD\u5EFA\u9608\u503C ") + esc(fmtNum(m.stats.threshold)) : '<span class="faint">\u2014</span>'],
-      ["shardMaxTokens", '<span class="mono">' + esc(fmtNum(m.policy.shardMaxTokens)) + "</span>"]
-    ]) + "</div>" + ovLine + '<div data-ctx-notice></div><div style="margin:10px 0 4px">' + formHtml(m) + "</div>" + t('<h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>') + chunksHtml(m) + t('<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>') + shardsHtml(m) + (m.degraded && m.degradedReason ? '<div class="small faint" style="margin-top:8px">' + esc(m.degradedReason) + "</div>" : "") + "</div>";
-  }
-  function focusIn(box) {
-    return !!(document.activeElement && box.contains(document.activeElement));
-  }
-  function paint(box, ctx2, id, model) {
-    PANEL.set(id, { model });
-    box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(model) + "</div>";
-    wireSessionCtx(box, ctx2, id);
-  }
-  async function refresh(ctx2, id, box) {
-    const r = await ctx2.api.sessionContext(id);
-    if (!r.ok || focusIn(box)) return;
-    paint(box, ctx2, id, normalizeContext(r.data));
-  }
-  function wireSessionCtx(box, ctx2, id) {
-    const q = (sel) => box.querySelector(sel);
-    const notice2 = (html3) => {
-      const slot = q("[data-ctx-notice]");
-      if (slot) slot.innerHTML = html3;
-    };
-    const saveBtn = q("[data-ctx-save]");
-    if (saveBtn) saveBtn.addEventListener("click", async () => {
-      const cur = (PANEL.get(id) || {}).model;
-      if (!cur) return;
-      const built = buildSavePayload(cur, {
-        takeBudget: q("[data-ctx-budget]").value,
-        tagList: q("[data-ctx-tags]").value,
-        note: q("[data-ctx-note]").value
-      });
-      if (!built.ok) {
-        notice2('<div class="small faint">' + esc(built.error) + "</div>");
-        return;
-      }
-      saveBtn.disabled = true;
-      const r = await ctx2.api.saveSessionContext(id, built.payload);
-      saveBtn.disabled = false;
-      if (!r.ok) {
-        notice2(t('<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? t("\u2014\u2014\u7248\u672C\u51B2\u7A81\uFF1A\u8BF7\u5237\u65B0\u9762\u677F\u5BF9\u9F50\u6700\u65B0\u7248\u672C\u540E\u91CD\u8BD5\uFF08\u539F\u7A3F\u4E0D\u8986\u76D6\uFF09") : "") + "</div>");
-        return;
-      }
-      notice2(t('<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ') + esc(String(r.data && r.data.override && r.data.override.revision || "?")) + "\uFF09" + (built.dropped.length ? t("\uFF1B\u8D85\u9650 tag \u6536\u655B ") + built.dropped.length + t(" \u4E2A\uFF1A") + esc(trunc(built.dropped.join(", "), 80)) : "") + "\u3002</div>");
-      refresh(ctx2, id, box);
-    });
-    const revertBtn = q("[data-ctx-revert]");
-    if (revertBtn) revertBtn.addEventListener("click", async () => {
-      if (!window.confirm(t("\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F"))) return;
-      revertBtn.disabled = true;
-      const r = await ctx2.api.revertSessionContext(id);
-      revertBtn.disabled = false;
-      if (!r.ok) {
-        notice2(t('<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>"));
-        return;
-      }
-      notice2(t('<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>'));
-      refresh(ctx2, id, box);
-    });
-  }
-  async function mountSessionCtx(el, ctx2, id) {
-    const box = el.querySelector("[data-ctx-panel]");
-    if (!box || !id) return;
-    if (focusIn(box)) return;
-    const cached = PANEL.get(id);
-    if (cached && cached.model) box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(cached.model) + "</div>";
-    const stamp = typeof location !== "undefined" ? location.hash : "";
-    const r = await ctx2.api.sessionContext(id);
-    if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-    if (!r.ok) {
-      if (!focusIn(box)) {
-        box.innerHTML = t('<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + (r.status === 503 ? t("\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09") : "") + t("\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>");
-      }
-      return;
-    }
-    if (focusIn(box)) return;
-    paint(box, ctx2, id, normalizeContext(r.data));
-  }
-
-  // src/screens/chat.js
-  function faces() {
-    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
-  }
-  function blocksOf(content) {
-    const out = { text: "", reasoning: "", toolCalls: [] };
-    if (!Array.isArray(content)) return out;
-    for (const b of content) {
-      if (!b || typeof b !== "object") continue;
-      if (b.type === "text" && typeof b.text === "string") out.text += (out.text ? "\n" : "") + b.text;
-      else if (b.type === "reasoning" && typeof b.text === "string") out.reasoning += (out.reasoning ? "\n" : "") + b.text;
-      else if (b.type === "tool-call") out.toolCalls.push({ id: String(b.id || b.callId || ""), name: String(b.name || ""), argsRaw: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? b.args ?? "") });
-    }
-    return out;
-  }
-  function mapTranscript(events) {
-    const nodes = [];
-    const tools = /* @__PURE__ */ new Map();
-    const order = [];
-    const rows = Array.isArray(events) ? [...events] : [];
-    rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
-    for (const ev of rows) {
-      if (!ev || typeof ev !== "object") continue;
-      const type2 = String(ev.type || "");
-      const data = ev.data && typeof ev.data === "object" ? ev.data : {};
-      const seq2 = Number(ev.seq) || 0;
-      const time = Number(ev.time) || 0;
-      if (type2 === "user/message") {
-        const src = data.source && typeof data.source === "object" ? String(data.source.kind || "") : "";
-        if (src === "compact-checkpoint") continue;
-        const b = blocksOf(data.content);
-        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: src !== "user" });
-      } else if (type2 === "assistant/message") {
-        const b = blocksOf(data.content);
-        for (const tc of b.toolCalls) order.push(tc.id);
-        if (!b.text && !b.reasoning && b.toolCalls.length) continue;
-        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning });
-      } else if (type2 === "tool/call") {
-        const id = String(data.callId || data.id || "");
-        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "" });
-        order.push(id);
-      } else if (type2 === "tool/result") {
-        const id = String(data.callId || data.id || "");
-        const t2 = tools.get(id);
-        if (t2) t2.result = typeof data.content === "string" ? data.content : data.output != null ? String(typeof data.output === "string" ? data.output : JSON.stringify(data.output)) : "";
-      } else if (type2 === "system/message" || type2 === "developer/message") {
-        nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
-      }
-    }
-    const seenToolIds = /* @__PURE__ */ new Set();
-    for (const id of order) {
-      if (seenToolIds.has(id)) continue;
-      seenToolIds.add(id);
-      const t2 = tools.get(id);
-      if (!t2) continue;
-      nodes.push({ kind: "tool", seq: t2.seq, time: t2.time, name: t2.name || t("\u5DE5\u5177"), args: t2.args, result: t2.result });
-    }
-    nodes.sort((a, b) => a.seq - b.seq);
-    return nodes;
-  }
-  function nextBatch(nodes, paintedKeys, firstPaint) {
-    const rows = Array.isArray(nodes) ? nodes : [];
-    if (firstPaint) return rows;
-    const out = rows.filter((n) => !paintedKeys.has(nodeKey(n)));
-    return out;
-  }
-  function nodeKey(n) {
-    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
-  }
-  function modeForState(st) {
-    return !!(st && st.running === true) ? "steer" : "queue";
-  }
-  function dayGroupOf(updatedAt, nowMs) {
-    const t2 = Number(updatedAt) || 0;
-    if (!t2) return "earlier";
-    const now = Number(nowMs) || Date.now();
-    const startOf = new Date(now);
-    startOf.setHours(0, 0, 0, 0);
-    return now - t2 < 24 * 3600 * 1e3 && startOf.getTime() <= t2 ? "today" : "earlier";
-  }
-  var CHAT = {
-    sessionId: "",
-    // 当前会话（宿主发 id——零手填）
-    timer: 0,
-    // 轮询定时器（导航离开即清）
-    pending: [],
-    // 待达回声 {text, requestId, at}（C-05 按 requestId 销账）
-    lastSeq: 0,
-    // 已渲染转录尾（增量分派锚）
-    painted: /* @__PURE__ */ new Set(),
-    // 已渲染节点键（nodeKey 族）
-    seenSeq: /* @__PURE__ */ new Map(),
-    // 会话 id → 已见尾 seq（未读点 highwater）
-    state: null,
-    // 最近一次 chat-state 词形
-    el: null
-    // 当前屏根（路由切换换引用）
-  };
-  var LAST = { route: "", paramKey: "", locale: "" };
-  function nodeHtml(n, names) {
-    if (n.kind === "user") {
-      const pending = n.pending ? '<div class="chat-pending">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="chat-pending">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "";
-      const err = n.error ? '<div class="chat-err"><span>' + esc(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(n.error) + t("\uFF09")) + '</span><button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || "")) + '">' + esc(t("\u91CD\u8BD5")) + "</button></div>" : "";
-      return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '"><div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">\u2026</span>') + "</div>" + (pending || err ? "<div>" + pending + err + "</div>" : "") + "</div>";
-    }
-    if (n.kind === "assistant") {
-      if (!n.text && !n.reasoning) return "";
-      const reasoning = n.reasoning ? '<details class="chat-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u6DF1\u5EA6\u601D\u8003")) + '</summary><div class="ex-body">' + linkifyRefs(n.reasoning, names) + "</div></details>" : "";
-      const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + "</div>" : "";
-      return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + "</div>";
-    }
-    if (n.kind === "tool") {
-      const detail = esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n" + t("\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500") + "\n" + esc(trunc(String(n.result), 800)) : "");
-      const done = n.result ? '<span class="chat-tool-ok">' + esc(t("\u5B8C\u6210")) + "</span>" : '<span class="chat-tool-none">' + esc(t("\u6267\u884C\u4E2D\u2026")) + "</span>";
-      return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u8C03\u7528")) + ' <span class="chat-tool-name">' + esc(n.name) + "</span> " + done + '</summary><div class="ex-body">' + detail + "</div></details>";
-    }
-    const label = (n.dev ? t("\u5F00\u53D1\u8005") + " \xB7 " : "") + trunc(String(n.text || ""), 200);
-    return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '">' + esc(label) + "</div>";
-  }
-  function pendingNodes() {
-    return CHAT.pending.map((p) => ({ kind: "user", seq: Number.MAX_SAFE_INTEGER, text: p.text, pending: true, requestId: p.requestId }));
-  }
-  function liveRowHtml(st) {
-    if (!st || st.running !== true) return "";
-    const tool = String(st.currentTool || "");
-    let dur = "";
-    if (tool && Number(st.currentToolSince) > 0) {
-      const s = Math.max(0, Math.round((Date.now() - Number(st.currentToolSince)) / 1e3));
-      dur = "\uFF08" + esc(t("\u5DF2 {n} \u79D2").replace("{n}", String(s))) + "\uFF09";
-    }
-    const qd = Number(st.queueDepth) || 0;
-    const sd = Number(st.steerDepth) || 0;
-    const queue = qd ? ' <span class="chip acc tiny">' + esc(t("\u6392\u961F {n}").replace("{n}", String(qd))) + "</span>" : "";
-    const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u63D2\u8BDD {n}").replace("{n}", String(sd))) + "</span>" : "";
-    const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("agent \u8FD0\u884C\u4E2D\u2026");
-    return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + "</span>" + queue + steer + "</div>";
-  }
-  function emptyStateHtml() {
-    const samples = [
-      t("\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"),
-      t("\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"),
-      t("\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981"),
-      t("\u68C0\u67E5 workflow \u5F15\u64CE\u7684\u8FD0\u884C\u8BB0\u5F55\uFF0C\u6807\u51FA\u5931\u8D25\u539F\u56E0")
-    ];
-    return '<div class="chat-empty"><div class="chat-empty-hi">' + esc(t("\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u5FD9\u7684\uFF1F")) + '</div><div class="chat-empty-sub">' + esc(t("\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\uFF0F\u63D0\u4EA4\u9700\u6C42\u2014\u2014\u4F1A\u8BDD\u7531\u5BBF\u4E3B\u5EFA\u6863\uFF0C\u8F6C\u5F55\u5373\u771F\u5B9E journal\u3002")) + '</div><div class="chat-samples">' + samples.map((s) => '<button class="chat-sample" data-cc-sample>' + esc(s) + "</button>").join("") + "</div></div>";
-  }
-  function stateChipsHtml(st) {
-    if (!st) return "";
-    const running = st.running === true;
-    const chips = [running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : chip(t("\u7A7A\u95F2"), "mute")];
-    const qd = Number(st.queueDepth) || 0;
-    if (qd) chips.push(chip(t("\u6392\u961F {n}").replace("{n}", String(qd)), "llm"));
-    return chips.join(" ");
-  }
-  function sessionRowHtml2(s, cur, highwater) {
-    const id = String(s.sessionId || "");
-    const seen = Number(highwater instanceof Map ? highwater.get(id) : 0) || 0;
-    const unread = !s.blank && Number(s.updatedAt) > seen && id !== cur;
-    const live = s.running === true;
-    const dot = live ? " live" : unread ? " unread" : "";
-    const title = String(s.title || "");
-    return '<div class="chat-sess' + (id === cur ? " active" : "") + '" data-sess-pick="' + esc(id) + '" role="link"><span class="chat-dot' + dot + '"></span><div class="chat-sess-main"><div class="chat-sess-id">' + esc(trunc(title || id, 26)) + "</div>" + (title ? '<div class="chat-sess-sub mono">' + esc(trunc(id, 26)) + "</div>" : "") + '</div><div class="chat-sess-side">' + (live ? chip(t("\u8FD0\u884C\u4E2D"), "ok") : s.blank ? chip(t("\u7A7A\u767D"), "mute") : "") + (s.updatedAt ? '<span class="chat-sess-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</div></div>";
-  }
-  function sessionsHtml(items, cur, seenSeq) {
-    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId);
-    if (!rows.length) return '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002")) + "</div>";
-    const today = rows.filter((s) => dayGroupOf(s.updatedAt) === "today");
-    const earlier = rows.filter((s) => dayGroupOf(s.updatedAt) !== "today");
-    const out = [];
-    if (today.length) {
-      out.push('<div class="chat-sess-day">' + esc(t("\u4ECA\u5929")) + "</div>");
-      out.push(today.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
-    }
-    if (earlier.length) {
-      out.push('<div class="chat-sess-day">' + esc(t("\u66F4\u65E9")) + "</div>");
-      out.push(earlier.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
-    }
-    return out.join("");
-  }
-  function composerHtmlInner(can, running) {
-    const mode = running ? "steer" : "queue";
-    return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(running ? t("Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295") : t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62")) + "</div>";
-  }
-  function screenShell(can) {
-    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
-  }
-  function streamEl(el) {
-    return el.querySelector("[data-cc-tr]");
-  }
-  function nearBottom(box) {
-    return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
-  }
-  function followBottom(box) {
-    box.scrollTop = box.scrollHeight;
-  }
-  function applyIncremental(el, nodes) {
-    const box = streamEl(el);
-    if (!box) return { appended: 0, jumpVisible: false };
-    let col = box.querySelector("[data-cc-col]");
-    if (!col) {
-      box.innerHTML = '<div class="chat-col" data-cc-col></div>';
-      col = box.querySelector("[data-cc-col]");
-    }
-    const wasBottom = nearBottom(box);
-    const fresh = nextBatch(nodes, CHAT.painted, CHAT.lastSeq === 0);
-    if (CHAT.lastSeq === 0 && !CHAT.painted.size) {
-      col.innerHTML = "";
-    }
-    for (const n of fresh) {
-      CHAT.painted.add(nodeKey(n));
-      if (Number(n.seq) && Number(n.seq) !== Number.MAX_SAFE_INTEGER && Number(n.seq) > CHAT.lastSeq) CHAT.lastSeq = Number(n.seq);
-      col.insertAdjacentHTML("beforeend", nodeHtml(n, null));
-    }
-    const pendBox = box.querySelector("[data-cc-pend]");
-    const pendHtml = pendingNodes().map((n) => nodeHtml(n, null)).join("");
-    if (pendHtml) {
-      if (!pendBox) {
-        col.insertAdjacentHTML("beforeend", "<div data-cc-pend>" + pendHtml + "</div>");
-      } else {
-        pendBox.innerHTML = pendHtml;
-      }
-    } else if (pendBox) {
-      pendBox.remove();
-    }
-    const empty = box.querySelector("[data-cc-empty]");
-    const isEmpty = !nodes.length && !CHAT.pending.length;
-    if (isEmpty && !empty) col.insertAdjacentHTML("afterbegin", emptyStateHtml());
-    else if (!isEmpty && empty) empty.remove();
-    const jump = el.querySelector("[data-cc-jump]");
-    if (wasBottom) {
-      followBottom(box);
-      if (jump) {
-        jump.hidden = true;
-      }
-      return { appended: fresh.length, jumpVisible: false };
-    }
-    if (jump && fresh.length) {
-      jump.hidden = false;
-      const n = jump.querySelector("[data-cc-jump-n]");
-      const prev = Number(n && n.textContent) || 0;
-      if (n) n.textContent = String(prev + fresh.length);
-    }
-    return { appended: fresh.length, jumpVisible: !!(jump && !jump.hidden) };
-  }
-  async function refreshSessions(el, f) {
-    const box = el.querySelector("[data-cc-sessions]");
-    if (!box) return;
-    const r = await f.sessions();
-    if (r.status === 200) {
-      box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId, CHAT.seenSeq);
-    } else {
-      box.innerHTML = '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
-    }
-    box.querySelectorAll("[data-sess-pick]").forEach((row) => {
-      row.addEventListener("click", () => {
-        pickSession(el, f, String(row.getAttribute("data-sess-pick") || ""));
-      });
-    });
-  }
-  function pickSession(el, f, id) {
-    if (!id || id === CHAT.sessionId) return;
-    CHAT.sessionId = id;
-    CHAT.lastSeq = 0;
-    CHAT.painted = /* @__PURE__ */ new Set();
-    CHAT.state = null;
-    paintState(el);
-    refreshSessions(el, f);
-    refreshTranscript(el, f);
-    ensureCtxBar(el, id);
-  }
-  function paintState(el) {
-    const slot = el.querySelector("[data-cc-state]");
-    if (slot) slot.innerHTML = stateChipsHtml(CHAT.state);
-    const live = el.querySelector("[data-cc-live]");
-    const st = CHAT.state;
-    if (st && st.running === true) {
-      const html3 = liveRowHtml(st);
-      if (live) {
-        live.innerHTML = html3;
-      } else {
-        const box = streamEl(el);
-        if (box) {
-          const col = box.querySelector("[data-cc-col]");
-          (col || box).insertAdjacentHTML("afterbegin", "<div data-cc-live>" + html3 + "</div>");
-        }
-      }
-    } else if (live) {
-      live.remove();
-    }
-    const btn = el.querySelector("[data-cc-send]");
-    const ta = el.querySelector("[data-cc-text]");
-    const running = !!(st && st.running === true);
-    if (btn && running !== (btn.dataset.mode === "steer")) {
-      btn.dataset.mode = running ? "steer" : "queue";
-      btn.title = running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001");
-      const ico = btn.querySelector(".chat-send-ico");
-      if (ico) ico.textContent = running ? "\u25A0" : "\u2191";
-      btn.classList.toggle("stop", running);
-    }
-    if (ta) {
-      const ph = running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026");
-      if (ta.placeholder !== ph) ta.placeholder = ph;
-    }
-  }
-  async function refreshState(el, f) {
-    if (!CHAT.sessionId) {
-      CHAT.state = null;
-      paintState(el);
-      return;
-    }
-    const r = await f.state(CHAT.sessionId);
-    if (r.status !== 200 || !r.data || typeof r.data !== "object") {
-      return;
-    }
-    CHAT.state = r.data;
-    paintState(el);
-    paintSendModeNote(el);
-  }
-  function paintSendModeNote(el) {
-    const note = el.querySelector("[data-cc-note]");
-    if (!note) return;
-    const st = CHAT.state;
-    const running = !!(st && st.running === true);
-    note.textContent = running ? t("\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09") : t("\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09");
-  }
-  async function refreshTranscript(el, f) {
-    const box = streamEl(el);
-    if (!box) return;
-    if (!CHAT.sessionId) {
-      box.innerHTML = '<div class="chat-col" data-cc-col>' + emptyStateHtml() + "</div>";
-      return;
-    }
-    const r = await f.transcript(CHAT.sessionId, 80);
-    if (r.status !== 200) {
-      box.innerHTML = '<div class="chat-col" data-cc-col><div class="chat-empty"><div class="chat-empty-sub">' + esc(t("\u8F6C\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + (r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div></div></div>";
-      CHAT.lastSeq = 0;
-      CHAT.painted = /* @__PURE__ */ new Set();
-      return;
-    }
-    const events = r.data && Array.isArray(r.data.events) ? r.data.events : [];
-    if (CHAT.pending.length) {
-      const byReq = new Set(events.map((e) => String(e && e.data && e.data.requestId || "")));
-      const texts = new Set(events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n"))));
-      CHAT.pending = CHAT.pending.filter((p) => !(p.requestId && byReq.has(p.requestId)) && !texts.has(p.text));
-    }
-    const nodes = mapTranscript(events);
-    const lastEvSeq = events.reduce((m, e) => Math.max(m, Number(e && e.seq) || 0), 0);
-    if (lastEvSeq) CHAT.seenSeq.set(CHAT.sessionId, Math.max(CHAT.seenSeq.get(CHAT.sessionId) || 0, lastEvSeq));
-    applyIncremental(el, nodes);
-    refreshState(el, f);
-  }
-  function ensureCtxBar(el, sessionId) {
-    const holder = el.querySelector("[data-cc-ctx]");
-    if (!holder) return;
-    if (!sessionId) {
-      holder.innerHTML = "";
-      return;
-    }
-    if (!holder.querySelector("[data-ctx-panel]")) {
-      holder.innerHTML = '<details class="ex-block chat-ctx"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u52A0\u8F7D\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></details>";
-      const ctx2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
-      if (ctx2) mountSessionCtx(el, ctx2, sessionId);
-    }
-  }
-  async function doSend(el, f, textOverride) {
-    const ta = el.querySelector("[data-cc-text]");
-    const text2 = String(textOverride != null ? textOverride : ta ? ta.value : "").trim();
-    if (!text2) return;
-    if (!CHAT.sessionId) {
-      const cr = await f.create();
-      if (cr.status === 200 && cr.data && cr.data.sessionId) {
-        CHAT.sessionId = String(cr.data.sessionId);
-        refreshSessions(el, f);
-        ensureCtxBar(el, CHAT.sessionId);
-      } else {
-        const note = el.querySelector("[data-cc-note]");
-        if (note) note.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(cr.status) + t("\uFF09");
-        return;
-      }
-    }
-    if (ta && textOverride == null) ta.value = "";
-    autoGrow(ta);
-    const mode = modeForState(CHAT.state);
-    const requestId = "cc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
-    CHAT.pending.push({ text: text2, requestId, at: Date.now() });
-    applyIncremental(el, []);
-    let r;
-    try {
-      r = await (mode === "steer" && typeof f.send === "function" ? f.send(CHAT.sessionId, text2, "steer") : f.send(CHAT.sessionId, text2));
-    } catch (e) {
-      r = { status: 0, data: { error: String(e && e.message || e) } };
-    }
-    if (!(r && r.status === 200)) {
-      failPending(requestId, String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : ""));
-      applyIncremental(el, []);
-    }
-    setTimeout(() => refreshTranscript(el, f), 900);
-    setTimeout(() => refreshTranscript(el, f), 3e3);
-  }
-  function failPending(requestId, errText) {
-    const p = CHAT.pending.find((x) => x.requestId === requestId);
-    if (p) CHAT.pending = CHAT.pending.filter((x) => x !== p);
-    CHAT.failed = CHAT.failed || [];
-    CHAT.failed.push({ text: p ? p.text : "", requestId, error: errText || "0" });
-  }
-  function bindRetry(el, f) {
-    el.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-cc-retry]");
-      if (!btn) return;
-      const requestId = String(btn.getAttribute("data-cc-retry") || "");
-      const p = (CHAT.failed || []).find((x) => x.requestId === requestId);
-      if (!p) return;
-      CHAT.failed = (CHAT.failed || []).filter((x) => x !== p);
-      doSend(el, f, p.text);
-    });
-  }
-  function bindImageUpload(el, f) {
-    if (!f || typeof f.uploadImage !== "function") return;
-    const input = el.querySelector("[data-cc-img]");
-    const previews = el.querySelector("[data-cc-img-previews]");
-    const ta = el.querySelector("[data-cc-text]");
-    if (!input || !ta) return;
-    const note = (msg) => {
-      const n = el.querySelector("[data-cc-note]");
-      if (n) n.textContent = msg;
-    };
-    const uploadOne = async (file) => {
-      if (!file || !String(file.type || "").startsWith("image/")) return;
-      if (file.size > 8 << 20) {
-        note(t("\u56FE\u7247\u8D85\u8FC7 8MB \u4E0A\u9650"));
-        return;
-      }
-      note(t("\u56FE\u7247\u4E0A\u4F20\u4E2D\u2026"));
-      try {
-        const url = await f.uploadImage(file);
-        const tag2 = "![image](" + url + ")";
-        ta.value = ta.value.trimEnd() + (ta.value.trimEnd() ? "\n" : "") + tag2;
-        autoGrow(ta);
-        note(t("\u56FE\u7247\u5DF2\u9644\u52A0\uFF08\u968F\u6D88\u606F\u53D1\u9001\uFF09"));
-        if (previews) {
-          const img = document.createElement("img");
-          img.src = url;
-          img.alt = "preview";
-          img.style.cssText = "width:44px;height:44px;object-fit:cover;border-radius:6px;margin-left:6px";
-          previews.appendChild(img);
-        }
-      } catch (e) {
-        note(t("\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08") + String(e && e.message || e) + t("\uFF09"));
-      }
-    };
-    input.addEventListener("change", () => {
-      Array.from(input.files || []).forEach(uploadOne);
-      input.value = "";
-    });
-    ta.addEventListener("paste", (ev) => {
-      const items = Array.from(ev.clipboardData && ev.clipboardData.items || []);
-      const hit = items.find((it) => String(it.type || "").startsWith("image/"));
-      if (!hit) return;
-      const file = hit.getAsFile();
-      if (file) {
-        ev.preventDefault();
-        uploadOne(file);
-      }
-    });
-    if (previews) previews.addEventListener("click", (ev) => {
-      const img = ev.target.closest("img");
-      if (!img) return;
-      const src = img.getAttribute("src") || "";
-      ta.value = ta.value.split("\n").filter((ln) => ln.trim() !== "![image](" + src + ")").join("\n");
-      autoGrow(ta);
-      img.remove();
-    });
-  }
-  async function doStop(el, f) {
-    const note = el.querySelector("[data-cc-note]");
-    if (!CHAT.sessionId) return;
-    if (typeof f.stop !== "function") {
-      if (note) note.textContent = t("\u505C\u6B62\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js.stop \u7F3A\u5E2D\uFF09\u2014\u2014\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002");
-      return;
-    }
-    let r;
-    try {
-      r = await f.stop(CHAT.sessionId);
-    } catch (e) {
-      r = { status: 0, data: { error: String(e && e.message || e) } };
-    }
-    if (r && r.status === 200) {
-      if (note) note.textContent = t("\u5DF2\u8BF7\u6C42\u505C\u6B62\u2014\u2014\u4F1A\u8BDD\u56DE\u5230\u7A7A\u95F2\u540E\u8F6C\u5F55\u53EF\u89C1\u4E2D\u65AD\u8BCD\u5F62\u3002");
-    } else {
-      if (note) note.textContent = t("\u505C\u6B62\u5931\u8D25\uFF08") + String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09");
-    }
-    setTimeout(() => refreshState(el, f), 800);
-  }
-  function autoGrow(ta) {
-    if (!ta) return;
-    ta.style.height = "auto";
-    const lh = 24;
-    const max = lh * 8 + 8;
-    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
-  }
-  function dialogScreen(el, ctx2) {
-    const f = faces();
-    const can = !!(f && typeof f.send === "function");
-    CHAT.el = el;
-    el.innerHTML = screenShell(can);
-    el.classList.add("route-chat");
-    const paintLinks = () => {
-      const slot = el.querySelector("[data-sess-backlinks-slot]");
-      if (slot) slot.innerHTML = sessBacklinksHtml(ctx2.store, CHAT.sessionId);
-      slot && slot.querySelectorAll("[data-go]").forEach((n) => {
-        n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
-      });
-    };
-    paintLinks();
-    const unsubLinks = ctx2.store.subscribe(() => {
-      paintLinks();
-      refreshSessionsSoon(el, f);
-    });
-    el.addEventListener("disconnected", () => {
-      try {
-        unsubLinks();
-      } catch {
-      }
-      CHAT.el = null;
-    }, { once: true });
-    const newBtn = el.querySelector("[data-cc-new]");
-    if (newBtn) newBtn.addEventListener("click", async () => {
-      newBtn.disabled = true;
-      const r = await f.create();
-      newBtn.disabled = false;
-      if (r.status === 200 && r.data && r.data.sessionId) {
-        CHAT.sessionId = String(r.data.sessionId);
-        CHAT.lastSeq = 0;
-        CHAT.painted = /* @__PURE__ */ new Set();
-        refreshSessions(el, f);
-        refreshTranscript(el, f);
-        ensureCtxBar(el, CHAT.sessionId);
-      } else {
-        const note = el.querySelector("[data-cc-note]");
-        if (note) note.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09");
-      }
-    });
-    const sendBtn = el.querySelector("[data-cc-send]");
-    const textTa = el.querySelector("[data-cc-text]");
-    if (sendBtn && textTa) {
-      sendBtn.addEventListener("click", () => {
-        if (sendBtn.dataset.mode === "steer" && CHAT.state && CHAT.state.running === true) {
-          doStop(el, f);
-        } else {
-          doSend(el, f);
-        }
-      });
-      textTa.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && !ev.shiftKey) {
-          ev.preventDefault();
-          doSend(el, f);
-        }
-      });
-      textTa.addEventListener("input", () => autoGrow(textTa));
-    }
-    el.addEventListener("click", (ev) => {
-      const s = ev.target.closest("[data-cc-sample]");
-      if (!s) return;
-      const ta = el.querySelector("[data-cc-text]");
-      if (ta) {
-        ta.value = s.textContent.trim();
-        autoGrow(ta);
-        ta.focus();
-      }
-    });
-    const jump = el.querySelector("[data-cc-jump]");
-    if (jump) jump.addEventListener("click", () => {
-      const box = streamEl(el);
-      if (box) followBottom(box);
-      jump.hidden = true;
-      const n = jump.querySelector("[data-cc-jump-n]");
-      if (n) n.textContent = "";
-    });
-    bindRetry(el, f);
-    bindImageUpload(el, f);
-    ensureCtxBar(el, CHAT.sessionId);
-    refreshSessions(el, f);
-    refreshTranscript(el, f);
-    if (CHAT.timer) clearInterval(CHAT.timer);
-    CHAT.timer = setInterval(() => {
-      const root = CHAT.el && CHAT.el.isConnected ? CHAT.el : document.querySelector(".route-chat");
-      if (!root || !root.isConnected) {
-        clearInterval(CHAT.timer);
-        CHAT.timer = 0;
-        return;
-      }
-      const f2 = faces();
-      if (!f2) return;
-      refreshTranscript(root, f2);
-      refreshSessionsSoon(root, f2);
-    }, 3500);
-  }
-  var sessTick = 0;
-  function refreshSessionsSoon(el, f) {
-    sessTick++;
-    if (sessTick % 4 !== 1) return;
-    refreshSessions(el, f);
-  }
-  function render(el, ctx2) {
-    const id = ctx2.params && ctx2.params.id;
-    const agent = ctx2.params && ctx2.params.agent;
-    const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
-    const fresh = LAST.route !== String(ctx2.route || "") || LAST.paramKey !== paramKey || LAST.locale !== getLocale();
-    LAST.route = String(ctx2.route || "");
-    LAST.paramKey = paramKey;
-    LAST.locale = getLocale();
-    if (fresh) {
-      if (id != null && id !== "") CHAT.sessionId = String(id);
-      else CHAT.sessionId = "";
-      CHAT.pending = [];
-      CHAT.failed = [];
-      CHAT.lastSeq = 0;
-      CHAT.painted = /* @__PURE__ */ new Set();
-      dialogScreen(el, ctx2);
-      if (id == null && agent) {
-        const f2 = faces();
-        if (f2) setTimeout(async () => {
-          if (CHAT.sessionId) return;
-          const r = await f2.sessions();
-          const items = r.status === 200 && r.data && Array.isArray(r.data.items) ? r.data.items : [];
-          const pick = items.filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))[0];
-          if (pick && !CHAT.sessionId && CHAT.el === el) {
-            pickSession(el, f2, String(pick.sessionId));
-          }
-        }, 700);
-      }
-      return;
-    }
-    const f = faces();
-    if (f) refreshTranscript(el, f);
-  }
-  function sessBacklinksHtml(store2, sessionId) {
-    const sid = String(sessionId || "");
-    if (!sid) return "";
-    const tasks = (store2.tasks() || []).filter((t2) => String(t2 && t2.status && (t2.status.agentSession || t2.status.sessionId) || "") === sid);
-    const evs = (store2.events() || []).filter((e) => {
-      const s = String(e && (e.agentSession || e.session) || "");
-      return s === sid;
-    }).slice(0, 4);
-    const taskChips = tasks.slice(0, 3).map((t2) => {
-      const id = String(t2 && t2.scope || "global") + "/" + String(t2 && t2.name || "");
-      const title = String(t2 && t2.spec && t2.spec.title || t2 && t2.name || id);
-      const ph = String(t2 && t2.status && (t2.status.phase || t2.status) || "");
-      return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + t("\u2014\u2014\u4EFB\u52A1\u8BE6\u60C5") + '">Task: ' + esc(trunc(title, 22)) + (ph ? " \xB7 " + esc(ph) : "") + "</span>";
-    }).join(" ");
-    const evChips = evs.map((e) => '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '" title="' + esc(t("\u4E8B\u4EF6\u8BE6\u60C5")) + '">' + esc(trunc(String(e.type || ""), 26)) + "</span>").join(" ");
-    if (!taskChips && !evChips) {
-      return '<div class="small faint" data-sess-backlinks="1">' + esc(t("\u5FEB\u7167\u4E09\u6E90\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u53CD\u67E5\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002")) + "</div>";
-    }
-    return '<div class="small" data-sess-backlinks="1"><span class="faint">' + esc(t("\u5173\u8054\uFF1A")) + "</span> " + taskChips + " " + evChips + "</div>";
-  }
-  function sessionOptions() {
-    return '<option value="root" selected>' + esc(t("root \u4F1A\u8BDD\uFF08\u9ED8\u8BA4\uFF09")) + "</option>";
-  }
-  function composerHtml(ctx2, curSession) {
-    const f = faces();
-    const canSend = !!(f && typeof f.send === "function");
-    void ctx2;
-    void curSession;
-    return '<div class="cc-composer"><div class="cc-comp-row"><select class="inp cc-sess" data-cc-sess>' + sessionOptions() + '</select></div><div class="cc-comp-row"><textarea class="inp cc-text" data-cc-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2014\u2014\u4F8B\u5982\uFF1A\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D")) + '"></textarea><button class="btn btn-primary" data-cc-send' + (canSend ? "" : " disabled") + ">" + esc(t("\u53D1\u9001")) + '</button></div><div class="small faint">' + (canSend ? esc(t("Enter \u53D1\u9001 \xB7 \u6D88\u606F\u9001\u8FBE\u7CFB\u7EDF\u4F1A\u8BDD\uFF1B\u5904\u7406\u7ED3\u8BBA\u4EE5\u6587\u6863\u4E0E\u6D41\u7A0B\u72B6\u6001\u5448\u73B0")) : esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u9001\u8FBE\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u5DF2\u53D1\u9001"))) + "</div></div>";
-  }
-  function bindComposer(el, ctx2, rootEl) {
-    const sendBtn = rootEl.querySelector("[data-cc-send]");
-    const textTa = rootEl.querySelector("[data-cc-text]");
-    if (!sendBtn || !textTa) return;
-    const doSend2 = async () => {
-      const text2 = textTa.value.trim();
-      if (!text2) return;
-      const f = faces();
-      if (!f || typeof f.send !== "function") return;
-      textTa.value = "";
-      const r = await f.send("root", text2);
-      const note = document.createElement("div");
-      note.className = "small faint";
-      note.textContent = r && r.status === 200 ? t("\u5DF2\u9001\u8FBE\uFF08queue\uFF09\u2014\u2014root agent \u4F1A\u8BDD\u5DF2\u53D7\u7406\uFF1B\u7ED3\u8BBA\u7ECF\u72B6\u6001\u5FBD\u4E0E\u8282\u70B9\u56FE\u53EF\u89C1\u3002") : t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(r && r.status) + t("\uFF09");
-      sendBtn.parentElement.appendChild(note);
-      setTimeout(() => note.remove(), 6e3);
-    };
-    sendBtn.addEventListener("click", doSend2);
-    textTa.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" && !ev.shiftKey) {
-        ev.preventDefault();
-        doSend2();
-      }
-    });
-  }
-
-  // src/screens/welcome.js
-  function taskPhaseOf(x) {
-    const s = x && x.status;
-    return String(s && (s.phase || s) || x && x.phase || "");
-  }
-  function statCard(label, num, sub, route, cls) {
-    return '<div class="stat ' + esc(cls || "") + '" data-go="' + esc(route) + '" role="link"><div class="st-num">' + esc(fmtNum(num)) + '</div><div class="st-label">' + esc(label) + '<span class="small faint">' + esc(sub || "") + "</span></div></div>";
-  }
-  function loopCardHtml(data) {
-    const d = data && typeof data === "object" ? data : {};
-    const fields = [
-      [t("\u5FAA\u73AF"), d.loop != null ? d.loop : d.id],
-      [t("\u76F8\u4F4D"), d.phase || d.state],
-      [t("\u8D1F\u8D23"), d.agent || d.route],
-      [t("\u5F00\u59CB\u4E8E"), d.startedAt ? relAge(d.startedAt) || String(d.startedAt) : d.started_at ? relAge(d.started_at) || String(d.started_at) : null],
-      [t("\u89E6\u53D1"), d.trigger || d.reason]
-    ].filter(([, v]) => v != null && v !== "");
-    const chips = fields.map(([k, v]) => chip(k + ": " + v, "mute")).join("");
-    return '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "acc") + chips + '<span class="report-loop-acts"><span data-ignite-note></span><button class="btn btn-secondary sm" data-ignite="1">' + esc(t("\u89E6\u53D1\u4E8B\u4EF6")) + "</button></span></div></div></div>";
-  }
-  function bindIgnite(el, ctx2) {
-    const btn = el.querySelector("[data-ignite]");
-    if (!btn) return;
-    btn.addEventListener("click", async () => {
-      if (btn.disabled) return;
-      const note = el.querySelector("[data-ignite-note]");
-      btn.disabled = true;
-      btn.textContent = t("\u70B9\u706B\u4E2D\u2026");
-      const r = await ctx2.api.eventPub({
-        type: "LoopRequested",
-        involved: "ServiceDesc/core/core_system",
-        dedupKey: "console-ignite-" + Date.now()
-      });
-      if (!el.isConnected) return;
-      if (r && r.ok) {
-        if (note) note.innerHTML = chip(t("\u5DF2\u6CE8\u5165 LoopRequested\uFF08queue \u8BED\u4E49\u2014\u2014\u6865\u63A5\u9762\u62C9\u8D77\u5FAA\u73AF\uFF09"), "ok");
-        setTimeout(() => {
-          if (el.isConnected) hydrateLoop(el, ctx2);
-        }, 3e3);
-      } else {
-        btn.disabled = false;
-        btn.textContent = t("\u89E6\u53D1\u4E8B\u4EF6");
-        if (note) note.innerHTML = chip(
-          t("\u70B9\u706B\u5931\u8D25\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014\u53EF\u91CD\u8BD5"),
-          "danger"
-        );
-      }
-    });
-  }
-  async function hydrateLoop(el, ctx2) {
-    const box = el.querySelector("[data-loop-box]");
-    if (!box) return;
-    const r = await ctx2.api.loopCurrent();
-    if (!el.isConnected || box.getAttribute("data-loop-box") === "stale") return;
-    if (!r.ok) {
-      box.innerHTML = '<div class="card report-loop" data-report-loop="degraded"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u65E0\u5FAA\u73AF\u3002</span></div></div></div>");
-      return;
-    }
-    if (!r.data || !r.data.loop && !r.data.id && !r.data.phase) {
-      box.innerHTML = '<div class="card report-loop" data-report-loop="idle"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u672C\u5468\u671F\u6682\u65E0\u5FAA\u73AF\u8BB0\u5F55\u3002\u70B9\u706B\u4E0B\u4E00\u8F6E\uFF1A<code class="mono">corectl loop</code></span></div></div></div>');
-      return;
-    }
-    box.innerHTML = loopCardHtml(r.data);
-    bindIgnite(el, ctx2);
-  }
-  function zoneHead(label, route) {
-    return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
-  }
-  function runningWorkflowsHtml(ctx2, scope) {
-    const runs = ctx2.store.runs().filter((r) => {
-      if (scope) {
-        let hay = "";
-        try {
-          hay = JSON.stringify([r && r.scope, r && r.ownerScope, r && r.involved, r && r.route, r && r.workflow]);
-        } catch {
-          hay = "";
-        }
-        if (!hay.includes(scope)) return false;
-      }
-      const st = String(r && (r.status || r.state) || "");
-      return st && st !== "done" && st !== "failed" && st !== "canceled";
-    }).slice(0, 8);
-    const rows = runs.map((r) => {
-      const wf = String(r.workflow || r.wf || "\u2014");
-      const phase = String(r.phase || r.state || "\u2014");
-      const st = String(r.status || "");
-      const started = r.startedAt ? relAge(r.startedAt) || "" : "";
-      const route = r.workflow ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(r.run != null ? r.run : "")) : "workflows";
-      return '<div class="dash-row" data-go="' + esc(route) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b><span class="small faint">#' + esc(String(r.run != null ? r.run : "\u2014")) + '</span></div><div class="dr-side">' + chip(phase, st === "running" ? "acc" : "mute") + (started ? '<span class="small faint">' + esc(started) + "</span>" : "") + "</div></div>";
-    }).join("");
-    return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
-  }
-  function runOwnerScope(r) {
-    const inv = String(r && (r.involved || r.route || "") || "");
-    const m = /^Workflow\/([^/\s]+)\//.exec(inv);
-    if (m) return m[1];
-    return String(r && (r.scope || r.ownerScope) || "") || "global";
-  }
-  function pendingRunsOf(ctx2) {
-    return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval"));
-  }
-  function pendingRunRowHtml(x) {
-    const btnAttrs = (t2) => " data-appr-" + t2 + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) + '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
-    return '<div class="dash-row appr-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + '</div><div class="appr-acts">' + /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
-     * 人批准前看不到 run 全貌）。 */
-    (x.wf && x.run != null && x.run !== "" ? '<button class="btn btn-ghost sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + "/r/" + encodeURIComponent(String(x.run)) + '">' + esc(t("\u8FD0\u884C\u8BE6\u60C5")) + "</button>" : "") + '<button class="btn btn-chip sm"' + btnAttrs("grant") + ">" + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button><button class="btn btn-ghost btn-danger sm"' + btnAttrs("reject") + ">" + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div>";
-  }
-  function bindApprovalGates(el, ctx2) {
-    const act = async (btn, type2) => {
-      if (btn.disabled) return;
-      const wf = btn.getAttribute("data-appr-wf") || "";
-      const scope = btn.getAttribute("data-appr-scope") || "global";
-      const run = btn.getAttribute("data-appr-run") || "";
-      const key = btn.getAttribute("data-appr-key") || run;
-      const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
-      if (!window.confirm(ask + wf + " #" + run)) return;
-      btn.disabled = true;
-      const r = await ctx2.api.eventPub({
-        type: type2,
-        involved: "Workflow/" + (scope || "global") + "/" + wf,
-        dedupKey: "console-" + key
-      });
-      if (r && r.ok) {
-        const row = btn.closest("[data-appr-row]");
-        if (row) {
-          const grant = type2 === "ApprovalGranted";
-          row.innerHTML = '<div class="dr-main">' + chip(grant ? t("\u5DF2\u6279\u51C6\uFF08ApprovalGranted \u5DF2\u53D1\u5E03\uFF09") : t("\u5DF2\u9A73\u56DE\uFF08ApprovalRejected \u5DF2\u53D1\u5E03\uFF09"), "ok") + '<span class="small faint">' + esc(t("\u5224\u5B9A\u5DF2\u843D\u5BA1\u6279\u53F0\u8D26\u2014\u2014\u5FEB\u7167\u91CD\u57FA\u540E\u884C\u96C6\u5237\u65B0\u3002")) + '</span></div><div class="dr-side">' + chipGo(t("\u67E5\u770B\u5DF2\u51B3\u53F0\u8D26 \u2192"), "approvals", "acc", true, t("\u5BA1\u6279\u9875\u5DF2\u51B3\u53F0\u8D26")) + "</div>";
-        }
-        ctx2.api.snapshot().then((s) => {
-          if (s && s.ok) ctx2.store.init(s.data);
-        });
-      } else {
-        btn.disabled = false;
-        const verb = type2 === "ApprovalGranted" ? t("\u6279\u51C6\u5931\u8D25") : t("\u9A73\u56DE\u5931\u8D25");
-        window.alert(verb + t("\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014run \u4ECD\u5728\u7B49\u5BA1\u6279\uFF0C\u53EF\u91CD\u8BD5\u3002"));
-      }
-    };
-    el.querySelectorAll("[data-appr-grant]").forEach((btn) => btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      act(btn, "ApprovalGranted");
-    }));
-    el.querySelectorAll("[data-appr-reject]").forEach((btn) => btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      act(btn, "ApprovalRejected");
-    }));
-  }
-  function pendingApprovalsHtml(ctx2, scope) {
-    const runRows = pendingRunsOf(ctx2).slice(0, 8).map((r) => {
-      const wf = String(r.workflow || r.wf || "");
-      if (!wf) return "";
-      if (scope) {
-        const sc = runOwnerScope(r);
-        if (sc !== scope) return "";
-      }
-      const run = String(r.run != null ? r.run : "");
-      const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run;
-      return pendingRunRowHtml({
-        wf,
-        run,
-        key,
-        scope: runOwnerScope(r),
-        phase: String(r.phase || r.state || "AwaitingApproval"),
-        started: r.startedAt ? relAge(r.startedAt) || "" : ""
-      });
-    }).filter(Boolean);
-    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).filter((d) => !scope || String(d.scope || "global") === scope).map((d) => ({
-      src: "draft",
-      t: d.updatedAt || d.ts || null,
-      go: "doc/" + encodeURIComponent(d.kind) + "/" + encodeURIComponent(d.scope || "global") + "/" + encodeURIComponent(d.name),
-      title: d.kind + "/" + (d.scope || "global") + "/" + d.name,
-      tag: t("\u7A3F")
-    }));
-    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).filter((e) => !scope || String(e.involved || "").includes(scope)).slice(0, 8).map((e) => ({
-      src: "ev",
-      t: e.ts || null,
-      go: "event/" + encodeURIComponent(String(e.id ?? "")),
-      title: e.type + " \xB7 " + String(e.involved || ""),
-      tag: e.type === "ApprovalNeeded" ? t("\u5F85\u5BA1") : t("\u5347\u7EA7")
-    }));
-    const rest = drafts.concat(evs).sort((a, b) => String(b.t || "").localeCompare(String(a.t || ""))).slice(0, 8).map((x) => '<div class="dash-row" data-go="' + esc(x.go) + '" role="link"><div class="dr-main">' + chip(x.tag, x.src === "draft" ? "warn" : "esc") + '<b class="mono">' + esc(trunc(x.title, 34)) + "</b></div>" + (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || "") + "</span></div>" : "") + "</div>").join("");
-    const rows = runRows.join("") + rest;
-    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u5F85\u5BA1\u533A\u4E3A\u7A7A")) + "</div></div>";
-    return '<div class="card">' + rows + "</div>";
-  }
-  var AG_SESS = { list: null, at: 0 };
-  var AG_SESS_TTL_MS = 6e4;
-  async function sessionsCached(ctx2) {
-    if (AG_SESS.list && Date.now() - AG_SESS.at < AG_SESS_TTL_MS) return AG_SESS.list;
-    const r = await ctx2.api.sessions();
-    if (r && r.ok && Array.isArray(r.data && r.data.sessions)) {
-      AG_SESS = { list: r.data.sessions, at: Date.now() };
-      return AG_SESS.list;
-    }
-    return null;
-  }
-  function sessStateCls(st) {
-    return st === "escalated" ? "esc" : st === "running" ? "acc" : st === "suspected-stall" ? "warn" : "mute";
-  }
-  function sessHitOf(list2, name) {
-    const byId = list2.find((s) => String(s && s.sessionId || "").includes(name));
-    if (byId) return byId;
-    return list2.find((s) => {
-      try {
-        return JSON.stringify([s && s.involved, s && s.route, s && s.agent]).includes(name);
-      } catch {
-        return false;
-      }
-    });
-  }
-  function sessLiveHtml(hit) {
-    if (!hit) return chip(t("\u65E0\u4F1A\u8BDD"), "mute");
-    const st = String(hit.state || "");
-    const sid = String(hit.sessionId || hit.id || "");
-    const sub = [
-      String(hit.phase || ""),
-      trunc(String(hit.lastAction || ""), 18),
-      hit.lastBeat ? relAge(hit.lastBeat) || "" : ""
-    ].filter(Boolean).join(" \xB7 ");
-    const stChip = st ? sid ? chipGo(st, "session/" + encodeURIComponent(sid), sessStateCls(st), true, t("\u4F1A\u8BDD\u8BE6\u60C5\u2014\u2014\u6D3B\u6027\u8D26\u73B0\u8BFB")) : chip(st, sessStateCls(st)) : "";
-    return stChip + (sub ? '<span class="small faint">' + esc(sub) + "</span>" : "");
-  }
-  async function hydrateAgentLive(el, ctx2) {
-    const slots = el.querySelectorAll("[data-agent-live]");
-    if (!slots.length) return;
-    const list2 = await sessionsCached(ctx2);
-    if (!el.isConnected) return;
-    if (!list2) {
-      slots.forEach((slot) => {
-        slot.innerHTML = chip(t("\u4F1A\u8BDD\u6D3B\u6027\u6682\u4E0D\u53EF\u8BFB"), "mute");
-      });
-      return;
-    }
-    slots.forEach((slot) => {
-      const name = String(slot.getAttribute("data-agent-live") || "");
-      if (!name) return;
-      slot.innerHTML = sessLiveHtml(sessHitOf(list2, name));
-    });
-  }
-  function agentsHtml(ctx2, filterAgents) {
-    const objs = ctx2.store.objects();
-    let agents = objs.filter((o) => o.kind === "Agent").map((o) => ({ name: o.name, scope: o.scope || "global", route: objRoute("Agent", o.scope || "global", o.name) }));
-    if (filterAgents && filterAgents.length) agents = agents.filter((a) => filterAgents.includes(a.name));
-    const sessions = ctx2.store.sessions();
-    const rows = agents.map((a) => {
-      const sess = sessions.find((s) => String(s && (s.agent || s.route) || "").includes(a.name)) || sessions.find((s) => String(s && s.id || "") === a.name);
-      const state = sess ? String(sess.state || sess.status || "") : "";
-      const sid = sess ? String(sess.sessionId || sess.id || "") : "";
-      const liveChip = state ? sid ? chipGo(state, "session/" + encodeURIComponent(sid), state === "escalated" || state === "suspected-stall" ? "esc" : "acc", true, t("\u4F1A\u8BDD\u8BE6\u60C5")) : chip(state, state === "escalated" || state === "suspected-stall" ? "esc" : "acc") : chip(t("\u65E0\u4F1A\u8BDD"), "mute");
-      return '<div class="dash-row" data-go="' + esc("chat/" + encodeURIComponent(a.name)) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(a.name, 30)) + '</b><span class="small faint">' + esc(a.scope) + '</span></div><div class="dr-side" data-agent-live="' + esc(a.name) + '">' + liveChip + "</div></div>";
-    }).join("");
-    if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u6682\u65E0\u5BF9\u8C61")) + "</div></div>";
-    return '<div class="card">' + rows + "</div>";
-  }
-  function dashLayout(ctx2, opts) {
-    const store2 = ctx2.store;
-    const scope = opts.scope || "";
-    const inScope = (o) => !scope || String(o && (o.scope || o.raw && o.raw.scope) || "") === scope;
-    const inbox = store2.inbox();
-    const inboxItems = inbox ? (Array.isArray(inbox) ? inbox : inbox && inbox.items || []) || [] : [];
-    const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
-    const inboxCard = inbox ? statCard(
-      t("\u6536\u4EF6\u7BB1"),
-      inboxScoped.length,
-      t("\u5F85\u4F60\u5904\u7406"),
-      "inbox",
-      ""
-    ) : "";
-    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).filter(inScope).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).filter((e) => !scope || String(e.involved || "").includes(scope)).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).filter((d) => !scope || String(d.scope || "global") === scope).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded" && (!scope || String(e.involved || "").includes(scope))).length, t("\u5F85\u5BA1\u660E\u7EC6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(taskPhaseOf(x))).filter(inScope).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
-    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
-  }
-  function render2(el, ctx2) {
-    el.innerHTML = dashLayout(ctx2, {
-      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>",
-      composer: true
-    });
-    bindComposer(el, ctx2, el);
-    hydrateLoop(el, ctx2);
-    bindApprovalGates(el, ctx2);
-    hydrateAgentLive(el, ctx2);
-  }
-  function renderService(el, ctx2) {
-    const name = String(ctx2.params.name || "");
-    const sd = ctx2.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
-    el.innerHTML = dashLayout(ctx2, {
-      scope: name,
-      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08scope=" + name + " \u6536\u7A84\u6295\u5F71\u2014\u2014\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\uFF09")) + "</span></div>",
-      coreAgents: null,
-      foot: '<div class="card"><div class="card-b"><div class="small faint" data-sd-note>' + esc(t("ServiceDesc \u6B63\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u58F0\u660E agents=agent://<name> \u8BCD\u5F62\u89E3\u6790\uFF09")) + "</div></div></div>"
-    });
-    hydrateLoop(el, ctx2);
-    bindApprovalGates(el, ctx2);
-    hydrateAgentLive(el, ctx2);
-    (async () => {
-      const note = el.querySelector("[data-sd-note]");
-      if (!note) return;
-      let content = "";
-      const cached = sd && ctx2.store.cachedDoc ? ctx2.store.cachedDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv) : null;
-      if (cached && typeof cached.content === "string") {
-        content = cached.content;
-      } else if (ctx2.api && typeof ctx2.api.object === "function") {
-        const r = await ctx2.api.object("ServiceDesc", sd && sd.scope || "global", name);
-        if (!el.isConnected) return;
-        if (r && r.ok) {
-          const data = r.data && typeof r.data === "object" ? r.data : {};
-          content = data.content != null ? String(data.content) : "";
-          if (sd && ctx2.store.cacheDoc) ctx2.store.cacheDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv, content);
-        }
-      }
-      const agents = [...content.matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
-      note.textContent = sd ? content ? t("ServiceDesc \u5728\u518C\u2014\u2014agents=") + (agents.join(", ") || "\u2014") : t("ServiceDesc \u5728\u518C\u2014\u2014\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08agents \u89E3\u6790\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\uFF09") : t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09");
-    })().catch(() => {
-    });
-  }
-
-  // src/screens/tasks.js
-  var PHASE_VIEW = {
-    running: { label: t("\u6B63\u5728\u505A"), chip: "acc" },
-    verifying: { label: t("\u9A8C\u8BC1\u4E2D"), chip: "acc" },
-    queued: { label: t("\u6392\u961F\u4E2D"), chip: "mute" },
-    ready: { label: t("\u5F85\u542F\u52A8"), chip: "mute" },
-    pending: { label: t("\u7B49\u5F85\u62C9\u8D77"), chip: "mute" },
-    blocked: { label: t("\u53D7\u963B"), chip: "warn" },
-    failed: { label: t("\u5931\u8D25"), chip: "esc" },
-    done: { label: t("\u5DF2\u5B8C\u6210"), chip: "ok" },
-    canceled: { label: t("\u5DF2\u53D6\u6D88"), chip: "mute" }
-  };
-  function statusOf(t2) {
-    const s = t2 && t2.status || {};
-    const flat = (k) => s[k] != null ? s[k] : t2 ? t2[k] : void 0;
-    return {
-      phase: flat("phase"),
-      attempts: flat("attempts"),
-      agentSession: flat("agentSession"),
-      sessionId: flat("sessionId"),
-      agent: flat("agent"),
-      lastAction: flat("lastAction"),
-      lastError: flat("lastError"),
-      dependsOn: s.dependsOn != null ? s.dependsOn : t2 && t2.dependsOn
-    };
-  }
-  function specOf(t2) {
-    return t2 && t2.spec || {};
-  }
-  function phaseChip(t2) {
-    const phase = String(statusOf(t2).phase || "");
-    const v = PHASE_VIEW[phase];
-    if (!v) return chip(phase || t("\u72B6\u6001\u672A\u77E5"), "mute");
-    return chip(v.label, v.chip);
-  }
-  function humanWait(t2) {
-    const s = statusOf(t2);
-    return /审批|批准|待审|等待人|approval|approve/i.test(String(s.lastError || "") + " " + String(s.lastAction || ""));
-  }
-  function groupOf(t2) {
-    const phase = String(statusOf(t2).phase || "");
-    if (phase === "running" || phase === "verifying") return "doing";
-    if (phase === "done" || phase === "canceled") return "done";
-    if (phase === "blocked" || phase === "failed") return humanWait(t2) ? "waiting" : "stuck";
-    return "queued";
-  }
-  var GROUPS = [
-    { id: "doing", label: t("\u6B63\u5728\u505A") },
-    { id: "waiting", label: t("\u7B49\u4EBA") },
-    { id: "stuck", label: t("\u5361\u4F4F") },
-    { id: "done", label: t("\u5B8C\u6210") },
-    { id: "queued", label: t("\u6392\u961F") }
-  ];
-  function groupTasks(tasks) {
-    const out = { doing: [], waiting: [], stuck: [], done: [], queued: [] };
-    (tasks || []).forEach((t2) => {
-      out[groupOf(t2)].push(t2);
-    });
-    return out;
-  }
-  function taskIdOf(t2) {
-    if (!t2) return "";
-    if (t2.taskId) return String(t2.taskId);
-    return (t2.scope || "global") + "/" + String(t2.name || "");
-  }
-  function taskTitle(t2) {
-    const spec = specOf(t2);
-    return String(spec.title || t2 && t2.title || t2 && t2.name || t("\u672A\u547D\u540D\u4EFB\u52A1"));
-  }
-  var cancelReq = /* @__PURE__ */ new Set();
-  function cancellable(t2) {
-    const phase = String(statusOf(t2).phase || "");
-    return !phase || phase === "queued" || phase === "pending";
-  }
-  function cancelBtnHtml(t2) {
-    const id = taskIdOf(t2);
-    if (cancelReq.has(id)) return chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn");
-    if (!cancellable(t2)) return "";
-    return '<button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(id) + '">' + esc(t("\u53D6\u6D88")) + "</button>";
-  }
-  function requestCancel(el, ctx2, t2) {
-    const name = String(t2 && t2.name || "");
-    const scope = String(t2 && t2.scope || "global") || "global";
-    if (!name) {
-      alert(t("\u4EFB\u52A1\u7F3A name\u2014\u2014\u65E0\u6CD5\u6784\u9020 Task/<scope>/<name> \u8BCD\u5F62\uFF0C\u53D6\u6D88\u672A\u53D1\u5E03"));
-      return;
-    }
-    const ok = confirm(t("\u53D6\u6D88\u4EFB\u52A1 ") + name + t("\uFF1F\u53D1\u5E03 TaskCancelRequested\uFF08\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39\u2014\u2014\u4E0D\u4FDD\u8BC1\u5DF2\u5728\u8DD1\u7684\u8FDB\u7A0B\u7ACB\u523B\u7EC8\u6B62\uFF09"));
-    if (!ok) return;
-    ctx2.api.eventPub({
-      type: "TaskCancelRequested",
-      involved: "Task/" + scope + "/" + name,
-      dedupKey: "console-cancel-" + name + "-" + Date.now()
-    }).then((r) => {
-      if (r && r.ok) {
-        cancelReq.add(taskIdOf(t2));
-        ctx2.api.snapshot().then((s) => {
-          if (s && s.ok) ctx2.store.init(s.data);
-        }).catch(() => {
-        });
-        if (el.isConnected) render3(el, ctx2);
-      } else {
-        alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38")));
-      }
-    }).catch((err) => {
-      alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(err && err.message || err || t("\u7F51\u7EDC\u5F02\u5E38")));
-    });
-  }
-  function depRoute(d, defaultKind = "") {
-    const s = String(d || "").trim();
-    if (!s) return "";
-    const m = /^(Task|task|Workflow|workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(s);
-    if (m) {
-      return m[1].toLowerCase() === "task" ? "task/" + encodeURIComponent(m[2] + "/" + m[3]) : "wf/" + encodeURIComponent(m[3]);
-    }
-    const m2 = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(s);
-    if (m2) {
-      if (defaultKind === "workflow") return "wf/" + encodeURIComponent(m2[2]);
-      return "task/" + encodeURIComponent(m2[1] + "/" + m2[2]);
-    }
-    if (defaultKind === "workflow" && /^[A-Za-z0-9_.-]+$/.test(s)) return "wf/" + encodeURIComponent(s);
-    return "";
-  }
-  function depChips(deps, defaultKind = "") {
-    return (deps || []).map((d) => {
-      const r = depRoute(d, defaultKind);
-      return r ? chipGo(String(d), r, "mute", true, t("\u4F9D\u8D56\u2014\u2014\u70B9\u51FB\u8FDB\u8BE6\u60C5")) : chip(String(d), "mute");
-    }).join(" ");
-  }
-  function taskRow(t2) {
-    const id = taskIdOf(t2);
-    const s = statusOf(t2);
-    const spec = specOf(t2);
-    const depList = spec.dependsOn || s.dependsOn || [];
-    const agent = String(s.agent || spec.agent || "").trim();
-    const sess = String(s.agentSession || s.sessionId || "").trim();
-    const last = String(s.lastAction || "").trim();
-    const unknown = !String(s.phase || "");
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
-  }
-  function tasksScreen(el, ctx2) {
-    const tasks = ctx2.store.tasks();
-    const g = groupTasks(tasks);
-    const body = GROUPS.map((grp) => {
-      const rows = g[grp.id] || [];
-      return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + "</span>" + chip(String(rows.length) + t(" \u9879"), rows.length ? "acc" : "mute") + "</div>" + (rows.length ? '<div class="card-b">' + rows.map(taskRow).join("") + "</div>" : '<div class="card-b small faint">' + esc(grp.label) + t("\uFF1A\u6682\u65E0\u3002</div>")) + "</div>";
-    }).join("");
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4EFB\u52A1\u4E2D\u5FC3"), t("\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5"), chipGo(t("\u5173\u6CE8\u62A5\u544A"), "report", "acc", false)) + '<div class="grid cols-2">' + body + "</div></div>";
-    el.querySelectorAll(".task-row").forEach((row, i) => {
-      let n = 0;
-      for (const grp of GROUPS) {
-        const rows = g[grp.id] || [];
-        if (i < n + rows.length) {
-          const t2 = rows[i - n];
-          row.style.cursor = "pointer";
-          row.addEventListener("click", (ev) => {
-            if (ev.target && ev.target.closest("[data-go],[data-task-cancel]")) return;
-            ctx2.go("task/" + encodeURIComponent(taskIdOf(t2)));
-          });
-          return;
-        }
-        n += rows.length;
-      }
-    });
-    const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
-    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const t2 = byId.get(btn.dataset.taskCancel);
-        if (t2) requestCancel(el, ctx2, t2);
-      });
-    });
-  }
-  function taskDetailScreen(el, ctx2, id) {
-    const tasks = ctx2.store.tasks();
-    const t2 = tasks.find((x) => taskIdOf(x) === String(id));
-    const head = screenHead(t("\u4EFB\u52A1\u8BE6\u60C5"), "id=" + String(id), chipGo(t("\u2190 \u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false));
-    if (!t2) {
-      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u4EFB\u52A1\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u4EFB\u52A1\uFF08\u53EF\u80FD\u5DF2\u5B8C\u6210\u5F52\u6863\u6216 id \u6709\u8BEF\uFF09\u3002")) + "</div>";
-      return;
-    }
-    const s = statusOf(t2);
-    const spec = specOf(t2);
-    const rows = [
-      [t("\u76F8\u4F4D"), phaseChip(t2)],
-      [t("\u6807\u9898"), esc(taskTitle(t2))],
-      ["id", esc(taskIdOf(t2))]
-    ];
-    if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
-    const sessId = String(s.agentSession || s.sessionId || "").trim();
-    if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
-    if (s.lastAction) rows.push([t("\u6700\u8FD1\u52A8\u4F5C"), esc(trunc(String(s.lastAction), 200))]);
-    if (s.lastError) rows.push([t("\u6700\u8FD1\u9519\u8BEF"), chip(trunc(String(s.lastError), 120), "esc")]);
-    if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u65E5\u5FD7\uFF09"))]);
-    const deps = spec.dependsOn || s.dependsOn || [];
-    if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
-    if (cancelReq.has(taskIdOf(t2))) rows.push([t("\u53D6\u6D88"), chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn")]);
-    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + (cancellable(t2) && !cancelReq.has(taskIdOf(t2)) ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t2)) + '">' + esc(t("\u53D6\u6D88")) + '</button><span class="small faint" style="margin-left:8px">' + esc(t("\u53D1\u5E03 TaskCancelRequested\u2014\u2014\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39")) + "</span></div>" : "") + "</div></div></div>";
-    el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
-      btn.addEventListener("click", () => requestCancel(el, ctx2, t2));
-    });
-  }
-  var SEV_VIEW = { critical: { label: t("\u4E25\u91CD"), chip: "esc" }, high: { label: t("\u91CD\u8981"), chip: "warn" }, medium: { label: t("\u4E00\u822C"), chip: "mute" } };
-  function sevView(sev) {
-    return SEV_VIEW[String(sev || "")] || { label: String(sev || t("\u672A\u5206\u7EA7")), chip: "mute" };
-  }
-  function sevRank(sev) {
-    const s = String(sev || "");
-    return s === "critical" ? 0 : s === "high" ? 1 : s === "medium" ? 2 : 3;
-  }
-  function sortAttention(list2) {
-    return (list2 || []).slice().sort((a, b) => sevRank(a && a.severity) - sevRank(b && b.severity));
-  }
-  function evidenceRoute(ref) {
-    const r = String(ref || "").trim();
-    if (!r) return "";
-    if (r.startsWith("#/")) {
-      const segs = r.slice(2).split("/").filter(Boolean);
-      if (!segs.length) return "";
-      if (segs[0] === "inbox") return "inbox";
-      if (segs[0] === "approvals") return "approvals";
-      if (segs[0] === "tasks") return "tasks";
-      if (["s", "wf"].includes(segs[0]) && segs.length >= 2) return segs.map((x) => encodeURIComponent(x)).join("/");
-      if (["event", "task", "session"].includes(segs[0]) && segs.length >= 2) return segs[0] + "/" + encodeURIComponent(segs.slice(1).join("/"));
-      if (segs[0] === "obj" && segs.length >= 4) return segs.map((x) => encodeURIComponent(x)).join("/");
-      return "";
-    }
-    return involvedRoute(r);
-  }
-  function attentionCard(a) {
-    if (!a) return "";
-    const sev = sevView(a.severity);
-    const evs = (a.evidence || []).map((ev) => {
-      const ref = String(ev && ev.ref || "");
-      const route2 = evidenceRoute(ref);
-      return route2 ? chipGo(ref, route2, "mute", true, t("\u8BC1\u636E\u2014\u2014\u70B9\u51FB\u8FDB\u5165")) : chip(ref || ev && ev.kind || t("\u8BC1\u636E"), "mute");
-    }).filter(Boolean);
-    const action = a.action || {};
-    const route = action.target ? String(action.target).replace(/^#\/?/, "") : "";
-    return '<div class="att-card sev-' + esc(String(a.severity || "unknown")) + '"><div class="att-h">' + chip(sev.label, sev.chip) + (a.category ? chip(a.category, "mute") : "") + "<b>" + esc(String(a.title || t("\u672A\u547D\u540D\u5173\u6CE8\u9879"))) + "</b></div>" + (a.why ? '<div class="att-why small">' + esc(String(a.why)) + "</div>" : "") + '<div class="att-ev">' + (evs.length ? evs.join(" ") : t('<span class="small faint">\u8BC1\u636E\uFF1A\u2014</span>')) + "</div>" + (route ? '<div class="att-acts"><button class="btn btn-secondary sm" data-go="' + esc(route) + '">' + esc(String(action.label || t("\u53BB\u5904\u7406"))) + "</button></div>" : "") + "</div>";
-  }
-  function reportFooter(body) {
-    const b = body || {};
-    const dq = b.dataQuality || {};
-    const missing = dq.missing;
-    const missText = Array.isArray(missing) ? missing.map((m) => String(m)).join("\u3001") : String(missing || "");
-    const gb = String(b.generatedBy || "");
-    const gbLabel = gb === "llm" ? t("\u667A\u80FD\u5F52\u7EB3") : gb === "rules" ? t("\u57FA\u7840\u6C47\u603B") : gb || t("\u751F\u6210\u65B9\u5F0F\u672A\u6CE8\u660E");
-    return t('<div class="report-foot small faint">\u62A5\u544A\u8BF4\u660E\uFF1A') + esc(gbLabel) + t(" \xB7 \u68C0\u67E5\u8303\u56F4 ") + esc(String(b.scope || "global")) + (b.asOf ? t(" \xB7 \u622A\u81F3 ") + esc(String(b.asOf)) : "") + (missText ? t(" \xB7 \u7F3A\u5E2D\u6570\u636E\uFF1A") + esc(missText) : "") + t(" \xB7 \u62A5\u544A\u4E3A\u6D3E\u751F\u89C6\u56FE\u53EF\u968F\u65F6\u91CD\u5EFA\uFF0C\u4E0D\u843D\u5BF9\u8C61\u8D26\u3002</div>");
-  }
-  function reportScreen(el, ctx2) {
-    const st = ctx2.store;
-    let att = st.attention();
-    let degradedNote = "";
-    if (!att.length) {
-      const evs = st.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate"));
-      att = evs.map((e) => ({
-        severity: e.type === "Escalate" ? "high" : "medium",
-        category: e.type,
-        title: String(e.summary || e.type),
-        evidence: e.involved ? [{ ref: String(e.involved) }] : []
-      }));
-      if (!evs.length) degradedNote = t('<div class="small faint" style="margin-bottom:10px">\u5F53\u524D\u6CA1\u6709\u9700\u8981\u4F60\u5173\u6CE8\u7684\u4E8B\u9879\u3002</div>');
-      else degradedNote = t('<div class="small faint" style="margin-bottom:10px">\u4EE5\u4E0B\u4E8B\u9879\u6765\u81EA\u6700\u8FD1\u4E8B\u4EF6\u3002</div>');
-    }
-    const sorted = sortAttention(att);
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5173\u6CE8\u62A5\u544A"), t("severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F"), chipGo(t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false)) + degradedNote + '<div data-loop-box="pending"></div>' + (sorted.length ? '<div class="att-list">' + sorted.map(attentionCard).join("") + "</div>" : emptyBox(t("\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879"), t("\u5F53\u524D\u6CA1\u6709\u9700\u8981\u5173\u6CE8\u7684\u98CE\u9669\u9879\u3002"))) + reportFooter(st.get("attention") && st.get("attention").dataQuality) + "</div>";
-    hydrateLoop(el, ctx2);
-  }
-  function render3(el, ctx2) {
-    if (ctx2.params && ctx2.params.id != null && ctx2.params.id !== "") taskDetailScreen(el, ctx2, String(ctx2.params.id));
-    else tasksScreen(el, ctx2);
-  }
-  function renderReport(el, ctx2) {
-    reportScreen(el, ctx2);
-  }
-
-  // src/screens/workflows.js
-  function wfAnchorOfRoute(route) {
-    const r = String(route || "");
-    if (!r) return "";
-    if (r.startsWith("workflows/")) return r.slice("workflows/".length);
-    if (/-workflow$/.test(r)) return "core-workflow";
-    return "";
-  }
-  function phaseGraphHtml(run, ctx2) {
-    const phases = Array.isArray(run.phases) ? run.phases : [];
-    const cur = String(run.phase || "");
-    const st = String(run.status || "");
-    const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
-    const isTerminal = st === "done" || st === "converged";
-    const nodeHtml2 = (p, i) => {
-      const active = p === cur && !isTerminal;
-      const done = visited.has(p) && (p !== cur || isTerminal);
-      const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
-      return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
-    };
-    const body = phases.length ? phases.map((p, i) => nodeHtml2(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run) + "</div>";
-    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u67E5\u770B\u8BE5\u9636\u6BB5\u7684\u4E8B\u4EF6\u4E0E\u6D89\u53CA\u6587\u6863\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
-  }
-  function bindPhaseGraph(el, ctx2, run) {
-    el.querySelectorAll("[data-pg-node]").forEach((n) => {
-      n.addEventListener("click", () => {
-        const ph = String(n.getAttribute("data-pg-node") || "");
-        const drawer = el.querySelector("[data-pg-drawer]");
-        if (!drawer) return;
-        const evs = ctx2.store.events().filter((e) => {
-          const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-          return hay.includes(String(run.workflow || "")) || hay.includes(ph);
-        }).slice(0, 10);
-        const involved = String(run.involved || "");
-        const evRows = evs.length ? evs.map((e) => {
-          const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-          const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
-          return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div><b>' + esc(String(e.type || "")) + '</b></div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + '</div></div><span class="small faint">' + esc(relAge(e.ts) || "") + "</span></div>";
-        }).join("") : '<div class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\u3002")) + "</div>";
-        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' + (involved ? '<div class="mr-sub">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + involved.split(",").map((x) => {
-          const parts = x.trim().split("/");
-          return parts.length >= 3 ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + "/" + esc(parts[1]) + "/" + esc(parts[2]) + '">' + esc(x.trim()) + "</span>" : '<span class="small faint mono">' + esc(x.trim()) + "</span>";
-        }).join(" ") + "</div>" : "") + '<div class="small faint">' + esc(t("\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A")) + "</div>" + evRows + "</div></div>";
-      });
-    });
-  }
-  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
-  function isTerminalRun(st) {
-    return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
-  }
-  var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
-  var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
-  function runChip(r) {
-    const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
-    return chip(st, RUN_CLS[st] || "mute");
-  }
-  function phChip(ph) {
-    const p = String(ph || "");
-    return chip(p || "\u2014", PH_CLS[p.toLowerCase()] || "mute");
-  }
-  function wfDesignRoute() {
-    return "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("concepts/workflow.md");
-  }
-  function realTplCardHtml(o) {
-    const scope = o.scope || "global";
-    return '<div class="card"><div class="card-h"><span class="h-title mono">' + esc(o.name) + '</span><span class="h-right">' + chip("Template", "acc") + " " + chip("r" + String(o.rv || 0), "mute") + '</span></div><div class="card-b"><div class="small mono faint">scope: ' + esc(scope) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Template", scope, o.name), "acc", true, t("\u67E5\u770B Template \u58F0\u660E")) + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute("Template", scope, o.name), "mute", true, t("\u67E5\u770B\u6B63\u6587")) + "</div></div></div>";
-  }
-  function templatesSectionHtml(ctx2) {
-    const tpls = ctx2.store.refs("Template");
-    const bugWf = ctx2.store.refs("Workflow").find((w) => w && w.name === "bug-lifecycle");
-    const bugRuns = ctx2.store.runs().filter((r) => r && String(r.workflow || r.name || "") === "bug-lifecycle");
-    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="small">' + esc(t("\u7F3A\u9677\u95ED\u73AF\u771F\u5B9E Workflow \u5BF9\u8C61\uFF08BugReport\u2192\u4E34\u65F6 BugDoc\u2192\u9A8C\u8BC1\u2192\u5173\u95ED\uFF09\u3002")) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
-    const tplBlock = tpls.length ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join("") + "</div>" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u6D41\u7A0B\u6A21\u677F\uFF08Template \u5BF9\u8C61\u5728\u518C\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002")) + " " + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + "</div></div></div>";
-    return bugBlock + tplBlock;
-  }
-  function listScreen(el, ctx2) {
-    const state = { rows: [], filter: "", err: "" };
-    const snapRuns = ctx2.store.runs().slice(0, 8);
-    const runRowHtml = (r) => {
-      const wf = String(r && (r.workflow || r.name) || "");
-      const no = r && (r.run != null ? r.run : r.no != null ? r.no : "");
-      if (!wf && (no == null || no === "")) return "";
-      const started = r && (r.startedAt || r.at || r.ts);
-      const invChips = String(r && r.involved || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 3).map((x) => {
-        const rt = involvedRoute(x);
-        return rt ? chipGo(trunc(x, 36), rt, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : '<span class="chip mute tiny">' + esc(trunc(x, 36)) + "</span>";
-      }).join(" ");
-      const go = wf && no != null && no !== "" ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(no)) : "";
-      return "<tr" + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : "") + '><td class="mono small">#' + esc(String(no != null && no !== "" ? no : "\u2014")) + '</td><td class="mono small">' + esc(wf || "\u2014") + "</td><td>" + phChip(r && r.phase) + "</td><td>" + runChip(r) + '</td><td class="small mono">' + esc(relAge(started) || (started ? String(started).slice(0, 16) : "\u2014")) + '</td><td class="small">' + (invChips || '<span class="faint">\u2014</span>') + "</td></tr>";
-    };
-    const paintRuns = () => {
-      const slot = el.querySelector("[data-wf-runs]");
-      if (!slot) return;
-      const seen = /* @__PURE__ */ new Set();
-      const merged = [];
-      for (const r of state.rows.concat(snapRuns)) {
-        const k = String(r && (r.workflow || r.name) || "") + "#" + String(r && (r.run != null ? r.run : r.no != null ? r.no : ""));
-        if (seen.has(k)) continue;
-        seen.add(k);
-        merged.push(r);
-      }
-      const shown = (state.filter ? merged.filter((r) => String(r && (r.workflow || r.name) || "") === state.filter) : merged).slice(0, 50);
-      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto"><div style="margin-bottom:6px">' + chip(merged.length + t(" \u6761\u8FD0\u884C\u8BB0\u5F55"), "mute") + " " + (state.filter ? chipGo(t("\u6E05\u9664\u8FC7\u6EE4\uFF1A") + state.filter, "workflows", "warn", true, t("\u6E05\u9664\u8FC7\u6EE4\u5E76\u56DE\u5168\u8868")) : "") + "</div>" + (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(state.err) + esc(t("\uFF09\u2014\u2014\u4E0B\u8868\u4EC5\u6982\u89C8\u884C\u3002")) + "</div>" : "") + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(t("\u5DE5\u4F5C\u6D41")) + "</th><th>" + esc(t("\u76F8\u4F4D")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u5F00\u59CB")) + "</th><th>" + esc(t("\u6D89\u53CA")) + "</th></tr></thead><tbody>" + shown.map(runRowHtml).join("") + '</tbody></table><div class="small faint" style="margin-top:6px">' + esc(t("\u884C\u70B9\u51FB\u8FDB\u8FD0\u884C\u8BE6\u60C5\uFF1Binvolved chip=\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u6DF1\u94FE\u3002")) + "</div>" : '<div class="small faint">' + esc(state.filter ? t("\u8BE5 workflow \u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\u3002") : t("\u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002"))) + "</div></div>";
-    };
-    el.innerHTML = '<div class="view-inner">' + screenHead(
-      t("\u5DE5\u4F5C\u6D41"),
-      t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
-      chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
-    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + "</div>";
-    paintRuns();
-    (async () => {
-      const stamp = typeof location !== "undefined" ? location.hash : "";
-      const slot = el.querySelector("[data-wf-reg]");
-      const r = await ctx2.api.workflows();
-      if (!slot || !slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-      if (!r.ok) {
-        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(String(r.error || r.status)) + esc(t("\uFF09\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5\u3002")) + "</div></div></div>";
-        return;
-      }
-      const data = r.data && typeof r.data === "object" ? r.data : {};
-      const rows = Array.isArray(data.workflows) ? data.workflows : [];
-      if (!rows.length) {
-        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41\u3002")) + "</div></div></div>";
-        return;
-      }
-      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' + chip((data.count != null ? data.count : rows.length) + t(" \u6761\u5728\u518C"), "acc") + " " + (data.scanCapped ? chip(t("\u626B\u63CF\u622A\u65AD\uFF08\u7A97\u53E3\u5185 ") + String(data.scanned != null ? data.scanned : "?") + t(" \u6761\uFF09"), "warn") : "") + '<table class="tbl" style="margin-top:8px"><thead><tr><th>' + esc(t("\u540D\u79F0")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u8FDE\u63A5")) + "</th><th>" + esc(t("\u6700\u8FD1")) + "</th><th></th></tr></thead><tbody>" + rows.map((w) => {
-        const name = String(w && w.name || "");
-        const ex = w && w.execution || {};
-        const exState = String(ex.state || "");
-        const connTxt = String(ex.connector || "") + (ex.connectorScope ? "/" + String(ex.connectorScope) : "");
-        const connCell = connTxt ? chipGo(connTxt, "connectors", "mute", true, t("\u8FDE\u63A5\u5C42\u2014\u2014\u67E5\u770B\u7ED1\u5B9A connector")) : '<span class="faint">\u2014</span>';
-        const latest = w && w.latest;
-        const latestTxt = typeof latest === "string" ? latest : String(latest && (latest.summary || latest.note || latest.status || latest.state) || "");
-        return '<tr><td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + "</span>" : "\u2014") + "</td><td>" + chip(exState || "\u2014", REG_CLS[exState.toLowerCase()] || "mute") + '</td><td class="mono small">' + connCell + '</td><td class="small">' + esc(trunc(latestTxt || "\u2014", 60)) + '</td><td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(t("\u8FC7\u6EE4\u672C\u9875\u8FD0\u884C\u8BB0\u5F55")) + '">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + "</span>" : "") + "</td></tr>";
-      }).join("") + "</tbody></table></div></div>";
-      slot.querySelectorAll("[data-wf-runfilter]").forEach((c) => {
-        c.addEventListener("click", () => {
-          state.filter = String(c.getAttribute("data-wf-runfilter") || "");
-          paintRuns();
-          const rs = el.querySelector("[data-wf-runs]");
-          if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      });
-    })();
-    (async () => {
-      const stamp = typeof location !== "undefined" ? location.hash : "";
-      const r = await ctx2.api.workflowRuns();
-      if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-      if (!r.ok) {
-        state.err = String(r.error || r.status);
-      } else {
-        const data = r.data && typeof r.data === "object" ? r.data : {};
-        state.rows = Array.isArray(data.runs) ? data.runs : [];
-      }
-      paintRuns();
-    })();
-  }
-  function detailScreen(el, ctx2, name) {
-    const wfs = ctx2.store.workflows();
-    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const wf = wfs.find((w) => String(w && (w.name || w.workflow || "")) === String(name));
-    const head = screenHead(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "name=" + String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false));
-    if (!wf && !runs.length) {
-      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + "</div>";
-      return;
-    }
-    const rows = [];
-    if (wf) {
-      if (wf.scope) rows.push(["scope", esc(String(wf.scope))]);
-      if (wf.resourceVersion != null) rows.push(["rv", esc(String(wf.resourceVersion))]);
-      if (wf.spec && wf.spec.title) rows.push([t("\u6807\u9898"), esc(String(wf.spec.title))]);
-      if (wf.spec && wf.spec.goalRef) rows.push([t("\u76EE\u6807"), chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || "docs", "mute", true, t("\u76EE\u6807\u6587\u6863"))]);
-      const impl = wf.spec && wf.spec.impl || wf.execution && wf.execution.impl || "";
-      const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : "";
-      if (repoChip) rows.push([t("\u5B9E\u73B0\u4ED3\u5E93"), repoChip]);
-    }
-    if (wf && wf.spec && wf.spec.dependsOn) rows.push([t("\u4F9D\u8D56"), depChips(wf.spec.dependsOn, "workflow")]);
-    rows.push([t("\u8FD0\u884C"), chip(runs.length + t(" \u6B21"), runs.length ? "acc" : "mute")]);
-    const runRows = runs.map((r, i) => {
-      const no = r.run != null ? r.run : r.no != null ? r.no : runs.length - i;
-      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
-    }).join("");
-    const run0 = runs[0] || { workflow: String(name), phases: [], phase: "", status: "" };
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run0, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002</div>')) + "</div>";
-    bindPhaseGraph(el, ctx2, run0);
-  }
-  function bindDocLinks(scopeEl, ctx2) {
-    scopeEl.querySelectorAll("[data-go]").forEach((n) => {
-      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
-    });
-  }
-  function runScreen(el, ctx2, name, no) {
-    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const run = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
-    if (!run) {
-      el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u8FD0\u884C\u8BB0\u5F55\uFF08\u53EF\u80FD\u5DF2\u5F52\u6863\uFF09\u3002")) + "</div>";
-      return;
-    }
-    const st = String(run.status || "");
-    const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
-    const startedAt = run.startedAt || run.at || run.ts;
-    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
-    const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
-    const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
-    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
-    const sel = { idx: 0, phases: [] };
-    const lineEl = el.querySelector("[data-step-line]");
-    const paintLine = () => {
-      const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")];
-      sel.phases = phases;
-      const curIdx = phases.indexOf(run.phase);
-      if (curIdx >= 0) sel.idx = curIdx;
-      const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
-      const isTerminal = st === "done" || st === "converged";
-      lineEl.innerHTML = phases.map((p, i) => {
-        const done = visited.has(p) && (p !== run.phase || isTerminal);
-        const active = i === curIdx && !isTerminal;
-        const dot = done ? "\u2713" : active ? "" : String(i + 1);
-        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
-        return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
-      }).join("");
-      el.querySelectorAll("[data-step]").forEach((n) => {
-        n.addEventListener("click", () => {
-          sel.idx = Number(n.getAttribute("data-step"));
-          paintNow();
-          paintSel();
-        });
-      });
-      paintSel();
-    };
-    const paintSel = () => {
-      el.querySelectorAll("[data-step]").forEach((n, i) => n.classList.toggle("sel", i === sel.idx));
-    };
-    const nowEl = el.querySelector("[data-run-now]");
-    const tlEl = el.querySelector("[data-run-tl]");
-    const paintNow = () => {
-      const phases = sel.phases.length ? sel.phases : [run.phase || t("\u5355\u8282\u70B9")];
-      const ph = phases[sel.idx] || run.phase || t("\u5355\u8282\u70B9");
-      const isCur = ph === run.phase;
-      const involved = String(run.involved || "");
-      const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
-        const p2 = x.split("/");
-        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
-      }).join(" ");
-      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? isTerminalRun(st) ? t("\u8BE5\u76F8\u4F4D\u5DF2\u6536\u675F\u2014\u2014\u5355\u6B21\u8FD0\u884C\u7ED3\u675F") : t("\u8FDB\u884C\u4E2D\u2014\u2014\u72B6\u6001\u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u6309\u8FD0\u884C\u8F68\u8FF9\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
-      bindDocLinks(nowEl, ctx2);
-    };
-    const paintTl = () => {
-      const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
-      const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u9636\u6BB5\u63A8\u8FDB\u8BB0\u5F55\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
-        const at = String(x && (x.at || x.ts || x.time) || "");
-        const from = String(x && (x.from || x.fromPhase) || "\u2014");
-        const to = String(x && (x.to || x.toPhase || x.phase) || "\u2014");
-        return '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(from) + " \u2192 " + esc(to) + '</b></div><div class="tl-time mono">' + esc(relAge(at) || (at ? at.slice(0, 16) : "")) + "</div></div>";
-      }).join("") + "</div>" : "";
-      const evs = ctx2.store.events().filter((e) => {
-        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-        return hay.includes(String(run.workflow || "")) || hay.includes(String(run.phase || ""));
-      }).slice(0, 12);
-      tlEl.innerHTML = transHtml + (evs.length ? '<div class="tl">' + evs.map((e) => {
-        const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-        const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
-        return '<div class="tl-row"' + goAttr + '><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>";
-      }).join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u6682\u65E0\u76F8\u5173\u4E8B\u4EF6\u2014\u2014\u6D41\u7A0B\u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u66F4\u65B0\u3002")) + "</div>");
-    };
-    paintLine();
-    paintNow();
-    paintTl();
-    const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
-      if (!r.ok || !el.isConnected) return;
-      const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
-      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
-      if (!full) return;
-      run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
-      run.phase = full.phase || run.phase;
-      run.status = full.status || run.status;
-      run.involved = full.involved || run.involved;
-      run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
-      run.history = Array.isArray(full.history) ? full.history : run.history;
-      paintLine();
-      paintNow();
-      paintTl();
-    });
-    refreshFace();
-    el.querySelectorAll("[data-gate-act]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const grant = btn.getAttribute("data-gate-act") === "grant";
-        const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
-        if (!confirmed) return;
-        btn.disabled = true;
-        btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
-        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor });
-        if (!r.ok) {
-          btn.disabled = false;
-          btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
-          window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
-          return;
-        }
-        refreshFace();
-        ctx2.api.snapshot().then((s) => {
-          if (s.ok) ctx2.store.init(s.data);
-        });
-      });
-    });
-  }
-  function render4(el, ctx2) {
-    const p = ctx2.params || {};
-    if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
-    else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
-    else listScreen(el, ctx2);
-  }
-
-  // src/screens/events.js
-  var filter = { level: "", q: "" };
-  var LEVEL_CLS = { critical: "esc", error: "esc", warn: "warn", warning: "warn", info: "mute", debug: "mute" };
-  function clean(x) {
-    return String(x == null ? "" : x).replace(/^"+|"+$/g, "");
-  }
-  function levelChip(e) {
-    const lv = String(e && e.level || "info");
-    return chip(lv, LEVEL_CLS[lv] || "mute");
-  }
-  function involvedHtml(e) {
-    const s = clean(e && e.involved);
-    if (!s) return chip("involved\uFF1A\u2014", "mute");
-    return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
-      const p = part.trim();
-      const route = involvedRoute(p);
-      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : chip(p, "mute");
-    }).join(" ");
-  }
-  function linksHtml(e) {
-    const out = [];
-    const route = String(e && e.route || "");
-    const wf = wfAnchorOfRoute(route);
-    if (wf) out.push(chipGo(t("workflow \u951A ") + wf, "wf/" + encodeURIComponent(wf), "acc", true, "route " + route + t(" \u2192 \u5DE5\u4F5C\u6D41")));
-    if (e && e.run) out.push(chipGo("run #" + e.run, route && wf ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(e.run)) : "workflows", "mute", true, t("\u5173\u8054\u8FD0\u884C")));
-    const sess = clean(e && (e.agentSession || e.session));
-    if (sess) out.push(chipGo(t("\u4F1A\u8BDD ") + trunc(sess, 18), "session/" + encodeURIComponent(sess), "mute", true, t("\u4F1A\u8BDD\u8BE6\u60C5")));
-    const wake = e && (e.wake != null ? e.wake : e.loopId != null ? e.loopId : null);
-    if (wake != null) out.push(chipGo(t("\u5FAA\u73AF\u5524\u9192 #") + wake, "welcome", "mute", true, t("\u603B\u89C8\u5FAA\u73AF\u5361\u2014\u2014loop \u5524\u9192\u5173\u8054")));
-    return out.join(" ");
-  }
-  function eventRow(e) {
-    const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-    const involved = clean(e && e.involved);
-    const parts = involved.split(/[,;]\s*/).filter(Boolean);
-    const invHtml = parts.length ? parts.map((part) => {
-      const p = part.trim();
-      const route = involvedRoute(p);
-      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : '<span class="mono">' + esc(p) + "</span>";
-    }).join(" ") : '<span class="mono">\u2014</span>';
-    const hasClipboard = typeof navigator !== "undefined" && !!(navigator.clipboard && navigator.clipboard.writeText);
-    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + invHtml + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + '</span><button class="btn btn-ghost sm" data-copy-id="' + esc(String(id)) + '"' + (hasClipboard ? "" : ' disabled title="' + esc(t("\u526A\u8D34\u677F\u4E0D\u53EF\u7528")) + '"') + ">" + esc(t("\u590D\u5236 id")) + "</button></div>";
-  }
-  function listScreen2(el, ctx2) {
-    let rows = ctx2.store.events().slice();
-    if (filter.level) rows = rows.filter((e) => String(e && e.level || "") === filter.level);
-    if (filter.q) {
-      const q = filter.q.toLowerCase();
-      rows = rows.filter((e) => String(e && (e.type || "") + " " + (e.involved || "") + " " + (e.summary || e.message || "")).toLowerCase().includes(q));
-    }
-    const fbar = '<div class="filter-bar">' + t('<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="') + esc(filter.q) + '">' + ["", "error", "warn", "info"].map(
-      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc(lv) + '">' + esc(lv || t("\u5168\u90E8\u7EA7\u522B")) + "</span>"
-    ).join("") + "</div>";
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u6D41"), t("\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09")) + fbar + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u6682\u65E0\u4E8B\u4EF6"), filter.q || filter.level ? t("\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002") : t("\u6682\u65E0\u4E8B\u4EF6\u3002"))) + "</div>";
-    const inp = el.querySelector("#ev-q");
-    if (inp) {
-      inp.addEventListener("input", () => {
-        filter.q = inp.value;
-        listScreen2(el, ctx2);
-      });
-      inp.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") ev.preventDefault();
-      });
-    }
-    el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
-      c.addEventListener("click", () => {
-        filter.level = c.dataset.lv || "";
-        listScreen2(el, ctx2);
-      });
-    });
-    el.querySelectorAll("[data-copy-id]").forEach((btn) => {
-      if (btn.disabled) return;
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const raw = String(btn.dataset.copyId || "");
-        navigator.clipboard.writeText(raw).then(() => {
-          btn.textContent = t("\u5DF2\u590D\u5236");
-          setTimeout(() => {
-            btn.textContent = t("\u590D\u5236 id");
-          }, 1200);
-        }).catch(() => {
-          btn.textContent = t("\u590D\u5236\u5931\u8D25");
-          setTimeout(() => {
-            btn.textContent = t("\u590D\u5236 id");
-          }, 1200);
-        });
-      });
-    });
-  }
-  async function detailScreen2(el, ctx2, id) {
-    const stamp = typeof location !== "undefined" ? location.hash : "";
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u8BE6\u60C5"), "id=" + id) + '<div class="card"><div class="card-b">' + kv([[t("\u72B6\u6001"), chip(t("\u73B0\u8BFB\u4E2D\u2026"), "mute")]]) + '</div></div><div class="dh-actions" style="margin-top:10px">' + chipGo(t("\u2190 \u56DE\u4E8B\u4EF6\u6D41"), "events", "mute", false) + "</div></div>";
-    const r = await ctx2.api.event(id);
-    if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-    const box = el.querySelector(".card .card-b");
-    if (!box) return;
-    if (!r.ok) {
-      box.innerHTML = t('<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>");
-      return;
-    }
-    const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
-    const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
-    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => {
-      const v = k === "involved" || k === "summary" || k === "message" || k === "agentSession" || k === "session" ? clean(e[k]) : String(e[k]);
-      return [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(v, 200))];
-    });
-    box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
-  }
-  function render5(el, ctx2) {
-    const id = ctx2.params && ctx2.params.id;
-    if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
-    else listScreen2(el, ctx2);
-  }
-
   // src/screens/objects.js
   function tagVocabFromKinds(kinds) {
     const rows = Array.isArray(kinds) ? kinds : [];
@@ -12577,7 +11749,7 @@ ${text2}</tr>
     paintRail(key.key, ctx2);
     paintMeta(key.key);
   }
-  function bindRetry2(keyStr) {
+  function bindRetry(keyStr) {
     document.querySelectorAll("[data-ed-retry]").forEach((b) => {
       if (b.getAttribute("data-ed-retry-bound")) return;
       b.setAttribute("data-ed-retry-bound", "1");
@@ -12599,7 +11771,7 @@ ${text2}</tr>
     if (!ed) slot.innerHTML = esc(t("\u52A0\u8F7D\u4E2D\u2026"));
     else if (ed.faceFail) {
       slot.innerHTML = '<span class="chip esc tiny">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</span> <button class="btn btn-secondary sm" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button>";
-      bindRetry2(keyStr);
+      bindRetry(keyStr);
     } else if (ed.faceAbsent) slot.innerHTML = esc(t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09"));
     else slot.innerHTML = "r" + ed.faceRV + esc(t("\uFF08\u7248\u672C\u57FA\u51C6\uFF09"));
   }
@@ -12609,7 +11781,7 @@ ${text2}</tr>
     if (!el || !ed) return;
     if (ed.faceFail) {
       el.innerHTML = '<div class="empty"><div class="e-title">' + esc(t("\u6B63\u6587\u62C9\u53D6\u5931\u8D25\uFF08") + ed.faceFail + t("\uFF09")) + '</div><div class="small faint">' + esc(t("face \u73B0\u8BFB\u672A\u6210\u529F\u2014\u2014\u7248\u672C\u57FA\u51C6\u672A\u77E5\uFF0C\u7F16\u8F91/Apply \u5DF2\u505C\u7528\uFF08\u96F6\u88C5\u5047\uFF09\uFF1B\u70B9\u91CD\u8BD5\u91CD\u8DD1\u6CE8\u6C34\u3002")) + '</div><div class="e-act"><button class="btn btn-secondary sm" data-ed-retry>' + esc(t("\u91CD\u8BD5")) + "</button></div></div>";
-      bindRetry2(key);
+      bindRetry(key);
       return;
     }
     el.innerHTML = ed.view === "render" ? isMarkdownDoc(ed.ref.kind, ed.ref.name) ? (function() {
@@ -12857,6 +12029,970 @@ ${text2}</tr>
     }
     const key = { ref, key: keyOf(ref.kind, ref.scope, ref.name) };
     editorScreen(el, ctx2, key);
+  }
+
+  // src/render/refs.js
+  var REF_KINDS = "Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Template|Event";
+  function refRoute(kind, scope, name) {
+    const k = encodeURIComponent(kind);
+    const s = encodeURIComponent(scope || "global");
+    const n = encodeURIComponent(name);
+    return "obj/" + k + "/" + s + "/" + n;
+  }
+  function linkifyRefs(text2, names) {
+    const s = String(text2 || "");
+    const nameSet = names instanceof Set ? names : Array.isArray(names) ? new Set(names) : null;
+    const re = new RegExp("(" + REF_KINDS + ")\\/([A-Za-z0-9_.\\/-]+?)\\/([A-Za-z0-9_.\\-\u4E00-\u9FFF]+)", "g");
+    const connRe = /\b(connector|provider):([A-Za-z0-9_.-]+)/g;
+    let html3 = "";
+    let last = 0;
+    const spans = [];
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, kind: m[1], scope: m[2], name: m[3] });
+    }
+    while ((m = connRe.exec(s)) !== null) {
+      spans.push({ i: m.index, len: m[0].length, conn: m[1], cname: m[2] });
+    }
+    spans.sort((a, b) => a.i - b.i);
+    for (const sp of spans) {
+      if (sp.i < last) continue;
+      html3 += esc(s.slice(last, sp.i));
+      if (sp.conn) {
+        html3 += '<span class="ref-chip" data-go="connectors">' + esc(sp.conn + ":" + sp.cname) + "</span>";
+      } else {
+        const route = refRoute(sp.kind, sp.scope, sp.name);
+        html3 += '<span class="ref-chip" data-go="' + esc(route) + '" title="' + esc(t("\u67E5\u770B\u5BF9\u8C61")) + '">' + esc(sp.kind + "/" + sp.scope + "/" + sp.name) + "</span>";
+      }
+      last = sp.i + sp.len;
+    }
+    html3 += esc(s.slice(last));
+    if (nameSet && nameSet.size) {
+      for (const nm of nameSet) {
+        const needle = esc(nm);
+        if (!needle || !html3.includes(needle)) continue;
+        html3 = html3.split(needle).join(
+          '<span class="ref-chip" data-go="' + esc(refRoute("Doc", "global", nm)) + '" data-ref-name="' + esc(nm) + '">' + needle + "</span>"
+        );
+      }
+    }
+    return html3;
+  }
+
+  // src/screens/chat-links.js
+  function sessBacklinksHtml(store2, sessionId) {
+    const sid = String(sessionId || "");
+    if (!sid) return "";
+    const tasks = (store2.tasks() || []).filter((t2) => String(t2 && t2.status && (t2.status.agentSession || t2.status.sessionId) || "") === sid);
+    const evs = (store2.events() || []).filter((e) => {
+      const s = String(e && (e.agentSession || e.session) || "");
+      return s === sid;
+    }).slice(0, 4);
+    const taskChips = tasks.slice(0, 3).map((t2) => {
+      const id = String(t2 && t2.scope || "global") + "/" + String(t2 && t2.name || "");
+      const title = String(t2 && t2.spec && t2.spec.title || t2 && t2.name || id);
+      const ph = String(t2 && t2.status && (t2.status.phase || t2.status) || "");
+      return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + t("\u2014\u2014\u4EFB\u52A1\u8BE6\u60C5") + '">Task: ' + esc(trunc(title, 22)) + (ph ? " \xB7 " + esc(ph) : "") + "</span>";
+    }).join(" ");
+    const evChips = evs.map((e) => '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '" title="' + esc(t("\u4E8B\u4EF6\u8BE6\u60C5")) + '">' + esc(trunc(String(e.type || ""), 26)) + "</span>").join(" ");
+    if (!taskChips && !evChips) {
+      return '<div class="small faint" data-sess-backlinks="1">' + esc(t("\u5FEB\u7167\u4E09\u6E90\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u53CD\u67E5\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002")) + "</div>";
+    }
+    return '<div class="small" data-sess-backlinks="1"><span class="faint">' + esc(t("\u5173\u8054\uFF1A")) + "</span> " + taskChips + " " + evChips + "</div>";
+  }
+
+  // src/screens/sessionctx.js
+  var PANEL = /* @__PURE__ */ new Map();
+  function parseTagInput(raw) {
+    return String(raw == null ? "" : raw).split(/[\s,，、]+/).map((t2) => t2.trim()).filter(Boolean);
+  }
+  function capTags(tags, maxTotal = 20, maxPerType = 5) {
+    const kept = [];
+    const dropped = [];
+    const seen = /* @__PURE__ */ new Set();
+    const perType = /* @__PURE__ */ new Map();
+    for (const raw of Array.isArray(tags) ? tags : []) {
+      const key = String(raw || "").trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const c = key.indexOf(":");
+      const typ = c > 0 ? key.slice(0, c) : "";
+      const n = perType.get(typ) || 0;
+      if (kept.length >= maxTotal || n >= maxPerType) {
+        dropped.push(key);
+        continue;
+      }
+      perType.set(typ, n + 1);
+      kept.push(key);
+    }
+    return { kept, dropped };
+  }
+  function normalizeContext(data) {
+    const d = data && typeof data === "object" ? data : {};
+    const pack = d.pack && typeof d.pack === "object" ? d.pack : {};
+    const pol = d.policy && typeof d.policy === "object" ? d.policy : {};
+    const sess = d.session && typeof d.session === "object" ? d.session : null;
+    const ov = d.override && typeof d.override === "object" ? d.override : null;
+    const chunks = (Array.isArray(pack.chunks) ? pack.chunks : []).map((c) => {
+      const row = c && typeof c === "object" ? c : {};
+      return {
+        kind: String(row.kind || ""),
+        scope: String(row.scope || ""),
+        name: String(row.name || ""),
+        score: Number(row.score) || 0,
+        why: String(row.why || "")
+      };
+    });
+    const shards = (Array.isArray(d.shards) ? d.shards : []).map((s) => {
+      const row = s && typeof s === "object" ? s : {};
+      return {
+        tagKey: String(row.tagKey || ""),
+        docs: Number(row.docs) || 0,
+        topDocs: (Array.isArray(row.topDocs) ? row.topDocs : []).map(String),
+        stale: !!row.stale
+      };
+    });
+    const stats = d.shardsStats && typeof d.shardsStats === "object" ? {
+      total: Number(d.shardsStats.total) || 0,
+      stale: Number(d.shardsStats.stale) || 0,
+      threshold: Number(d.shardsStats.rebuildThreshold) || 0
+    } : null;
+    return {
+      present: !!(d.sessionId || d.pack || d.policy),
+      sessionId: String(d.sessionId || ""),
+      session: sess ? {
+        state: String(sess.state || ""),
+        phase: String(sess.phase || ""),
+        lastAction: String(sess.lastAction || ""),
+        heartbeats: Number(sess.heartbeats) || 0,
+        lastBeat: String(sess.lastBeat || "")
+      } : null,
+      takeBudget: Number(pack.takeBudget) || 0,
+      takeBudgetDefault: Number(pack.takeBudgetDefault) || 0,
+      tags: (Array.isArray(pack.tagSig) ? pack.tagSig : []).map((t2) => String((t2 && typeof t2 === "object" ? t2.tagKey : t2) || "")).filter(Boolean),
+      tagSigSource: String(pack.tagSigSource || "none"),
+      chunks,
+      shards,
+      stats,
+      shardsFacePresent: Array.isArray(d.shards),
+      degraded: pack.degraded !== false,
+      degradedReason: String(pack.degradedReason || ""),
+      policy: {
+        shardMaxTokens: Number(pol.shardMaxTokens) || 0,
+        minTakeBudget: Number(pol.minTakeBudget) || 0,
+        maxTakeBudget: Number(pol.maxTakeBudget) || 0,
+        maxTagsPerType: Number(pol.maxTagsPerType) || 5,
+        maxTagsTotal: Number(pol.maxTagsTotal) || 20
+      },
+      override: ov ? {
+        revision: Number(ov.revision) || 0,
+        takeBudget: Number(ov.takeBudget) || 0,
+        updatedAt: String(ov.updatedAt || ""),
+        note: String(ov.note || ""),
+        by: String(ov.by || "")
+      } : null,
+      canRevert: !!d.canRevert,
+      writeOpen: !(d.writeGate && d.writeGate.open === false)
+    };
+  }
+  function buildSavePayload(model, input) {
+    const pol = model && model.policy || {};
+    const min = Number(pol.minTakeBudget) || 0;
+    const max = Number(pol.maxTakeBudget) || 0;
+    const budget = Number(input && input.takeBudget);
+    if (!Number.isFinite(budget) || budget < min || budget > max) {
+      return { ok: false, error: t("takeBudget \u987B\u4E3A ") + min + "\u2013" + max + t(" \u7684\u6570\u503C\uFF08ContextPolicy \u9884\u7B97\u57DF\uFF09") };
+    }
+    const { kept, dropped } = capTags(
+      parseTagInput(input && input.tagList),
+      Number(pol.maxTagsTotal) || 20,
+      Number(pol.maxTagsPerType) || 5
+    );
+    return {
+      ok: true,
+      dropped,
+      payload: {
+        takeBudget: Math.round(budget),
+        tagSig: kept,
+        note: String((input && input.note) == null ? "" : input.note).slice(0, 512),
+        by: "console:web",
+        baseRevision: model && model.override ? Number(model.override.revision) || 0 : 0
+      }
+    };
+  }
+  function sessionRowHtml(m) {
+    if (!m.session) {
+      return t('<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u5951\u7EA6\u9762\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>');
+    }
+    const s = m.session;
+    const cls = s.state === "suspected-stall" || s.state === "escalated" ? "esc" : s.state ? "acc" : "mute";
+    return kv([
+      ["state", s.state ? chip(s.state, cls) : '<span class="faint">\u2014</span>'],
+      ["phase", esc(s.phase || "\u2014")],
+      [t("\u5FC3\u8DF3"), esc(fmtNum(s.heartbeats)) + t(" \u6B21") + (s.lastBeat ? t(" \xB7 \u6700\u8FD1 ") + esc(relAge(s.lastBeat) || t("\u65F6\u95F4\u672A\u77E5")) : "")],
+      [t("\u52A8\u4F5C"), esc(trunc(s.lastAction || "\u2014", 80))]
+    ]);
+  }
+  function chunksHtml(m) {
+    if (!m.chunks.length) {
+      return t('<div class="small faint">\u65E0\u7D22\u5F15\u5019\u9009\uFF08tagSig \u672A\u88C5\u914D\u6216\u7D22\u5F15\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u5192\u5145\u88C5\u914D\u5305\u5185\u5BB9\uFF09\u3002</div>');
+    }
+    return m.chunks.map((c) => {
+      const key = [c.kind, c.scope, c.name].filter(Boolean).join("/");
+      const go = c.kind && c.name ? objRoute(c.kind, c.scope || "global", c.name) : "";
+      const titleHtml = go ? '<span class="lk mono" data-go="' + esc(go) + '">' + esc(trunc(key, 64)) + "</span>" : '<b class="mono">' + esc(trunc(key, 64)) + "</b>";
+      return '<div class="mini-row"' + (go ? ' data-go="' + esc(go) + '"' : "") + '><div class="mr-main"><div>' + titleHtml + " " + chip(String(Math.round(c.score)), c.score >= 60 ? "ok" : "mute") + "</div>" + (c.why ? '<div class="mr-sub small">' + esc(trunc(c.why, 90)) + "</div>" : "") + "</div></div>";
+    }).join("");
+  }
+  function topDocRoute(d) {
+    const s = String(d || "").trim();
+    if (!s) return "";
+    const p = s.split("/");
+    if (p.length >= 3) return objRoute(p[0], p[1], p.slice(2).join("/"));
+    if (p.length === 1) return docRoute("Doc", "global", s);
+    return "";
+  }
+  function shardsHtml(m) {
+    if (!m.shardsFacePresent) {
+      return t('<div class="small faint">\u5206\u7247\u7F13\u5B58\u9762\u7F3A\u5E2D\uFF08contextidx \u672A\u66B4\u9732 Shards\u2014\u2014\u8BDA\u5B9E\u964D\u7EA7\uFF0C\u4E0D\u5192\u5145\u7A7A\u7F13\u5B58\uFF09\u3002</div>');
+    }
+    if (!m.shards.length) {
+      return t('<div class="small faint">\u65E0\u751F\u6548 tag \u5206\u7247\uFF08tagSig \u672A\u88C5\u914D\u2014\u2014\u7F16\u8F91\u5206\u53C9\u540E\u9010 tagKey \u6295\u5F71 TagCtxShard\uFF09\u3002</div>');
+    }
+    return m.shards.map((s) => {
+      const topHtml = s.topDocs.length ? s.topDocs.slice(0, 4).map((d) => {
+        const go = topDocRoute(d);
+        return go ? '<span class="lk mono small" data-go="' + esc(go) + '">' + esc(trunc(String(d), 40)) + "</span>" : '<span class="mono small faint">' + esc(trunc(String(d), 40)) + "</span>";
+      }).join(" \xB7 ") : "";
+      return '<div class="mini-row"><div class="mr-main"><div>' + chipGo(s.tagKey, tagRoute(s.tagKey), "mute", true, t("\u770B\u540C tag \u6587\u6863")) + " " + (s.stale ? chip("stale", "warn") : chip("fresh", "ok")) + "</div>" + t('<div class="mr-sub small">\u76F8\u5173\u5BF9\u8C61 ') + esc(fmtNum(s.docs)) + t(" \u4E2A") + (topHtml ? " \xB7 " + topHtml : "") + "</div></div></div>";
+    }).join("");
+  }
+  function formHtml(m) {
+    if (!m.writeOpen) {
+      return t('<div class="small faint">\u5199\u9762\u5173\u65AD\uFF08--allow-apply \u672A\u5F00\u542F\uFF09\u2014\u2014\u7F16\u8F91\u5206\u53C9\u4E0D\u53EF\u7528\uFF08\u4E0E\u5FC3\u8DF3\u6CE8\u518C\u9762\u540C\u5F00\u5173\uFF0C\u4E0D\u5192\u5145\u53EF\u7F16\u8F91\uFF09\u3002</div>');
+    }
+    return '<div class="filter-bar" data-ctx-form><input class="inp" data-ctx-budget type="number" min="' + m.policy.minTakeBudget + '" max="' + m.policy.maxTakeBudget + '" step="500" value="' + m.takeBudget + t('" title="\u63D0\u53D6\u9884\u7B97\uFF08token \u6570\uFF09">') + t('<input class="inp" data-ctx-tags placeholder="tag \u96C6\uFF1AtagType:tag \u9017\u53F7/\u7A7A\u683C\u5206\u9694\uFF08\u6BCF\u7C7B\u2264') + m.policy.maxTagsPerType + t(" \u603B\u2264") + m.policy.maxTagsTotal + '\uFF09">' + t('<input class="inp" data-ctx-note placeholder="\u5206\u53C9\u5907\u6CE8\uFF08\u53EF\u9009\uFF09">') + t('<button class="btn btn-secondary sm" data-ctx-save>\u4FDD\u5B58\u5206\u53C9</button>') + '<button class="btn btn-ghost sm" data-ctx-revert' + (m.canRevert ? "" : " disabled") + t(">\u64A4\u9500\u4E0A\u6B21</button>") + "</div>";
+  }
+  function renderSessionCtx(m) {
+    const headChips = (m.degraded ? chip(t("\u7D22\u5F15\u5019\u9009\u6295\u5F71"), "warn") : "") + (m.writeOpen ? chip(t("\u5199\u9762\u5F00"), "ok") : chip(t("\u5199\u9762\u5173\u65AD"), "esc")) + (m.canRevert ? chip(t("\u53EF\u64A4\u9500"), "acc") : "");
+    const ovLine = m.override ? t('<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ') + esc(fmtNum(m.override.revision)) + " \xB7 takeBudget " + esc(fmtNum(m.override.takeBudget)) + " \xB7 by " + esc(m.override.by || "\u2014") + (m.override.note ? t(" \xB7 \u5907\u6CE8 ") + esc(trunc(m.override.note, 60)) : "") + (m.override.updatedAt ? " \xB7 " + esc(relAge(m.override.updatedAt) || "") : "") + "</div>" : t('<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>');
+    return t('<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">') + headChips + '</span></div><div class="card-b">' + sessionRowHtml(m) + '<div style="margin-top:10px">' + kv([
+      ["takeBudget", '<b class="mono">' + esc(fmtNum(m.takeBudget)) + t('</b> <span class="small faint">\uFF08\u7F3A\u7701 ') + esc(fmtNum(m.takeBudgetDefault)) + t(" \xB7 \u57DF ") + m.policy.minTakeBudget + "\u2013" + m.policy.maxTakeBudget + "\uFF09</span>"],
+      ["tagSig", m.tags.length ? m.tags.map((t2) => chipGo(t2, tagRoute(t2), "mute", true, t("\u770B\u540C tag \u6587\u6863"))).join(" ") : t('<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=') + esc(m.tagSigSource) + "\uFF09</span>"],
+      [t("\u5206\u7247\u7F13\u5B58"), m.stats ? t("\u5171 ") + esc(fmtNum(m.stats.total)) + t(" \u7247 \xB7 stale ") + esc(fmtNum(m.stats.stale)) + t(" \xB7 \u91CD\u5EFA\u9608\u503C ") + esc(fmtNum(m.stats.threshold)) : '<span class="faint">\u2014</span>'],
+      ["shardMaxTokens", '<span class="mono">' + esc(fmtNum(m.policy.shardMaxTokens)) + "</span>"]
+    ]) + "</div>" + ovLine + '<div data-ctx-notice></div><div style="margin:10px 0 4px">' + formHtml(m) + "</div>" + t('<h3 class="sec-title" style="margin:10px 0 6px">chunks\uFF08\u7D22\u5F15 TopK \u5019\u9009\uFF09</h3>') + chunksHtml(m) + t('<h3 class="sec-title" style="margin:10px 0 6px">\u76F8\u5173 Tag \u5206\u7247\uFF08TagCtxShard\uFF09</h3>') + shardsHtml(m) + (m.degraded && m.degradedReason ? '<div class="small faint" style="margin-top:8px">' + esc(m.degradedReason) + "</div>" : "") + "</div>";
+  }
+  function focusIn(box) {
+    return !!(document.activeElement && box.contains(document.activeElement));
+  }
+  function paint(box, ctx2, id, model) {
+    PANEL.set(id, { model });
+    box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(model) + "</div>";
+    wireSessionCtx(box, ctx2, id);
+  }
+  async function refresh(ctx2, id, box) {
+    const r = await ctx2.api.sessionContext(id);
+    if (!r.ok || focusIn(box)) return;
+    paint(box, ctx2, id, normalizeContext(r.data));
+  }
+  function wireSessionCtx(box, ctx2, id) {
+    const q = (sel) => box.querySelector(sel);
+    const notice2 = (html3) => {
+      const slot = q("[data-ctx-notice]");
+      if (slot) slot.innerHTML = html3;
+    };
+    const saveBtn = q("[data-ctx-save]");
+    if (saveBtn) saveBtn.addEventListener("click", async () => {
+      const cur = (PANEL.get(id) || {}).model;
+      if (!cur) return;
+      const built = buildSavePayload(cur, {
+        takeBudget: q("[data-ctx-budget]").value,
+        tagList: q("[data-ctx-tags]").value,
+        note: q("[data-ctx-note]").value
+      });
+      if (!built.ok) {
+        notice2('<div class="small faint">' + esc(built.error) + "</div>");
+        return;
+      }
+      saveBtn.disabled = true;
+      const r = await ctx2.api.saveSessionContext(id, built.payload);
+      saveBtn.disabled = false;
+      if (!r.ok) {
+        notice2(t('<div class="small faint">\u4FDD\u5B58\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + "\uFF09" + (r.status === 409 ? t("\u2014\u2014\u7248\u672C\u51B2\u7A81\uFF1A\u8BF7\u5237\u65B0\u9762\u677F\u5BF9\u9F50\u6700\u65B0\u7248\u672C\u540E\u91CD\u8BD5\uFF08\u539F\u7A3F\u4E0D\u8986\u76D6\uFF09") : "") + "</div>");
+        return;
+      }
+      notice2(t('<div class="small faint">\u5DF2\u4FDD\u5B58\uFF08revision ') + esc(String(r.data && r.data.override && r.data.override.revision || "?")) + "\uFF09" + (built.dropped.length ? t("\uFF1B\u8D85\u9650 tag \u6536\u655B ") + built.dropped.length + t(" \u4E2A\uFF1A") + esc(trunc(built.dropped.join(", "), 80)) : "") + "\u3002</div>");
+      refresh(ctx2, id, box);
+    });
+    const revertBtn = q("[data-ctx-revert]");
+    if (revertBtn) revertBtn.addEventListener("click", async () => {
+      if (!window.confirm(t("\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F"))) return;
+      revertBtn.disabled = true;
+      const r = await ctx2.api.revertSessionContext(id);
+      revertBtn.disabled = false;
+      if (!r.ok) {
+        notice2(t('<div class="small faint">\u64A4\u9500\u5931\u8D25\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6808\u7A7A\u4E0D\u53EF\u64A4\uFF08\u4E0D\u5192\u5145\u64A4\u9500\u6210\u529F\uFF09\u3002</div>"));
+        return;
+      }
+      notice2(t('<div class="small faint">\u5DF2\u64A4\u9500\u2014\u2014\u5199\u524D\u5FEB\u7167\u5DF2\u6062\u590D\u3002</div>'));
+      refresh(ctx2, id, box);
+    });
+  }
+  async function mountSessionCtx(el, ctx2, id) {
+    const box = el.querySelector("[data-ctx-panel]");
+    if (!box || !id) return;
+    if (focusIn(box)) return;
+    const cached = PANEL.get(id);
+    if (cached && cached.model) box.innerHTML = '<div class="card" data-ctx-card>' + renderSessionCtx(cached.model) + "</div>";
+    const stamp = typeof location !== "undefined" ? location.hash : "";
+    const r = await ctx2.api.sessionContext(id);
+    if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    if (!r.ok) {
+      if (!focusIn(box)) {
+        box.innerHTML = t('<div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u9762\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + (r.status === 503 ? t("\u2014\u2014contextidx \u672A\u88C5\u914D\uFF08\u9632\u5FA1\u9762\uFF09") : "") + t("\uFF09\u3002\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div></div></div>");
+      }
+      return;
+    }
+    if (focusIn(box)) return;
+    paint(box, ctx2, id, normalizeContext(r.data));
+  }
+
+  // src/screens/chat.js
+  function faces2() {
+    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
+  }
+  function blocksOf(content) {
+    const out = { text: "", reasoning: "", toolCalls: [] };
+    if (!Array.isArray(content)) return out;
+    for (const b of content) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "text" && typeof b.text === "string") out.text += (out.text ? "\n" : "") + b.text;
+      else if (b.type === "reasoning" && typeof b.text === "string") out.reasoning += (out.reasoning ? "\n" : "") + b.text;
+      else if (b.type === "tool-call") out.toolCalls.push({ id: String(b.id || b.callId || ""), name: String(b.name || ""), argsRaw: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? b.args ?? "") });
+    }
+    return out;
+  }
+  function mapTranscript(events) {
+    const nodes = [];
+    const tools = /* @__PURE__ */ new Map();
+    const order = [];
+    const rows = Array.isArray(events) ? [...events] : [];
+    rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
+    for (const ev of rows) {
+      if (!ev || typeof ev !== "object") continue;
+      const type2 = String(ev.type || "");
+      const data = ev.data && typeof ev.data === "object" ? ev.data : {};
+      const seq2 = Number(ev.seq) || 0;
+      const time = Number(ev.time) || 0;
+      if (type2 === "user/message") {
+        const src = data.source && typeof data.source === "object" ? String(data.source.kind || "") : "";
+        if (src === "compact-checkpoint") continue;
+        const b = blocksOf(data.content);
+        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: src !== "user" });
+      } else if (type2 === "assistant/message") {
+        const b = blocksOf(data.content);
+        for (const tc of b.toolCalls) order.push(tc.id);
+        if (!b.text && !b.reasoning && b.toolCalls.length) continue;
+        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning });
+      } else if (type2 === "tool/call") {
+        const id = String(data.callId || data.id || "");
+        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "" });
+        order.push(id);
+      } else if (type2 === "tool/result") {
+        const id = String(data.callId || data.id || "");
+        const t2 = tools.get(id);
+        if (t2) t2.result = typeof data.content === "string" ? data.content : data.output != null ? String(typeof data.output === "string" ? data.output : JSON.stringify(data.output)) : "";
+      } else if (type2 === "system/message" || type2 === "developer/message") {
+        nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
+      }
+    }
+    const seenToolIds = /* @__PURE__ */ new Set();
+    for (const id of order) {
+      if (seenToolIds.has(id)) continue;
+      seenToolIds.add(id);
+      const t2 = tools.get(id);
+      if (!t2) continue;
+      nodes.push({ kind: "tool", seq: t2.seq, time: t2.time, name: t2.name || t("\u5DE5\u5177"), args: t2.args, result: t2.result });
+    }
+    nodes.sort((a, b) => a.seq - b.seq);
+    return nodes;
+  }
+  function nextBatch(nodes, paintedKeys, firstPaint) {
+    const rows = Array.isArray(nodes) ? nodes : [];
+    if (firstPaint) return rows;
+    const out = rows.filter((n) => !paintedKeys.has(nodeKey(n)));
+    return out;
+  }
+  function nodeKey(n) {
+    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
+  }
+  function modeForState(st) {
+    return !!(st && st.running === true) ? "steer" : "queue";
+  }
+  function dayGroupOf(updatedAt, nowMs) {
+    const t2 = Number(updatedAt) || 0;
+    if (!t2) return "earlier";
+    const now = Number(nowMs) || Date.now();
+    const startOf = new Date(now);
+    startOf.setHours(0, 0, 0, 0);
+    return now - t2 < 24 * 3600 * 1e3 && startOf.getTime() <= t2 ? "today" : "earlier";
+  }
+  var CHAT = {
+    sessionId: "",
+    // 当前会话（宿主发 id——零手填）
+    timer: 0,
+    // 轮询定时器（导航离开即清）
+    pending: [],
+    // 待达回声 {text, requestId, at}（C-05 按 requestId 销账）
+    lastSeq: 0,
+    // 已渲染转录尾（增量分派锚）
+    painted: /* @__PURE__ */ new Set(),
+    // 已渲染节点键（nodeKey 族）
+    seenSeq: /* @__PURE__ */ new Map(),
+    // 会话 id → 已见尾 seq（未读点 highwater）
+    state: null,
+    // 最近一次 chat-state 词形
+    el: null
+    // 当前屏根（路由切换换引用）
+  };
+  var LAST = { route: "", paramKey: "", locale: "" };
+  function nodeHtml(n, names) {
+    if (n.kind === "user") {
+      const pending = n.pending ? '<div class="chat-pending">' + esc(t("\u9001\u8FBE\u4E2D\u2026")) + "</div>" : n.injected ? '<div class="chat-pending">' + esc(t("\u6CE8\u5165\u4E0A\u4E0B\u6587")) + "</div>" : "";
+      const err = n.error ? '<div class="chat-err"><span>' + esc(t("\u9001\u8FBE\u5931\u8D25\uFF08") + String(n.error) + t("\uFF09")) + '</span><button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || "")) + '">' + esc(t("\u91CD\u8BD5")) + "</button></div>" : "";
+      return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '"><div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">\u2026</span>') + "</div>" + (pending || err ? "<div>" + pending + err + "</div>" : "") + "</div>";
+    }
+    if (n.kind === "assistant") {
+      if (!n.text && !n.reasoning) return "";
+      const reasoning = n.reasoning ? '<details class="chat-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u6DF1\u5EA6\u601D\u8003")) + '</summary><div class="ex-body">' + linkifyRefs(n.reasoning, names) + "</div></details>" : "";
+      const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + "</div>" : "";
+      return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + "</div>";
+    }
+    if (n.kind === "tool") {
+      const detail = esc(trunc(String(n.args || ""), 800)) + (n.result ? "\n" + t("\u2500\u2500\u2500\u2500 \u7ED3\u679C \u2500\u2500\u2500\u2500") + "\n" + esc(trunc(String(n.result), 800)) : "");
+      const done = n.result ? '<span class="chat-tool-ok">' + esc(t("\u5B8C\u6210")) + "</span>" : '<span class="chat-tool-none">' + esc(t("\u6267\u884C\u4E2D\u2026")) + "</span>";
+      return '<details class="chat-fold chat-tool" data-node="' + esc(nodeKey(n)) + '"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u5DF2\u8C03\u7528")) + ' <span class="chat-tool-name">' + esc(n.name) + "</span> " + done + '</summary><div class="ex-body">' + detail + "</div></details>";
+    }
+    const label = (n.dev ? t("\u5F00\u53D1\u8005") + " \xB7 " : "") + trunc(String(n.text || ""), 200);
+    return '<div class="chat-sysrow" data-node="' + esc(nodeKey(n)) + '">' + esc(label) + "</div>";
+  }
+  function pendingNodes() {
+    return CHAT.pending.map((p) => ({ kind: "user", seq: Number.MAX_SAFE_INTEGER, text: p.text, pending: true, requestId: p.requestId }));
+  }
+  function liveRowHtml(st) {
+    if (!st || st.running !== true) return "";
+    const tool = String(st.currentTool || "");
+    let dur = "";
+    if (tool && Number(st.currentToolSince) > 0) {
+      const s = Math.max(0, Math.round((Date.now() - Number(st.currentToolSince)) / 1e3));
+      dur = "\uFF08" + esc(t("\u5DF2 {n} \u79D2").replace("{n}", String(s))) + "\uFF09";
+    }
+    const qd = Number(st.queueDepth) || 0;
+    const sd = Number(st.steerDepth) || 0;
+    const queue = qd ? ' <span class="chip acc tiny">' + esc(t("\u6392\u961F {n}").replace("{n}", String(qd))) + "</span>" : "";
+    const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u63D2\u8BDD {n}").replace("{n}", String(sd))) + "</span>" : "";
+    const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("agent \u8FD0\u884C\u4E2D\u2026");
+    return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + "</span>" + queue + steer + "</div>";
+  }
+  function emptyStateHtml() {
+    const samples = [
+      t("\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"),
+      t("\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"),
+      t("\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981"),
+      t("\u68C0\u67E5 workflow \u5F15\u64CE\u7684\u8FD0\u884C\u8BB0\u5F55\uFF0C\u6807\u51FA\u5931\u8D25\u539F\u56E0")
+    ];
+    return '<div class="chat-empty"><div class="chat-empty-hi">' + esc(t("\u6709\u4EC0\u4E48\u53EF\u4EE5\u5E2E\u5FD9\u7684\uFF1F")) + '</div><div class="chat-empty-sub">' + esc(t("\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\uFF0F\u63D0\u4EA4\u9700\u6C42\u2014\u2014\u4F1A\u8BDD\u7531\u5BBF\u4E3B\u5EFA\u6863\uFF0C\u8F6C\u5F55\u5373\u771F\u5B9E journal\u3002")) + '</div><div class="chat-samples">' + samples.map((s) => '<button class="chat-sample" data-cc-sample>' + esc(s) + "</button>").join("") + "</div></div>";
+  }
+  function stateChipsHtml(st) {
+    if (!st) return "";
+    const running = st.running === true;
+    const chips = [running ? chip(t("\u8FD0\u884C\u4E2D"), "acc") : chip(t("\u7A7A\u95F2"), "mute")];
+    const qd = Number(st.queueDepth) || 0;
+    if (qd) chips.push(chip(t("\u6392\u961F {n}").replace("{n}", String(qd)), "llm"));
+    return chips.join(" ");
+  }
+  function sessionRowHtml2(s, cur, highwater) {
+    const id = String(s.sessionId || "");
+    const seen = Number(highwater instanceof Map ? highwater.get(id) : 0) || 0;
+    const unread = !s.blank && Number(s.updatedAt) > seen && id !== cur;
+    const live = s.running === true;
+    const dot = live ? " live" : unread ? " unread" : "";
+    const title = String(s.title || "");
+    return '<div class="chat-sess' + (id === cur ? " active" : "") + '" data-sess-pick="' + esc(id) + '" role="link"><span class="chat-dot' + dot + '"></span><div class="chat-sess-main"><div class="chat-sess-id">' + esc(trunc(title || id, 26)) + "</div>" + (title ? '<div class="chat-sess-sub mono">' + esc(trunc(id, 26)) + "</div>" : "") + '</div><div class="chat-sess-side">' + (live ? chip(t("\u8FD0\u884C\u4E2D"), "ok") : s.blank ? chip(t("\u7A7A\u767D"), "mute") : "") + (s.updatedAt ? '<span class="chat-sess-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</div></div>";
+  }
+  function sessionsHtml(items, cur, seenSeq) {
+    const rows = (Array.isArray(items) ? items : []).filter((s) => s && s.sessionId);
+    if (!rows.length) return '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u4E3A\u7A7A\u2014\u2014\u70B9\u300C\u65B0\u4F1A\u8BDD\u300D\u7531\u5BBF\u4E3B\u5EFA\u6863\u3002")) + "</div>";
+    const today = rows.filter((s) => dayGroupOf(s.updatedAt) === "today");
+    const earlier = rows.filter((s) => dayGroupOf(s.updatedAt) !== "today");
+    const out = [];
+    if (today.length) {
+      out.push('<div class="chat-sess-day">' + esc(t("\u4ECA\u5929")) + "</div>");
+      out.push(today.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
+    }
+    if (earlier.length) {
+      out.push('<div class="chat-sess-day">' + esc(t("\u66F4\u65E9")) + "</div>");
+      out.push(earlier.map((s) => sessionRowHtml2(s, cur, seenSeq)).join(""));
+    }
+    return out.join("");
+  }
+  function composerHtmlInner(can, running) {
+    const mode = running ? "steer" : "queue";
+    return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(running ? t("Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295") : t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62")) + "</div>";
+  }
+  function screenShell(can) {
+    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
+  }
+  function streamEl(el) {
+    return el.querySelector("[data-cc-tr]");
+  }
+  function nearBottom(box) {
+    return box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  }
+  function followBottom(box) {
+    box.scrollTop = box.scrollHeight;
+  }
+  function applyIncremental(el, nodes) {
+    const box = streamEl(el);
+    if (!box) return { appended: 0, jumpVisible: false };
+    let col = box.querySelector("[data-cc-col]");
+    if (!col) {
+      box.innerHTML = '<div class="chat-col" data-cc-col></div>';
+      col = box.querySelector("[data-cc-col]");
+    }
+    const wasBottom = nearBottom(box);
+    const fresh = nextBatch(nodes, CHAT.painted, CHAT.lastSeq === 0);
+    if (CHAT.lastSeq === 0 && !CHAT.painted.size) {
+      col.innerHTML = "";
+    }
+    for (const n of fresh) {
+      CHAT.painted.add(nodeKey(n));
+      if (Number(n.seq) && Number(n.seq) !== Number.MAX_SAFE_INTEGER && Number(n.seq) > CHAT.lastSeq) CHAT.lastSeq = Number(n.seq);
+      col.insertAdjacentHTML("beforeend", nodeHtml(n, null));
+    }
+    const pendBox = box.querySelector("[data-cc-pend]");
+    const pendHtml = pendingNodes().map((n) => nodeHtml(n, null)).join("");
+    if (pendHtml) {
+      if (!pendBox) {
+        col.insertAdjacentHTML("beforeend", "<div data-cc-pend>" + pendHtml + "</div>");
+      } else {
+        pendBox.innerHTML = pendHtml;
+      }
+    } else if (pendBox) {
+      pendBox.remove();
+    }
+    const empty = box.querySelector("[data-cc-empty]");
+    const isEmpty = !nodes.length && !CHAT.pending.length;
+    if (isEmpty && !empty) col.insertAdjacentHTML("afterbegin", emptyStateHtml());
+    else if (!isEmpty && empty) empty.remove();
+    const jump = el.querySelector("[data-cc-jump]");
+    if (wasBottom) {
+      followBottom(box);
+      if (jump) {
+        jump.hidden = true;
+      }
+      return { appended: fresh.length, jumpVisible: false };
+    }
+    if (jump && fresh.length) {
+      jump.hidden = false;
+      const n = jump.querySelector("[data-cc-jump-n]");
+      const prev = Number(n && n.textContent) || 0;
+      if (n) n.textContent = String(prev + fresh.length);
+    }
+    return { appended: fresh.length, jumpVisible: !!(jump && !jump.hidden) };
+  }
+  async function refreshSessions(el, f) {
+    const box = el.querySelector("[data-cc-sessions]");
+    if (!box) return;
+    const r = await f.sessions();
+    if (r.status === 200) {
+      box.innerHTML = sessionsHtml(r.data && r.data.items, CHAT.sessionId, CHAT.seenSeq);
+    } else {
+      box.innerHTML = '<div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div>";
+    }
+    box.querySelectorAll("[data-sess-pick]").forEach((row) => {
+      row.addEventListener("click", () => {
+        pickSession(el, f, String(row.getAttribute("data-sess-pick") || ""));
+      });
+    });
+  }
+  function pickSession(el, f, id) {
+    if (!id || id === CHAT.sessionId) return;
+    CHAT.sessionId = id;
+    CHAT.lastSeq = 0;
+    CHAT.painted = /* @__PURE__ */ new Set();
+    CHAT.state = null;
+    paintState(el);
+    refreshSessions(el, f);
+    refreshTranscript(el, f);
+    ensureCtxBar(el, id);
+  }
+  function paintState(el) {
+    const slot = el.querySelector("[data-cc-state]");
+    if (slot) slot.innerHTML = stateChipsHtml(CHAT.state);
+    const live = el.querySelector("[data-cc-live]");
+    const st = CHAT.state;
+    if (st && st.running === true) {
+      const html3 = liveRowHtml(st);
+      if (live) {
+        live.innerHTML = html3;
+      } else {
+        const box = streamEl(el);
+        if (box) {
+          const col = box.querySelector("[data-cc-col]");
+          (col || box).insertAdjacentHTML("afterbegin", "<div data-cc-live>" + html3 + "</div>");
+        }
+      }
+    } else if (live) {
+      live.remove();
+    }
+    const btn = el.querySelector("[data-cc-send]");
+    const ta = el.querySelector("[data-cc-text]");
+    const running = !!(st && st.running === true);
+    if (btn && running !== (btn.dataset.mode === "steer")) {
+      btn.dataset.mode = running ? "steer" : "queue";
+      btn.title = running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001");
+      const ico = btn.querySelector(".chat-send-ico");
+      if (ico) ico.textContent = running ? "\u25A0" : "\u2191";
+      btn.classList.toggle("stop", running);
+    }
+    if (ta) {
+      const ph = running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026");
+      if (ta.placeholder !== ph) ta.placeholder = ph;
+    }
+  }
+  async function refreshState(el, f) {
+    if (!CHAT.sessionId) {
+      CHAT.state = null;
+      paintState(el);
+      return;
+    }
+    const r = await f.state(CHAT.sessionId);
+    if (r.status !== 200 || !r.data || typeof r.data !== "object") {
+      return;
+    }
+    CHAT.state = r.data;
+    paintState(el);
+    paintSendModeNote(el);
+  }
+  function paintSendModeNote(el) {
+    const note2 = el.querySelector("[data-cc-note]");
+    if (!note2) return;
+    const st = CHAT.state;
+    const running = !!(st && st.running === true);
+    note2.textContent = running ? t("\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09") : t("\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09");
+  }
+  async function refreshTranscript(el, f) {
+    const box = streamEl(el);
+    if (!box) return;
+    if (!CHAT.sessionId) {
+      box.innerHTML = '<div class="chat-col" data-cc-col>' + emptyStateHtml() + "</div>";
+      return;
+    }
+    const r = await f.transcript(CHAT.sessionId, 80);
+    if (r.status !== 200) {
+      box.innerHTML = '<div class="chat-col" data-cc-col><div class="chat-empty"><div class="chat-empty-sub">' + esc(t("\u8F6C\u5F55\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08") + String(r.status) + (r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09\u2014\u2014\u4E0D\u5192\u5145\u7A7A\u3002")) + "</div></div></div>";
+      CHAT.lastSeq = 0;
+      CHAT.painted = /* @__PURE__ */ new Set();
+      return;
+    }
+    const events = r.data && Array.isArray(r.data.events) ? r.data.events : [];
+    if (CHAT.pending.length) {
+      const byReq = new Set(events.map((e) => String(e && e.data && e.data.requestId || "")));
+      const texts = new Set(events.filter((e) => e && e.type === "user/message").map((e) => String((e.data && e.data.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n"))));
+      CHAT.pending = CHAT.pending.filter((p) => !(p.requestId && byReq.has(p.requestId)) && !texts.has(p.text));
+    }
+    const nodes = mapTranscript(events);
+    const lastEvSeq = events.reduce((m, e) => Math.max(m, Number(e && e.seq) || 0), 0);
+    if (lastEvSeq) CHAT.seenSeq.set(CHAT.sessionId, Math.max(CHAT.seenSeq.get(CHAT.sessionId) || 0, lastEvSeq));
+    applyIncremental(el, nodes);
+    refreshState(el, f);
+  }
+  function ensureCtxBar(el, sessionId) {
+    const holder = el.querySelector("[data-cc-ctx]");
+    if (!holder) return;
+    if (!sessionId) {
+      holder.innerHTML = "";
+      return;
+    }
+    if (!holder.querySelector("[data-ctx-panel]")) {
+      holder.innerHTML = '<details class="ex-block chat-ctx"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u52A0\u8F7D\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></details>";
+      const ctx2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
+      if (ctx2) mountSessionCtx(el, ctx2, sessionId);
+    }
+  }
+  async function doSend(el, f, textOverride) {
+    const ta = el.querySelector("[data-cc-text]");
+    const text2 = String(textOverride != null ? textOverride : ta ? ta.value : "").trim();
+    if (!text2) return;
+    if (!CHAT.sessionId) {
+      const cr = await f.create();
+      if (cr.status === 200 && cr.data && cr.data.sessionId) {
+        CHAT.sessionId = String(cr.data.sessionId);
+        refreshSessions(el, f);
+        ensureCtxBar(el, CHAT.sessionId);
+      } else {
+        const note2 = el.querySelector("[data-cc-note]");
+        if (note2) note2.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(cr.status) + t("\uFF09");
+        return;
+      }
+    }
+    if (ta && textOverride == null) ta.value = "";
+    autoGrow2(ta);
+    const mode = modeForState(CHAT.state);
+    const requestId = "cc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    CHAT.pending.push({ text: text2, requestId, at: Date.now() });
+    applyIncremental(el, []);
+    let r;
+    try {
+      r = await (mode === "steer" && typeof f.send === "function" ? f.send(CHAT.sessionId, text2, "steer") : f.send(CHAT.sessionId, text2));
+    } catch (e) {
+      r = { status: 0, data: { error: String(e && e.message || e) } };
+    }
+    if (!(r && r.status === 200)) {
+      failPending(requestId, String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : ""));
+      applyIncremental(el, []);
+    }
+    setTimeout(() => refreshTranscript(el, f), 900);
+    setTimeout(() => refreshTranscript(el, f), 3e3);
+  }
+  function failPending(requestId, errText) {
+    const p = CHAT.pending.find((x) => x.requestId === requestId);
+    if (p) CHAT.pending = CHAT.pending.filter((x) => x !== p);
+    CHAT.failed = CHAT.failed || [];
+    CHAT.failed.push({ text: p ? p.text : "", requestId, error: errText || "0" });
+  }
+  function bindRetry2(el, f) {
+    el.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-cc-retry]");
+      if (!btn) return;
+      const requestId = String(btn.getAttribute("data-cc-retry") || "");
+      const p = (CHAT.failed || []).find((x) => x.requestId === requestId);
+      if (!p) return;
+      CHAT.failed = (CHAT.failed || []).filter((x) => x !== p);
+      doSend(el, f, p.text);
+    });
+  }
+  function bindImageUpload(el, f) {
+    if (!f || typeof f.uploadImage !== "function") return;
+    const input = el.querySelector("[data-cc-img]");
+    const previews = el.querySelector("[data-cc-img-previews]");
+    const ta = el.querySelector("[data-cc-text]");
+    if (!input || !ta) return;
+    const note2 = (msg) => {
+      const n = el.querySelector("[data-cc-note]");
+      if (n) n.textContent = msg;
+    };
+    const uploadOne = async (file) => {
+      if (!file || !String(file.type || "").startsWith("image/")) return;
+      if (file.size > 8 << 20) {
+        note2(t("\u56FE\u7247\u8D85\u8FC7 8MB \u4E0A\u9650"));
+        return;
+      }
+      note2(t("\u56FE\u7247\u4E0A\u4F20\u4E2D\u2026"));
+      try {
+        const url = await f.uploadImage(file);
+        const tag2 = "![image](" + url + ")";
+        ta.value = ta.value.trimEnd() + (ta.value.trimEnd() ? "\n" : "") + tag2;
+        autoGrow2(ta);
+        note2(t("\u56FE\u7247\u5DF2\u9644\u52A0\uFF08\u968F\u6D88\u606F\u53D1\u9001\uFF09"));
+        if (previews) {
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = "preview";
+          img.style.cssText = "width:44px;height:44px;object-fit:cover;border-radius:6px;margin-left:6px";
+          previews.appendChild(img);
+        }
+      } catch (e) {
+        note2(t("\u56FE\u7247\u4E0A\u4F20\u5931\u8D25\uFF08") + String(e && e.message || e) + t("\uFF09"));
+      }
+    };
+    input.addEventListener("change", () => {
+      Array.from(input.files || []).forEach(uploadOne);
+      input.value = "";
+    });
+    ta.addEventListener("paste", (ev) => {
+      const items = Array.from(ev.clipboardData && ev.clipboardData.items || []);
+      const hit = items.find((it) => String(it.type || "").startsWith("image/"));
+      if (!hit) return;
+      const file = hit.getAsFile();
+      if (file) {
+        ev.preventDefault();
+        uploadOne(file);
+      }
+    });
+    if (previews) previews.addEventListener("click", (ev) => {
+      const img = ev.target.closest("img");
+      if (!img) return;
+      const src = img.getAttribute("src") || "";
+      ta.value = ta.value.split("\n").filter((ln) => ln.trim() !== "![image](" + src + ")").join("\n");
+      autoGrow2(ta);
+      img.remove();
+    });
+  }
+  async function doStop(el, f) {
+    const note2 = el.querySelector("[data-cc-note]");
+    if (!CHAT.sessionId) return;
+    if (typeof f.stop !== "function") {
+      if (note2) note2.textContent = t("\u505C\u6B62\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js.stop \u7F3A\u5E2D\uFF09\u2014\u2014\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002");
+      return;
+    }
+    let r;
+    try {
+      r = await f.stop(CHAT.sessionId);
+    } catch (e) {
+      r = { status: 0, data: { error: String(e && e.message || e) } };
+    }
+    if (r && r.status === 200) {
+      if (note2) note2.textContent = t("\u5DF2\u8BF7\u6C42\u505C\u6B62\u2014\u2014\u4F1A\u8BDD\u56DE\u5230\u7A7A\u95F2\u540E\u8F6C\u5F55\u53EF\u89C1\u4E2D\u65AD\u8BCD\u5F62\u3002");
+    } else {
+      if (note2) note2.textContent = t("\u505C\u6B62\u5931\u8D25\uFF08") + String(r && r.status) + (r && r.data && r.data.error ? " \xB7 " + String(r.data.error) : "") + t("\uFF09");
+    }
+    setTimeout(() => refreshState(el, f), 800);
+  }
+  function autoGrow2(ta) {
+    if (!ta) return;
+    ta.style.height = "auto";
+    const lh = 24;
+    const max = lh * 8 + 8;
+    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+  }
+  function dialogScreen(el, ctx2) {
+    const f = faces2();
+    const can = !!(f && typeof f.send === "function");
+    CHAT.el = el;
+    el.innerHTML = screenShell(can);
+    el.classList.add("route-chat");
+    const paintLinks = () => {
+      const slot = el.querySelector("[data-sess-backlinks-slot]");
+      if (slot) slot.innerHTML = sessBacklinksHtml(ctx2.store, CHAT.sessionId);
+      slot && slot.querySelectorAll("[data-go]").forEach((n) => {
+        n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
+      });
+    };
+    paintLinks();
+    const unsubLinks = ctx2.store.subscribe(() => {
+      paintLinks();
+      refreshSessionsSoon(el, f);
+    });
+    el.addEventListener("disconnected", () => {
+      try {
+        unsubLinks();
+      } catch {
+      }
+      CHAT.el = null;
+    }, { once: true });
+    const newBtn = el.querySelector("[data-cc-new]");
+    if (newBtn) newBtn.addEventListener("click", async () => {
+      newBtn.disabled = true;
+      const r = await f.create();
+      newBtn.disabled = false;
+      if (r.status === 200 && r.data && r.data.sessionId) {
+        CHAT.sessionId = String(r.data.sessionId);
+        CHAT.lastSeq = 0;
+        CHAT.painted = /* @__PURE__ */ new Set();
+        refreshSessions(el, f);
+        refreshTranscript(el, f);
+        ensureCtxBar(el, CHAT.sessionId);
+      } else {
+        const note2 = el.querySelector("[data-cc-note]");
+        if (note2) note2.textContent = t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09");
+      }
+    });
+    const sendBtn = el.querySelector("[data-cc-send]");
+    const textTa = el.querySelector("[data-cc-text]");
+    if (sendBtn && textTa) {
+      sendBtn.addEventListener("click", () => {
+        if (sendBtn.dataset.mode === "steer" && CHAT.state && CHAT.state.running === true) {
+          doStop(el, f);
+        } else {
+          doSend(el, f);
+        }
+      });
+      textTa.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" && !ev.shiftKey) {
+          ev.preventDefault();
+          doSend(el, f);
+        }
+      });
+      textTa.addEventListener("input", () => autoGrow2(textTa));
+    }
+    el.addEventListener("click", (ev) => {
+      const s = ev.target.closest("[data-cc-sample]");
+      if (!s) return;
+      const ta = el.querySelector("[data-cc-text]");
+      if (ta) {
+        ta.value = s.textContent.trim();
+        autoGrow2(ta);
+        ta.focus();
+      }
+    });
+    const jump = el.querySelector("[data-cc-jump]");
+    if (jump) jump.addEventListener("click", () => {
+      const box = streamEl(el);
+      if (box) followBottom(box);
+      jump.hidden = true;
+      const n = jump.querySelector("[data-cc-jump-n]");
+      if (n) n.textContent = "";
+    });
+    bindRetry2(el, f);
+    bindImageUpload(el, f);
+    ensureCtxBar(el, CHAT.sessionId);
+    refreshSessions(el, f);
+    refreshTranscript(el, f);
+    if (CHAT.timer) clearInterval(CHAT.timer);
+    CHAT.timer = setInterval(() => {
+      const root = CHAT.el && CHAT.el.isConnected ? CHAT.el : document.querySelector(".route-chat");
+      if (!root || !root.isConnected) {
+        clearInterval(CHAT.timer);
+        CHAT.timer = 0;
+        return;
+      }
+      const f2 = faces2();
+      if (!f2) return;
+      refreshTranscript(root, f2);
+      refreshSessionsSoon(root, f2);
+    }, 3500);
+  }
+  var sessTick = 0;
+  function refreshSessionsSoon(el, f) {
+    sessTick++;
+    if (sessTick % 4 !== 1) return;
+    refreshSessions(el, f);
+  }
+  function render8(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    const agent = ctx2.params && ctx2.params.agent;
+    const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
+    const fresh = LAST.route !== String(ctx2.route || "") || LAST.paramKey !== paramKey || LAST.locale !== getLocale();
+    LAST.route = String(ctx2.route || "");
+    LAST.paramKey = paramKey;
+    LAST.locale = getLocale();
+    if (fresh) {
+      if (id != null && id !== "") CHAT.sessionId = String(id);
+      else CHAT.sessionId = "";
+      CHAT.pending = [];
+      CHAT.failed = [];
+      CHAT.lastSeq = 0;
+      CHAT.painted = /* @__PURE__ */ new Set();
+      dialogScreen(el, ctx2);
+      if (id == null && agent) {
+        const f2 = faces2();
+        if (f2) setTimeout(async () => {
+          if (CHAT.sessionId) return;
+          const r = await f2.sessions();
+          const items = r.status === 200 && r.data && Array.isArray(r.data.items) ? r.data.items : [];
+          const pick = items.filter((s) => s && s.sessionId).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))[0];
+          if (pick && !CHAT.sessionId && CHAT.el === el) {
+            pickSession(el, f2, String(pick.sessionId));
+          }
+        }, 700);
+      }
+      return;
+    }
+    const f = faces2();
+    if (f) refreshTranscript(el, f);
   }
 
   // src/screens/approvals.js
@@ -13134,7 +13270,7 @@ ${text2}</tr>
       x.addEventListener("click", () => ctx2.go(x.dataset.go));
     });
   }
-  function render8(el, ctx2) {
+  function render9(el, ctx2) {
     approvalsScreen(el, ctx2);
   }
 
@@ -13246,7 +13382,7 @@ ${text2}</tr>
     const hit = INDEX_CACHE.docs.find((d) => d && docKeyOf(d.kind, d.scope, d.name) === k);
     return hit && Array.isArray(hit.tags) ? hit.tags : [];
   }
-  function render9(el, ctx2) {
+  function render10(el, ctx2) {
     const store2 = ctx2.store;
     const vocab = tagVocabFromKinds(store2.kinds());
     el.innerHTML = '<div class="view-inner">' + screenHead(
@@ -13669,7 +13805,7 @@ ${text2}</tr>
     });
     el.innerHTML = '<div class="view-inner">' + screenHead(scope, "scope=" + scope + t(" \u7684\u5BF9\u8C61\u3001\u4EFB\u52A1\u3001\u8349\u7A3F\u3001\u8FD0\u884C\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09"), chipGo(t("\u7CFB\u7EDF\u6811"), "tree", "mute", false)) + '<div class="statbar">' + Object.keys(byKind).sort().map((k) => '<div class="stat" data-go="' + esc("obj/" + encodeURIComponent(k)) + '" role="link"><div class="st-num">' + byKind[k] + '</div><div class="st-label">' + esc(k) + "</div></div>").join("") + "</div>" + (objs.length ? t('<h2 class="sec-title">\u5BF9\u8C61</h2><div class="card">') + objs.map((o) => '<div class="mini-row" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '"><div class="mr-main"><div><b>' + esc(o.name) + "</b> " + kindBadge(o.kind) + '</div><div class="mr-sub small mono">r' + esc(String(o.rv || 0)) + "</div></div></div>").join("") + "</div>" : emptyBox(t("\u8BE5 scope \u6682\u65E0\u5728\u518C\u5BF9\u8C61"), t("\u8BE5 scope \u4E0B\u6682\u65E0\u5BF9\u8C61\u3002"))) + (evs.length ? t('<h2 class="sec-title">\u6700\u8FD1\u76F8\u5173\u4E8B\u4EF6</h2><div class="card">') + evs.map((e) => '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '"><div class="mr-main"><div>' + esc(String(e.type || "")) + '</div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + "</div></div></div>").join("") + "</div>" : "") + systemExtraBlocks(ctx2, scope) + "</div>";
   }
-  function render10(el, ctx2) {
+  function render11(el, ctx2) {
     const r = ctx2.route;
     if (r === "tree") treeScreen(el, ctx2);
     else if (r === "docs") docsScreen(el, ctx2);
@@ -13713,7 +13849,7 @@ ${text2}</tr>
     }
     return '<div class="small faint" style="margin-bottom:8px">' + esc(t("\u6570\u636E\u6E90\uFF1A")) + esc(String(data.source || "connectops-code-audit")) + esc(t(" \u53EA\u8BFB\u6295\u5F71\uFF08\u6700\u8FD1 ")) + audits.length + esc(t(" \u6B21\u5BA1\u6838\uFF1B\u53EA\u8BFB\u4E0D\u6539\u4EE3\u7801\u3001\u4E0D\u66FF\u4EE3\u5BA1\u6279\uFF09\u3002")) + "</div>" + audits.map(auditCardHtml).join("");
   }
-  function render11(el, ctx2) {
+  function render12(el, ctx2) {
     const snap = ctx2.store && ctx2.store.codeAudit ? ctx2.store.codeAudit() : null;
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u4EE3\u7801\u5BA1\u6838"),
@@ -13744,7 +13880,7 @@ ${text2}</tr>
   var BASES = typeof window !== "undefined" && window.__CORE_CONSOLE_BASES__ || {};
   var store = createStore();
   var api = createApi(BASES.api || "", { apply: BASES.apply, drafts: BASES.drafts });
-  var router = createRouter({ defaultRoute: "welcome" });
+  var router = createRouter({ defaultRoute: "home" });
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
   var NAV_TREE = [
     {
@@ -13752,7 +13888,8 @@ ${text2}</tr>
       label: "Core Console",
       icon: "\u25A3",
       items: [
-        ["welcome", "\u9996\u9875", "\u2302"],
+        ["home", "\u5BF9\u8BDD", "\u2727"],
+        ["welcome", "\u603B\u89C8", "\u2302"],
         ["tasks", "\u5DE5\u4F5C\u4E0E\u6D41\u7A0B", "\u229E"],
         ["workflows", "\u6D41\u7A0B\u8FD0\u884C", "\u27F3"],
         ["approvals", "\u5BA1\u6279\u4E2D\u5FC3", "\u2713"],
@@ -13943,7 +14080,7 @@ ${text2}</tr>
         if (tree) tree.innerHTML = sidebarHtml();
         const tabs = root.querySelector("[data-level-tabs]");
         if (tabs) tabs.innerHTML = levelTabsHtml();
-        router.go("welcome");
+        router.go("home");
         return;
       }
       const fold = ev.target.closest("[data-fold]");
@@ -13979,7 +14116,7 @@ ${text2}</tr>
       } catch {
       }
     });
-    router.route("welcome", screenOf(render2)).route("obj", screenOf(render6)).route("obj/:kind", screenOf(render6)).route("obj/:kind/:scope/:name", screenOf(render6)).route("events", screenOf(render5)).route("event/:id", screenOf(render5)).route("tasks", screenOf(render3)).route("task/:id", screenOf(render3)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render7)).route("doc/:kind/:scope/:name", screenOf(render7)).route("chat/:agent", screenOf(render)).route("session/:id", screenOf(render)).route("approvals", screenOf(render8)).route("approvals/:focus", screenOf(render8)).route("inbox", screenOf(render8)).route("proposals", screenOf(render10)).route("proposals/:name", screenOf(render10)).route("prop/:name", screenOf(render10)).route("workflows", screenOf(render4)).route("wf/:name", screenOf(render4)).route("wf/:name/r/:n", screenOf(render4)).route("tree", screenOf(render10)).route("docs", screenOf(render10)).route("docs/tag/:tag", screenOf(render10)).route("tags", screenOf(render9)).route("designdoc", screenOf(render10)).route("designdoc/:repo/:path", screenOf(render10)).route("connectors", screenOf(render10)).route("audit", screenOf(render11)).route("s/:name", screenOf(render10)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
+    router.route("home", screenOf(render)).route("welcome", screenOf(render2)).route("obj", screenOf(render6)).route("obj/:kind", screenOf(render6)).route("obj/:kind/:scope/:name", screenOf(render6)).route("events", screenOf(render5)).route("event/:id", screenOf(render5)).route("tasks", screenOf(render3)).route("task/:id", screenOf(render3)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render7)).route("doc/:kind/:scope/:name", screenOf(render7)).route("chat/:agent", screenOf(render8)).route("session/:id", screenOf(render8)).route("approvals", screenOf(render9)).route("approvals/:focus", screenOf(render9)).route("inbox", screenOf(render9)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render4)).route("wf/:name", screenOf(render4)).route("wf/:name/r/:n", screenOf(render4)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
     router.mount(view);
     const stream = connectStream({
       url: BASES.ws || wsUrlOf(opts.location || (typeof location !== "undefined" ? location : null)),
