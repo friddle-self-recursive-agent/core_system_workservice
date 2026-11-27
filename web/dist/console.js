@@ -3332,7 +3332,9 @@ var CoreConsoleWeb = (() => {
       const st = String(r.status || "");
       const started = r.startedAt ? relAge(r.startedAt) || "" : "";
       const route = r.workflow ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(r.run != null ? r.run : "")) : "workflows";
-      return '<div class="dash-row" data-go="' + esc(route) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b><span class="small faint">#' + esc(String(r.run != null ? r.run : "\u2014")) + '</span></div><div class="dr-side">' + chip(phase, st === "running" ? "acc" : "mute") + (started ? '<span class="small faint">' + esc(started) + "</span>" : "") + "</div></div>";
+      return '<div class="dash-row" data-go="' + esc(route) + '" role="link"><div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b><span class="small faint">#' + esc(String(r.run != null ? r.run : "\u2014")) + '</span></div><div class="dr-side">' + chip(phase, st === "running" ? "acc" : "mute") + /* service 节点挂起面（2026-11-27 session 裁决）：suspendWhy=service → service 会话执行中
+       * 徽章（非审批挂起——审批一等行不收，workflow.md §1.3）。 */
+      (String(r.suspendWhy || "") === "service" ? chip(t("service \u4F1A\u8BDD\u6267\u884C\u4E2D"), "llm") : "") + (started ? '<span class="small faint">' + esc(started) + "</span>" : "") + "</div></div>";
     }).join("");
     return '<div class="card">' + (rows || '<div class="ob-empty">' + esc(t("\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF")) + "</div>") + "</div>";
   }
@@ -3343,7 +3345,11 @@ var CoreConsoleWeb = (() => {
     return String(r && (r.scope || r.ownerScope) || "") || "global";
   }
   function pendingRunsOf(ctx2) {
-    return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval"));
+    return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).filter((r) => (
+      /* service 节点挂起（suspendWhy=service）非审批态——session 执行中，审批一等行不收
+       *（完成信号 ServiceSessionCompleted 续行；2026-11-27 session 裁决）。 */
+      String(r.suspendWhy || "") !== "service"
+    ));
   }
   function pendingRunRowHtml(x, infoHtml = "") {
     const btnAttrs = (t2) => " data-appr-" + t2 + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) + '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';

@@ -189,6 +189,7 @@ type options struct {
 	revContent      RevContentFace
 	docHistory      DocHistoryFace
 	dispatch        DispatchFace
+	serviceSpawns   ServiceSpawnFace
 	inbox           InboxFace
 	designDocs      DesignDocs
 	sessionLiveness SessionLivenessFace
@@ -237,6 +238,18 @@ func WithApprovalLog(f ApprovalLogFace) Option {
 // workflow-runtime.md §11.2 拉起形态首段）。
 func WithDispatchFace(f DispatchFace) Option {
 	return func(o *options) { o.dispatch = f }
+}
+
+// ServiceSpawnFace service 拉起投影查询口面（2026-11-27 service session 裁决——run 落
+// unit=service 节点挂起+session 拉起投影；workflow.ServiceSpawnLog 满足）。
+type ServiceSpawnFace interface {
+	State() workflow.ServiceSpawnState
+}
+
+// WithServiceSpawnFace 注入 service 拉起投影口面（`GET /v1/workflows/service-spawns` 读面；
+// nil=面缺席 503 防御面同口径）。
+func WithServiceSpawnFace(f ServiceSpawnFace) Option {
+	return func(o *options) { o.serviceSpawns = f }
 }
 
 // InboxFace 通知中心收件箱同步口面（v0.56 R-10——`GET /v1/inbox` 读面投影组装输入；

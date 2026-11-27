@@ -31,14 +31,31 @@ type PostActionView struct {
 	Title         string `json:"title,omitempty" yaml:"title"`
 }
 
+// NodeView 节点声明投影（2026-11-27 service session 裁决「builtin 的 service 的 agent 可以用
+// session 来解决」——引擎消费的最小字段集）：unit=service 的节点在 run 推进落点触发
+// ServiceSpawn session 拉起面（serviceexec.go）；其余声明字段（refDocs/contextPassing/…）
+// 对象 spec 透传不在本投影（消费方=文档面/前端节点表）。
+type NodeView struct {
+	Name          string   `json:"name"`                  // 节点名（富声明 name；标量相位=相位名同词）
+	Phase         string   `json:"phase"`                 // 相位锚（run.Phase 同词域）
+	Unit          string   `json:"unit,omitempty"`        // connectops|agent|service|gate（空=未声明——旧词形透传）
+	Service       string   `json:"service,omitempty"`     // unit=service：目标系统名（developer-system…）
+	Op            string   `json:"op,omitempty"`          // 调用 op（develop|acceptance|release…）
+	Role          string   `json:"role,omitempty"`        // permissionRole（P7 权限随文档——随载荷透传给执行通路）
+	ContextFields []string `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
+	EntryEvents   []string `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
+}
+
 // SpecView 对象 spec 投影（v0.28 相位投影段——同一份对象声明的两面一次解析：相位序列
-// +声明迁移表；2026-11-27 扩展富节点、多入口 entryPoints、agent/auto 审批、postActions 解释器声明）。
+// +声明迁移表；2026-11-27 扩展富节点、多入口 entryPoints、agent/auto 审批、postActions 解释器声明；
+// 2026-11-27 service session 裁决再扩 Nodes 节点投影——新载荷键=代际判别器）。
 type SpecView struct {
 	Phases       []string         // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
 	Transitions  []TransitionRow  // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
 	ApprovalMode string           // 审批策略投影（spec.approval.mode=auto|agent 时闸锚自动通过；空=human 缺省）
 	BugDocPolicy string           // 临时 BugDoc 收尾策略投影（invalidate|delete|keep）
 	PostActions  []PostActionView // 解释器通用收尾动作清单
+	Nodes        []NodeView       // 节点声明投影（富节点 unit/service/op/role——service session 拉起面消费）
 }
 
 // SpecResolver 对象 spec 解析面（对象声明表解析 v0.27 首段+相位投影 v0.28，workflows
@@ -83,20 +100,31 @@ type docsSpecDecl struct {
 	} `yaml:"spec"`
 }
 
-// parsePhaseNode 解析单条相位节点（标量字符串或富节点 map），返回 (相位锚名, 节点名, entryEvents, ok)。
-func parsePhaseNode(n yaml.Node) (phaseName, nodeName string, entryEvents []string, ok bool) {
+// parsePhaseNode 解析单条相位节点（标量字符串或富节点 map）→ NodeView（ok=false=不可投影）。
+func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 	if n.Kind == yaml.ScalarNode {
-		return n.Value, n.Value, nil, n.Value != ""
+		if n.Value == "" {
+			return NodeView{}, false
+		}
+		return NodeView{Name: n.Value, Phase: n.Value}, true
 	}
 	if n.Kind == yaml.MappingNode {
 		var m struct {
-			Name        string   `yaml:"name"`
-			Phase       string   `yaml:"phase"`
-			Title       string   `yaml:"title"`
+			Name          string   `yaml:"name"`
+			Phase         string   `yaml:"phase"`
+			Title         string   `yaml:"title"`
+			Unit          string   `yaml:"unit"`
+			Service       string   `yaml:"service"`
+			Op            string   `yaml:"op"`
+			Role          string   `yaml:"permissionRole"`
+			ContextPassing struct {
+				PreviousRound bool     `yaml:"previousRound"`
+				Fields        []string `yaml:"fields"`
+			} `yaml:"contextPassing"`
 			EntryEvents []string `yaml:"entryEvents"`
 		}
 		if err := n.Decode(&m); err != nil {
-			return "", "", nil, false
+			return NodeView{}, false
 		}
 		p := m.Phase
 		if p == "" {
@@ -105,9 +133,10 @@ func parsePhaseNode(n yaml.Node) (phaseName, nodeName string, entryEvents []stri
 		if p == "" {
 			p = m.Title
 		}
-		return p, m.Name, m.EntryEvents, p != ""
+		return NodeView{Name: m.Name, Phase: p, Unit: m.Unit, Service: m.Service, Op: m.Op, Role: m.Role,
+			ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents}, p != ""
 	}
-	return "", "", nil, false
+	return NodeView{}, false
 }
 
 // DocsSpecs 文档面 spec 解析（装配适配）：lookup 由装配层注入（文档库读面按名取 Workflow
@@ -144,16 +173,17 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 	}
 	var entryBindings []entryBinding
 	for i := range doc.Spec.Phases {
-		p, nName, evs, ok := parsePhaseNode(doc.Spec.Phases[i])
+		nv, ok := parsePhaseNode(doc.Spec.Phases[i])
 		if !ok {
 			continue
 		}
-		view.Phases = append(view.Phases, p)
-		if nName != "" {
-			nodeToPhase[nName] = p
+		view.Phases = append(view.Phases, nv.Phase)
+		if nv.Name != "" {
+			nodeToPhase[nv.Name] = nv.Phase
 		}
-		if len(evs) > 0 {
-			entryBindings = append(entryBindings, entryBinding{phase: p, events: evs})
+		view.Nodes = append(view.Nodes, nv)
+		if len(nv.EntryEvents) > 0 {
+			entryBindings = append(entryBindings, entryBinding{phase: nv.Phase, events: nv.EntryEvents})
 		}
 	}
 	for _, ep := range doc.Spec.EntryPoints {

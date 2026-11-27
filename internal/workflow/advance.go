@@ -41,12 +41,14 @@ import (
 // 才落迁移——竞态放弃本拍）+判定留痕写穿透。OK=false=卡 Verify（相位/状态原样保留，gated
 // 计数可见，判定投影随 run 留痕）+ OnVerifyBlocked 锁外上报（Escalate——cored 装配）。
 func (r *RunLog) Advance() int {
-	// 阶段①：锁内扫描分类（即时迁移路径照旧；Verifying 出行候选=快照待审）。
+	// 阶段①：锁内扫描分类（即时迁移路径照旧；Verifying 出行候选=快照待审；service 落点
+	// 拉起请求锁内收集锁外派发——ServiceSpawner 非阻塞契约，serviceexec.go）。
 	type gateCand struct {
 		run RunRecord // 快照（锁外审核输入）
 	}
 	var cands []gateCand
-	var touched []int // 阶段①已即时迁移的环内下标（写穿透 upsert）
+	var touched []int     // 阶段①已即时迁移的环内下标（写穿透 upsert）
+	var spawnQ []spawnReq // 阶段① service 落点拉起请求（出锁后派发——非阻塞契约）
 	advanced := 0
 	mutated := map[string]int{} // 本拍每锚已发生迁移数（刹车闸挂接时生效）
 	r.mu.Lock()
@@ -79,7 +81,9 @@ func (r *RunLog) Advance() int {
 			cands = append(cands, gateCand{run: *run})
 			continue
 		}
-		r.applyAdvanceLocked(run, next)
+		if sp := r.landAfterAdvanceLocked(run, next); sp != nil {
+			spawnQ = append(spawnQ, *sp) // service 执行单元落点：挂起+拉起请求（出锁派发）
+		}
 		mutated[run.Workflow]++
 		advanced++
 		touched = append(touched, i)
@@ -92,6 +96,11 @@ func (r *RunLog) Advance() int {
 	}
 	r.advances += int64(advanced)
 	r.mu.Unlock()
+	// service 拉起派发（锁外——ServiceSpawner 非阻塞契约：投影在 SpawnFromRun 内自锁落环）；
+	// 判决文档生成派发（锁外异步——DiffSummarizer 实现侧自管幂等，引擎不等待不重试）。
+	for _, sp := range spawnQ {
+		r.dispatchSpawnReq(sp)
+	}
 
 	// 阶段②：锁外审核（checker 真实执行——audit 只读幂等；每拍重审=修复后下拍即过）。
 	type verdictCand struct {
@@ -109,6 +118,7 @@ func (r *RunLog) Advance() int {
 	// 改写过的候选放弃本拍，下拍重审重判）+判定留痕；blocked 计数与回调清单出锁后上报。
 	var blocked []verdictCand
 	gatedPassed := 0
+	var spawnQ3 []spawnReq // 阶段③ service 落点拉起请求（出锁后派发——与阶段①同一契约）
 	if len(verdicts) > 0 {
 		r.mu.Lock()
 		for _, vc := range verdicts {
@@ -134,7 +144,9 @@ func (r *RunLog) Advance() int {
 			if !ok {
 				continue // 防御：表行在阶段②窗口被改写致 advance 行缺席——零动作
 			}
-			r.applyAdvanceLocked(run, next)
+			if sp := r.landAfterAdvanceLocked(run, next); sp != nil {
+				spawnQ3 = append(spawnQ3, *sp) // gate 放行落点又是 service 节点（Verifying→Deploying 链）——出锁派发
+			}
 			mutated[run.Workflow]++
 			gatedPassed++
 			if r.opts.Store != nil {
@@ -143,6 +155,10 @@ func (r *RunLog) Advance() int {
 		}
 		r.advances += int64(gatedPassed)
 		r.mu.Unlock()
+	}
+	// 阶段③ service 拉起派发（锁外——与阶段①同一非阻塞契约）。
+	for _, sp := range spawnQ3 {
+		r.dispatchSpawnReq(sp)
 	}
 	// 锁外上报（Escalate 发布不持锁——回调侧可走总线/HTTP 面任意时长）。
 	if r.opts.OnVerifyBlocked != nil {
@@ -170,6 +186,46 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 	case Failed: // 落侧轨终点锚=终态（仅声明仍携带 Failed 词形的旧对象 spec 可达——非引擎失败语义）
 		run.Status = RunFailed
 	}
+}
+
+// spawnReq 落点派发请求（锁内收集、出锁派发——ServiceSpawner/DiffSummarizer 非阻塞契约
+// 的中转词形）。kind 区分落点类型：service=拉起执行单元；diffdoc=审批判决文档生成
+// （2026-11-28 用户裁定 ops_core_inner_agent）。
+const (
+	spawnKindService = "service"
+	spawnKindDiffDoc = "diffdoc"
+)
+
+type spawnReq struct {
+	kind string    // service（缺省词形兼容）| diffdoc
+	run  RunRecord // 派发时点 run 快照（含 Nodes/Target/Involved——拉起/判决投影溯源面）
+	node NodeView  // 落点节点投影（unit=service；diffdoc 时零值）
+}
+
+// landAfterAdvanceLocked 单步迁移落点（含 service 执行单元挂起面——2026-11-27 service
+// session 裁决；含审批判决文档触发面——2026-11-28 ops_core_inner_agent 裁决）：落点=service
+// 节点且 ServiceSpawner 已挂接 → 挂起（suspendWhy=service）+ 迁移行 on=service-spawn +
+// 返回拉起请求；落点=人审闸锚且实际挂起（auto/agent 直续不触发）且 DiffSummarizer 已挂接
+// → 返回判决文档生成请求；其余落点=applyAdvanceLocked 既有语义（返回 nil）。调用方持 r.mu。
+// 两个能力面缺席（nil）=零翻转：既有行为面不变。
+func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
+	if r.opts.ServiceSpawns != nil {
+		if node, ok := serviceNodeOf(run.Nodes, next); ok {
+			at := stampNano(time.Now())
+			run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: EdgeServiceSpawn, At: at})
+			run.Phase = next
+			run.Status = RunSuspended
+			run.SuspendWhy = SuspendService
+			return &spawnReq{kind: spawnKindService, run: *run, node: node}
+		}
+	}
+	r.applyAdvanceLocked(run, next)
+	// 审批判决文档触发窗口：本拍刚落人审挂起（挂起 run 后续拍被 Status!=RunRunning 跳过，
+	// 本函数是唯一命中点）；auto/agent 直续（Status 仍 running）不触发。
+	if r.opts.DiffSummarizer != nil && Phase(run.Phase) == AwaitingApproval && run.Status == RunSuspended {
+		return &spawnReq{kind: spawnKindDiffDoc, run: *run}
+	}
+	return nil
 }
 
 func isAutoPassApproval(mode string) bool {
@@ -242,6 +298,26 @@ func (a *Advancer) Run(ctx context.Context) {
 			return
 		case <-tk.C:
 			a.runs.Advance() // 查表纯判定无失败路径；零迁移拍=零动作
+		}
+	}
+}
+
+// dispatchSpawnReq 落点请求出锁分派（service=拉起执行单元；diffdoc=审批判决文档生成——
+// goroutine 异步，引擎不等待；实现侧幂等/防重自管）。kind 空词形=既有 service 兼容。
+func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
+	switch sp.kind {
+	case spawnKindDiffDoc:
+		if r.opts.DiffSummarizer == nil {
+			return
+		}
+		go func(run RunRecord, objKey string) {
+			// panic 屏蔽：判决文档是旁路面——引擎主环零阻断（实现侧自行记日志）。
+			_ = recover()
+			r.opts.DiffSummarizer.OnApprovalSuspended(run, objKey)
+		}(sp.run, sp.run.Involved)
+	default:
+		if r.opts.ServiceSpawns != nil {
+			r.opts.ServiceSpawns.SpawnFromRun(sp.run, sp.node)
 		}
 	}
 }

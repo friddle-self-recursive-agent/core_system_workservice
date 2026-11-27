@@ -161,6 +161,7 @@ type TriggerHub struct {
 	wakes        WakeSink              // agent 唤醒面唤醒投影落点（BindAgents 挂接；nil=不推进唤醒）
 	advance      EventAdvanceSink      // 事件驱动推进面落点（v0.29 BindEventAdvance 挂接；nil=事件拍缺席——推进总闸关断）
 	gate         ScopeGate             // agent 投递 scope 闸（BUG-010 BindScopeGate 挂接；nil=全放行既有行为面）
+	svcSignals   ServiceSignalSink     // service 完成信号面（2026-11-27 BindServiceSignals 挂接；nil=信号不续行——拉起面缺席同窗）
 }
 
 // SourceEngineInternal 引擎内部源事件的 source 审计值（event.md 规则 10 服务侧判定口径——
@@ -380,6 +381,13 @@ func (h *TriggerHub) record(e eventbus.Event) {
 			rs.ResumeSignal(rec)
 		}
 	}
+	// service 完成信号族（2026-11-27 service session 裁决——serviceexec.go）：ServiceSessionCompleted
+	// 是 run 域迁移事件**不是新对账触发**（审批信号族同口径，不另起 run）——hub 按独立面
+	// BindServiceSignals 转发给装配层桥（桥在翻完拉起投影终态后转交 RunLog.ServiceSignal 并
+	// 携带会话锚）。缺席=信号不续行（拉起面缺席同窗口径）；锁内转发与留痕/run 同序。
+	if h.svcSignals != nil && isServiceSignalType(rec.Type) {
+		h.svcSignals.ServiceSignal(rec)
+	}
 }
 
 // WireExecutor 登记执行面接线态（引擎主体第二段 v0.14 登记 → 第三段 v0.15 起装配层对
@@ -406,6 +414,16 @@ func (h *TriggerHub) BindRuns(sink RunSink) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.runs = sink
+}
+
+// BindServiceSignals 挂接 service 完成信号面（2026-11-27 service session 裁决——装配层桥
+// 实现 ServiceSignalSink：翻拉起投影终态+转交 RunLog.ServiceSignal 续行）。幂等；nil=解除
+// 挂接（信号不续行——拉起面缺席同窗口径）。须在 AttachDispatch 前调用（事件开始流入后
+// 无接线窗口）；锁内转发与留痕/run 同序（非阻塞契约同族）。
+func (h *TriggerHub) BindServiceSignals(sink ServiceSignalSink) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.svcSignals = sink
 }
 
 // BindDeliveries 挂接 notification 送达面的送达投影落点（引擎主体第四段 v0.16）。挂接本身

@@ -103,6 +103,28 @@ type WakeRow struct {
 	Cursor int64 // 不透明游标（=Wake）
 }
 
+// ServiceSpawnRow service 拉起投影行（2026-11-27 service session 裁决——直投 workflow.
+// ServiceSpawnRecord；Context=JSON 文本列。可演化投影：受理→会话回填→终态同 seq upsert 覆写）。
+type ServiceSpawnRow struct {
+	Seq      int64 // 拉起序号（sink 进程内单调递增，1 起）——演化主键（upsert）
+	Run      int64
+	Workflow string
+	Node     string
+	Phase    string
+	Service  string
+	Op       string
+	Agent    string
+	Role     string
+	Context  string // contextPassing.fields JSON 文本列（旧名 ContextJSON 的列名=context）
+
+	Status string // spawned|completed|failed
+	// Session 会话锚回执（dsh sessionId 优先，缺席=pid:<n> 降级锚；空=未回填）。
+	Session string
+	At      string // RFC3339Nano
+
+	Cursor int64 // 不透明游标（=Seq）
+}
+
 // DispatchRow 派单受理投影行（直投 flowbind.DispatchRecord；Acceptance/Nodes=JSON 文本列）。
 type DispatchRow struct {
 	Seq            int64 // 派单序号（sink 进程内单调递增，1 起）——幂等主键
@@ -162,6 +184,7 @@ type Store interface {
 	AppendDelivery(r DeliveryRow) error
 	AppendWake(r WakeRow) error
 	AppendWakeSession(wake int64, sessionID string) error // G-08：唤醒会话锚回填（演化态就地覆写）
+	AppendServiceSpawn(r ServiceSpawnRow) error           // 2026-11-27：service 拉起投影（演化态 upsert——受理/回填/终态同 seq 覆写）
 	AppendDispatch(r DispatchRow) error
 	AppendIntakeSession(r IntakeSessionRow) error
 
@@ -169,6 +192,7 @@ type Store interface {
 	ListRuns(limit int, since int64) ([]RunRow, error)
 	ListDeliveries(limit int, since int64) ([]DeliveryRow, error)
 	ListWakes(limit int, since int64) ([]WakeRow, error)
+	ListServiceSpawns(limit int, since int64) ([]ServiceSpawnRow, error)
 	ListDispatches(limit int, since int64) ([]DispatchRow, error)
 	ListIntakeSessions(limit int, since int64) ([]IntakeSessionRow, error)
 

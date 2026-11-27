@@ -127,6 +127,9 @@ function runningWorkflowsHtml(ctx, scope) {
       '<div class="dr-main"><b class="mono">' + esc(trunc(wf, 26)) + '</b>' +
       '<span class="small faint">#' + esc(String(r.run != null ? r.run : '—')) + '</span></div>' +
       '<div class="dr-side">' + chip(phase, st === 'running' ? 'acc' : 'mute') +
+      /* service 节点挂起面（2026-11-27 session 裁决）：suspendWhy=service → service 会话执行中
+       * 徽章（非审批挂起——审批一等行不收，workflow.md §1.3）。 */
+      (String(r.suspendWhy || '') === 'service' ? chip(tr('service 会话执行中'), 'llm') : '') +
       (started ? '<span class="small faint">' + esc(started) + '</span>' : '') + '</div>' +
       '</div>';
   }).join('');
@@ -149,7 +152,10 @@ function runOwnerScope(r) {
 function pendingRunsOf(ctx) {
   return ctx.store.runs().filter((r) => r && (
     String(r.status || r.state || '') === 'suspended' ||
-    String(r.phase || '') === 'AwaitingApproval'));
+    String(r.phase || '') === 'AwaitingApproval')).filter((r) =>
+    /* service 节点挂起（suspendWhy=service）非审批态——session 执行中，审批一等行不收
+     *（完成信号 ServiceSessionCompleted 续行；2026-11-27 session 裁决）。 */
+    String(r.suspendWhy || '') !== 'service');
 }
 
 function pendingRunRowHtml(x, infoHtml = '') {

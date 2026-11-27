@@ -75,13 +75,14 @@ func triggerFromRow(r runtimestore.TriggerRow) TriggerRecord {
 }
 
 // runToRow 对账 run → 行（可演化投影——upsert 语义，恢复取最新词形；会话锚/Verify 判定
-// 随演化词形同行覆写——G-08/G-09 写穿透面）。
+// 随演化词形同行覆写——G-08/G-09 写穿透面）。spec 侧车列携 approvalMode+suspendWhy
+// （2026-11-27 service session 裁决——挂起因由随恢复词形保留）。
 func runToRow(run RunRecord) runtimestore.RunRow {
 	return runtimestore.RunRow{
 		Run: run.Run, Workflow: run.Workflow, SpecSource: run.SpecSource,
 		PhasesJSON: mustJSON(run.Phases), TransitionsJSON: mustJSON(run.Transitions),
 		Phase: run.Phase, Status: run.Status, BrakesJSON: mustJSON(run.Brakes),
-		SpecJSON: mustJSON(map[string]string{"approvalMode": run.ApprovalMode}),
+		SpecJSON: mustJSON(map[string]string{"approvalMode": run.ApprovalMode, "suspendWhy": run.SuspendWhy}),
 		HistoryJSON: mustJSON(run.History), // F-04 运行轨迹写穿透（空轨迹=null 词形）
 		TriggerSeq: run.TriggerSeq, EventID: run.EventID, Type: run.Type,
 		DedupKey: run.DedupKey, Route: run.Route, Owner: run.Owner, Target: run.Target,
@@ -92,10 +93,12 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 
 // runFromRow 行 → 对账 run（恢复装载；Verify 列空=未审 nil——诚实降级不编造判定）。
 func runFromRow(r runtimestore.RunRow) RunRecord {
+	spec := specFromJSON(r.SpecJSON)
 	run := RunRecord{
 		Run: r.Run, Workflow: r.Workflow, SpecSource: r.SpecSource,
 		Phase: r.Phase, Status: r.Status,
-		ApprovalMode: specFromJSON(r.SpecJSON)["approvalMode"],
+		ApprovalMode: spec["approvalMode"],
+		SuspendWhy:   spec["suspendWhy"],
 		TriggerSeq: r.TriggerSeq, EventID: r.EventID, Type: r.Type,
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
 		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
@@ -177,6 +180,28 @@ func wakeFromRow(r runtimestore.WakeRow) WakeRecord {
 	}
 }
 
+// serviceSpawnToRow service 拉起投影 → 行（可演化投影——受理/回填/终态 upsert 同 seq 覆写）。
+func serviceSpawnToRow(s ServiceSpawnRecord) runtimestore.ServiceSpawnRow {
+	return runtimestore.ServiceSpawnRow{
+		Seq: s.Seq, Run: s.Run, Workflow: s.Workflow, Node: s.Node, Phase: s.Phase,
+		Service: s.Service, Op: s.Op, Agent: s.Agent, Role: s.Role,
+		Context: mustJSON(s.Context), Status: s.Status, Session: s.Session, At: stampNano(s.At),
+	}
+}
+
+// serviceSpawnFromRow 行 → service 拉起投影（恢复装载；context 列空/损坏=空字段——诚实降级）。
+func serviceSpawnFromRow(r runtimestore.ServiceSpawnRow) ServiceSpawnRecord {
+	rec := ServiceSpawnRecord{
+		Seq: r.Seq, Run: r.Run, Workflow: r.Workflow, Node: r.Node, Phase: r.Phase,
+		Service: r.Service, Op: r.Op, Agent: r.Agent, Role: r.Role,
+		Status: r.Status, Session: r.Session, At: parseNano(r.At),
+	}
+	if r.Context != "" {
+		_ = json.Unmarshal([]byte(r.Context), &rec.Context)
+	}
+	return rec
+}
+
 // ───────────────────────── 启动恢复装载（分页循环；读失败=恢复降级不炸启动） ─────────────────────────
 
 // loadTriggerRows 全量装载触发行（游标分页）。
@@ -241,6 +266,24 @@ func loadWakeRows(s runtimestore.Store) []runtimestore.WakeRow {
 		rows, err := s.ListWakes(restorePage, since)
 		if err != nil {
 			log.Printf("workflow: 唤醒投影恢复装载失败（恢复降级——启动续接缺口可见）: %v", err)
+			return out
+		}
+		out = append(out, rows...)
+		if len(rows) < restorePage {
+			return out
+		}
+		since = rows[len(rows)-1].Cursor
+	}
+}
+
+// loadServiceSpawnRows 全量装载 service 拉起行（2026-11-27 service session 裁决恢复面）。
+func loadServiceSpawnRows(s runtimestore.Store) []runtimestore.ServiceSpawnRow {
+	var out []runtimestore.ServiceSpawnRow
+	var since int64
+	for {
+		rows, err := s.ListServiceSpawns(restorePage, since)
+		if err != nil {
+			log.Printf("workflow: service 拉起投影恢复装载失败（恢复降级——启动续接缺口可见）: %v", err)
 			return out
 		}
 		out = append(out, rows...)

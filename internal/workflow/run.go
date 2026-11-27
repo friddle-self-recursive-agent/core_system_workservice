@@ -102,6 +102,12 @@ func workflowRefOf(involved string) (string, bool) {
 	return "", false
 }
 
+// InvolvedWorkflowRef involved 投影 → workflow 锚名（导出面：装配层 service 桥寻径同一判定
+// ——workflowRefOf 单点真相导出，无双源；serviceexec.go 完成信号面消费）。
+func InvolvedWorkflowRef(involved string) (string, bool) {
+	return workflowRefOf(involved)
+}
+
 // spec 来源词汇（run 锚解析的声明来源投影）。
 const (
 	SpecBuiltin = "builtin" // 内置注册表命中（相位序列随代码声明，可投影）
@@ -171,6 +177,16 @@ type RunRecord struct {
 	// 不按数组下标盲标）。行=每次真实迁移追加（受理首步/推进/批准/驳回/收束同口径）。
 	History   []HistoryRow `json:"history,omitempty"`
 	StartedAt time.Time    `json:"startedAt"` // run 起始时刻（收到留痕同刻）
+	// Nodes 节点声明投影快照（2026-11-27 service session 裁决——新载荷键=代际判别器）：
+	// 受理时随对象 spec 一次解析随行（运行期零文件 IO——Advance 落点判定纯内存查投影；
+	// 恢复面 NewRunLog 重解析回填）。builtin 源恒空（内置注册表无节点细节——service 面
+	// 只对 object 源声明了富节点的 run 生效）。不落行（RunRow 无列——恢复重解析，声明面
+	// 是权威）。
+	Nodes []NodeView `json:"nodes,omitempty"`
+	// SuspendWhy 挂起因由（2026-11-27 service session 裁决——新载荷键=代际判别器）：
+	// approval=闸锚挂起（缺省词形=既有口径不标注）；service=service 执行 session 进行中
+	// （ServiceSpawner 挂接时落点即挂起——serviceexec.go）。空=非挂起/未细分。
+	SuspendWhy string `json:"suspendWhy,omitempty"`
 }
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
@@ -235,6 +251,23 @@ type RunOptions struct {
 	// 在锁外调用（可发布 Escalate 事件——cored 走既有注册类型 root 通道）；同 run 每拍重审
 	// 重复 blocked 时重复回调（总线 dedup 窗口承担风暴抑制；checker 幂等只读）。
 	OnVerifyBlocked func(run RunRecord, v VerifyVerdict)
+	// ServiceSpawns service 节点 session 拉起面（2026-11-27 service session 裁决——可选能力，
+	// nil=既有行为面零翻转：service 节点照旧纯查表推进不挂起不拉起）。挂接后 run 推进落
+	// unit=service 节点即挂起（suspendWhy=service）+ 拉起投影（锁内收集锁外派发——非阻塞
+	// 契约）；完成信号经 ServiceSignal 续行。
+	ServiceSpawns ServiceSpawner
+	// DiffSummarizer 审批判决文档生成面（2026-11-28 用户裁定「审批裁定的时候走一个小内置
+	// agent[调用 llm 即可]整理下 DocumentDiff。生成 Diff 文档。告诉我改了什么」——可选能力，
+	// nil=既有行为面零翻转：人审挂起不生成判决文档）。挂接后 run 落 AwaitingApproval 且
+	// 实际挂起等人（auto/agent 模式直续不触发）时锁外异步调用实现侧（读稿+现值→内置小
+	// agent 调 LLM 整理→DocumentDiff 文档落库——ops_core_inner_agent 词形，实现归装配层）。
+	DiffSummarizer DiffSummarizer
+}
+
+// DiffSummarizer 审批判决文档生成契约（实现侧异步执行——引擎只通知不等待不重试；
+// 幂等/防重归实现侧按 target rv 自管）。objKey=审批对象键 kind/scope/name。
+type DiffSummarizer interface {
+	OnApprovalSuspended(run RunRecord, objKey string)
 }
 
 // RunLog run 投影的进程内落点（RunSink 缺省实现；并发安全）。
@@ -281,6 +314,16 @@ func NewRunLog(opts *RunOptions) *RunLog {
 			if excess := len(runs) - r.opts.RingSize; excess > 0 {
 				runs = runs[excess:]
 			}
+			// 节点投影恢复回填（2026-11-27 service session 裁决）：object 源 run 的 Nodes 不落行
+			// （声明面是权威）——恢复时重解析回填，挂起 run 的 service 落点判定照常纯内存。
+			// 启动期文件 IO（非热路径）；解析缺席=零投影（诚实降级，缺口可见不编造）。
+			if r.opts.Specs != nil {
+				for i := range runs {
+					if runs[i].SpecSource == SpecObject && len(runs[i].Nodes) == 0 {
+						runs[i].Nodes = r.opts.Specs.ResolveSpec(runs[i].Workflow).Nodes
+					}
+				}
+			}
 			r.ring = runs
 		}
 	}
@@ -298,6 +341,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	// 推进语义）；未声明 phases 的对象=零投影（phases 恒空），三条判定路径零动作防御面
 	// 原样生效，既有行为面零翻转。
 	approvalMode := "" // 空=human 缺省（审批策略声明走对象 spec）
+	var nodes []NodeView
 	if r.opts.Specs != nil {
 		view := r.opts.Specs.ResolveSpec(wf)
 		if source == SpecObject {
@@ -307,6 +351,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			if len(view.Phases) > 0 {
 				phases = view.Phases
 			}
+			nodes = view.Nodes // 节点投影随 run 快照（service 落点判定纯内存——运行期零文件 IO）
 		}
 		if view.ApprovalMode != "" {
 			approvalMode = view.ApprovalMode // spec.approval.mode=auto|agent 投影（Agent 节点自动判断/自动级别）
@@ -382,8 +427,8 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	}
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
-		ApprovalMode: approvalMode,
-		Phase:        phase, Status: status, Brakes: brk, History: hist,
+		ApprovalMode: approvalMode, Nodes: nodes,
+		Phase: phase, Status: status, Brakes: brk, History: hist,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
 	})
@@ -468,6 +513,52 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			persistAppend("run 迁移", r.opts.Store.AppendRun(runToRow(*run)))
 		}
 		return // 只作用现势 run（最新命中即返回）
+	}
+}
+
+// ServiceSignal service 完成信号的 run 域续行判定（2026-11-27 service session 裁决——
+// serviceexec.go；hub 按可选能力接口 ServiceSignalSink 转发，cored 装配的桥在翻完拉起投影
+// 终态后转交本入口并携带会话锚）。匹配口径与 ResumeSignal 同款：service 信号族事件按
+// involved=Workflow 对象引用寻径，作用于该锚**最新挂起 run**（TargetRun>0=定向覆盖）中
+// SuspendWhy=service 的现势 run；命中=沿轨迹落续行行（on=service-resume，SessionID=会话锚
+// 回执——真实会话锚在续行行留痕）、status 翻回 running（SuspendWhy 清空），下拍 Advance
+// 沿表续行（落点若又是 service 节点=下拍再挂起再拉起——developer-system→verify 链式通路）。
+// 零动作防御面：非本族事件/involved 非 Workflow 引用/锚无 run/非 service 挂起态（含审批
+// 挂起——approval 归 ResumeSignal 管辖）/已续行（重复完成信号幂等 noop）一律原样保留。
+// session 参数=拉起投影回执的会话锚（空=诚实缺席，续行行不带会话锚不编造）。
+func (r *RunLog) ServiceSignal(rec TriggerRecord, session string) {
+	if !isServiceSignalType(rec.Type) {
+		return
+	}
+	name, ok := workflowRefOf(rec.Involved)
+	if !ok {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	target := rec.TargetRun
+	for i := len(r.ring) - 1; i >= 0; i-- {
+		run := &r.ring[i]
+		if target > 0 && run.Run != target {
+			continue
+		}
+		if run.Workflow != name || len(run.Phases) == 0 {
+			continue
+		}
+		if run.Status != RunSuspended || run.SuspendWhy != SuspendService {
+			continue // 非 service 挂起态（审批挂起/终态/在途）不作用——继续扫描更旧 run
+		}
+		histAppend(run, run.Phase, run.Phase, EdgeServiceSpawnResume)
+		if session != "" {
+			run.History[len(run.History)-1].SessionID = session
+		}
+		run.Status = RunRunning
+		run.SuspendWhy = ""
+		// 写穿透（R-ENG §1）：续行同步 upsert（可演化投影——恢复取续行后词形）。
+		if r.opts.Store != nil {
+			persistAppend("run service 续行", r.opts.Store.AppendRun(runToRow(*run)))
+		}
+		return
 	}
 }
 

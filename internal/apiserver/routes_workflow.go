@@ -23,6 +23,7 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 	objects := d.objects
 	o := d.o
 	dispatch := o.dispatch
+	serviceSpawns := o.serviceSpawns
 	eventLog := o.eventLog
 	applyLog := o.applyLog
 	inbox := o.inbox
@@ -80,6 +81,21 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 		}
 		st := runs.State()
 		writeJSON(w, http.StatusOK, runsPayload(st))
+	})
+	// service 拉起投影面（2026-11-27 service session 裁决「builtin 的 service 的 agent 可以用
+	// session 来解决。突破下限制」——workflow.md §1.3）：run 落 unit=service 节点挂起
+	// （suspendWhy=service）+ 为 service 的 agent 开执行 session 的拉起投影逐条可查
+	// （run/节点/服务/op/agent/上下文字段/状态/会话锚）。拉起投影出现 ≠ session 已执行完毕
+	// （诚实投影与 run/唤醒面同口径）。face 缺席=503（防御面）；旧构建 405 兜底=代际判别器。
+	mux.HandleFunc("GET /v1/workflows/service-spawns", func(w http.ResponseWriter, _ *http.Request) {
+		if serviceSpawns == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "service 拉起投影面未接线（ServiceSpawner 未挂接——零翻转口径）"})
+			return
+		}
+		st := serviceSpawns.State()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"spawned": st.Spawned, "dropped": st.Dropped, "records": st.Records,
+		})
 	})
 	// 送达投影面（§2.3 v0.16 引擎主体第四段——真实拉起第二子段：notification 送达面接线；
 	// v0.17 收尾：受理后的真实通道出站挂接——status 翻转 accepted→sent/failed + 出站留痕）：

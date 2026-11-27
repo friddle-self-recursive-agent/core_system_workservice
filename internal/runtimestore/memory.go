@@ -16,6 +16,7 @@ type MemoryStore struct {
 	runs      []RunRow
 	deliver   []DeliveryRow
 	wakes     []WakeRow
+	spawns    []ServiceSpawnRow
 	dispatch  []DispatchRow
 	sessions  map[string]IntakeSessionRow
 	sessOrder []int64 // 会话插入序（rowid 模拟——游标分页语义与 sqlite 对齐）
@@ -113,6 +114,21 @@ func (m *MemoryStore) AppendDispatch(r DispatchRow) error {
 	return nil
 }
 
+// AppendServiceSpawn service 拉起投影（同 seq upsert 覆写——受理/会话回填/终态演化面；
+// 2026-11-27 service session 裁决）。
+func (m *MemoryStore) AppendServiceSpawn(r ServiceSpawnRow) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.spawns {
+		if m.spawns[i].Seq == r.Seq {
+			m.spawns[i] = r
+			return nil
+		}
+	}
+	m.spawns = append(m.spawns, r)
+	return nil
+}
+
 // AppendIntakeSession 追加/更新会话（同 id upsert——覆写最新投影；插入序游标保持首轮值）。
 func (m *MemoryStore) AppendIntakeSession(r IntakeSessionRow) error {
 	m.mu.Lock()
@@ -200,6 +216,26 @@ func (m *MemoryStore) ListWakes(limit int, since int64) ([]WakeRow, error) {
 			continue
 		}
 		r.Cursor = r.Wake
+		out = append(out, r)
+		if len(out) >= listLimit(limit) {
+			break
+		}
+	}
+	return out, nil
+}
+
+// ListServiceSpawns service 拉起行集（seq 升序；2026-11-27 service session 裁决恢复面）。
+func (m *MemoryStore) ListServiceSpawns(limit int, since int64) ([]ServiceSpawnRow, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rows := append([]ServiceSpawnRow{}, m.spawns...)
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Seq < rows[j].Seq })
+	out := []ServiceSpawnRow{}
+	for _, r := range rows {
+		if r.Seq <= since {
+			continue
+		}
+		r.Cursor = r.Seq
 		out = append(out, r)
 		if len(out) >= listLimit(limit) {
 			break

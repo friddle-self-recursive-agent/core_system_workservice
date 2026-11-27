@@ -227,9 +227,11 @@ test('liveRowHtml：非 running=空 ∧ running 带工具词形+耗时 ∧ queue
 
 /* ---------- C-06 会话行（未读点/分组） ---------- */
 
-test('dayGroupOf：today（24h 内）∧ earlier（更旧/无效值）', () => {
+test('dayGroupOf：today（今日历日内）∧ earlier（更旧/无效值）', () => {
   const now = Date.now()
-  assert.equal(dayGroupOf(now - 3600 * 1000, now), 'today')
+  const startOf = new Date(now); startOf.setHours(0, 0, 0, 0)
+  // 今日历日内锚（跨午夜鲁棒——now-1h 在 00:00 过后属昨天，旧断言午夜脆弱）
+  assert.equal(dayGroupOf(startOf.getTime() + 60 * 1000, now), 'today')
   assert.equal(dayGroupOf(now - 30 * 24 * 3600 * 1000, now), 'earlier')
   assert.equal(dayGroupOf(0, now), 'earlier')
 })

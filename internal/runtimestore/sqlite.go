@@ -152,6 +152,21 @@ CREATE TABLE IF NOT EXISTS rt_dispatch_records (
 	nodes_json      TEXT NOT NULL DEFAULT '[]',
 	at              TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS rt_service_spawns (
+	seq      INTEGER PRIMARY KEY,
+	run      INTEGER NOT NULL DEFAULT 0,
+	workflow TEXT NOT NULL DEFAULT '',
+	node     TEXT NOT NULL DEFAULT '',
+	phase    TEXT NOT NULL DEFAULT '',
+	service  TEXT NOT NULL DEFAULT '',
+	op       TEXT NOT NULL DEFAULT '',
+	agent    TEXT NOT NULL DEFAULT '',
+	role     TEXT NOT NULL DEFAULT '',
+	context  TEXT NOT NULL DEFAULT '[]',
+	status   TEXT NOT NULL DEFAULT '',
+	session  TEXT NOT NULL DEFAULT '',
+	at       TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS rt_intake_sessions (
 	session_id      TEXT PRIMARY KEY,
 	kind            TEXT NOT NULL DEFAULT '',
@@ -266,6 +281,20 @@ func (s *SQLiteStore) AppendWakeSession(wake int64, sessionID string) error {
 	return nil
 }
 
+// AppendServiceSpawn service 拉起投影（INSERT OR REPLACE——同 seq upsert 覆写：受理→会话
+// 回填→终态可演化投影，2026-11-27 service session 裁决）。
+func (s *SQLiteStore) AppendServiceSpawn(r ServiceSpawnRow) error {
+	const q = `INSERT OR REPLACE INTO rt_service_spawns
+(seq, run, workflow, node, phase, service, op, agent, role, context, status, session, at)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+	_, err := s.db.Exec(q, r.Seq, r.Run, r.Workflow, r.Node, r.Phase, r.Service, r.Op,
+		r.Agent, r.Role, r.Context, r.Status, r.Session, r.At)
+	if err != nil {
+		return fmt.Errorf("runtimestore: rt_service_spawns 追加: %w", err)
+	}
+	return nil
+}
+
 // AppendDispatch 追加派单投影（INSERT OR IGNORE——同 seq 重放 noop）。
 func (s *SQLiteStore) AppendDispatch(r DispatchRow) error {
 	const q = `INSERT OR IGNORE INTO rt_dispatch_records
@@ -374,6 +403,26 @@ func (s *SQLiteStore) ListWakes(limit int, since int64) ([]WakeRow, error) {
 			return nil, fmt.Errorf("runtimestore: 读 rt_wake_records 行: %w", err)
 		}
 		r.Cursor = r.Wake
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListServiceSpawns service 拉起行集（seq 升序；since=游标；2026-11-27 恢复面）。
+func (s *SQLiteStore) ListServiceSpawns(limit int, since int64) ([]ServiceSpawnRow, error) {
+	rows, err := s.db.Query(`SELECT seq, run, workflow, node, phase, service, op, agent, role, context, status, session, at FROM rt_service_spawns WHERE seq > ? ORDER BY seq ASC LIMIT ?`, since, listLimit(limit))
+	if err != nil {
+		return nil, fmt.Errorf("runtimestore: rt_service_spawns 列举: %w", err)
+	}
+	defer rows.Close()
+	out := []ServiceSpawnRow{}
+	for rows.Next() {
+		var r ServiceSpawnRow
+		if err := rows.Scan(&r.Seq, &r.Run, &r.Workflow, &r.Node, &r.Phase, &r.Service, &r.Op,
+			&r.Agent, &r.Role, &r.Context, &r.Status, &r.Session, &r.At); err != nil {
+			return nil, fmt.Errorf("runtimestore: 读 rt_service_spawns 行: %w", err)
+		}
+		r.Cursor = r.Seq
 		out = append(out, r)
 	}
 	return out, rows.Err()

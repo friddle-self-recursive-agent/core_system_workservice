@@ -336,6 +336,21 @@ func run() error {
 	runOpts := &workflow.RunOptions{}
 	runOpts.Store = rtStore              // 运行态投影写穿透+启动恢复（G-01——六类投影第一段：run/触发/送达/唤醒）
 	runOpts.Brakes.Enabled = *brakesFlag // 刹车闸挂接态（缺省关断=零刹车既有行为面零翻转）
+	// service 节点 session 拉起面（2026-11-27 用户裁决「builtin 的 service 的 agent 可以用
+	// session 来解决。突破下限制」——workflow.md §1.3）：CORE_SYSTEM_SERVICE_SPAWN_ADDR 配置
+	// 即挂接桥（run 落 unit=service 节点挂起+为 service 的 agent 开执行 session；完成信号
+	// ServiceSessionCompleted 续行）；缺席=零翻转口径（service 节点照旧纯查表推进不挂起）。
+	// 拉起投影落点恒构建（ServiceSpawnLog 写穿透+恢复——桥缺席时面在账零行为翻转）。
+	spawnLog := workflow.NewServiceSpawnLog(&workflow.ServiceSpawnOptions{Store: rtStore})
+	var svcBridge *serviceSpawnBridge
+	svcSpawnState := "off（零翻转——service 节点照旧纯查表推进；CORE_SYSTEM_SERVICE_SPAWN_ADDR 缺席）"
+	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SERVICE_SPAWN_ADDR")); addr != "" {
+		svcBridge = newServiceSpawnBridge(spawnLog, addr, serviceAgentLookup(repo), func(f string, a ...any) {
+			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
+		})
+		runOpts.ServiceSpawns = svcBridge
+		svcSpawnState = "on(" + addr + ")（run 落 service 节点挂起+session 拉起；完成信号 ServiceSessionCompleted 续行）"
+	}
 	objSpecState := "off（未挂文档库——object 源表不投影）"
 	brakesResolverState := "defaults"
 	if repo != nil {
@@ -347,6 +362,9 @@ func run() error {
 		brakesResolverState = "docs"
 	}
 	runs := workflow.NewRunLog(runOpts)
+	if svcBridge != nil {
+		svcBridge.runs = runs // 完成信号续行面注入（构造序：runOpts 需桥、桥需 runs——后注入解环）
+	}
 	// 通知门链接线（v0.35 KI-001 通知段——阶段门+dedup/minLevel 落地）：判定器
 	// NotifyPhaseGate（人注意终态族放行 ∧ 其余事件须 involved owner 现势 run 相位终态背书
 	// ——Report 序列尾/终点锚；无 run 面=fail-closed 拦）注入送达面；dedup 窗口缺省 10m
@@ -364,6 +382,7 @@ func run() error {
 	} else {
 		fmt.Fprintln(os.Stderr, "cored: wake 桥=off（纯投影；CORE_SYSTEM_WAKE_ADDR 缺席）")
 	}
+	fmt.Fprintf(os.Stderr, "cored: service 桥=%s（2026-11-27 session 裁决——builtin service 的 agent 用 session 执行；投影面恒在 GET /v1/workflows/service-spawns）\n", svcSpawnState)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
 	outboundState := "off（送达止于受理投影）"
 	if dlOpts.Outbound != nil {
@@ -394,6 +413,9 @@ func run() error {
 	triggers.BindRuns(runs)
 	triggers.BindDeliveries(deliveries)
 	triggers.BindAgents(wakeSink)
+	if svcBridge != nil {
+		triggers.BindServiceSignals(svcBridge) // service 完成信号面（SessionCompleted→翻终态+续行）
+	}
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：
 	// **只在推进总闸开启时挂接**（推进总闸旗标 interval>0）——总闸关断=事件拍缺席，事件驱动源
@@ -719,6 +741,7 @@ func run() error {
 	intake.SetDefaultStore(rtStore)
 	apiserverOpts := func() []apiserver.Option {
 		opts := apiserverOpts(metricsFace, secrets, store, dispLog, approvalSync, designDocs)
+		opts = append(opts, apiserver.WithServiceSpawnFace(spawnLog)) // service 拉起投影面（GET /v1/workflows/service-spawns）
 		if sessionState != "off" && sessionState != "unregistered" {
 			opts = append(opts, apiserver.WithSessionLiveness(liveness))
 		}
