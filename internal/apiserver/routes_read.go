@@ -318,7 +318,10 @@ func registerReadRoutes(d *deps, mux *http.ServeMux) {
 	// 设计文档面（v0.52 能力 A——console 屏幕 6 直接编辑设计文档 md → Apply → git commit）：
 	// 读/史/草稿/apply 路由注册（handler 体见 design_docs.go）。面未装配=503；写面随
 	// --allow-apply；白名单外 403 / lint 未过 400 携违规 / 基线 sha 不符 409——任务书判据三件。
-	registerDesignDocRoutes(mux, o.designDocs, d.drafts, applyLog)
+	registerDesignDocRoutes(mux, o.designDocs, d.drafts, applyLog, objects)
+	// 三段式 Session 控制面（session.md——GET/PUT /v1/session-config + 第三段回整账只读）：
+	// GET 恒开（存储缺席=scheme 缺省不冒充持久化）；PUT 随 --allow-apply 门控（与 docs-export 同开关）。
+	registerSessionConfigRoutes(mux, objects, d.applier)
 	// 对话式录入与三重 dry-run 预检面（v0.53 能力 D + R-UX-1/R-UX-2——cored-bridge.md §2.5）：
 	// GET /v1/intake/sessions* 恒开（旧构建 405=代际判别器）；POST /v1/intake/turn 与 /generate 随 --allow-apply 门控。
 	registerIntakeRoutes(mux, sch, objects, d.applier)

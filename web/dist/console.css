@@ -2408,6 +2408,28 @@
   gap: 14px;
   align-items: stretch;
 }
+.cc-app .chat-right {
+  width: 330px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.cc-app .chat-right .card {
+  flex: none;
+}
+.cc-app .chat-right [data-ctx-panel] .card-b {
+  overflow-y: auto;
+  max-height: 52vh;
+}
+@media (max-width: 1100px) {
+  .cc-app .chat-right {
+    display: none;
+  }
+}
 .cc-app .chat-side {
   width: 280px;
   flex: none;

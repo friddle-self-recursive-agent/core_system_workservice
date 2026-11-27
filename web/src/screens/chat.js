@@ -14,6 +14,8 @@ import { chip } from '../render/chips.js';
 import { sessBacklinksHtml } from './chat-links.js';
 export { sessBacklinksHtml } from './chat-links.js';
 import { mountSessionCtx } from './sessionctx.js';
+import { mountSessionStages, repaintSessionStages } from './session-stages.js';
+import { openProviderDrawer } from './workflow-config.js';
 import { t as tr, getLocale } from '../core/i18n.js';
 import {
   mapTranscript, blocksOf, nodeKey, turnTailOf, todoModel, usageTotal, usageDetail, formatClock,
@@ -186,6 +188,7 @@ function screenShell(can) {
     '<div class="chat-top-title"><h1 class="chat-h1">' + esc(tr('会话')) + '</h1>' +
     '<div class="dh-sub">' + esc(tr('自有对话面——真实转录与发送；会话 id 由宿主发，永不手填')) + '</div></div>' +
     '<div class="chat-top-actions">' +
+    '<button class="btn btn-chip sm" data-cc-provider title="' + esc(tr('配置 OpenAIProvider（api-key 引用 / base 地址 / 模型分级）')) + '">Provider</button>' +
     '<span data-cc-state></span>' +
     '<button class="btn btn-chip sm" data-cc-new>' + esc(tr('新会话')) + '</button>' +
     '</div></div>' +
@@ -201,10 +204,14 @@ function screenShell(can) {
     '<div class="chat-stream-wrap">' +
     '<div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(tr('转录现读中…')) + '</div></div>' +
     '<button class="chat-jump" data-cc-jump hidden>↓ <span data-cc-jump-n></span></button>' +
-    '</div></div>' +
+    '</div>' +
+    '<aside class="chat-right" data-cc-right>' +
+    '<div data-stages-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(tr('三段式 Session 现读中…')) + '</div></div></div></div>' +
+    '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(tr('上下文现读中…（选定会话后装配）')) + '</div></div></div></div>' +
+    '<div data-provider-drawer></div>' +
+    '</aside></div>' +
     '<div class="chat-dock">' +
     '<div class="chat-refs-slot" data-cc-refs></div>' +
-    '<div data-cc-ctx></div>' +
     composerHtmlInner(can, false) +
     '<div class="chat-note" data-cc-note></div>' +
     '</div></div>';
@@ -371,6 +378,10 @@ async function refreshState(el, f) {
   const r = await f.state(CHAT.sessionId);
   if (r.status !== 200 || !r.data || typeof r.data !== 'object') { return; }
   CHAT.state = r.data;
+  try {
+    window.__CC_CHAT_STATE__ = CHAT.state; // session-stages 三段进度消费面
+    repaintSessionStages(el);
+  } catch { /* 右栏缺席不阻塞主链路 */ }
   paintState(el);
 }
 
@@ -405,18 +416,23 @@ async function refreshTranscript(el, f) {
   refreshState(el, f);
 }
 
-/* ContextPack 折叠条（cored G-14 面——默认收起）。 */
+/* 右栏装配（2026-11-27 用户裁决：右边可以看到完整缓存后的上下文——sessionctx 面板 +
+ * 三段卡 + Provider 抽屉常驻右栏，不再折叠在 composer 上方）。 */
 function ensureCtxBar(el, sessionId) {
-  const holder = el.querySelector('[data-cc-ctx]');
-  if (!holder) return;
-  if (!sessionId) { holder.innerHTML = ''; return; }
-  if (!holder.querySelector('[data-ctx-panel]')) {
-    holder.innerHTML = '<details class="ex-block chat-ctx">' +
-      '<summary class="ex-sum"><span class="ex-chev">▶</span>' + esc(tr('上下文（ContextPack 契约面）')) + '</summary>' +
-      '<div class="ex-body"><div data-ctx-panel><div class="small faint">' +
-      esc(tr('上下文加载中…（GET /v1/sessions/')) + esc(encodeURIComponent(sessionId)) + '/context）</div></div></div></details>';
-    const ctx = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
-    if (ctx) mountSessionCtx(el, ctx, sessionId);
+  const rail = el.querySelector('[data-cc-right]');
+  if (!rail) return;
+  const ctx = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
+  if (sessionId) {
+    mountSessionCtx(el, ctx, sessionId); // [data-ctx-panel] 现于右栏（sessionctx.js 同一挂载契约）
+  }
+  mountSessionStages(el);
+  const provBtn = el.querySelector('[data-cc-provider]');
+  if (provBtn && !provBtn.dataset.wired) {
+    provBtn.dataset.wired = '1';
+    provBtn.addEventListener('click', () => {
+      const c = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
+      if (c) openProviderDrawer(el, c, 'openai-default');
+    });
   }
 }
 

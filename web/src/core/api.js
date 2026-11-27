@@ -80,6 +80,10 @@ export function createApi(base = '', paths = {}) {
       request('v1/sessions/' + enc(String(id == null ? '' : id)) + '/context', { method: 'PUT', body: payload }),
     revertSessionContext: (id) =>
       request('v1/sessions/' + enc(String(id == null ? '' : id)) + '/context/revert', { method: 'POST' }),
+    /* 三段式 Session 控制面（session.md——routes_session_config.go：GET/PUT config + 回整账只读） */
+    sessionConfig: () => request('v1/session-config'),
+    saveSessionConfig: (payload) => request('v1/session-config', { method: 'PUT', body: payload }),
+    sessionWritebacks: (n = 5) => request('v1/session-config/writebacks?n=' + Number(n)),
     inbox: () => request('v1/inbox'),
     proposals: () => request('v1/proposals'),
     approvals: (limit = 20) => request('v1/approvals?limit=' + Number(limit)),

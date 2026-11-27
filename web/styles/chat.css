@@ -21,6 +21,15 @@
 .cc-app .chat-top-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
 .cc-app .chat-main { display: flex; flex: 1; min-height: 0; gap: 14px; align-items: stretch; }
 
+/* ---------- 右栏（2026-11-27：三段卡+完整缓存上下文+Provider 抽屉常驻） ---------- */
+.cc-app .chat-right {
+  width: 330px; flex: none; display: flex; flex-direction: column; gap: 12px;
+  min-height: 0; overflow-y: auto; padding-right: 2px;
+}
+.cc-app .chat-right .card { flex: none; }
+.cc-app .chat-right [data-ctx-panel] .card-b { overflow-y: auto; max-height: 52vh; }
+@media (max-width: 1100px) { .cc-app .chat-right { display: none; } }
+
 /* ---------- 会话侧栏（玻璃抽屉 C-09） ---------- */
 .cc-app .chat-side {
   width: 280px; flex: none; display: flex; flex-direction: column; min-height: 0;

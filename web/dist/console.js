@@ -811,6 +811,48 @@ var CoreConsoleWeb = (() => {
     ["agent \u8FD0\u884C\u4E2D\u2026", "agent working\u2026"],
     ["\u6392\u961F {n}", "queue {n}"],
     ["\u8FFD\u52A0 {n}", "+{n} sent"],
+    ["Provider", "Provider"],
+    ["\u914D\u7F6E OpenAIProvider\uFF08api-key \u5F15\u7528 / base \u5730\u5740 / \u6A21\u578B\u5206\u7EA7\uFF09", "Configure OpenAIProvider (api-key ref / base URL / model tiers)"],
+    ["\u4E09\u6BB5\u5F0F Session \u73B0\u8BFB\u4E2D\u2026", "Loading three-stage session\u2026"],
+    ["\u4E0A\u4E0B\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u9009\u5B9A\u4F1A\u8BDD\u540E\u88C5\u914D\uFF09", "Loading context\u2026 (assembled once a session is selected)"],
+    ["\u4E09\u6BB5\u5F0F Session", "Three-stage Session"],
+    ["\u5DF2\u6301\u4E45\u5316", "persisted"],
+    ["\u7F3A\u7701\uFF08\u672A\u6301\u4E45\u5316\uFF09", "defaults (not persisted)"],
+    ["\u7B2C\u4E00\u6BB5\xB7\u80CC\u666F\u88C5\u914D", "Stage 1 \xB7 Context assembly"],
+    ["\u7B2C\u4E8C\u6BB5\xB7\u9884\u66F4\u65B0\u6267\u884C", "Stage 2 \xB7 Pre-update execution"],
+    ["\u7B2C\u4E09\u6BB5\xB7\u5C5E\u6027\u56DE\u6574", "Stage 3 \xB7 Attribute writeback"],
+    ["\u5B8C\u6210", "done"],
+    ["\u8FDB\u884C\u4E2D", "running"],
+    ["\u5F85\u89E6\u53D1", "pending"],
+    ["\u4E0A\u4E0B\u6587\u9762\u5DF2\u73B0\u8BFB\uFF08\u7F13\u5B58 chunks/\u5206\u7247\u89C1\u53F3\u680F\uFF09", "Context face loaded (cached chunks/shards in the right rail)"],
+    ["\u7B49\u5F85\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u9762\u88C5\u914D", "waiting for session context assembly"],
+    ["\u4F1A\u8BDD\u8FD0\u884C\u4E2D\uFF08\u53CD\u590D ask \u8BE2\u95EE\uFF1B\u4EA7\u51FA=\u6587\u6863\u9884\u66F4\u65B0 draft\uFF09", "session running (ask loop; output = document pre-update drafts)"],
+    ["\u9884\u66F4\u65B0\u5DF2 apply\u2014\u2014\u8FDB\u5165\u56DE\u6574", "pre-update applied \u2014 entering writeback"],
+    ["\u7B49\u5F85\u8F93\u5165\u6216\u7B49\u5F85 apply\uFF08\u4F1A\u8BDD\u6CA1\u6709\u547D\u4EE4\u2014\u2014\u53EA\u4EA7 draft\uFF09", "waiting for input or apply (no commands in session \u2014 drafts only)"],
+    ["apply \u540E\u81EA\u52A8\u89E6\u53D1\uFF08\u9ED8\u8BA4\u56DE\u6574\uFF1Aref/tag/\u91CD\u8981\u7A0B\u5EA6/metainfo\uFF09", "auto-triggered after apply (writeback: ref/tag/importance/metainfo)"],
+    [" \xB7 importance +", " \xB7 importance +"],
+    [" \xB7 tag+", " \xB7 tag+"],
+    ["\u81EA\u52A8\u56DE\u6574", "auto writeback"],
+    ["\u56DE\u6574\u8D26\uFF08\u7B2C\u4E09\u6BB5\uFF09", "Writeback log (stage 3)"],
+    ["\u4E09\u6BB5\u63A7\u5236\uFF08\u63CF\u8FF0/\u9884\u7B97/\u5F00\u5173\u2014\u2014PUT /v1/session-config\uFF09", "Stage control (descriptions/budget/toggles \u2014 PUT /v1/session-config)"],
+    ["\u4E09\u6BB5\u63CF\u8FF0\u4E0E\u5F00\u5173=\u4E09\u6BB5\u5F0F\u884C\u4E3A\u7684\u627F\u8F7D\u9762\uFF08scheme runtime.context \u540C\u6E90\uFF1B\u6B64\u5904\u4E3A\u6570\u636E\u5E93\u627F\u8F7D\u884C\u2014\u2014\u4FDD\u5B58\u5373\u751F\u6548\uFF09\u3002", "Stage descriptions and toggles carry the three-stage behavior (same source as scheme runtime.context; this row is the DB carrier \u2014 effective on save)."],
+    ["\u80CC\u666F\u9884\u7B97\uFF08\u5B57\uFF09", "Background budget (chars)"],
+    ["\u56DE\u6574\u5C5E\u6027\u57DF", "Writeback attr scope"],
+    ["\u4F1A\u8BDD Provider", "Session provider"],
+    ["\u4F1A\u8BDD\u6A21\u578B", "Session model"],
+    ["\u80CC\u666F\u9010\u5757\u6EAF\u6E90", "Per-block attribution"],
+    ["\u7B2C\u4E09\u6BB5\u5C5E\u6027\u81EA\u52A8\u56DE\u6574", "Stage-3 auto attribute writeback"],
+    ["\u4FDD\u5B58\u4E09\u6BB5\u63A7\u5236", "Save stage control"],
+    ["\u4FDD\u5B58\u4E2D\u2026", "saving\u2026"],
+    ["\u5DF2\u4FDD\u5B58\uFF08", "saved ("],
+    ["\uFF09", ")"],
+    ["\u4FDD\u5B58\u5931\u8D25\uFF1A", "save failed: "],
+    ["\u80CC\u666F\u9884\u7B97 ", "Background budget "],
+    [" \u5B57 \xB7 \u9010\u5757\u6EAF\u6E90 ", " chars \xB7 per-block attribution "],
+    [" \xB7 \u5C5E\u6027\u56DE\u6574 ", " \xB7 attr writeback "],
+    [" \xB7 Provider ", " \xB7 Provider "],
+    ["\u5F00", "on"],
+    ["\u5173", "off"],
     ["\u5DF2\u6DF1\u5EA6\u601D\u8003", "Deep thinking"],
     ["\u5DF2\u8C03\u7528", "Called"],
     ["\u5B8C\u6210", "done"],
@@ -2017,6 +2059,10 @@ var CoreConsoleWeb = (() => {
       sessionContext: (id) => request("v1/sessions/" + enc(String(id == null ? "" : id)) + "/context"),
       saveSessionContext: (id, payload) => request("v1/sessions/" + enc(String(id == null ? "" : id)) + "/context", { method: "PUT", body: payload }),
       revertSessionContext: (id) => request("v1/sessions/" + enc(String(id == null ? "" : id)) + "/context/revert", { method: "POST" }),
+      /* 三段式 Session 控制面（session.md——routes_session_config.go：GET/PUT config + 回整账只读） */
+      sessionConfig: () => request("v1/session-config"),
+      saveSessionConfig: (payload) => request("v1/session-config", { method: "PUT", body: payload }),
+      sessionWritebacks: (n = 5) => request("v1/session-config/writebacks?n=" + Number(n)),
       inbox: () => request("v1/inbox"),
       proposals: () => request("v1/proposals"),
       approvals: (limit = 20) => request("v1/approvals?limit=" + Number(limit)),
@@ -12322,20 +12368,20 @@ ${text2}</tr>
   function hydrateSchemePanel(el, ctx2, kind) {
     const box = el.querySelector("[data-panel-scheme]");
     if (!box) return;
-    const paint2 = (kinds) => {
+    const paint3 = (kinds) => {
       const k = (kinds || []).find((x) => x && x.name === kind);
       if (!k) return;
       box.innerHTML = schemePanel(k, "");
     };
     const snapKinds = ctx2.store.kinds();
     if (snapKinds.length) {
-      paint2(snapKinds);
+      paint3(snapKinds);
       return;
     }
     if (ctx2.api && typeof ctx2.api.kinds === "function") {
       ctx2.api.kinds().then((r) => {
         if (!el.isConnected) return;
-        if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint2(r.data.kinds);
+        if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint3(r.data.kinds);
       }).catch(() => {
       });
     }
@@ -13399,6 +13445,139 @@ ${text2}</tr>
     paint(box, ctx2, id, normalizeContext(r.data));
   }
 
+  // src/screens/session-stages.js
+  function normalizeSessionConfig(data) {
+    const d = data && typeof data === "object" ? data : {};
+    const c = d.config && typeof d.config === "object" ? d.config : {};
+    const st = c.stages && typeof c.stages === "object" ? c.stages : {};
+    const def2 = {
+      s1: "\u7B2C\u4E00\u6BB5\xB7\u80CC\u666F\u88C5\u914D\uFF08LLM \u63CF\u8FF0\u547D\u4EE4 \u2192 tag \u5206\u6790\u5148\u67E5 CtxCache \u2192 \u4E09\u8DEF\u6CE8\u5165 \u2192 builtin RAG \u2192 \u7C7B\u4F3C session \u2192 developer_system \u5B9A\u4F4D\u4ED3\u5E93 \u2192 \u80CC\u666F \u22645k \u9010\u5757\u6EAF\u6E90\uFF09",
+      s2: "\u7B2C\u4E8C\u6BB5\xB7\u9884\u66F4\u65B0\u6267\u884C\uFF08\u53CD\u590D ask \u8BE2\u95EE\uFF1B\u4F1A\u8BDD\u6CA1\u6709\u547D\u4EE4\u2014\u2014\u53EA\u4EA7\u6587\u6863\u9884\u66F4\u65B0 draft\uFF1B\u7B49\u5F85\u7528\u6237 apply\uFF09",
+      s3: "\u7B2C\u4E09\u6BB5\xB7\u5C5E\u6027\u56DE\u6574\uFF08apply \u89E6\u53D1\uFF1Aref/tag/\u91CD\u8981\u7A0B\u5EA6/metainfo \u9ED8\u8BA4\u81EA\u52A8\u66F4\u65B0\uFF09"
+    };
+    const scope = (Array.isArray(c.metaScope) ? c.metaScope : []).map(String).filter(Boolean);
+    return {
+      persistent: d.persistent !== false,
+      note: String(d.note || ""),
+      stages: {
+        s1: String(st.s1 || def2.s1),
+        s2: String(st.s2 || def2.s2),
+        s3: String(st.s3 || def2.s3)
+      },
+      backgroundMaxChars: Number(c.backgroundMaxChars) || 5e3,
+      blockAttribution: c.blockAttribution !== false,
+      metaAutoUpdate: c.metaAutoUpdate !== false,
+      metaScope: scope.length ? scope : ["ref", "tag", "importance", "metainfo"],
+      provider: String(c.provider || "openai-default"),
+      model: String(c.model || "reasoning-tier"),
+      updatedAt: String(c.updatedAt || "")
+    };
+  }
+  function normalizeWritebacks(data) {
+    const d = data && typeof data === "object" ? data : {};
+    return (Array.isArray(d.items) ? d.items : []).map((w) => {
+      const row = w && typeof w === "object" ? w : {};
+      return {
+        at: String(row.at || ""),
+        resource: String(row.resource || ""),
+        subject: String(row.subject || ""),
+        sessionId: String(row.sessionId || ""),
+        mode: String(row.mode || "rule-default"),
+        importanceDelta: Number(row.importanceDelta) || 0,
+        tagsAdded: (Array.isArray(row.tagsAdded) ? row.tagsAdded : []).map(String),
+        note: String(row.note || "")
+      };
+    });
+  }
+  function deriveStageState(input) {
+    const i = input && typeof input === "object" ? input : {};
+    const ctxReady = !!i.ctxReady;
+    const running = i.running === true;
+    const wb = Array.isArray(i.writebacks) && i.writebacks.length ? i.writebacks[0] : null;
+    return [
+      {
+        n: 1,
+        name: t("\u7B2C\u4E00\u6BB5\xB7\u80CC\u666F\u88C5\u914D"),
+        done: ctxReady,
+        active: !ctxReady,
+        detail: ctxReady ? t("\u4E0A\u4E0B\u6587\u9762\u5DF2\u73B0\u8BFB\uFF08\u7F13\u5B58 chunks/\u5206\u7247\u89C1\u53F3\u680F\uFF09") : t("\u7B49\u5F85\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u9762\u88C5\u914D")
+      },
+      {
+        n: 2,
+        name: t("\u7B2C\u4E8C\u6BB5\xB7\u9884\u66F4\u65B0\u6267\u884C"),
+        done: !running && !!wb,
+        active: running,
+        detail: running ? t("\u4F1A\u8BDD\u8FD0\u884C\u4E2D\uFF08\u53CD\u590D ask \u8BE2\u95EE\uFF1B\u4EA7\u51FA=\u6587\u6863\u9884\u66F4\u65B0 draft\uFF09") : wb ? t("\u9884\u66F4\u65B0\u5DF2 apply\u2014\u2014\u8FDB\u5165\u56DE\u6574") : t("\u7B49\u5F85\u8F93\u5165\u6216\u7B49\u5F85 apply\uFF08\u4F1A\u8BDD\u6CA1\u6709\u547D\u4EE4\u2014\u2014\u53EA\u4EA7 draft\uFF09")
+      },
+      {
+        n: 3,
+        name: t("\u7B2C\u4E09\u6BB5\xB7\u5C5E\u6027\u56DE\u6574"),
+        done: !!wb,
+        active: false,
+        detail: wb ? wb.resource + (wb.importanceDelta ? t(" \xB7 importance +") + wb.importanceDelta : "") + (wb.tagsAdded && wb.tagsAdded.length ? t(" \xB7 tag+") + wb.tagsAdded.length : "") : t("apply \u540E\u81EA\u52A8\u89E6\u53D1\uFF08\u9ED8\u8BA4\u56DE\u6574\uFF1Aref/tag/\u91CD\u8981\u7A0B\u5EA6/metainfo\uFF09")
+      },
+      { wb }
+    ];
+  }
+  function renderStagesCard(cfg, stages, writebacks, persistent) {
+    const stageRow = (s) => '<div class="mini-row"><div class="mr-main"><div>' + (s.done ? chip(t("\u5B8C\u6210"), "ok") : s.active ? chip(t("\u8FDB\u884C\u4E2D"), "acc") : chip(t("\u5F85\u89E6\u53D1"), "mute")) + " <b>" + esc(String(s.name || "")) + '</b></div><div class="mr-sub small">' + esc(trunc(String(s.detail || ""), 90)) + "</div></div></div>";
+    const wbRows = (writebacks || []).slice(0, 5).map((w) => '<div class="mini-row"><div class="mr-main"><div>' + chip(t("\u81EA\u52A8\u56DE\u6574"), "llm tiny") + ' <span class="mono small">' + esc(trunc(w.resource, 48)) + "</span>" + (w.importanceDelta ? " " + chip("importance +" + w.importanceDelta, "ok tiny") : "") + (w.tagsAdded && w.tagsAdded.length ? w.tagsAdded.map((t2) => chip(t2, "mute tiny")).join(" ") : "") + '</div><div class="mr-sub small">' + esc(w.at || "") + " \xB7 " + esc(w.mode) + (w.note ? " \xB7 " + esc(trunc(w.note, 60)) : "") + "</div></div></div>").join("");
+    const disp = (b) => b ? t("\u5F00") : t("\u5173");
+    return '<div class="card-h"><span class="h-title">' + esc(t("\u4E09\u6BB5\u5F0F Session")) + '</span><span class="h-right">' + (persistent ? chip(t("\u5DF2\u6301\u4E45\u5316"), "ok tiny") : chip(t("\u7F3A\u7701\uFF08\u672A\u6301\u4E45\u5316\uFF09"), "warn tiny")) + '</span></div><div class="card-b">' + (stages || []).filter((s) => s && s.n).map(stageRow).join("") + '<div class="small faint" style="margin-top:6px">' + esc(t("\u80CC\u666F\u9884\u7B97 ")) + esc(fmtNum(cfg.backgroundMaxChars)) + t(" \u5B57 \xB7 \u9010\u5757\u6EAF\u6E90 ") + esc(disp(cfg.blockAttribution)) + t(" \xB7 \u5C5E\u6027\u56DE\u6574 ") + esc(disp(cfg.metaAutoUpdate)) + t(" \xB7 Provider ") + esc(cfg.provider) + " / " + esc(cfg.model) + "</div>" + (wbRows ? '<h3 class="sec-title" style="margin:10px 0 4px">' + esc(t("\u56DE\u6574\u8D26\uFF08\u7B2C\u4E09\u6BB5\uFF09")) + "</h3>" + wbRows : "") + '<details class="ex-block" style="margin-top:8px"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E09\u6BB5\u63A7\u5236\uFF08\u63CF\u8FF0/\u9884\u7B97/\u5F00\u5173\u2014\u2014PUT /v1/session-config\uFF09")) + '</summary><div class="ex-body"><div class="small faint" style="margin:4px 0">' + esc(t("\u4E09\u6BB5\u63CF\u8FF0\u4E0E\u5F00\u5173=\u4E09\u6BB5\u5F0F\u884C\u4E3A\u7684\u627F\u8F7D\u9762\uFF08scheme runtime.context \u540C\u6E90\uFF1B\u6B64\u5904\u4E3A\u6570\u636E\u5E93\u627F\u8F7D\u884C\u2014\u2014\u4FDD\u5B58\u5373\u751F\u6548\uFF09\u3002")) + '</div><textarea class="inp" data-stage-desc="s1" rows="2" style="width:100%">' + esc(cfg.stages.s1) + '</textarea><textarea class="inp" data-stage-desc="s2" rows="2" style="width:100%;margin-top:4px">' + esc(cfg.stages.s2) + '</textarea><textarea class="inp" data-stage-desc="s3" rows="2" style="width:100%;margin-top:4px">' + esc(cfg.stages.s3) + '</textarea><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px"><label class="small">' + esc(t("\u80CC\u666F\u9884\u7B97\uFF08\u5B57\uFF09")) + ' <input class="inp" data-stage-num="backgroundMaxChars" type="number" min="500" step="500" value="' + cfg.backgroundMaxChars + '"></label><label class="small">' + esc(t("\u56DE\u6574\u5C5E\u6027\u57DF")) + ' <input class="inp" data-stage-in="metaScope" value="' + esc(cfg.metaScope.join(",")) + '"></label><label class="small">' + esc(t("\u4F1A\u8BDD Provider")) + ' <input class="inp" data-stage-in="provider" value="' + esc(cfg.provider) + '"></label><label class="small">' + esc(t("\u4F1A\u8BDD\u6A21\u578B")) + ' <input class="inp" data-stage-in="model" value="' + esc(cfg.model) + '"></label></div><div style="display:flex;gap:10px;margin-top:6px" class="small"><label><input type="checkbox" data-stage-chk="blockAttribution"' + (cfg.blockAttribution ? " checked" : "") + "> " + esc(t("\u80CC\u666F\u9010\u5757\u6EAF\u6E90")) + '</label><label><input type="checkbox" data-stage-chk="metaAutoUpdate"' + (cfg.metaAutoUpdate ? " checked" : "") + "> " + esc(t("\u7B2C\u4E09\u6BB5\u5C5E\u6027\u81EA\u52A8\u56DE\u6574")) + '</label></div><div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn btn-secondary sm" data-stage-save>' + esc(t("\u4FDD\u5B58\u4E09\u6BB5\u63A7\u5236")) + '</button><span class="small faint" data-stage-msg></span></div></div></details></div>';
+  }
+  var STAGES = { model: null, writebacks: [], persistent: false };
+  function paint2(box, cfg, stages, writebacks, persistent) {
+    box.innerHTML = '<div class="card" data-stages-card>' + renderStagesCard(cfg, stages, writebacks, persistent) + "</div>";
+    const save = box.querySelector("[data-stage-save]");
+    if (save) save.addEventListener("click", async () => {
+      const q = (sel) => box.querySelector(sel);
+      const payload = {
+        stages: {
+          s1: q('[data-stage-desc="s1"]').value,
+          s2: q('[data-stage-desc="s2"]').value,
+          s3: q('[data-stage-desc="s3"]').value
+        },
+        backgroundMaxChars: Number(q('[data-stage-num="backgroundMaxChars"]').value) || 5e3,
+        blockAttribution: q('[data-stage-chk="blockAttribution"]').checked,
+        metaAutoUpdate: q('[data-stage-chk="metaAutoUpdate"]').checked,
+        metaScope: q('[data-stage-in="metaScope"]').value.split(/[\s,，、]+/).map((x) => x.trim()).filter(Boolean),
+        provider: q('[data-stage-in="provider"]').value.trim() || "openai-default",
+        model: q('[data-stage-in="model"]').value.trim() || "reasoning-tier"
+      };
+      const msg = q("[data-stage-msg]");
+      if (msg) msg.textContent = t("\u4FDD\u5B58\u4E2D\u2026");
+      const r = await window.__CC_CONSOLE_CTX__.api.saveSessionConfig(payload);
+      if (msg) msg.textContent = r.ok ? t("\u5DF2\u4FDD\u5B58\uFF08") + (r.data && r.data.updatedAt || "") + t("\uFF09") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+      refresh2(box);
+    });
+  }
+  async function refresh2(box) {
+    const api2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ && window.__CC_CONSOLE_CTX__.api || null;
+    if (!api2 || !api2.sessionConfig) return;
+    const [c, w] = await Promise.all([api2.sessionConfig(), api2.sessionWritebacks ? api2.sessionWritebacks(5) : Promise.resolve({ ok: false })]);
+    if (!c.ok) return;
+    STAGES.model = normalizeSessionConfig(c.data);
+    STAGES.persistent = STAGES.model.persistent;
+    STAGES.writebacks = w && w.ok ? normalizeWritebacks(w.data) : STAGES.writebacks;
+    const ctxCard = document.querySelector("[data-ctx-card]");
+    const running = !!(window.__CC_CHAT_STATE__ && window.__CC_CHAT_STATE__.running === true);
+    const stages = deriveStageState({ ctxReady: !!ctxCard, running, writebacks: STAGES.writebacks });
+    paint2(box, STAGES.model, stages, STAGES.writebacks, STAGES.persistent);
+  }
+  async function mountSessionStages(el) {
+    const box = el.querySelector("[data-stages-panel]");
+    if (!box) return;
+    await refresh2(box);
+  }
+  function repaintSessionStages(el) {
+    const box = el.querySelector("[data-stages-panel]");
+    if (!box || !STAGES.model) return;
+    const ctxCard = document.querySelector("[data-ctx-card]");
+    const running = !!(window.__CC_CHAT_STATE__ && window.__CC_CHAT_STATE__.running === true);
+    const stages = deriveStageState({ ctxReady: !!ctxCard, running, writebacks: STAGES.writebacks });
+    paint2(box, STAGES.model, stages, STAGES.writebacks, STAGES.persistent);
+  }
+
   // src/screens/chat-nodes.js
   function blocksOf(content) {
     const out = { text: "", reasoning: "", toolCalls: [] };
@@ -14068,7 +14247,7 @@ ${text2}</tr>
       const go = ev.target.closest("[data-cc-modal-go]");
       if (go && go.dataset.ccGo && ctxc.go) ctxc.go(go.dataset.ccGo);
     });
-    const paint2 = (refs) => {
+    const paint3 = (refs) => {
       el.__chatRefs = refs || {};
       if (slot) slot.innerHTML = refsStripHtml(refs);
       if (!treeTried && ctxc.api && typeof ctxc.api.designDocs === "function") {
@@ -14079,7 +14258,7 @@ ${text2}</tr>
         });
       }
     };
-    return paint2;
+    return paint3;
   }
   function classifyMentions(root) {
     if (!root || typeof root.querySelectorAll !== "function") return root;
@@ -14206,7 +14385,7 @@ ${text2}</tr>
     return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C")) + "</div>";
   }
   function screenShell(can) {
-    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
+    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><button class="btn btn-chip sm" data-cc-provider title="' + esc(t("\u914D\u7F6E OpenAIProvider\uFF08api-key \u5F15\u7528 / base \u5730\u5740 / \u6A21\u578B\u5206\u7EA7\uFF09")) + '">Provider</button><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div><aside class="chat-right" data-cc-right><div data-stages-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E09\u6BB5\u5F0F Session \u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u9009\u5B9A\u4F1A\u8BDD\u540E\u88C5\u914D\uFF09")) + '</div></div></div></div><div data-provider-drawer></div></aside></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
   }
   function streamEl(el) {
     return el.querySelector("[data-cc-tr]");
@@ -14358,6 +14537,11 @@ ${text2}</tr>
       return;
     }
     CHAT.state = r.data;
+    try {
+      window.__CC_CHAT_STATE__ = CHAT.state;
+      repaintSessionStages(el);
+    } catch {
+    }
     paintState(el);
   }
   async function refreshTranscript(el, f) {
@@ -14388,16 +14572,20 @@ ${text2}</tr>
     refreshState(el, f);
   }
   function ensureCtxBar(el, sessionId) {
-    const holder = el.querySelector("[data-cc-ctx]");
-    if (!holder) return;
-    if (!sessionId) {
-      holder.innerHTML = "";
-      return;
+    const rail = el.querySelector("[data-cc-right]");
+    if (!rail) return;
+    const ctx2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
+    if (sessionId) {
+      mountSessionCtx(el, ctx2, sessionId);
     }
-    if (!holder.querySelector("[data-ctx-panel]")) {
-      holder.innerHTML = '<details class="ex-block chat-ctx"><summary class="ex-sum"><span class="ex-chev">\u25B6</span>' + esc(t("\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09")) + '</summary><div class="ex-body"><div data-ctx-panel><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u52A0\u8F7D\u4E2D\u2026\uFF08GET /v1/sessions/")) + esc(encodeURIComponent(sessionId)) + "/context\uFF09</div></div></div></details>";
-      const ctx2 = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
-      if (ctx2) mountSessionCtx(el, ctx2, sessionId);
+    mountSessionStages(el);
+    const provBtn = el.querySelector("[data-cc-provider]");
+    if (provBtn && !provBtn.dataset.wired) {
+      provBtn.dataset.wired = "1";
+      provBtn.addEventListener("click", () => {
+        const c = typeof window !== "undefined" && window.__CC_CONSOLE_CTX__ || null;
+        if (c) openProviderDrawer(el, c, "openai-default");
+      });
     }
   }
   async function doSend(el, f, textOverride) {
@@ -15109,7 +15297,7 @@ ${text2}</tr>
       t("tagType \u5206\u7EC4\u805A\u5408\uFF08\u4E09\u6E90\u4E25\u683C\u53BB\u91CD\uFF1Acontext/index \u7D22\u5F15\u6295\u5F71 \u222A \u5BF9\u8C61 tags \u222A \u7F13\u5B58 frontmatter\uFF1B\u96F6\u5047\u8BCD\u8868\uFF09\u2014\u2014\u70B9 tag \u770B\u547D\u4E2D\u6587\u6863"),
       chipGo(t("\u6587\u6863\u5E93"), "docs", "mute", false)
     ) + '<div data-tags-body><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u805A\u5408\u73B0\u8BFB\u4E2D\u2026\uFF08GET /v1/context/index + \u7F13\u5B58\u6B63\u6587 frontmatter\uFF09")) + "</div></div></div></div></div>";
-    const paint2 = (rows, sourceNote) => {
+    const paint3 = (rows, sourceNote) => {
       const body = el.querySelector("[data-tags-body]");
       if (!body) return;
       if (!rows.length) {
@@ -15120,7 +15308,7 @@ ${text2}</tr>
       body.innerHTML = '<div class="small faint" style="margin-bottom:8px">' + esc(sourceNote) + "</div>" + groups.map((g) => '<section class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title">' + esc(g.type) + '</span><span class="h-right">' + chip(g.rows.length + t(" \u4E2A tag"), "mute") + '</span></div><div class="card-b" style="display:flex;gap:6px;flex-wrap:wrap">' + g.rows.map((r) => chipGo("#" + r.tag + " \xB7 " + r.n, tagRoute(r.tag), r.n >= 2 ? "acc" : "mute", true, t("\u770B\u540C tag \u6587\u6863"))).join("") + "</div></section>").join("");
     };
     const cachedFn = (k, s, n, rv) => store2.cachedDoc(k, s, n, rv);
-    paint2(
+    paint3(
       aggregateTags(INDEX_CACHE.docs, store2.objects(), cachedFn, vocab),
       INDEX_CACHE.docs ? t("\u6570\u636E\u6E90\uFF1AGET /v1/context/index\uFF08") + INDEX_CACHE.docs.length + t(" \u7BC7\uFF09\u222A \u5BF9\u8C61 tags \u222A \u7F13\u5B58 frontmatter\u2014\u2014\u53BB\u91CD\u8BA1\u6570\u3002") : t("\u6570\u636E\u6E90\uFF1A\u5BF9\u8C61 tags \u222A \u7F13\u5B58 frontmatter\uFF08\u9884\u53D6\u7A97\u53E3 24 \u7BC7\uFF09\u2014\u2014\u7D22\u5F15\u6295\u5F71\u73B0\u8BFB\u4E2D\u2026")
     );
@@ -15144,13 +15332,13 @@ ${text2}</tr>
     Promise.all([loadContextIndexDocs(ctx2.api), hydrateP]).then(([res]) => {
       if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
       if (!res.ok) {
-        paint2(
+        paint3(
           aggregateTags(null, store2.objects(), cachedFn, vocab),
           t("\u7D22\u5F15\u6295\u5F71\u6682\u4E0D\u53EF\u8BFB\uFF08") + res.error + t("\uFF09\u2014\u2014\u5F53\u524D\u4EC5\u5C55\u793A\u5BF9\u8C61 tags \u222A \u9884\u53D6\u7A97\u53E3 frontmatter\uFF08\u8BDA\u5B9E\u964D\u7EA7\uFF09\u3002")
         );
         return;
       }
-      paint2(
+      paint3(
         aggregateTags(res.docs, store2.objects(), cachedFn, vocab),
         t("\u6570\u636E\u6E90\uFF1AGET /v1/context/index \u7D22\u5F15\u6295\u5F71\uFF08") + res.docs.length + t(" \u7BC7\u5728\u518C\uFF09\u222A \u5BF9\u8C61 tags \u222A \u7F13\u5B58 frontmatter\uFF08\u9884\u53D6\u7A97\u53E3\uFF09\u2014\u2014\u4E09\u6E90\u5BF9\u8C61\u952E\u53BB\u91CD\u3002")
       );

@@ -16,6 +16,7 @@ import (
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/docrepo"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/draft"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 )
 
 // DesignDocs 设计文档面（docrepo.Set 满足；接口化便于测试注入假面）。
@@ -97,6 +98,45 @@ type designApplyRequest struct {
 	DryRun       bool            `json:"dryRun"`
 	FromDraft    bool            `json:"fromDraft"`
 	Subject      *subjectRequest `json:"subject"`
+	SessionID    string          `json:"sessionId,omitempty"` // 第三段回整记账锚（可选）
+	MetaTags     []string        `json:"metaTags,omitempty"`  // 第三段并入侧车的会话 tag（可选；缺=仅 importance 回整）
+}
+
+// sessionMetaWriteback 第三段·属性回整（session.md §5 默认自动——规则版）：
+// 侧车 importance +5 封顶 100 + 会话 tag 并入（tag_type: session）+ 账行落
+// session_writeback。LLM 判断回整=declared-deferred（Mode=rule-default 诚实标注）；
+// 回整失败只记 Note 不影响 apply 主结果（回整是附带动作不是闸门）。
+func sessionMetaWriteback(ctx context.Context, dd DesignDocs, store repository.SessionConfigStore, repo, path, subject, sessionID string, tags []string) *repository.SessionWriteback {
+	wb := &repository.SessionWriteback{
+		At: time.Now().UTC().Format(time.RFC3339), Resource: repo + "/" + path,
+		Subject: subject, SessionID: sessionID, Mode: "rule-default",
+	}
+	sidePath := path + ".metadatainfo"
+	d, err := dd.Read(repo, sidePath)
+	if err != nil {
+		wb.Note = "侧车缺席（" + sidePath + "）——仅记账不动侧车"
+		_ = store.AppendSessionWriteback(ctx, *wb)
+		return wb
+	}
+	content := d.ContentStr
+	if newC, delta, ok := repository.BumpSidecarImportance(content, 5); ok {
+		content = newC
+		wb.ImportanceDelta = delta
+	}
+	if len(tags) > 0 {
+		if newC, added := repository.MergeSidecarTags(content, tags); len(added) > 0 {
+			content = newC
+			wb.TagsAdded = added
+		}
+	}
+	if _, err := dd.Apply(ctx, docrepo.ApplyRequest{
+		Repo: repo, Path: sidePath, BaseSha: d.Sha, Content: []byte(content),
+		FieldManager: "session:meta-writeback", ReasonRef: "session:writeback:" + repo + "/" + path,
+	}); err != nil {
+		wb.Note = "侧车回写失败：" + err.Error()
+	}
+	_ = store.AppendSessionWriteback(ctx, *wb)
+	return wb
 }
 
 // designApplyResult 响应投影（commit 仅真实落库在册；event 仅真实落库在册）。
@@ -113,7 +153,8 @@ func designApplyResult(res *docrepo.Result) map[string]any {
 }
 
 // registerDesignDocRoutes 设计文档面路由注册（New() 内调用——路由表统一收口）。
-func registerDesignDocRoutes(mux *http.ServeMux, designDocs DesignDocs, drafts DraftStaging, applyLog ApplyLogFace) {
+// objects 供第三段回整账存储（SessionConfigStore——sqlite docs DB 后端才有；缺席=不回整只 Apply）。
+func registerDesignDocRoutes(mux *http.ServeMux, designDocs DesignDocs, drafts DraftStaging, applyLog ApplyLogFace, objects ObjectSource) {
 	// 读面清单：{count, repos, docs}——面未装配=503；只读 GET 恒开（装配即可读）。
 	mux.HandleFunc("GET /v1/design-docs", func(w http.ResponseWriter, _ *http.Request) {
 		if designDocs == nil {
@@ -330,6 +371,17 @@ func registerDesignDocRoutes(mux *http.ServeMux, designDocs DesignDocs, drafts D
 		out := designApplyResult(res)
 		out["resource"] = docrepo.ObjectKey(req.Repo, req.Path)
 		out["dryRun"] = req.DryRun
+		// 第三段·属性回整（session.md §5：apply 触发默认自动；dry-run 零副作用不回整）。
+		if !req.DryRun {
+			if store, ok := objects.(repository.SessionConfigStore); ok {
+				if cfg, err := store.GetSessionConfig(r.Context()); err == nil && cfg.MetaAutoUpdate {
+					subj := subjectFrom(r, req.Subject)
+					wb := sessionMetaWriteback(r.Context(), designDocs, store, req.Repo, req.Path,
+						subj.ID(), req.SessionID, req.MetaTags)
+					out["writeback"] = wb
+				}
+			}
+		}
 		writeJSON(w, http.StatusOK, out)
 	})
 }
