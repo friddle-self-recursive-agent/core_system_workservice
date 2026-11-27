@@ -38,19 +38,19 @@ export function defaultLoopSpec(name = 'core-system-developer-loop', existing = 
   ];
   const defaultPhases = [
     { name: 'log-event', phase: 'Idle', title: '1. 监听日志与 Event', unit: 'connectops', connector: collector.connector || 'connectops-log-collector', op: collector.op || 'collect-logs', provider: llm.provider || 'openai-default', modelTier: 'low', entryEvents: ['BugReport', 'MetricThreshold', 'ExternalChanged', 'ReconcileTick', 'LoopRequested'] },
-    { name: 'agent-judge', phase: 'Analyzing', title: '2. Agent 判断（评估修复价值/产出方案或 BugDoc）', unit: 'agent', op: 'judge-issue', provider: llm.provider || 'openai-default', modelTier: 'high', globalRuleRefs: ['rule/rule_eng', 'rule/rule_doc'] },
-    { name: 'approval-gate', phase: 'AwaitingApproval', title: '3. 审批 / 自动判断审批', unit: 'gate', op: 'approval-check', provider: llm.provider || 'openai-default', modelTier: 'high' },
-    { name: 'doc-apply', phase: 'Planning', title: '4. Doc Apply（对话改文档/BugDoc 第二切入点）', unit: 'session', op: 'apply-doc', provider: llm.provider || 'openai-default', modelTier: 'standard', globalRuleRefs: ['rule/rule_doc', 'rule/rule_eng'], entryEvents: ['DocApplied'] },
-    { name: 'developer-system', phase: 'Executing', title: '5. developer-system 研发实现', unit: 'agent', connector: devSys.connector || 'connectops-developer', op: devSys.op || 'develop', provider: llm.provider || 'openai-default', modelTier: 'high', globalRuleRefs: ['rule/rule_eng', 'rule/rule_ux', 'rule/rule_pub'], service: devSys.service || 'developer-system' },
-    { name: 'verify', phase: 'Verifying', title: '6. 验收（Verify 条件解释执行）', unit: 'connectops', connector: ver.connector || 'connectops-code-audit', op: ver.op || 'audit', provider: llm.provider || 'openai-default', modelTier: 'low' },
-    { name: 'deploy-system', phase: 'Deploying', title: '7. deploy-system 发布上线', unit: 'connectops', connector: depSys.connector || 'connectops-deploy', op: depSys.op || 'release', provider: llm.provider || 'openai-default', modelTier: 'low', service: depSys.service || 'deploy-system' },
-    { name: 'report-archive', phase: 'Reporting', title: '8. 总结归档（解释执行 postActions + 回写 InSync）', unit: 'session', op: 'archive-report', provider: llm.provider || 'openai-default', modelTier: 'low' },
+    { name: 'agent-judge', phase: 'Analyzing', title: '2. Agent 判断（评估修复价值/产出方案或 BugDoc）', unit: 'agent', op: 'judge-issue', provider: llm.provider || 'openai-default', modelTier: 'high', refRules: ['rule/rule_eng', 'rule/rule_doc'] },
+    { name: 'approval-gate', phase: 'AwaitingApproval', title: '3. 审批 / 自动判断审批（控制节点）', unit: 'gate', op: 'approval-check' },
+    { name: 'doc-apply', phase: 'Planning', title: '4. Doc Apply（对话改文档/BugDoc 第二切入点）', unit: 'agent', op: 'apply-doc', provider: llm.provider || 'openai-default', modelTier: 'standard', refDocs: ['goal'], refRules: ['rule/rule_doc', 'rule/rule_eng'], refTags: ['audit', 'fix'], tagRules: ['rule/tag_default'], entryEvents: ['DocApplied'] },
+    { name: 'developer-system', phase: 'Executing', title: '5. developer-system 研发（service 内部 agent 执行）', unit: 'service', connector: devSys.connector || 'connectops-developer', op: devSys.op || 'develop', service: devSys.service || 'developer-system', contextPassing: { previousRound: true, fields: ['judge', 'plan', 'diff', 'approval'] }, permissionRole: 'role/developer-system-ops' },
+    { name: 'verify', phase: 'Verifying', title: '6. 验收（developer-system Agent 验收 session）', unit: 'service', service: devSys.service || 'developer-system', op: 'acceptance', contextPassing: { previousRound: true, fields: ['diff', 'verifyConditions'] } },
+    { name: 'deploy-system', phase: 'Deploying', title: '7. deploy-system 发版（service 内部 agent 执行）', unit: 'service', connector: depSys.connector || 'connectops-deploy', op: depSys.op || 'release', service: depSys.service || 'deploy-system', contextPassing: { previousRound: true, fields: ['verifyReport', 'release'] }, permissionRole: 'role/deploy-system-ops' },
+    { name: 'report-archive', phase: 'Reporting', title: '8. 总结归档（解释执行 postActions + 回写 InSync）', unit: 'agent', op: 'archive-report', provider: llm.provider || 'openai-default', modelTier: 'low', tools: ['findings-read', 'doc-draft', 'tag-write'] },
   ];
 
   return {
     name,
     enabled: s.enabled != null ? Boolean(s.enabled) : false,
-    immutableNodes: name === 'core-system-developer-loop' ? true : Boolean(s.immutableNodes),
+    immutableNodes: Boolean(s.immutableNodes),   // 2026-11-27 用户裁决：节点可加删（内置主干也不恒锁定）——前端节点表加节点/删节点/改参数，draft→apply 落账
     undeletable: name === 'core-system-developer-loop' || name === 'default-task' ? true : Boolean(s.undeletable),
     servicesInvolved: Array.isArray(s.services && s.services.involved) ? s.services.involved.join(', ') : 'self-recursive-core, developer-system, deploy-system',
     servicesMode: (s.services && s.services.mode) || 'act',
@@ -91,7 +91,9 @@ export function defaultLoopSpec(name = 'core-system-developer-loop', existing = 
     bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? 'delete' : 'invalidate'),
     statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
     postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
-    phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === 'object' ? s.phases : defaultPhases,
+    phases: (Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === 'object'
+      ? s.phases.map((n) => (n && n.unit === 'session' ? { ...n, unit: 'agent' } : n))   // 旧 session 词形退役→agent（workflow.md §1.3）
+      : defaultPhases),
   };
 }
 
@@ -111,6 +113,30 @@ export function buildWorkflowYaml(cfg, scope = 'global') {
 
   const actionLines = (cfg.postActions || []).map((a, idx) =>
     `      - {id: ${q(a.id || ('act-' + (idx + 1)))}, kind: ${q(a.kind || 'doc-lifecycle')}, targetDocType: ${q(a.targetDocType || 'BugDoc')}, action: ${q(a.action || cfg.bugDocPolicy || 'invalidate')}, enabled: ${Boolean(a.enabled)}, title: ${q(a.title || '')}}`
+  ).join('\n');
+
+  /* 节点行序列化（2026-11-27 用户裁决：执行单元三型 connectops|agent|service + gate 控制节点；
+   * 节点表可加删——phases 从节点表实时生成，YAML=解释器权威源）。 */
+  const nodeLine = (n) => {
+    const p = [`name: ${n.name || 'node'}`, `phase: ${n.phase || 'Idle'}`, `title: ${q(n.title || n.name || '')}`, `unit: ${n.unit || 'connectops'}`];
+    if (n.connector) p.push(`connector: ${n.connector}`);
+    if (n.op) p.push(`op: ${n.op}`);
+    if (n.service) p.push(`service: ${n.service}`);
+    if (n.provider) p.push(`provider: ${n.provider}`);
+    if (n.model) p.push(`model: ${q(n.model)}`);
+    if (n.modelTier) p.push(`modelTier: ${n.modelTier}`);
+    if (n.permissionRole) p.push(`permissionRole: ${n.permissionRole}`);
+    ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'entryEvents'].forEach((k) => {
+      if (Array.isArray(n[k]) && n[k].length) p.push(`${k}: [${n[k].map(q).join(', ')}]`);
+    });
+    if (n.contextPassing && (n.contextPassing.previousRound || (Array.isArray(n.contextPassing.fields) && n.contextPassing.fields.length))) {
+      p.push(`contextPassing: {previousRound: ${n.contextPassing.previousRound !== false}, fields: [${(n.contextPassing.fields || []).map(q).join(', ')}]}`);
+    }
+    return `    - {${p.join(', ')}}`;
+  };
+  const phaseLines = (cfg.phases || []).map(nodeLine).join('\n');
+  const nodeMappingLines = (cfg.phases || []).map((n) =>
+    `      ${n.name}: {tier: ${n.modelTier || 'standard'}${n.model ? ', model: ' + q(n.model) : ''}}`
   ).join('\n');
 
   return `apiVersion: core/v1
@@ -133,14 +159,7 @@ spec:
     model: ${q(cfg.defaultModel || 'reasoning-tier')}
     tier: high
     nodeMapping:
-      log-event: {tier: low, model: "flash-tier"}
-      agent-judge: {tier: high, model: "reasoning-tier"}
-      approval-gate: {tier: high, model: "reasoning-tier"}
-      doc-apply: {tier: standard, model: "standard-tier"}
-      developer-system: {tier: high, model: "reasoning-tier"}
-      verify: {tier: low, model: "flash-tier"}
-      deploy-system: {tier: low, model: "flash-tier"}
-      report-archive: {tier: low, model: "flash-tier"}
+${nodeMappingLines}
   globalRuleRefs: [${rules.map(q).join(', ')}]
   logSource:
     events: [${logEvs.map(q).join(', ')}]
@@ -200,14 +219,7 @@ spec:
     conditions:
 ${condLines || '      []'}
   phases:
-    - {name: log-event,        phase: Idle,             title: "1. 监听日志与 Event",        unit: connectops, connector: ${cfg.collectorConnector || 'connectops-log-collector'}, op: ${cfg.collectorOp || 'collect-logs'}, provider: ${cfg.provider || 'openai-default'}, modelTier: low,      entryEvents: [${logEvs.map(q).join(', ')}]}
-    - {name: agent-judge,      phase: Analyzing,        title: "2. Agent 判断",             unit: agent,      op: judge-issue,  provider: ${cfg.provider || 'openai-default'}, modelTier: high,     globalRuleRefs: ["rule/rule_eng", "rule/rule_doc"]}
-    - {name: approval-gate,    phase: AwaitingApproval, title: "3. 审批 / 自动判断审批",     unit: gate,       op: approval-check, provider: ${cfg.provider || 'openai-default'}, modelTier: high}
-    - {name: doc-apply,        phase: Planning,         title: "4. Doc Apply（多入口切入点）", unit: session,    op: apply-doc,    provider: ${cfg.provider || 'openai-default'}, modelTier: standard, globalRuleRefs: ["rule/rule_doc", "rule/rule_eng"], entryEvents: ["DocApplied"]}
-    - {name: developer-system, phase: Executing,        title: "5. developer-system 开发",   unit: agent,      connector: ${cfg.devConnector || 'connectops-developer'}, op: ${cfg.devOp || 'develop'}, provider: ${cfg.provider || 'openai-default'}, modelTier: high, globalRuleRefs: ["rule/rule_eng", "rule/rule_ux", "rule/rule_pub"], service: ${cfg.devService || 'developer-system'}}
-    - {name: verify,           phase: Verifying,        title: "6. 验收（Verify）",          unit: connectops, connector: ${cfg.verifyConnector || 'connectops-code-audit'}, op: ${cfg.verifyOp || 'audit'}, provider: ${cfg.provider || 'openai-default'}, modelTier: low}
-    - {name: deploy-system,    phase: Deploying,        title: "7. deploy-system 发版",      unit: connectops, connector: ${cfg.deployConnector || 'connectops-deploy'}, op: ${cfg.deployOp || 'release'}, provider: ${cfg.provider || 'openai-default'}, modelTier: low, service: ${cfg.deployService || 'deploy-system'}}
-    - {name: report-archive,   phase: Reporting,        title: "8. 总结归档 + 回写 InSync",  unit: session,    op: archive-report, provider: ${cfg.provider || 'openai-default'}, modelTier: low}
+${phaseLines}
   transitions:
     - {from: Idle,             on: advance,            to: Analyzing}
     - {from: Idle,             on: "entry:DocApplied", to: Planning}
@@ -241,6 +253,65 @@ ${condLines || '      []'}
 ${actionLines || '      []'}
     reports: [DriftReport, SessionLog]
 `;
+}
+
+/* ---------- 节点流转编辑（2026-11-27 用户裁决：执行单元三型 connectops/agent/service +
+ * gate 控制节点；节点可加删「我要加节点或者我要去掉验收节点」；agent 点进即配 LLM/ref 文档/
+ * ref 规则/ref tag/tag 规则/工具；service=调目标系统内部 agent 执行+上一轮详细上下文+
+ * permissionRole）。纯渲染 nodeCardHtml(n, i, defProvider) → HTML；绑定在 bindWorkflowStudio。 */
+
+const NODE_UNITS = ['connectops', 'agent', 'service', 'gate'];
+
+const UNIT_CHIP = { connectops: 'mute', agent: 'acc', service: 'warn', gate: 'llm' };
+
+/** 单节点配置卡（点进即配：unit select 切换后由绑定层重渲染该列表）。 */
+function nodeCardHtml(n, i, defProvider) {
+  const u = n.unit || 'connectops';
+  const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
+  const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-node="${key}" data-ni="${i}" value="${esc(val == null ? '' : String(val))}" style="width:100%"></div>`;
+  const base = grid(
+    inp('节点名 (name)', 'name', n.name || ('node-' + (i + 1))) +
+    inp('相位 (phase)', 'phase', n.phase || 'Idle') +
+    `<div><div class="small faint">${esc(tr('职责说明 (title)'))}</div><input class="inp" data-node="title" data-ni="${i}" value="${esc(n.title || '')}" style="width:100%"></div>` +
+    `<div><div class="small faint">${esc(tr('执行单元 (unit)'))}</div><select class="inp" data-node="unit" data-ni="${i}" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? 'selected' : ''}>${x}${x === 'gate' ? tr('（控制节点）') : ''}</option>`).join('')}</select></div>`
+  );
+  const rows = [base];
+  if (u === 'agent') {
+    rows.push(grid(
+      inp('Provider', 'provider', n.provider || defProvider || 'openai-default') +
+      inp('模型档位 (modelTier low/standard/high)', 'modelTier', n.modelTier || 'standard') +
+      inp('ref 文档 (refDocs 逗号分隔)', 'refDocs', (n.refDocs || []).join(', ')) +
+      inp('ref 规则 (refRules)', 'refRules', (n.refRules || []).join(', ')) +
+      inp('默认 ref tag (refTags)', 'refTags', (n.refTags || []).join(', ')) +
+      inp('tag 规则 (tagRules)', 'tagRules', (n.tagRules || []).join(', ')) +
+      inp('随身工具 (tools)', 'tools', (n.tools || []).join(', ')) +
+      inp('入口事件 (entryEvents)', 'entryEvents', (n.entryEvents || []).join(', '))
+    ));
+  } else if (u === 'service') {
+    rows.push(grid(
+      inp('目标系统 (service)', 'service', n.service || '') +
+      inp('算子 (op)', 'op', n.op || '') +
+      inp('ConnectorOps', 'connector', n.connector || '') +
+      inp('权限 Role (permissionRole——P7 随文档授予)', 'permissionRole', n.permissionRole || '') +
+      inp('上一轮上下文字段 (contextPassing.fields)', 'ctxFields', ((n.contextPassing && n.contextPassing.fields) || []).join(', ')) +
+      `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-node="ctxPrev" data-ni="${i}" ${(!n.contextPassing || n.contextPassing.previousRound !== false) ? 'checked' : ''}> ${esc(tr('传上一轮详细上下文'))}</label></div>`
+    ));
+  } else if (u === 'connectops') {
+    rows.push(grid(
+      inp('ConnectorOps', 'connector', n.connector || '') +
+      inp('算子 (op)', 'op', n.op || '') +
+      inp('Provider', 'provider', n.provider || defProvider || 'openai-default') +
+      inp('模型档位 (modelTier)', 'modelTier', n.modelTier || 'low') +
+      inp('入口事件 (entryEvents)', 'entryEvents', (n.entryEvents || []).join(', '))
+    ));
+  } else {
+    rows.push(grid(inp('闸算子 (op)', 'op', n.op || 'approval-check')));
+  }
+  return `<div class="card" style="margin:0 0 8px 0" data-node-card="${i}"><div class="card-b">` +
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">` +
+    `<div>${chip(u === 'gate' ? tr('控制节点') : u, UNIT_CHIP[u] || 'mute')} <b class="mono small">${esc(n.name || '')}</b></div>` +
+    `<button type="button" class="btn tiny mute" data-node-del="${i}">${esc(tr('删除节点'))}</button></div>` +
+    rows.join('') + `</div></div>`;
 }
 
 /** 四大设计表 + 以人为本可视化配置工作台 HTML */
@@ -282,7 +353,7 @@ export function workflowStudioHtml(wf, usedName) {
       `<td class="mono small">${i + 1}. ${esc(n.name || '')}</td>` +
       `<td>${chip(n.phase || '—', 'acc')}</td>` +
       `<td><b>${esc(n.title || '')}</b></td>` +
-      `<td class="mono small">${chip(n.unit || 'session', 'mute')}</td>` +
+      `<td class="mono small">${chip(n.unit === 'gate' ? tr('控制节点') : (n.unit || 'connectops'), UNIT_CHIP[n.unit] || 'mute')}</td>` +
       `<td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : '—'}${n.op ? ` · ${esc(n.op)}` : ''}</td>` +
       `<td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="点击配置 OpenAIProvider 账号/baseUrl/模型映射">Provider: ${esc(n.provider || cfg.provider)}</span> ` +
       `${chip('tier:' + (n.modelTier || 'standard'), n.modelTier === 'high' ? 'warn' : 'mute')}</td>` +
@@ -294,7 +365,7 @@ export function workflowStudioHtml(wf, usedName) {
   <h2 class="sec-title">${esc(tr('设计表与节点流转架构（Workflow + Scheme = 声明层，代码 = 通用解释器）'))}</h2>
   <div class="card">
     <div class="card-h">
-      <span class="h-title">${esc(tr('8 节点主干、双触发入口与按任务智商分级模型设计表'))}</span>
+      <span class="h-title">${esc(tr(String((cfg.phases || []).length) + ' 节点主干、双触发入口与按任务智商分级模型设计表'))}</span>
       <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(tr('配置默认 OpenAIProvider (' + cfg.provider + ')'))}</button>
     </div>
     <div class="card-b" style="overflow-x:auto">
@@ -316,7 +387,7 @@ export function workflowStudioHtml(wf, usedName) {
       <span class="h-title">${esc(usedName)} · ${esc(tr('全节点参数、自动审批、验收条件与临时 BugDoc 收尾策略配置'))}</span>
       <div>
         ${cfg.undeletable ? chip(tr('内置保护：不可删除'), 'warn') : ''}
-        ${cfg.immutableNodes ? chip(tr('主干节点拓扑锁定（参数可配）'), 'acc') : ''}
+        ${cfg.immutableNodes ? chip(tr('主干节点拓扑锁定（参数可配）'), 'acc') : chip(tr('节点可加删（draft→apply）'), 'ok')}
       </div>
     </div>
     <div class="card-b">
@@ -495,6 +566,15 @@ export function workflowStudioHtml(wf, usedName) {
         </div>
       </details>
 
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(tr('G. 节点流转编辑（执行单元三型 connectops/agent/service；agent 点进即配——LLM/ref 文档/ref 规则/ref tag/tag 规则/工具；service=调目标系统且内部由其 agent 执行+上一轮详细上下文+权限 Role；节点可加删——如删验收节点）'))}</b>
+          <span class="small faint">${esc(tr('改动随「保存并 Apply」以 Workflow 文档对象落账'))}</span>
+        </div>
+        <div data-wf-node-list>${(cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join('')}</div>
+        <button type="button" class="btn tiny acc" data-node-add>${esc(tr('+ 添加节点'))}</button>
+      </div></div>
+
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn acc" data-wf-save>${esc(tr('保存并 Apply 工作流配置'))}</button>
         <button type="button" class="btn mute" data-wf-sync-yaml>${esc(tr('从上方表单重新生成 YAML'))}</button>
@@ -543,6 +623,46 @@ export function bindWorkflowStudio(el, ctx, wf, usedName, onSaved) {
       });
     });
     cfg.postActions = acts;
+    /* 节点表 → cfg.phases（DOM 顺序=节点序；unit 分型读字段——执行单元三型，2026-11-27） */
+    const nodeCards = studio.querySelectorAll('[data-node-card]');
+    if (nodeCards.length) {
+      const nodes = [];
+      nodeCards.forEach((card) => {
+        const get = (k) => card.querySelector(`[data-node="${k}"]`);
+        const lst = (k) => String(get(k) ? get(k).value : '').split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
+        const u = get('unit') ? get('unit').value : 'connectops';
+        const n = {
+          name: (get('name') && get('name').value.trim()) || ('node-' + (nodes.length + 1)),
+          phase: (get('phase') && get('phase').value.trim()) || 'Idle',
+          title: get('title') ? get('title').value : '',
+          unit: u,
+        };
+        if (u === 'agent') {
+          n.provider = get('provider') ? get('provider').value.trim() : cfg.provider;
+          n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'standard';
+          ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'entryEvents'].forEach((k) => { n[k] = lst(k); });
+        } else if (u === 'service') {
+          n.service = get('service') ? get('service').value.trim() : '';
+          n.op = get('op') ? get('op').value.trim() : '';
+          n.connector = get('connector') ? get('connector').value.trim() : '';
+          n.permissionRole = get('permissionRole') ? get('permissionRole').value.trim() : '';
+          n.contextPassing = {
+            previousRound: Boolean(get('ctxPrev') && get('ctxPrev').checked),
+            fields: lst('ctxFields'),
+          };
+        } else if (u === 'connectops') {
+          n.connector = get('connector') ? get('connector').value.trim() : '';
+          n.op = get('op') ? get('op').value.trim() : '';
+          n.provider = get('provider') ? get('provider').value.trim() : cfg.provider;
+          n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'low';
+          n.entryEvents = lst('entryEvents');
+        } else {
+          n.op = get('op') ? get('op').value.trim() : 'approval-check';
+        }
+        nodes.push(n);
+      });
+      cfg.phases = nodes;
+    }
   };
 
   const syncYamlBox = () => {
@@ -613,6 +733,39 @@ export function bindWorkflowStudio(el, ctx, wf, usedName, onSaved) {
   });
 
   studio.querySelector('[data-wf-sync-yaml]')?.addEventListener('click', syncYamlBox);
+
+  /* 节点流转编辑绑定（加节点/删节点/unit 切换重渲染该卡字段组——agent 点进即配） */
+  const nodeList = studio.querySelector('[data-wf-node-list]');
+  const bindNodeEvents = () => {
+    if (!nodeList) return;
+    nodeList.querySelectorAll('[data-node-del]').forEach((btn) => {
+      btn.onclick = () => {
+        readFormIntoCfg();
+        cfg.phases.splice(Number(btn.getAttribute('data-node-del')), 1);
+        renderNodeList();
+        syncYamlBox();
+      };
+    });
+    nodeList.querySelectorAll('[data-node]').forEach((inp) => {
+      inp.onchange = () => {
+        readFormIntoCfg();
+        renderNodeList();
+        syncYamlBox();
+      };
+    });
+  };
+  const renderNodeList = () => {
+    if (!nodeList) return;
+    nodeList.innerHTML = (cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join('');
+    bindNodeEvents();
+  };
+  studio.querySelector('[data-node-add]')?.addEventListener('click', () => {
+    readFormIntoCfg();
+    cfg.phases.push({ name: 'node-' + (cfg.phases.length + 1), phase: 'Idle', title: '新节点', unit: 'connectops', provider: cfg.provider, modelTier: 'standard' });
+    renderNodeList();
+    syncYamlBox();
+  });
+  bindNodeEvents();
 
   // 拉出日志收集 ConnectorOps 代码开发/编辑任务
   studio.querySelector('[data-develop-collector]')?.addEventListener('click', async () => {

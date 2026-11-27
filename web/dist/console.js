@@ -3244,18 +3244,19 @@ var CoreConsoleWeb = (() => {
     ];
     const defaultPhases = [
       { name: "log-event", phase: "Idle", title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event", unit: "connectops", connector: collector.connector || "connectops-log-collector", op: collector.op || "collect-logs", provider: llm.provider || "openai-default", modelTier: "low", entryEvents: ["BugReport", "MetricThreshold", "ExternalChanged", "ReconcileTick", "LoopRequested"] },
-      { name: "agent-judge", phase: "Analyzing", title: "2. Agent \u5224\u65AD\uFF08\u8BC4\u4F30\u4FEE\u590D\u4EF7\u503C/\u4EA7\u51FA\u65B9\u6848\u6216 BugDoc\uFF09", unit: "agent", op: "judge-issue", provider: llm.provider || "openai-default", modelTier: "high", globalRuleRefs: ["rule/rule_eng", "rule/rule_doc"] },
-      { name: "approval-gate", phase: "AwaitingApproval", title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279", unit: "gate", op: "approval-check", provider: llm.provider || "openai-default", modelTier: "high" },
-      { name: "doc-apply", phase: "Planning", title: "4. Doc Apply\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/BugDoc \u7B2C\u4E8C\u5207\u5165\u70B9\uFF09", unit: "session", op: "apply-doc", provider: llm.provider || "openai-default", modelTier: "standard", globalRuleRefs: ["rule/rule_doc", "rule/rule_eng"], entryEvents: ["DocApplied"] },
-      { name: "developer-system", phase: "Executing", title: "5. developer-system \u7814\u53D1\u5B9E\u73B0", unit: "agent", connector: devSys.connector || "connectops-developer", op: devSys.op || "develop", provider: llm.provider || "openai-default", modelTier: "high", globalRuleRefs: ["rule/rule_eng", "rule/rule_ux", "rule/rule_pub"], service: devSys.service || "developer-system" },
-      { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08Verify \u6761\u4EF6\u89E3\u91CA\u6267\u884C\uFF09", unit: "connectops", connector: ver.connector || "connectops-code-audit", op: ver.op || "audit", provider: llm.provider || "openai-default", modelTier: "low" },
-      { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u5E03\u4E0A\u7EBF", unit: "connectops", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", provider: llm.provider || "openai-default", modelTier: "low", service: depSys.service || "deploy-system" },
-      { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "session", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low" }
+      { name: "agent-judge", phase: "Analyzing", title: "2. Agent \u5224\u65AD\uFF08\u8BC4\u4F30\u4FEE\u590D\u4EF7\u503C/\u4EA7\u51FA\u65B9\u6848\u6216 BugDoc\uFF09", unit: "agent", op: "judge-issue", provider: llm.provider || "openai-default", modelTier: "high", refRules: ["rule/rule_eng", "rule/rule_doc"] },
+      { name: "approval-gate", phase: "AwaitingApproval", title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF08\u63A7\u5236\u8282\u70B9\uFF09", unit: "gate", op: "approval-check" },
+      { name: "doc-apply", phase: "Planning", title: "4. Doc Apply\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/BugDoc \u7B2C\u4E8C\u5207\u5165\u70B9\uFF09", unit: "agent", op: "apply-doc", provider: llm.provider || "openai-default", modelTier: "standard", refDocs: ["goal"], refRules: ["rule/rule_doc", "rule/rule_eng"], refTags: ["audit", "fix"], tagRules: ["rule/tag_default"], entryEvents: ["DocApplied"] },
+      { name: "developer-system", phase: "Executing", title: "5. developer-system \u7814\u53D1\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: devSys.connector || "connectops-developer", op: devSys.op || "develop", service: devSys.service || "developer-system", contextPassing: { previousRound: true, fields: ["judge", "plan", "diff", "approval"] }, permissionRole: "role/developer-system-ops" },
+      { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08developer-system Agent \u9A8C\u6536 session\uFF09", unit: "service", service: devSys.service || "developer-system", op: "acceptance", contextPassing: { previousRound: true, fields: ["diff", "verifyConditions"] } },
+      { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u7248\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", service: depSys.service || "deploy-system", contextPassing: { previousRound: true, fields: ["verifyReport", "release"] }, permissionRole: "role/deploy-system-ops" },
+      { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "agent", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low", tools: ["findings-read", "doc-draft", "tag-write"] }
     ];
     return {
       name,
       enabled: s.enabled != null ? Boolean(s.enabled) : false,
-      immutableNodes: name === "core-system-developer-loop" ? true : Boolean(s.immutableNodes),
+      immutableNodes: Boolean(s.immutableNodes),
+      // 2026-11-27 用户裁决：节点可加删（内置主干也不恒锁定）——前端节点表加节点/删节点/改参数，draft→apply 落账
       undeletable: name === "core-system-developer-loop" || name === "default-task" ? true : Boolean(s.undeletable),
       servicesInvolved: Array.isArray(s.services && s.services.involved) ? s.services.involved.join(", ") : "self-recursive-core, developer-system, deploy-system",
       servicesMode: s.services && s.services.mode || "act",
@@ -3296,7 +3297,7 @@ var CoreConsoleWeb = (() => {
       bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? "delete" : "invalidate"),
       statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
       postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
-      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases : defaultPhases
+      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases.map((n) => n && n.unit === "session" ? { ...n, unit: "agent" } : n) : defaultPhases
     };
   }
   function buildWorkflowYaml(cfg, scope = "global") {
@@ -3312,6 +3313,27 @@ var CoreConsoleWeb = (() => {
     ).join("\n");
     const actionLines = (cfg.postActions || []).map(
       (a, idx) => `      - {id: ${q(a.id || "act-" + (idx + 1))}, kind: ${q(a.kind || "doc-lifecycle")}, targetDocType: ${q(a.targetDocType || "BugDoc")}, action: ${q(a.action || cfg.bugDocPolicy || "invalidate")}, enabled: ${Boolean(a.enabled)}, title: ${q(a.title || "")}}`
+    ).join("\n");
+    const nodeLine = (n) => {
+      const p = [`name: ${n.name || "node"}`, `phase: ${n.phase || "Idle"}`, `title: ${q(n.title || n.name || "")}`, `unit: ${n.unit || "connectops"}`];
+      if (n.connector) p.push(`connector: ${n.connector}`);
+      if (n.op) p.push(`op: ${n.op}`);
+      if (n.service) p.push(`service: ${n.service}`);
+      if (n.provider) p.push(`provider: ${n.provider}`);
+      if (n.model) p.push(`model: ${q(n.model)}`);
+      if (n.modelTier) p.push(`modelTier: ${n.modelTier}`);
+      if (n.permissionRole) p.push(`permissionRole: ${n.permissionRole}`);
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
+        if (Array.isArray(n[k]) && n[k].length) p.push(`${k}: [${n[k].map(q).join(", ")}]`);
+      });
+      if (n.contextPassing && (n.contextPassing.previousRound || Array.isArray(n.contextPassing.fields) && n.contextPassing.fields.length)) {
+        p.push(`contextPassing: {previousRound: ${n.contextPassing.previousRound !== false}, fields: [${(n.contextPassing.fields || []).map(q).join(", ")}]}`);
+      }
+      return `    - {${p.join(", ")}}`;
+    };
+    const phaseLines = (cfg.phases || []).map(nodeLine).join("\n");
+    const nodeMappingLines = (cfg.phases || []).map(
+      (n) => `      ${n.name}: {tier: ${n.modelTier || "standard"}${n.model ? ", model: " + q(n.model) : ""}}`
     ).join("\n");
     return `apiVersion: core/v1
 kind: Workflow
@@ -3333,14 +3355,7 @@ spec:
     model: ${q(cfg.defaultModel || "reasoning-tier")}
     tier: high
     nodeMapping:
-      log-event: {tier: low, model: "flash-tier"}
-      agent-judge: {tier: high, model: "reasoning-tier"}
-      approval-gate: {tier: high, model: "reasoning-tier"}
-      doc-apply: {tier: standard, model: "standard-tier"}
-      developer-system: {tier: high, model: "reasoning-tier"}
-      verify: {tier: low, model: "flash-tier"}
-      deploy-system: {tier: low, model: "flash-tier"}
-      report-archive: {tier: low, model: "flash-tier"}
+${nodeMappingLines}
   globalRuleRefs: [${rules.map(q).join(", ")}]
   logSource:
     events: [${logEvs.map(q).join(", ")}]
@@ -3400,14 +3415,7 @@ spec:
     conditions:
 ${condLines || "      []"}
   phases:
-    - {name: log-event,        phase: Idle,             title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event",        unit: connectops, connector: ${cfg.collectorConnector || "connectops-log-collector"}, op: ${cfg.collectorOp || "collect-logs"}, provider: ${cfg.provider || "openai-default"}, modelTier: low,      entryEvents: [${logEvs.map(q).join(", ")}]}
-    - {name: agent-judge,      phase: Analyzing,        title: "2. Agent \u5224\u65AD",             unit: agent,      op: judge-issue,  provider: ${cfg.provider || "openai-default"}, modelTier: high,     globalRuleRefs: ["rule/rule_eng", "rule/rule_doc"]}
-    - {name: approval-gate,    phase: AwaitingApproval, title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279",     unit: gate,       op: approval-check, provider: ${cfg.provider || "openai-default"}, modelTier: high}
-    - {name: doc-apply,        phase: Planning,         title: "4. Doc Apply\uFF08\u591A\u5165\u53E3\u5207\u5165\u70B9\uFF09", unit: session,    op: apply-doc,    provider: ${cfg.provider || "openai-default"}, modelTier: standard, globalRuleRefs: ["rule/rule_doc", "rule/rule_eng"], entryEvents: ["DocApplied"]}
-    - {name: developer-system, phase: Executing,        title: "5. developer-system \u5F00\u53D1",   unit: agent,      connector: ${cfg.devConnector || "connectops-developer"}, op: ${cfg.devOp || "develop"}, provider: ${cfg.provider || "openai-default"}, modelTier: high, globalRuleRefs: ["rule/rule_eng", "rule/rule_ux", "rule/rule_pub"], service: ${cfg.devService || "developer-system"}}
-    - {name: verify,           phase: Verifying,        title: "6. \u9A8C\u6536\uFF08Verify\uFF09",          unit: connectops, connector: ${cfg.verifyConnector || "connectops-code-audit"}, op: ${cfg.verifyOp || "audit"}, provider: ${cfg.provider || "openai-default"}, modelTier: low}
-    - {name: deploy-system,    phase: Deploying,        title: "7. deploy-system \u53D1\u7248",      unit: connectops, connector: ${cfg.deployConnector || "connectops-deploy"}, op: ${cfg.deployOp || "release"}, provider: ${cfg.provider || "openai-default"}, modelTier: low, service: ${cfg.deployService || "deploy-system"}}
-    - {name: report-archive,   phase: Reporting,        title: "8. \u603B\u7ED3\u5F52\u6863 + \u56DE\u5199 InSync",  unit: session,    op: archive-report, provider: ${cfg.provider || "openai-default"}, modelTier: low}
+${phaseLines}
   transitions:
     - {from: Idle,             on: advance,            to: Analyzing}
     - {from: Idle,             on: "entry:DocApplied", to: Planning}
@@ -3442,6 +3450,33 @@ ${actionLines || "      []"}
     reports: [DriftReport, SessionLog]
 `;
   }
+  var NODE_UNITS = ["connectops", "agent", "service", "gate"];
+  var UNIT_CHIP = { connectops: "mute", agent: "acc", service: "warn", gate: "llm" };
+  function nodeCardHtml(n, i, defProvider) {
+    const u = n.unit || "connectops";
+    const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
+    const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-node="${key}" data-ni="${i}" value="${esc(val == null ? "" : String(val))}" style="width:100%"></div>`;
+    const base = grid(
+      inp("\u8282\u70B9\u540D (name)", "name", n.name || "node-" + (i + 1)) + inp("\u76F8\u4F4D (phase)", "phase", n.phase || "Idle") + `<div><div class="small faint">${esc(t("\u804C\u8D23\u8BF4\u660E (title)"))}</div><input class="inp" data-node="title" data-ni="${i}" value="${esc(n.title || "")}" style="width:100%"></div><div><div class="small faint">${esc(t("\u6267\u884C\u5355\u5143 (unit)"))}</div><select class="inp" data-node="unit" data-ni="${i}" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${x}${x === "gate" ? t("\uFF08\u63A7\u5236\u8282\u70B9\uFF09") : ""}</option>`).join("")}</select></div>`
+    );
+    const rows = [base];
+    if (u === "agent") {
+      rows.push(grid(
+        inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier low/standard/high)", "modelTier", n.modelTier || "standard") + inp("ref \u6587\u6863 (refDocs \u9017\u53F7\u5206\u9694)", "refDocs", (n.refDocs || []).join(", ")) + inp("ref \u89C4\u5219 (refRules)", "refRules", (n.refRules || []).join(", ")) + inp("\u9ED8\u8BA4 ref tag (refTags)", "refTags", (n.refTags || []).join(", ")) + inp("tag \u89C4\u5219 (tagRules)", "tagRules", (n.tagRules || []).join(", ")) + inp("\u968F\u8EAB\u5DE5\u5177 (tools)", "tools", (n.tools || []).join(", ")) + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
+      ));
+    } else if (u === "service") {
+      rows.push(grid(
+        inp("\u76EE\u6807\u7CFB\u7EDF (service)", "service", n.service || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("ConnectorOps", "connector", n.connector || "") + inp("\u6743\u9650 Role (permissionRole\u2014\u2014P7 \u968F\u6587\u6863\u6388\u4E88)", "permissionRole", n.permissionRole || "") + inp("\u4E0A\u4E00\u8F6E\u4E0A\u4E0B\u6587\u5B57\u6BB5 (contextPassing.fields)", "ctxFields", (n.contextPassing && n.contextPassing.fields || []).join(", ")) + `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-node="ctxPrev" data-ni="${i}" ${!n.contextPassing || n.contextPassing.previousRound !== false ? "checked" : ""}> ${esc(t("\u4F20\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587"))}</label></div>`
+      ));
+    } else if (u === "connectops") {
+      rows.push(grid(
+        inp("ConnectorOps", "connector", n.connector || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier)", "modelTier", n.modelTier || "low") + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
+      ));
+    } else {
+      rows.push(grid(inp("\u95F8\u7B97\u5B50 (op)", "op", n.op || "approval-check")));
+    }
+    return `<div class="card" style="margin:0 0 8px 0" data-node-card="${i}"><div class="card-b"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div>${chip(u === "gate" ? t("\u63A7\u5236\u8282\u70B9") : u, UNIT_CHIP[u] || "mute")} <b class="mono small">${esc(n.name || "")}</b></div><button type="button" class="btn tiny mute" data-node-del="${i}">${esc(t("\u5220\u9664\u8282\u70B9"))}</button></div>` + rows.join("") + `</div></div>`;
+  }
   function workflowStudioHtml(wf, usedName) {
     const cfg = defaultLoopSpec(usedName, wf && wf.spec);
     const scope = wf && wf.primaryScope || "global";
@@ -3453,13 +3488,13 @@ ${actionLines || "      []"}
       (a, idx) => `<div class="mini-row" data-wf-act-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-act-en="${idx}" ${a.enabled !== false ? "checked" : ""} title="\u542F\u7528\u6B64\u6536\u5C3E\u52A8\u4F5C" /><select class="inp" data-act-kind="${idx}" style="width:140px">` + ["doc-lifecycle", "status-writeback", "notify", "custom"].map((k) => `<option value="${k}" ${a.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate" ${(a.action || cfg.bugDocPolicy) === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete" ${(a.action || cfg.bugDocPolicy) === "delete" ? "selected" : ""}>\u5220\u9664\u6587\u6863 (delete)</option><option value="keep" ${(a.action || cfg.bugDocPolicy) === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="${esc(a.title || "")}" placeholder="\u6536\u5C3E\u52A8\u4F5C\u8BF4\u660E" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button></div>`
     ).join("");
     const designNodesHtml = (cfg.phases || []).map(
-      (n, i) => `<tr><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit || "session", "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04">Provider: ${esc(n.provider || cfg.provider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.globalRuleRefs) && n.globalRuleRefs.length ? esc(n.globalRuleRefs.join(", ")) : "\u2014"}</td></tr>`
+      (n, i) => `<tr><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit || "connectops", UNIT_CHIP[n.unit] || "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04">Provider: ${esc(n.provider || cfg.provider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.globalRuleRefs) && n.globalRuleRefs.length ? esc(n.globalRuleRefs.join(", ")) : "\u2014"}</td></tr>`
     ).join("");
     return `
   <h2 class="sec-title">${esc(t("\u8BBE\u8BA1\u8868\u4E0E\u8282\u70B9\u6D41\u8F6C\u67B6\u6784\uFF08Workflow + Scheme = \u58F0\u660E\u5C42\uFF0C\u4EE3\u7801 = \u901A\u7528\u89E3\u91CA\u5668\uFF09"))}</h2>
   <div class="card">
     <div class="card-h">
-      <span class="h-title">${esc(t("8 \u8282\u70B9\u4E3B\u5E72\u3001\u53CC\u89E6\u53D1\u5165\u53E3\u4E0E\u6309\u4EFB\u52A1\u667A\u5546\u5206\u7EA7\u6A21\u578B\u8BBE\u8BA1\u8868"))}</span>
+      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u4E3B\u5E72\u3001\u53CC\u89E6\u53D1\u5165\u53E3\u4E0E\u6309\u4EFB\u52A1\u667A\u5546\u5206\u7EA7\u6A21\u578B\u8BBE\u8BA1\u8868"))}</span>
       <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
     </div>
     <div class="card-b" style="overflow-x:auto">
@@ -3481,7 +3516,7 @@ ${actionLines || "      []"}
       <span class="h-title">${esc(usedName)} \xB7 ${esc(t("\u5168\u8282\u70B9\u53C2\u6570\u3001\u81EA\u52A8\u5BA1\u6279\u3001\u9A8C\u6536\u6761\u4EF6\u4E0E\u4E34\u65F6 BugDoc \u6536\u5C3E\u7B56\u7565\u914D\u7F6E"))}</span>
       <div>
         ${cfg.undeletable ? chip(t("\u5185\u7F6E\u4FDD\u62A4\uFF1A\u4E0D\u53EF\u5220\u9664"), "warn") : ""}
-        ${cfg.immutableNodes ? chip(t("\u4E3B\u5E72\u8282\u70B9\u62D3\u6251\u9501\u5B9A\uFF08\u53C2\u6570\u53EF\u914D\uFF09"), "acc") : ""}
+        ${cfg.immutableNodes ? chip(t("\u4E3B\u5E72\u8282\u70B9\u62D3\u6251\u9501\u5B9A\uFF08\u53C2\u6570\u53EF\u914D\uFF09"), "acc") : chip(t("\u8282\u70B9\u53EF\u52A0\u5220\uFF08draft\u2192apply\uFF09"), "ok")}
       </div>
     </div>
     <div class="card-b">
@@ -3660,6 +3695,15 @@ ${actionLines || "      []"}
         </div>
       </details>
 
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(t("G. \u8282\u70B9\u6D41\u8F6C\u7F16\u8F91\uFF08\u6267\u884C\u5355\u5143\u4E09\u578B connectops/agent/service\uFF1Bagent \u70B9\u8FDB\u5373\u914D\u2014\u2014LLM/ref \u6587\u6863/ref \u89C4\u5219/ref tag/tag \u89C4\u5219/\u5DE5\u5177\uFF1Bservice=\u8C03\u76EE\u6807\u7CFB\u7EDF\u4E14\u5185\u90E8\u7531\u5176 agent \u6267\u884C+\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587+\u6743\u9650 Role\uFF1B\u8282\u70B9\u53EF\u52A0\u5220\u2014\u2014\u5982\u5220\u9A8C\u6536\u8282\u70B9\uFF09"))}</b>
+          <span class="small faint">${esc(t("\u6539\u52A8\u968F\u300C\u4FDD\u5B58\u5E76 Apply\u300D\u4EE5 Workflow \u6587\u6863\u5BF9\u8C61\u843D\u8D26"))}</span>
+        </div>
+        <div data-wf-node-list>${(cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join("")}</div>
+        <button type="button" class="btn tiny acc" data-node-add>${esc(t("+ \u6DFB\u52A0\u8282\u70B9"))}</button>
+      </div></div>
+
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn acc" data-wf-save>${esc(t("\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E"))}</button>
         <button type="button" class="btn mute" data-wf-sync-yaml>${esc(t("\u4ECE\u4E0A\u65B9\u8868\u5355\u91CD\u65B0\u751F\u6210 YAML"))}</button>
@@ -3705,6 +3749,47 @@ ${actionLines || "      []"}
         });
       });
       cfg.postActions = acts;
+      const nodeCards = studio.querySelectorAll("[data-node-card]");
+      if (nodeCards.length) {
+        const nodes = [];
+        nodeCards.forEach((card) => {
+          const get = (k) => card.querySelector(`[data-node="${k}"]`);
+          const lst = (k) => String(get(k) ? get(k).value : "").split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
+          const u = get("unit") ? get("unit").value : "connectops";
+          const n = {
+            name: get("name") && get("name").value.trim() || "node-" + (nodes.length + 1),
+            phase: get("phase") && get("phase").value.trim() || "Idle",
+            title: get("title") ? get("title").value : "",
+            unit: u
+          };
+          if (u === "agent") {
+            n.provider = get("provider") ? get("provider").value.trim() : cfg.provider;
+            n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "standard";
+            ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
+              n[k] = lst(k);
+            });
+          } else if (u === "service") {
+            n.service = get("service") ? get("service").value.trim() : "";
+            n.op = get("op") ? get("op").value.trim() : "";
+            n.connector = get("connector") ? get("connector").value.trim() : "";
+            n.permissionRole = get("permissionRole") ? get("permissionRole").value.trim() : "";
+            n.contextPassing = {
+              previousRound: Boolean(get("ctxPrev") && get("ctxPrev").checked),
+              fields: lst("ctxFields")
+            };
+          } else if (u === "connectops") {
+            n.connector = get("connector") ? get("connector").value.trim() : "";
+            n.op = get("op") ? get("op").value.trim() : "";
+            n.provider = get("provider") ? get("provider").value.trim() : cfg.provider;
+            n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "low";
+            n.entryEvents = lst("entryEvents");
+          } else {
+            n.op = get("op") ? get("op").value.trim() : "approval-check";
+          }
+          nodes.push(n);
+        });
+        cfg.phases = nodes;
+      }
     };
     const syncYamlBox = () => {
       readFormIntoCfg();
@@ -3759,6 +3844,37 @@ ${actionLines || "      []"}
       syncYamlBox();
     });
     studio.querySelector("[data-wf-sync-yaml]")?.addEventListener("click", syncYamlBox);
+    const nodeList = studio.querySelector("[data-wf-node-list]");
+    const bindNodeEvents = () => {
+      if (!nodeList) return;
+      nodeList.querySelectorAll("[data-node-del]").forEach((btn) => {
+        btn.onclick = () => {
+          readFormIntoCfg();
+          cfg.phases.splice(Number(btn.getAttribute("data-node-del")), 1);
+          renderNodeList();
+          syncYamlBox();
+        };
+      });
+      nodeList.querySelectorAll("[data-node]").forEach((inp) => {
+        inp.onchange = () => {
+          readFormIntoCfg();
+          renderNodeList();
+          syncYamlBox();
+        };
+      });
+    };
+    const renderNodeList = () => {
+      if (!nodeList) return;
+      nodeList.innerHTML = (cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join("");
+      bindNodeEvents();
+    };
+    studio.querySelector("[data-node-add]")?.addEventListener("click", () => {
+      readFormIntoCfg();
+      cfg.phases.push({ name: "node-" + (cfg.phases.length + 1), phase: "Idle", title: "\u65B0\u8282\u70B9", unit: "connectops", provider: cfg.provider, modelTier: "standard" });
+      renderNodeList();
+      syncYamlBox();
+    });
+    bindNodeEvents();
     studio.querySelector("[data-develop-collector]")?.addEventListener("click", async () => {
       readFormIntoCfg();
       const connName = String(cfg.collectorConnector || "connectops-log-collector").trim();
