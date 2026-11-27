@@ -54,4 +54,4 @@ corectl tick          # = 发布 ReconcileTick（系统事件触发 core-workflo
 - 设计先行：任何本仓代码必须能指回 core_system 的一条声明或 instance 仓的一份设计（P1：没有文档的对象是黑箱）。
 - 驱动分仓（rule.md R-ENG-3）：本仓 connectors/ 只收 builtin 驱动（gitfs/dsh）；用法型驱动放部署侧用法仓（私域），依赖方向恒为用法仓→本仓。
 - 契约测试：Provider 五方法三例（首跑/重跑幂等/失败路径）先于实现；Ops 是运行时挂载（环境+op子集+Workflow），不写死在驱动里。
-- 骨架期的每个 `// TODO` 都对应 open-questions 或落地顺序里的一项（instance 仓 feasibility.md §12）。
+- 骨架期的每个 `// TODO` 都对应 open-questions 或 runtime 文档里的一项（instance 仓 open-questions.md 与 runtime/*.md）。
