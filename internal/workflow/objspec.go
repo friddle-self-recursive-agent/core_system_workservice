@@ -19,13 +19,26 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// PostActionView 收尾归档动作声明投影（Reporting 相位通用解释器动作：如临时 BugDoc 标记失效 invalidate /
+// 删除 delete / 保留不删除 keep，或回写 ServiceInstance.status.phase=InSync；用户可自由添加/删除条目）。
+type PostActionView struct {
+	ID            string `json:"id" yaml:"id"`
+	Kind          string `json:"kind" yaml:"kind"`
+	TargetDocType string `json:"targetDocType,omitempty" yaml:"targetDocType"`
+	Action        string `json:"action,omitempty" yaml:"action"` // invalidate|delete|keep
+	TargetPhase   string `json:"targetPhase,omitempty" yaml:"targetPhase"`
+	Enabled       bool   `json:"enabled" yaml:"enabled"`
+	Title         string `json:"title,omitempty" yaml:"title"`
+}
+
 // SpecView 对象 spec 投影（v0.28 相位投影段——同一份对象声明的两面一次解析：相位序列
-// +声明迁移表）。两个字段同口径：nil/空=未声明=零投影（不冒充空声明）；非空=声明投影
-// （顺序保留，原样不解释语义——判定是查表落点的事）。
+// +声明迁移表；2026-11-27 扩展富节点、多入口 entryPoints、agent/auto 审批、postActions 解释器声明）。
 type SpecView struct {
-	Phases       []string        // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
-	Transitions  []TransitionRow // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
-	ApprovalMode string          // 审批策略投影（2026-11-26「Agent 节点自动级别」用户裁决：spec.approval.mode=auto 时闸锚自动通过——落 AwaitingApproval 不挂起、ApprovalNeeded 提升不挂起；空=未声明=human 缺省（现状闸锚挂起）。驳回边表行保留——手动驳回仍可达）
+	Phases       []string         // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
+	Transitions  []TransitionRow  // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
+	ApprovalMode string           // 审批策略投影（spec.approval.mode=auto|agent 时闸锚自动通过；空=human 缺省）
+	BugDocPolicy string           // 临时 BugDoc 收尾策略投影（invalidate|delete|keep）
+	PostActions  []PostActionView // 解释器通用收尾动作清单
 }
 
 // SpecResolver 对象 spec 解析面（对象声明表解析 v0.27 首段+相位投影 v0.28，workflows
@@ -44,22 +57,57 @@ type SpecFunc func(name string) SpecView
 // ResolveSpec 实现 SpecResolver。
 func (f SpecFunc) ResolveSpec(name string) SpecView { return f(name) }
 
-// docsSpecDecl 文档原文的对象 spec 声明形态（scheme.yaml Workflow spec：
-// `phases: []Phase`（相位词汇基座=Agent.status.phase 八相位+workflow 域交付锚 Deploying，
-// concepts/workflow.md §1 映射表）+`transitions: ?[]{from: Phase, on: string, to: Phase}`
-// ——形态合法性由写路径 scheme 校验闸门承担，此处只做声明→投影的纯映射，不重复校验）。
+// docsSpecDecl 文档原文的对象 spec 声明形态（支持标量相位名或富节点声明 {name, phase, entryEvents, ...}）。
 type docsSpecDecl struct {
 	Spec struct {
-		Phases      []string `yaml:"phases"`
+		Phases      []yaml.Node `yaml:"phases"`
+		EntryPoints []struct {
+			Node    string   `yaml:"node"`
+			Phase   string   `yaml:"phase"`
+			Enabled *bool    `yaml:"enabled"`
+			Events  []string `yaml:"events"`
+		} `yaml:"entryPoints"`
 		Transitions []struct {
 			From string `yaml:"from"`
 			On   string `yaml:"on"`
 			To   string `yaml:"to"`
 		} `yaml:"transitions"`
 		Approval struct {
-			Mode string `yaml:"mode"` // auto|human（其余词形=未声明，human 缺省）
+			Mode string `yaml:"mode"` // auto|agent|human（其余词形=未声明，human 缺省）
 		} `yaml:"approval"`
+		Regression struct {
+			BugDocPolicy    string           `yaml:"bugDocPolicy"` // invalidate|delete|keep
+			CleanTempBugDoc *bool            `yaml:"cleanTempBugDoc"`
+			PostActions     []PostActionView `yaml:"postActions"`
+		} `yaml:"regression"`
 	} `yaml:"spec"`
+}
+
+// parsePhaseNode 解析单条相位节点（标量字符串或富节点 map），返回 (相位锚名, 节点名, entryEvents, ok)。
+func parsePhaseNode(n yaml.Node) (phaseName, nodeName string, entryEvents []string, ok bool) {
+	if n.Kind == yaml.ScalarNode {
+		return n.Value, n.Value, nil, n.Value != ""
+	}
+	if n.Kind == yaml.MappingNode {
+		var m struct {
+			Name        string   `yaml:"name"`
+			Phase       string   `yaml:"phase"`
+			Title       string   `yaml:"title"`
+			EntryEvents []string `yaml:"entryEvents"`
+		}
+		if err := n.Decode(&m); err != nil {
+			return "", "", nil, false
+		}
+		p := m.Phase
+		if p == "" {
+			p = m.Name
+		}
+		if p == "" {
+			p = m.Title
+		}
+		return p, m.Name, m.EntryEvents, p != ""
+	}
+	return "", "", nil, false
 }
 
 // DocsSpecs 文档面 spec 解析（装配适配）：lookup 由装配层注入（文档库读面按名取 Workflow
@@ -71,7 +119,7 @@ type DocsSpecs struct {
 }
 
 // ResolveSpec 实现 SpecResolver：声明→投影纯映射（相位序列与迁移表行 from/on/to 原样，
-// 顺序保留）。
+// 顺序保留；同时支持富节点 phases 与多入口 entryPoints 解释器投影）。
 func (d DocsSpecs) ResolveSpec(name string) SpecView {
 	if d.Lookup == nil || name == "" {
 		return SpecView{}
@@ -85,17 +133,79 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 		return SpecView{} // 损坏文档不投影（防御性——scheme 校验是写路径权威闸门）
 	}
 	var view SpecView
-	if doc.Spec.Approval.Mode == "auto" {
-		view.ApprovalMode = "auto" // 词汇白名单：仅 auto 投影（其余词形一律 human 缺省——宽松词不冒充自动）
+	switch doc.Spec.Approval.Mode {
+	case "auto", "agent":
+		view.ApprovalMode = doc.Spec.Approval.Mode
 	}
-	if len(doc.Spec.Phases) > 0 {
-		view.Phases = doc.Spec.Phases // 声明序列原样（顺序保留——投影面不解释语义）
+	nodeToPhase := map[string]string{}
+	type entryBinding struct {
+		phase  string
+		events []string
+	}
+	var entryBindings []entryBinding
+	for i := range doc.Spec.Phases {
+		p, nName, evs, ok := parsePhaseNode(doc.Spec.Phases[i])
+		if !ok {
+			continue
+		}
+		view.Phases = append(view.Phases, p)
+		if nName != "" {
+			nodeToPhase[nName] = p
+		}
+		if len(evs) > 0 {
+			entryBindings = append(entryBindings, entryBinding{phase: p, events: evs})
+		}
+	}
+	for _, ep := range doc.Spec.EntryPoints {
+		if ep.Enabled != nil && !*ep.Enabled {
+			continue
+		}
+		target := ep.Phase
+		if target == "" && ep.Node != "" {
+			target = nodeToPhase[ep.Node]
+		}
+		if target != "" && len(ep.Events) > 0 {
+			entryBindings = append(entryBindings, entryBinding{phase: target, events: ep.Events})
+		}
 	}
 	if rows := doc.Spec.Transitions; len(rows) > 0 {
 		view.Transitions = make([]TransitionRow, len(rows))
 		for i, r := range rows {
 			view.Transitions[i] = TransitionRow{From: r.From, On: r.On, To: r.To}
 		}
+	}
+	// 多节点入口（entryPoints / entryEvents）补充为显式 entry:<Event> 迁移行（若尚未显式声明）。
+	if len(view.Phases) > 0 && len(entryBindings) > 0 {
+		first := view.Phases[0]
+		existing := map[string]bool{}
+		for _, tr := range view.Transitions {
+			existing[tr.From+"|"+tr.On] = true
+		}
+		for _, eb := range entryBindings {
+			if eb.phase == "" || eb.phase == first {
+				continue
+			}
+			for _, ev := range eb.events {
+				on := "entry:" + ev
+				if !existing[first+"|"+on] {
+					view.Transitions = append(view.Transitions, TransitionRow{From: first, On: on, To: eb.phase})
+					existing[first+"|"+on] = true
+				}
+			}
+		}
+	}
+	// 收尾策略与 postActions 投影（解释器通用收尾动作）
+	if doc.Spec.Regression.BugDocPolicy != "" {
+		view.BugDocPolicy = doc.Spec.Regression.BugDocPolicy
+	} else if doc.Spec.Regression.CleanTempBugDoc != nil {
+		if *doc.Spec.Regression.CleanTempBugDoc {
+			view.BugDocPolicy = "delete"
+		} else {
+			view.BugDocPolicy = "keep"
+		}
+	}
+	if len(doc.Spec.Regression.PostActions) > 0 {
+		view.PostActions = doc.Spec.Regression.PostActions
 	}
 	return view
 }

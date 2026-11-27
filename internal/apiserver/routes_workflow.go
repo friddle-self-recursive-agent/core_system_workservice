@@ -199,30 +199,41 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 	// ② 现势=run 环每锚最新 run 的相位/状态；③ 计数=event_log 归档分组 × dispatch 决议，
 	// workflow.RunAnchor 与 run 投影同一锚解析）。只读 GET；旧构建（路由未注册）经兜底
 	// handler 405=代际判别器。投影/构造细节见 workflows_face.go。
-	mux.HandleFunc("GET /v1/workflows", func(w http.ResponseWriter, r *http.Request) {
-		rows, scanned, capped := collectWorkflowRows(r.Context(), objects, runs, triggers, eventLog, applyLog)
-		items := make([]map[string]any, 0, len(rows))
-		for _, row := range rows {
-			items = append(items, map[string]any{
-				"name": row.Name, "specSource": row.SpecSource, "phases": row.Phases,
-				"objects": workflowObjectsJSON(row.Objects), "effective": row.Effective,
-				"latest": row.Latest, "runsTotal": row.RunsTotal, "runs24h": row.Runs24h,
-				"execution": row.Execution, // v0.49 R-7 执行模型绑定面（新载荷键=代际判别器）
-				// v0.55 R-9 构建生效链判别面（console-adoption.md §1.29——骨架 rv ↔ 绑定 apply 行
-				// rv 对账+骨架节点接线投影；新载荷键=代际判别器）。
-				"reconcile":        row.Reconcile,
-				"executionFlow":    flowNodesJSON(row.Reconcile),
-				"executionDigest":  executionDigest(row.Reconcile),
-				"executionHistory": workflowHistoryRef(row),
+		mux.HandleFunc("GET /v1/workflows", func(w http.ResponseWriter, r *http.Request) {
+			rows, scanned, capped := collectWorkflowRowsWithScheme(r.Context(), d.sch, objects, runs, triggers, eventLog, applyLog)
+			items := make([]map[string]any, 0, len(rows))
+			for _, row := range rows {
+				specMap, rawYaml, primaryScope, primaryRV := primaryWfSpecAndRaw(row.Name, row.Objects)
+				items = append(items, map[string]any{
+					"name": row.Name, "specSource": row.SpecSource, "phases": row.Phases,
+					"objects": workflowObjectsJSON(row.Objects), "effective": row.Effective,
+					"latest": row.Latest, "runsTotal": row.RunsTotal, "runs24h": row.Runs24h,
+					"execution": row.Execution, // v0.49 R-7 执行模型绑定面（新载荷键=代际判别器）
+					// v0.55 R-9 构建生效链判别面（console-adoption.md §1.29——骨架 rv ↔ 绑定 apply 行
+					// rv 对账+骨架节点接线投影；新载荷键=代际判别器）。
+					"reconcile":        row.Reconcile,
+					"executionFlow":    flowNodesJSON(row.Reconcile),
+					"executionDigest":  executionDigest(row.Reconcile),
+					"executionHistory": workflowHistoryRef(row),
+					// 2026-11-27 Scheme 解释器声明投影（供前端全节点可视化配置器直读直编）
+					"undeletable":     d.sch.IsUndeletableWorkflow(row.Name),
+					"immutableNodes":  row.Name == "core-system-developer-loop",
+					"spec":            specMap,
+					"rawYaml":         rawYaml,
+					"primaryScope":    primaryScope,
+					"primaryRv":       primaryRV,
+				})
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"count": len(items), "window": "24h",
+				"scanned": scanned, "scanCapped": capped, // 计数=有界窗如实标注（不冒充全量承诺）
+				"aliases":  d.sch.WorkflowAliases(),
+				"adapters": d.sch.WorkflowAdapters(),
+				"llm":      d.sch.LLMRuntime(),
+				"workflows": items,
 			})
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"count": len(items), "window": "24h",
-			"scanned": scanned, "scanCapped": capped, // 计数=有界窗如实标注（不冒充全量承诺）
-			"workflows": items,
 		})
-	})
-}
+	}
 
 // matchingKeyOfRecord 派单行的批准判定键（/v1/agents/dispatches approval.approvalId——
 // flowbind.DispatchRecord → matchingKeyOf 同源；空 connector/proposal 行=零值键不匹配任何投影）。
@@ -232,8 +243,7 @@ func matchingKeyOfRecord(d flowbind.DispatchRecord) string {
 
 // loopRunOf 最近一次 loop run 解析（G-08——loop/current run 相位源；环内**真实投影**零发明）：
 // EventID 与 loop wake 同源的 run 优先（该次唤醒推进的对账 run）；兜底=对账循环锚
-// core-workflow 最近 run（run.go ReconcileWorkflow——系统级循环本体锚；「最近一次」语义）。
-// 无命中=nil（face 环空/无 run——不编造）。
+// core-system-developer-loop / core-workflow 最近 run。无命中=nil（face 环空/无 run——不编造）。
 func loopRunOf(st workflow.RunState, eventId string) *workflow.RunRecord {
 	for i := len(st.Runs) - 1; i >= 0; i-- {
 		if st.Runs[i].EventID == eventId {
@@ -241,7 +251,7 @@ func loopRunOf(st workflow.RunState, eventId string) *workflow.RunRecord {
 		}
 	}
 	for i := len(st.Runs) - 1; i >= 0; i-- {
-		if st.Runs[i].Workflow == workflow.ReconcileWorkflow {
+		if st.Runs[i].Workflow == "core-system-developer-loop" || st.Runs[i].Workflow == workflow.ReconcileWorkflow {
 			return &st.Runs[i]
 		}
 	}

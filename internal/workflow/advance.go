@@ -164,12 +164,16 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 	run.Phase = next
 	switch Phase(next) {
 	case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
-		if run.ApprovalMode != "auto" { // auto=闸锚自动通过（spec.approval.mode——Agent 节点自动级别；直续行不挂起）
+		if !isAutoPassApproval(run.ApprovalMode) { // auto/agent=闸锚自动通过（spec.approval.mode——Agent 节点自动判断级别；直续行不挂起）
 			run.Status = RunSuspended
 		}
 	case Failed: // 落侧轨终点锚=终态（仅声明仍携带 Failed 词形的旧对象 spec 可达——非引擎失败语义）
 		run.Status = RunFailed
 	}
+}
+
+func isAutoPassApproval(mode string) bool {
+	return mode == "auto" || mode == "agent"
 }
 
 // indexOfRunLocked 按 run 序号定位环内下标（-1=已被环挤出/不在册）。

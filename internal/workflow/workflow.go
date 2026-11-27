@@ -92,6 +92,20 @@ func Builtin(name string) *Spec {
 		return builtinSpec(name, []Phase{ // §1.1 步锚映射：Analyze→Gate→Plan→Execute→Verify→Deploy→Report
 			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting,
 		})
+	case "core-system-developer-loop":
+		// 2026-11-27 用户裁决：核心内置研发自循环主干（监听日志Event→Agent判断→审批/自动审批→
+		// Doc Apply→developer-system→验收→deploy-system→总结归档+回写InSync），支持多节点触发切入
+		// （如用户对话修改文档或产出临时 BugDoc 触发 DocApplied 直接从 Planning / doc-apply 节点切入）。
+		spec := builtinSpec(name, []Phase{
+			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting,
+		})
+		spec.Transitions = append(spec.Transitions,
+			Transition{From: Idle, On: "entry:DocApplied", To: Planning},
+			Transition{From: Analyzing, On: "worth_fixing", To: AwaitingApproval},
+			Transition{From: Analyzing, On: "ignore", To: Reporting},
+			Transition{From: Verifying, On: "retry-develop", To: Executing},
+		)
+		return spec
 	case "apply-workflow":
 		return builtinSpec(name, []Phase{ // §1.2 落地 agent 任务态机=default-task 词汇全量复用（不另立词汇）
 			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting,
@@ -162,13 +176,14 @@ func (s *Spec) Can(from Phase, on string) (Phase, bool) {
 // 2026-11-26 F-04 纠偏：声明序列=正向业务步序，Failed 不再列线性尾——侧轨语义随
 // MaterializeTransitions 驳回边保留，见 workflow.go §Failed 侧轨注）。
 var builtinSet = map[string]bool{
-	"core-workflow":  true,
-	"default-task":   true,
-	"simple-shot":    true,
-	"watch-only":     true,
-	"dev-delivery":   true,
-	"apply-workflow": true,
-	"bug-lifecycle":  true,
+	"core-system-developer-loop": true,
+	"core-workflow":              true,
+	"default-task":               true,
+	"simple-shot":                true,
+	"watch-only":                 true,
+	"dev-delivery":               true,
+	"apply-workflow":             true,
+	"bug-lifecycle":              true,
 }
 
 // IsBuiltin 名是否命中内置 workflow 注册表（run 锚解析的 SpecBuiltin/SpecObject 判据）。

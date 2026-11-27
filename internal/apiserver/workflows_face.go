@@ -23,6 +23,7 @@ import (
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/flowbind"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/opslog"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"gopkg.in/yaml.v3"
 )
@@ -217,10 +218,14 @@ func anchorRunCounts(triggers TriggerFace, eventLog EventLogFace, since time.Tim
 	return out, scanned, capped, nil
 }
 
-// collectWorkflowRows 聚合三源投影（纯读取：objects/runs/triggers/eventLog 全 GET 面；
-// 系统与对象都在控制面量级——现读现投零缓存，git 后端权威 apply 落库即生效）。
-// 返回行集（名字典序）+计数扫描有界口径。
+// collectWorkflowRows 聚合三源投影（兼容无 scheme 参数签名）。
 func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace, triggers TriggerFace, eventLog EventLogFace, applyLog ApplyLogFace) (rows []wfRow, scanned int64, capped bool) {
+	return collectWorkflowRowsWithScheme(ctx, nil, objects, runs, triggers, eventLog, applyLog)
+}
+
+// collectWorkflowRowsWithScheme 聚合三源投影（当 scheme 显式声明 runtime.workflows.builtin 与 aliases 时，
+// 以 scheme 为内置工作流清单与历史别名归并的唯一权威——「Workflow + Scheme = 声明层，代码 = 通用解释器」）。
+func collectWorkflowRowsWithScheme(ctx context.Context, sch *scheme.Scheme, objects ObjectSource, runs RunFace, triggers TriggerFace, eventLog EventLogFace, applyLog ApplyLogFace) (rows []wfRow, scanned int64, capped bool) {
 	// ① 声明源：文档库 Workflow 对象（跨 scope 枚举）按名分组；global 本体行在最前。
 	objsByName := map[string][]wfObjectRow{}
 	if objects != nil {
@@ -240,14 +245,23 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 		})
 		objsByName[name] = rows
 	}
-	// ② 现势源：run 环内每锚最新 run（Runs 旧→新，后写覆盖）。
+	aliases := sch.WorkflowAliases()
+	canonicalize := func(n string) string {
+		if len(aliases) > 0 && len(objsByName[n]) == 0 {
+			if target, ok := aliases[n]; ok && target != "" {
+				return target
+			}
+		}
+		return n
+	}
+	// ② 现势源：run 环内每锚最新 run（Runs 旧→新，后写覆盖；旧别名锚自动归并至标准名）。
 	latest := map[string]workflow.RunRecord{}
 	if runs != nil {
 		for _, r := range runs.State().Runs {
 			if r.Workflow == "" {
 				continue
 			}
-			latest[r.Workflow] = r
+			latest[canonicalize(r.Workflow)] = r
 		}
 	}
 	// ③ 计数源：全量窗 + 24h 窗两次分组（同一条归档流水，窗口差=24h 量）。
@@ -256,6 +270,19 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 	if errTotal != nil || err24 != nil {
 		// 计数面失败不吞行：行集照出（①②源），计数投影=空（不冒充零/半数字——诚实缺面）。
 		total, recent = map[string]int64{}, map[string]int64{}
+	} else if len(aliases) > 0 {
+		for k, v := range total {
+			if target := canonicalize(k); target != k {
+				total[target] += v
+				delete(total, k)
+			}
+		}
+		for k, v := range recent {
+			if target := canonicalize(k); target != k {
+				recent[target] += v
+				delete(recent, k)
+			}
+		}
 	}
 	scanned, capped = scTotal+sc24, capTotal || cap24
 	// ④ 执行模型绑定面（v0.49 R-7）：ConnectorOps 跨 scope 枚举一次 → 按名索引 →
@@ -278,9 +305,13 @@ func collectWorkflowRows(ctx context.Context, objects ObjectSource, runs RunFace
 			}
 		} // 枚举失败=判别面缺席（不吞行不冒充）
 	}
-	// 行集=声明对象名 ∪ builtin 注册表 ∪ 现势 run 锚（三源并集——缺任何一源都不吞行）。
+	// 行集=声明对象名 ∪ builtin 注册表（scheme 声明优先，无声明回退代码默认） ∪ 现势 run 锚。
 	names := map[string]bool{}
-	for _, n := range workflow.BuiltinNames() {
+	builtins := sch.BuiltinWorkflows()
+	if len(builtins) == 0 {
+		builtins = workflow.BuiltinNames()
+	}
+	for _, n := range builtins {
 		names[n] = true
 	}
 	for n := range objsByName {
@@ -372,15 +403,36 @@ func effectiveObject(name string, objs []wfObjectRow) *wfObjectRow {
 	return eff
 }
 
-// effectivePhases 生效相位序列（override 声明优先 → builtin 注册表 → 空数组）。
+// effectivePhases 生效相位序列（override 声明优先 → global 本体声明 → builtin 注册表 → 空数组）。
 func effectivePhases(name string, objs []wfObjectRow) []string {
 	if eff := effectiveObject(name, objs); eff != nil && len(eff.Phases) > 0 {
 		return eff.Phases
+	}
+	if len(objs) > 0 && len(objs[0].Phases) > 0 {
+		return objs[0].Phases
 	}
 	if workflow.IsBuiltin(name) {
 		return workflow.BuiltinPhaseNames(name)
 	}
 	return []string{}
+}
+
+// primaryWfSpecAndRaw 提取 workflow 的主生效 spec map 与原始 YAML（供前端以人为本可视化配置器直读直编）。
+func primaryWfSpecAndRaw(name string, objs []wfObjectRow) (map[string]any, string, string, int64) {
+	var pick *wfObjectRow
+	if eff := effectiveObject(name, objs); eff != nil && len(eff.raw) > 0 {
+		pick = eff
+	} else if len(objs) > 0 && len(objs[0].raw) > 0 {
+		pick = &objs[0]
+	}
+	if pick == nil {
+		return nil, "", "global", 0
+	}
+	var doc struct {
+		Spec map[string]any `yaml:"spec"`
+	}
+	_ = yaml.Unmarshal(pick.raw, &doc)
+	return doc.Spec, string(pick.raw), pick.Scope, pick.ResourceVersion
 }
 
 // bindObjKey 判别面 apply_log 行键（obj=kind/scope/name 精确匹配同词汇——opslog.QueryApplies

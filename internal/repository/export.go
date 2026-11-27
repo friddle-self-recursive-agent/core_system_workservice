@@ -25,7 +25,48 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
+	"gopkg.in/yaml.v3"
 )
+
+// ExportConfig 文档导出独立配置项（存储在 sqlite docs DB 的 docs_export_config 表，
+// 初值从 scheme.yaml docTypes[].exportDefault / category=runtime 派生，绝不在代码中硬编码某类型）。
+type ExportConfig struct {
+	IncludeRuntimeDocs bool     `json:"includeRuntimeDocs"`
+	ExcludeDocTypes    []string `json:"excludeDocTypes"`
+	ExcludeKinds       []string `json:"excludeKinds"`
+	RuntimeDocTypes    []string `json:"runtimeDocTypes"`
+	UpdatedAt          string   `json:"updatedAt,omitempty"`
+}
+
+// ExportConfigStore 文档导出配置持久化接口（SQLiteRepo 实现；独立配置项读写）。
+type ExportConfigStore interface {
+	GetExportConfig(ctx context.Context) (ExportConfig, error)
+	SetExportConfig(ctx context.Context, cfg ExportConfig) (ExportConfig, error)
+}
+
+// DefaultExportConfig 从 scheme 注册表派生默认导出配置（仅读取 scheme.docTypes 声明的
+// category=runtime / exportDefault=false，零代码硬编码类型名）。
+func DefaultExportConfig(sch *scheme.Scheme) ExportConfig {
+	var runtimeTypes []string
+	if sch != nil {
+		for _, dt := range sch.Spec.DocTypes {
+			if dt.IsRuntimeDoc() {
+				runtimeTypes = append(runtimeTypes, dt.Name)
+			}
+		}
+	}
+	if runtimeTypes == nil {
+		runtimeTypes = []string{}
+	}
+	excl := make([]string, len(runtimeTypes))
+	copy(excl, runtimeTypes)
+	return ExportConfig{
+		IncludeRuntimeDocs: false,
+		ExcludeDocTypes:    excl,
+		ExcludeKinds:       []string{},
+		RuntimeDocTypes:    runtimeTypes,
+	}
+}
 
 // Exporter sqlite→git 导出器。单实例对应一个目标工作树；cored 装配层经 Run 挂定时拍
 // （CORE_SYSTEM_DOCS_EXPORT_INTERVAL 开关/间隔 × CORE_SYSTEM_DOCS_EXPORT_DIR 必填 ×
@@ -171,14 +212,42 @@ func (e *Exporter) Export(ctx context.Context) (ExportResult, error) {
 // 模板相容）。该 kind 无可寻址分支=跳过（同 SeedFromLayout 读侧宽松口径）；键不可寻址的
 // 对象（写路径闸门后的理论不可达态）跳过不致命——导出为 best-effort 读侧派生任务。
 func (e *Exporter) enumerate(ctx context.Context) ([]exportItem, error) {
+	cfg := DefaultExportConfig(e.sch)
+	if store, ok := e.repo.(ExportConfigStore); ok {
+		if dbCfg, err := store.GetExportConfig(ctx); err == nil {
+			cfg = dbCfg
+		}
+	}
+	exclKinds := make(map[string]bool, len(cfg.ExcludeKinds))
+	for _, k := range cfg.ExcludeKinds {
+		if s := strings.TrimSpace(k); s != "" {
+			exclKinds[s] = true
+		}
+	}
+	exclDocTypes := make(map[string]bool, len(cfg.ExcludeDocTypes))
+	if !cfg.IncludeRuntimeDocs {
+		for _, dt := range cfg.ExcludeDocTypes {
+			if s := strings.TrimSpace(dt); s != "" {
+				exclDocTypes[s] = true
+			}
+		}
+	}
 	var out []exportItem
 	seen := map[string]bool{}
 	for _, k := range e.sch.ListKinds() {
+		if exclKinds[k.Name] || exclDocTypes[k.Name] {
+			continue
+		}
 		objs, err := e.repo.List(ctx, k.Name, "")
 		if err != nil {
 			continue // 模板不可展开（无可寻址分支）——跳过不致命
 		}
 		for _, o := range objs {
+			if len(exclDocTypes) > 0 {
+				if dt := extractObjectDocType(o.Content); dt != "" && exclDocTypes[dt] {
+					continue // 数据库导出配置排除的运行时文档类型（如 BugDoc 等）——跳过不导出
+				}
+			}
 			pats, err := storagePatterns(k, o.Scope, o.Name, true)
 			if err != nil || len(pats) != 1 || seen[pats[0]] {
 				continue // 键不可寻址/路径冲突（首者胜，确定性）——跳过
@@ -189,6 +258,113 @@ func (e *Exporter) enumerate(ctx context.Context) ([]exportItem, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
 	return out, nil
+}
+
+// extractObjectDocType 从对象正文（YAML 或 Markdown frontmatter）提取 docType 声明。
+func extractObjectDocType(raw []byte) string {
+	body := raw
+	trimmed := bytes.TrimSpace(raw)
+	if bytes.HasPrefix(trimmed, []byte("---")) {
+		rest := trimmed[3:]
+		if idx := bytes.Index(rest, []byte("\n---")); idx >= 0 {
+			body = rest[:idx]
+		}
+	}
+	var doc struct {
+		DocType  string `yaml:"docType"`
+		Metadata struct {
+			DocType string `yaml:"docType"`
+		} `yaml:"metadata"`
+		Spec struct {
+			DocType string `yaml:"docType"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		return ""
+	}
+	if doc.DocType != "" {
+		return doc.DocType
+	}
+	if doc.Metadata.DocType != "" {
+		return doc.Metadata.DocType
+	}
+	return doc.Spec.DocType
+}
+
+// ensureExportConfigTable 确保 sqlite docs_export_config 表存在并按 scheme 种子化默认行。
+func (r *SQLiteRepo) ensureExportConfigTable(ctx context.Context) error {
+	const ddl = `CREATE TABLE IF NOT EXISTS docs_export_config (
+		id                   INTEGER PRIMARY KEY CHECK (id = 1),
+		include_runtime_docs INTEGER NOT NULL DEFAULT 0,
+		exclude_doc_types    TEXT NOT NULL DEFAULT '',
+		exclude_kinds        TEXT NOT NULL DEFAULT '',
+		updated_at           TEXT NOT NULL
+	);`
+	if _, err := r.db.ExecContext(ctx, ddl); err != nil {
+		return err
+	}
+	def := DefaultExportConfig(r.sch)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO docs_export_config (id, include_runtime_docs, exclude_doc_types, exclude_kinds, updated_at) VALUES (1, 0, ?, '', ?)`,
+		strings.Join(def.ExcludeDocTypes, ","), now)
+	return err
+}
+
+// GetExportConfig 读取数据库中的文档导出独立配置。
+func (r *SQLiteRepo) GetExportConfig(ctx context.Context) (ExportConfig, error) {
+	if err := r.ensureExportConfigTable(ctx); err != nil {
+		return DefaultExportConfig(r.sch), err
+	}
+	var inc int
+	var exclDT, exclK, updatedAt string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT include_runtime_docs, exclude_doc_types, exclude_kinds, updated_at FROM docs_export_config WHERE id = 1`).
+		Scan(&inc, &exclDT, &exclK, &updatedAt)
+	if err != nil {
+		return DefaultExportConfig(r.sch), err
+	}
+	def := DefaultExportConfig(r.sch)
+	return ExportConfig{
+		IncludeRuntimeDocs: inc != 0,
+		ExcludeDocTypes:    splitCSV(exclDT),
+		ExcludeKinds:       splitCSV(exclK),
+		RuntimeDocTypes:    def.RuntimeDocTypes,
+		UpdatedAt:          updatedAt,
+	}, nil
+}
+
+// SetExportConfig 更新数据库中的文档导出独立配置。
+func (r *SQLiteRepo) SetExportConfig(ctx context.Context, cfg ExportConfig) (ExportConfig, error) {
+	if err := r.ensureExportConfigTable(ctx); err != nil {
+		return ExportConfig{}, err
+	}
+	inc := 0
+	if cfg.IncludeRuntimeDocs {
+		inc = 1
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE docs_export_config SET include_runtime_docs = ?, exclude_doc_types = ?, exclude_kinds = ?, updated_at = ? WHERE id = 1`,
+		inc, strings.Join(cfg.ExcludeDocTypes, ","), strings.Join(cfg.ExcludeKinds, ","), now)
+	if err != nil {
+		return ExportConfig{}, err
+	}
+	return r.GetExportConfig(ctx)
+}
+
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // pruneStale 删除工作树中 DB 快照之外的文件（删除只在导出提交中体现）；`<对象路径>.metadatainfo`

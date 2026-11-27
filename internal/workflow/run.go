@@ -297,16 +297,20 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	// 生效（判定器零改动——stepByTable 纯查表落点通用，推进器已完全表驱动，接表即得全量
 	// 推进语义）；未声明 phases 的对象=零投影（phases 恒空），三条判定路径零动作防御面
 	// 原样生效，既有行为面零翻转。
-	approvalMode := "" // 空=human 缺省（builtin 源恒缺省——审批策略声明走对象 spec）
-	if source == SpecObject && r.opts.Specs != nil {
+	approvalMode := "" // 空=human 缺省（审批策略声明走对象 spec）
+	if r.opts.Specs != nil {
 		view := r.opts.Specs.ResolveSpec(wf)
-		if len(view.Transitions) > 0 {
-			trans = view.Transitions
+		if source == SpecObject {
+			if len(view.Transitions) > 0 {
+				trans = view.Transitions
+			}
+			if len(view.Phases) > 0 {
+				phases = view.Phases
+			}
 		}
-		if len(view.Phases) > 0 {
-			phases = view.Phases
+		if view.ApprovalMode != "" {
+			approvalMode = view.ApprovalMode // spec.approval.mode=auto|agent 投影（Agent 节点自动判断/自动级别）
 		}
-		approvalMode = view.ApprovalMode // spec.approval.mode=auto 投影（Agent 节点自动级别）
 	}
 	// 刹车首段（v0.32，workflows 规则 17）：每锚生效刹车值（表驱动——spec.brakes → 强制
 	// 默认钳定 → 生效值；声明→留痕面投影不依赖挂接态）。冷却门只在刹车闸挂接时生效（未挂
@@ -349,18 +353,25 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	var hist []HistoryRow
 	if len(phases) > 0 {
 		phase = string(phases[0]) // 受理投影=声明首相位（起点词先落，迁移判定在其上判）
+		// 多节点入口切入（2026-11-27 解释器多入口：如用户对话修改文档或临时 BugDoc 触发 DocApplied，
+		// 声明表含 on="entry:DocApplied" → 直接切入 Planning / doc-apply 节点，再顺沿 advance 进入 Executing）。
+		if rec.Type != "" {
+			if entryTo, ok := stepByTable(trans, phase, "entry:"+rec.Type); ok {
+				hist = append(hist, HistoryRow{From: phase, To: entryTo, On: "entry:" + rec.Type, At: stampNano(rec.ReceivedAt)})
+				phase, status = entryTo, RunRunning
+			}
+		}
 		// 相位推进器首段（v0.23）+显式迁移表首段（v0.25）：受理即启动信号——引擎单步迁移
-		// 判定，按声明表查推进行（from=首相位 on=advance）并把状态词翻转为 running
+		// 判定，按声明表查推进行（from=当前入口相位 on=advance）并把状态词翻转为 running
 		//（stepByTable 纯查表，判定口径见包注释——序列前进=表的特例）。
 		if next, ok := stepByTable(trans, phase, EdgeAdvance); ok {
 			hist = append(hist, HistoryRow{From: phase, To: next, On: EdgeAdvance, At: stampNano(rec.ReceivedAt)})
 			phase, status = next, RunRunning
 		}
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
-		// workflows 规则 13 第一层判定；builtin 序列受理首步不落闸锚=防御性通用规则，
-		// 单测以闸锚邻位序列覆盖）。
-		if status == RunRunning && Phase(phase) == AwaitingApproval && approvalMode != "auto" {
-			status = RunSuspended // auto 模式闸锚自动通过（不挂起直续行——「Agent 节点自动级别」）
+		// workflows 规则 13 第一层判定；auto/agent 模式闸锚自动判断放行不挂起）。
+		if status == RunRunning && Phase(phase) == AwaitingApproval && !isAutoPassApproval(approvalMode) {
+			status = RunSuspended
 		}
 	}
 	if phases == nil {
@@ -417,8 +428,8 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			continue // 锚不符 / 相位未投影（未声明 phases 的 object 源）无从迁移
 		}
 		switch action {
-		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作；auto 模式=提升不挂起——闸锚自动通过）
-			if run.ApprovalMode == "auto" {
+		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作；auto/agent 模式=提升不挂起——闸锚自动通过）
+			if isAutoPassApproval(run.ApprovalMode) {
 				return
 			}
 			if run.Status == RunFailed || run.Status == RunSuspended ||

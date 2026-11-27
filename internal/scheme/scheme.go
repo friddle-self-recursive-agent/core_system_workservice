@@ -33,13 +33,29 @@ type Kind struct {
 }
 
 // DocType 文档类型注册项（本系统的 CRD 机制，concepts/doctype.md）。
+// Category=design|runtime（缺省 design）；ExportDefault=默认是否纳入导出（缺省 true；
+// 运行期文档如 BugDoc/DriftReport/PlanDoc/SessionLog 在 scheme.yaml 中声明 exportDefault: false，
+// 作为数据库导出配置 docs_export_config 的种子初值，绝不在导出器代码中硬编码过滤）。
 type DocType struct {
-	Name      string   `yaml:"name" json:"name"`
-	Mandatory string   `yaml:"mandatory" json:"mandatory"`
-	Sections  []string `yaml:"sections,omitempty" json:"sections,omitempty"`
-	Writers   []string `yaml:"writers,omitempty" json:"writers,omitempty"`
-	AppliesTo string   `yaml:"appliesTo" json:"appliesTo"`
-	Admission string   `yaml:"admission,omitempty" json:"admission,omitempty"`
+	Name          string   `yaml:"name" json:"name"`
+	Mandatory     string   `yaml:"mandatory" json:"mandatory"`
+	Category      string   `yaml:"category,omitempty" json:"category,omitempty"`
+	ExportDefault *bool    `yaml:"exportDefault,omitempty" json:"exportDefault,omitempty"`
+	Sections      []string `yaml:"sections,omitempty" json:"sections,omitempty"`
+	Writers       []string `yaml:"writers,omitempty" json:"writers,omitempty"`
+	AppliesTo     string   `yaml:"appliesTo" json:"appliesTo"`
+	Admission     string   `yaml:"admission,omitempty" json:"admission,omitempty"`
+}
+
+// IsRuntimeDoc 是否为运行期文档（scheme 声明 category=runtime 或 exportDefault=false）。
+func (d DocType) IsRuntimeDoc() bool {
+	if d.Category == "runtime" {
+		return true
+	}
+	if d.ExportDefault != nil && !*d.ExportDefault {
+		return true
+	}
+	return false
 }
 
 // EventType 事件类型注册项（v0.5x 事件分诊 + BUG-010 分层/展示词形：tier/visibility
@@ -325,3 +341,92 @@ func (s *Scheme) Summary() Summary {
 		DispatchCount:  len(s.Spec.Dispatch),
 	}
 }
+
+// BuiltinWorkflows 从 spec.runtime.workflows.builtin 读取 scheme 声明的内置 workflow 清单。
+// 未声明时返回 nil（调用方可回退代码默认注册表，保持测试 fixture 兼容）。
+func (s *Scheme) BuiltinWorkflows() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	wfMap, ok := s.Spec.Runtime["workflows"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := wfMap["builtin"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, it := range raw {
+		if str, ok := it.(string); ok && str != "" {
+			out = append(out, str)
+		}
+	}
+	return out
+}
+
+// WorkflowAliases 从 spec.runtime.workflows.aliases 读取历史 workflow 别名到标准名的映射。
+func (s *Scheme) WorkflowAliases() map[string]string {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	wfMap, ok := s.Spec.Runtime["workflows"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := wfMap["aliases"].(map[string]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if str, ok := v.(string); ok && k != "" && str != "" {
+			out[k] = str
+		}
+	}
+	return out
+}
+
+// WorkflowAdapters 从 spec.runtime.workflows.adapters 读取 Scheme 层节点 Adapter 契约声明。
+func (s *Scheme) WorkflowAdapters() map[string]any {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	wfMap, ok := s.Spec.Runtime["workflows"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, _ := wfMap["adapters"].(map[string]any)
+	return raw
+}
+
+// LLMRuntime 从 spec.runtime.llm 读取默认 Provider 与模型分级路由声明。
+func (s *Scheme) LLMRuntime() map[string]any {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	raw, _ := s.Spec.Runtime["llm"].(map[string]any)
+	return raw
+}
+
+// IsUndeletableWorkflow 判定给定 workflow 名称是否受内置不可删除保护（core-system-developer-loop / default-task）。
+func (s *Scheme) IsUndeletableWorkflow(name string) bool {
+	if name == "core-system-developer-loop" {
+		return true
+	}
+	for _, b := range s.BuiltinWorkflows() {
+		if b == name {
+			return true
+		}
+	}
+	return false
+}
+

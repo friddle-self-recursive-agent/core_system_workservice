@@ -235,3 +235,47 @@ func TestNewExporterGuards(t *testing.T) {
 		t.Fatal("缺目标目录应拒绝")
 	}
 }
+
+func TestExportConfigExcludesRuntimeDocTypesFromDB(t *testing.T) {
+	r, _ := newSQLiteRepo(t)
+	ctx := context.Background()
+	// 写入普通对象与带 docType: BugDoc 的运行时文档对象
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "design-a", Content: agentYAML("design-a", "")}, "fm", ""); err != nil {
+		t.Fatal(err)
+	}
+	bugContent := []byte("apiVersion: core/v1\nkind: Agent\nmetadata:\n  name: bug-temp\n  scope: global\n  docType: BugDoc\nspec:\n  role: r\n")
+	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "bug-temp", Content: bugContent}, "fm", ""); err != nil {
+		t.Fatal(err)
+	}
+	// 数据库独立配置项设置排除 BugDoc（默认不导出运行时文档）
+	if _, err := r.SetExportConfig(ctx, ExportConfig{
+		IncludeRuntimeDocs: false,
+		ExcludeDocTypes:    []string{"BugDoc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	e := newExporter(t, r, dir)
+	res, err := e.Export(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Objects != 1 {
+		t.Fatalf("BugDoc 应按数据库导出配置排除，只导出 1 个对象，得 %+v", res)
+	}
+	// 开启 IncludeRuntimeDocs=true 后再次导出，BugDoc 随配置被纳入
+	if _, err := r.SetExportConfig(ctx, ExportConfig{
+		IncludeRuntimeDocs: true,
+		ExcludeDocTypes:    []string{"BugDoc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res2, err := e.Export(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Objects != 2 {
+		t.Fatalf("开启 IncludeRuntimeDocs 后应导出 2 个对象，得 %+v", res2)
+	}
+}
+

@@ -52,12 +52,18 @@ const FlowOp = "flow"
 
 // Node 节点骨架行（spec.flow.nodes 元素；scheme.yaml ConnectorOps spec.flow 声明同词汇）。
 type Node struct {
-	Name      string `yaml:"name" json:"name"`
-	Title     string `yaml:"title,omitempty" json:"title,omitempty"`
-	Unit      string `yaml:"unit" json:"unit"` // session|agent（声明缺省 session——§1.3 执行单元）
-	Op        string `yaml:"op,omitempty" json:"op,omitempty"`
-	Connector string `yaml:"connector,omitempty" json:"connector,omitempty"`
-	Provider  string `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Name           string   `yaml:"name" json:"name"`
+	Phase          string   `yaml:"phase,omitempty" json:"phase,omitempty"`
+	Title          string   `yaml:"title,omitempty" json:"title,omitempty"`
+	Unit           string   `yaml:"unit" json:"unit"` // session|agent|connectops|gate（声明缺省 session——§1.3 执行单元）
+	Op             string   `yaml:"op,omitempty" json:"op,omitempty"`
+	Connector      string   `yaml:"connector,omitempty" json:"connector,omitempty"`
+	Provider       string   `yaml:"provider,omitempty" json:"provider,omitempty"`
+	Model          string   `yaml:"model,omitempty" json:"model,omitempty"`
+	ModelTier      string   `yaml:"modelTier,omitempty" json:"modelTier,omitempty"`
+	GlobalRuleRefs []string `yaml:"globalRuleRefs,omitempty" json:"globalRuleRefs,omitempty"`
+	Service        string   `yaml:"service,omitempty" json:"service,omitempty"`
+	EntryEvents    []string `yaml:"entryEvents,omitempty" json:"entryEvents,omitempty"`
 }
 
 // Binding 绑定解析结果（Resolve 输出）。
@@ -81,8 +87,8 @@ type wfDecl struct {
 	} `yaml:"spec"`
 }
 
-// phaseNode 富相位行/字符串行 → 节点骨架行（字符串行=name、unit 缺省 session；富行=name/title/
-// unit/op/connector/provider 逐字段投影——声明面外字段不即兴）。零名行跳过（不可寻址不投影）。
+// phaseNode 富相位行/字符串行 → 节点骨架行（字符串行=name、unit 缺省 session；富行=name/phase/title/
+// unit/op/connector/provider/model/modelTier/globalRuleRefs/service/entryEvents 逐字段投影）。零名行跳过。
 func phaseNode(n yaml.Node) (Node, bool) {
 	if n.Kind == yaml.ScalarNode {
 		if n.Value == "" {
@@ -94,22 +100,47 @@ func phaseNode(n yaml.Node) (Node, bool) {
 		var out Node
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k, v := n.Content[i].Value, n.Content[i+1]
+			if v.Kind == yaml.SequenceNode {
+				switch k {
+				case "globalRuleRefs":
+					for _, it := range v.Content {
+						if it.Kind == yaml.ScalarNode && it.Value != "" {
+							out.GlobalRuleRefs = append(out.GlobalRuleRefs, it.Value)
+						}
+					}
+				case "entryEvents":
+					for _, it := range v.Content {
+						if it.Kind == yaml.ScalarNode && it.Value != "" {
+							out.EntryEvents = append(out.EntryEvents, it.Value)
+						}
+					}
+				}
+				continue
+			}
 			if v.Kind != yaml.ScalarNode {
 				continue
 			}
 			switch k {
 			case "name":
 				out.Name = v.Value
+			case "phase":
+				out.Phase = v.Value
 			case "title":
 				out.Title = v.Value
 			case "unit":
-				out.Unit = v.Value // session|agent（声明词汇；非法值交写路径闸门，投影原样）
+				out.Unit = v.Value // session|agent|connectops|gate（声明词汇；非法值交写路径闸门，投影原样）
 			case "op":
 				out.Op = v.Value
 			case "connector":
 				out.Connector = v.Value
 			case "provider":
 				out.Provider = v.Value
+			case "model":
+				out.Model = v.Value
+			case "modelTier":
+				out.ModelTier = v.Value
+			case "service":
+				out.Service = v.Value
 			}
 		}
 		if out.Name == "" {

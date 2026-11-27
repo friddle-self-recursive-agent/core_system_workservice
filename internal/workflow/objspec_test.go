@@ -306,3 +306,82 @@ func TestObjectRunPhasesNoTable(t *testing.T) {
 		t.Fatalf("无 advance 行=零动作: %d", n)
 	}
 }
+
+// TestCoreSystemDeveloperLoopMultiEntryAndInterpreter 验证「Workflow+Scheme 为声明层、代码为通用解释器」：
+//  1. core-system-developer-loop 富节点声明、多节点触发入口（entryPoints / entry:DocApplied）、
+//     agent 自动判断审批（approval.mode=agent）、收尾 postActions（bugDocPolicy=invalidate|delete|keep）投影；
+//  2. 入口 1（BugReport）从 Idle→Analyzing 启动，经 agent 自动审批不挂起直通 Planning；
+//  3. 入口 2（DocApplied）直接从 Planning（doc-apply 节点）切入并推进至 Executing（developer-system）。
+func TestCoreSystemDeveloperLoopMultiEntryAndInterpreter(t *testing.T) {
+	if !IsBuiltin("core-system-developer-loop") {
+		t.Fatal("core-system-developer-loop 应注册为 builtin")
+	}
+	const richLoopDoc = `apiVersion: core/v1
+kind: Workflow
+metadata: {name: core-system-developer-loop, scope: global}
+spec:
+  enabled: true
+  approval: {mode: agent, autoCriteria: "单测全绿且无高危变更自动放行"}
+  entryPoints:
+    - {node: doc-apply, phase: Planning, enabled: true, events: [DocApplied]}
+  phases:
+    - {name: log-event,        phase: Idle,             title: "1. 监听日志与 Event", unit: connectops}
+    - {name: agent-judge,      phase: Analyzing,        title: "2. Agent 判断",      unit: agent}
+    - {name: approval-gate,    phase: AwaitingApproval, title: "3. 审批/自动审批",    unit: gate}
+    - {name: doc-apply,        phase: Planning,         title: "4. Doc Apply",       unit: session, entryEvents: [DocApplied]}
+    - {name: developer-system, phase: Executing,        title: "5. developer-system", unit: agent}
+    - {name: verify,           phase: Verifying,        title: "6. 验收",            unit: connectops}
+    - {name: deploy-system,    phase: Deploying,        title: "7. deploy-system",   unit: connectops}
+    - {name: report-archive,   phase: Reporting,        title: "8. 总结归档",         unit: session}
+  regression:
+    statusWriteback: true
+    bugDocPolicy: invalidate
+    postActions:
+      - {id: bugdoc-lifecycle, kind: doc-lifecycle, targetDocType: BugDoc, action: invalidate, enabled: true, title: "临时 BugDoc 标记失效"}
+`
+	ds := DocsSpecs{Lookup: func(name string) ([]byte, bool) {
+		if name == "core-system-developer-loop" {
+			return []byte(richLoopDoc), true
+		}
+		return nil, false
+	}}
+	view := ds.ResolveSpec("core-system-developer-loop")
+	if view.ApprovalMode != "agent" || view.BugDocPolicy != "invalidate" || len(view.PostActions) != 1 {
+		t.Fatalf("富声明解释器投影不符: %+v", view)
+	}
+	if len(view.Phases) != 8 || view.Phases[3] != "Planning" {
+		t.Fatalf("富节点相位提取不符: %v", view.Phases)
+	}
+
+	runs := NewRunLog(&RunOptions{Specs: ds})
+	// 入口 1：BugReport → Idle → Analyzing → (Advance: AwaitingApproval 自动通过不挂起) → Planning
+	runs.StartRun(TriggerRecord{
+		Seq: 1, EventID: "ev-bug-1", Type: "BugReport", DedupKey: "bug:1",
+		ReceivedAt: time.Now(), Route: "workflows/core-system-developer-loop", Owner: "core",
+	}, ExecutorBinding{Executor: ExecWorkflow, Target: "core-system-developer-loop"})
+	r1 := runs.State().Runs[0]
+	if r1.Phase != string(Analyzing) || r1.Status != RunRunning {
+		t.Fatalf("入口 1 首步应落 Analyzing running: %+v", r1)
+	}
+	if n := runs.Advance(); n != 1 {
+		t.Fatalf("推进应 1 步: %d", n)
+	}
+	r1 = runs.State().Runs[0]
+	if r1.Phase != string(AwaitingApproval) || r1.Status != RunRunning {
+		t.Fatalf("approval.mode=agent 落闸锚应自动通过保持 running: %+v", r1)
+	}
+
+	// 入口 2：DocApplied → 直接切入 Planning (节点 4 doc-apply) 并推进至 Executing (节点 5 developer-system)
+	runs.StartRun(TriggerRecord{
+		Seq: 2, EventID: "ev-doc-2", Type: "DocApplied", DedupKey: "apply:doc:2",
+		ReceivedAt: time.Now(), Route: "workflows/core-system-developer-loop", Owner: "core",
+	}, ExecutorBinding{Executor: ExecWorkflow, Target: "core-system-developer-loop"})
+	r2 := runs.State().Runs[1]
+	if r2.Phase != string(Executing) || r2.Status != RunRunning {
+		t.Fatalf("入口 2 (DocApplied) 应从 Planning 切入并推进至 Executing: %+v", r2)
+	}
+	if len(r2.History) < 2 || r2.History[0].On != "entry:DocApplied" || r2.History[0].To != string(Planning) {
+		t.Fatalf("入口 2 轨迹应记录 entry:DocApplied 切入 Planning: %+v", r2.History)
+	}
+}
+
