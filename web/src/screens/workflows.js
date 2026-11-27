@@ -263,48 +263,301 @@ function listScreen(el, ctx) {
   })();
 }
 
-/** 详情（概览 + 该 workflow 的运行清单）。 */
-function detailScreen(el, ctx, name) {
-  const wfs = ctx.store.workflows();
-  const runs = ctx.store.runs().filter((r) => String(r && (r.workflow || r.name || '')) === String(name));
-  const wf = wfs.find((w) => String(w && (w.name || w.workflow || '')) === String(name));
-  const head = screenHead(tr('工作流详情'), 'name=' + String(name), chipGo(tr('← 工作流'), 'workflows', 'mute', false));
-  if (!wf && !runs.length) {
-    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('工作流不在册'), tr('暂无此工作流（可能已下线或名称有误）。')) + '</div>';
-    return;
+/* ── 工作流详情 v2（2026-11-27 用户目标：展示/编辑/节点/任务/节点会话，全部真实数据） ──
+ * 三源现读：GET /v1/workflows（定义+执行绑定+ConnectorOps 骨架）∪ GET /v1/workflows/runs
+ * （运行/节点轨迹/会话锚）∪ GET /v1/tasks（任务标题/agentSession 会话入口）。
+ * 编辑：object 源→Workflow 编辑器；builtin 源→设计文档/scheme（高敏，不伪造表单）。
+ * 节点会话：history[].sessionId → run.sessionId → task.agentSession；空=未记录，不编造。 */
+
+const WF_ALIASES = { 'bug-workflow': 'bug-lifecycle' };
+
+function wfApiRows(res) {
+  const d = res && res.ok ? res.data : null;
+  return d && Array.isArray(d.workflows) ? d.workflows : [];
+}
+function wfApiRuns(res) {
+  const d = res && res.ok ? res.data : null;
+  return d && Array.isArray(d.runs) ? d.runs : [];
+}
+function wfApiTasks(res) {
+  const d = res && res.ok ? res.data : null;
+  return d && Array.isArray(d.tasks) ? d.tasks : [];
+}
+function wfTaskIndex(tasks) {
+  const m = new Map();
+  for (const t of tasks) {
+    if (!t || !t.name) continue;
+    m.set(String(t.scope || 'global') + '/' + String(t.name), t);
   }
-  const rows = [];
-  if (wf) {
-    if (wf.scope) rows.push(['scope', esc(String(wf.scope))]);
-    if (wf.resourceVersion != null) rows.push(['rv', esc(String(wf.resourceVersion))]);
-    if (wf.spec && wf.spec.title) rows.push([tr('标题'), esc(String(wf.spec.title))]);
-    if (wf.spec && wf.spec.goalRef) rows.push([tr('目标'), chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || 'docs', 'mute', true, tr('目标文档'))]);
-    // 代码 ref 直达仓库（pkg://<org>/<repo>/<path> / git:// 等——不匹配=不显示）。
-    const impl = (wf.spec && wf.spec.impl) || (wf.execution && wf.execution.impl) || '';
-    const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : '';
-    if (repoChip) rows.push([tr('实现仓库'), repoChip]);
+  return m;
+}
+export function wfTaskKey(involved) {
+  const m = /^Task\/([^/]+)\/([^/]+)/.exec(String(involved || ''));
+  return m ? m[1] + '/' + m[2] : '';
+}
+
+/** 真实会话锚+来源：history 节点会话 → run 运行会话 → Task journal 任务会话。
+ * 旧 task.agentSession=taskId 不当 session；时刻最近匹配避免多次重跑全挂最新会话。 */
+export function wfSessionAnchor(run, task, sessionRows, hist = null) {
+  const hs = String((hist && hist.sessionId) || '');
+  if (/^session[-_]/i.test(hs)) return { sid: hs, label: tr('节点会话') };
+  const direct = String((run && run.sessionId) || '');
+  if (/^session[-_]/i.test(direct)) return { sid: direct, label: tr('运行会话') };
+  const key = wfTaskKey(run && run.involved);
+  const candidates = (Array.isArray(sessionRows) ? sessionRows : [])
+    .filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || '')));
+  if (!candidates.length) return { sid: '', label: tr('任务会话') };
+  const started = Date.parse(String((run && (run.startedAt || run.at || run.ts)) || ''));
+  if (!Number.isFinite(started)) return { sid: String(candidates[0].sessionId), label: tr('任务会话') };
+  candidates.sort((a, b) => {
+    const da = Number.isFinite(Number(a.startedAt)) ? Math.abs(Number(a.startedAt) - started) : Number.POSITIVE_INFINITY;
+    const db = Number.isFinite(Number(b.startedAt)) ? Math.abs(Number(b.startedAt) - started) : Number.POSITIVE_INFINITY;
+    return da - db;
+  });
+  return { sid: String(candidates[0].sessionId), label: tr('任务会话') };
+}
+
+export function wfRealSession(run, task, sessionRows) {
+  return wfSessionAnchor(run, task, sessionRows).sid;
+}
+
+/** 会话锚 chip：只认真实 session-*（dsh 会话 id）→ 会话屏；taskId/agent 引用不当会话。 */
+function wfSessionChip(sid, label) {
+  const s = String(sid || '');
+  if (!s) return '<span class="small faint">' + esc(tr('会话未记录')) + '</span>';
+  const isSession = /^session[-_]/i.test(s);
+  if (!isSession) return '<span class="small faint">' + esc((label ? tr(label) + ' ' : '') + tr('任务锚（非 sessionId）') + ' ' + trunc(s, 24)) + '</span>';
+  return chipGo((label ? tr(label) + ' ' : '') + trunc(s, 24), 'session/' + encodeURIComponent(s), 'acc', true, s);
+}
+
+/** 节点聚合（当前相位/到过次数/失败数）。 */
+function wfNodeStats(runs, phases) {
+  const stats = new Map();
+  for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+  for (const r of runs) {
+    const cur = String(r.phase || '');
+    if (stats.has(cur)) stats.get(cur).cur++;
+    const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String((h && h.to) || '')));
+    for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
+    if (String(r.status || '') === 'failed' && stats.has('Failed')) stats.get('Failed').failed++;
   }
-  if (wf && wf.spec && wf.spec.dependsOn) rows.push([tr('依赖'), depChips(wf.spec.dependsOn, 'workflow')]);
-  rows.push([tr('运行'), chip(runs.length + tr(' 次'), runs.length ? 'acc' : 'mute')]);
-  const runRows = runs.map((r, i) => {
-    const no = r.run != null ? r.run : (r.no != null ? r.no : (runs.length - i));
-    return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + '/r/' + encodeURIComponent(String(no)) + '">' +
-      '<div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + '</b> ' + runChip(r) + '</div>' +
-      '<div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || '—'), 80)) + '</div></div>' +
-      '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || '—') + '</span>' +
+  return stats;
+}
+
+/** 节点图（定义相位链 + 失败侧轨；点击看到达节点的人/任务/会话）。 */
+export function wfNodeGraphHtml(wf, runs) {
+  const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+  const failed = runs.filter((r) => String(r.status || '') === 'failed').length;
+  const list = phases.concat(failed && !phases.includes('Failed') ? ['Failed'] : []);
+  if (!list.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>';
+  const stats = wfNodeStats(runs, list);
+  const body = list.map((p) => {
+    const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
+    const cls = 'pg-node' + (s.cur ? ' active' : '') + ((s.visited || s.failed) ? ' done' : '') + (p === 'Failed' ? ' fail' : '');
+    return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button">' +
+      '<div class="pg-dot"></div><div class="pg-name">' + esc(p) + '</div>' +
+      (s.cur ? '<span class="chip acc tiny">' + esc(tr('当前') + ' ' + s.cur) + '</span>' : '') +
+      (s.visited ? '<span class="chip mute tiny">' + esc(tr('到过') + ' ' + s.visited) + '</span>' : '') +
       '</div>';
+  }).join('<span class="pg-edge">→</span>');
+  return '<div class="pg-wrap">' + body + '</div>' +
+    '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
+    '<div data-wf-node-drawer class="wf-node-drawer"></div>';
+}
+
+function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
+  el.querySelectorAll('[data-wf-node]').forEach((n) => {
+    n.addEventListener('click', () => {
+      const ph = String(n.getAttribute('data-wf-node') || '');
+      const drawer = el.querySelector('[data-wf-node-drawer]');
+      if (!drawer) return;
+      const hits = runs.filter((r) => String(r.phase || '') === ph ||
+        (Array.isArray(r.history) ? r.history : []).some((h) => String((h && h.to) || '') === ph || String((h && h.from) || '') === ph));
+      const rows = hits.length ? hits.map((r) => {
+        const no = r.run != null ? r.run : (r.no != null ? r.no : '');
+        const task = taskIdx.get(wfTaskKey(r.involved));
+        const hist = (Array.isArray(r.history) ? r.history : []).find((h) => String((h && h.to) || '') === ph || String((h && h.from) || '') === ph);
+        const anchor = wfSessionAnchor(r, task, sessionRows, hist);
+        return '<div class="mini-row"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + '</b> ' + runChip(r) + '</div>' +
+          '<div class="mr-sub small">' + esc(task ? String(task.title || task.name || '') : String(r.involved || '—')) + '</div></div>' +
+          '<div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + ' ' +
+          chipGo(tr('运行'), 'wf/' + encodeURIComponent(wfName) + '/r/' + encodeURIComponent(String(no)), 'mute', true) + '</div></div>';
+      }).join('') : '<div class="small faint">' + esc(tr('暂无运行到达该节点。')) + '</div>';
+      drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span>' +
+        '<span class="h-right">' + esc(tr('到达') + ' ' + hits.length) + '</span></div><div class="card-b">' + rows + '</div></div>';
+    });
+  });
+}
+
+/** ConnectorOps 骨架节点（真实 executionFlow；缺席=执行面未绑定，不伪造）。 */
+export function wfFlowNodesHtml(wf) {
+  const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
+  if (!nodes.length) {
+    return '<div class="small faint">' + esc(tr('执行面未绑定（ConnectorOps 骨架缺席）——workflow apply 后的落地 agent 待接线；当前节点=相位链，节点级会话未单独记录。')) + '</div>';
+  }
+  return '<div class="wf-flow">' + nodes.map((n) =>
+    '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || '—')) + '</div>' +
+    '<div class="small">' + esc(String(n.title || '')) + '</div>' +
+    '<div class="small faint">' + esc([n.unit, n.op, n.connector, n.provider].filter(Boolean).join(' · ')) + '</div></div>').join('') + '</div>';
+}
+
+/** 单 run 的逐节点会话表（history→run→task 三级锚；空=未记录）。 */
+export function wfRunNodesHtml(run, task, sessionRows = []) {
+  const phases = (Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || tr('单节点')]).map(String);
+  const byTo = new Map();
+  for (const h of (Array.isArray(run.history) ? run.history : [])) {
+    if (h && h.to) byTo.set(String(h.to), h);
+  }
+  const cur = String(run.phase || '');
+  const rows = phases.map((p) => {
+    const h = byTo.get(p);
+    const state = p === cur ? tr('当前') : (h ? tr('已走过') : tr('未到达'));
+    const anchor = wfSessionAnchor(run, task, sessionRows, h);
+    return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + '</b> ' +
+      chip(state, p === cur ? 'acc' : (h ? 'ok' : 'mute')) + '</div>' +
+      '<div class="mr-sub small mono">' + esc(h ? String(h.on || '') : '') + '</div></div>' +
+      '<div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || '') + '</span>' : '') + '</div></div>';
   }).join('');
-  /* 节点图数据=最近一条 run（快照聚合缺席=诚实单节点降级——不编造相位序列）。
-   * （修复：此处原引用未定义的 run——ReferenceError 中断整屏渲染=详情页假死。） */
-  const run0 = runs[0] || { workflow: String(name), phases: [], phase: '', status: '' };
-  el.innerHTML = '<div class="view-inner">' + head +
-    tr('<div class="card"><div class="card-h"><span class="h-title">概览</span></div><div class="card-b">') + kv(rows) + '</div></div>' +
-    tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b" data-pg-box>') +
-    (phaseGraphHtml(run0, ctx)) + '</div></div>' +
-    tr('<h2 class="sec-title">运行记录</h2>') +
-    (runRows ? '<div class="card">' + runRows + '</div>' : tr('<div class="small faint">该 workflow 暂无运行记录。</div>')) +
-    '</div>';
-  bindPhaseGraph(el, ctx, run0);
+  return '<div class="small faint">' + esc(tr('节点会话锚=history.sessionId → run.sessionId → Task journal 反查（空=未记录，不编造；旧 task.agentSession=taskId 不当 session）。')) + '</div>' + rows;
+}
+
+/** 任务列表（运行 involved=Task/* 的真实关联；标题/phase/会话取 Task 对象）。 */
+function wfTasksHtml(runs, taskIdx, sessionRows = []) {
+  const seen = new Map();
+  for (const r of runs) {
+    const key = wfTaskKey(r.involved);
+    if (!key) continue;
+    if (!seen.has(key)) seen.set(key, { key, task: taskIdx.get(key), runs: [] });
+    seen.get(key).runs.push(r);
+  }
+  if (!seen.size) return '';
+  const rows = [...seen.values()].map((x) => {
+    const t = x.task;
+    const title = t ? String(t.title || t.name || x.key) : x.key;
+    const ph = t ? String(t.phase || '') : '';
+    return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + '</b> ' +
+      (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || 'mute') : '') + '</div>' +
+      '<div class="mr-sub small mono">Task/' + esc(x.key) + ' · ' + esc(tr('runs') + ' ' + x.runs.length) + '</div></div>' +
+      '<div class="mr-side">' + wfSessionChip(wfRealSession(x.runs[0], t, sessionRows), '任务会话') + ' ' +
+      chipGo(tr('任务'), 'task/' + encodeURIComponent(x.key), 'mute', true) + '</div></div>';
+  }).join('');
+  return '<h2 class="sec-title">' + esc(tr('任务')) + '</h2><div class="card">' + rows + '</div>';
+}
+
+/** 运行/任务行（details 展开=逐节点会话）。 */
+function wfRunsHtml(runs, taskIdx, sessionRows = []) {
+  if (!runs.length) return '';
+  return '<h2 class="sec-title">' + esc(tr('运行记录')) + '</h2><div class="card">' + runs.map((r, i) => {
+    const no = r.run != null ? r.run : (r.no != null ? r.no : i + 1);
+    const task = taskIdx.get(wfTaskKey(r.involved));
+    const sid = wfRealSession(r, task, sessionRows);
+    return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum">' +
+      '<span class="ex-chev">▶</span><b class="mono">run #' + esc(String(no)) + '</b> ' + runChip(r) +
+      '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || '') : String(r.involved || '—')) + '</span>' +
+      '<span class="wf-run-side">' + wfSessionChip(sid, '运行会话') +
+      '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || '—') + '</span>' +
+      chipGo(tr('运行详情'), 'wf/' + encodeURIComponent(String(r.workflow || '')) + '/r/' + encodeURIComponent(String(no)), 'mute', true) +
+      '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + '</div></details>';
+  }).join('') + '</div>';
+}
+
+/** 编辑入口：object 源=编辑器；builtin 源=设计文档/scheme（高敏，不伪造表单）。 */
+function wfEditChips(wf, name) {
+  if (wf && String(wf.specSource || '') === 'object') {
+    const scope = String(wf.scope || 'global');
+    return chipGo(tr('编辑 Workflow'), docRoute('Workflow', scope, name), 'acc', true, tr('编辑 Workflow 声明')) + ' ' +
+      chipGo(tr('对象工作台'), objRoute('Workflow', scope, name), 'mute', true);
+  }
+  return chipGo(tr('编辑定义（workflow.md）'), wfDesignRoute(), 'acc', true, tr('设计文档工作台')) + ' ' +
+    chipGo(tr('相位表（scheme）'), 'designdoc/' + encodeURIComponent('core_design') + '/' + encodeURIComponent('core/scheme.yaml'), 'mute', true);
+}
+
+/** 详情：真实三源现读 → 定义卡 + 节点图 + 骨架节点 + 任务 + 运行/节点会话。 */
+let wfDetailSeq = 0;
+function detailScreen(el, ctx, name) {
+  const stamp = '#' + (++wfDetailSeq);
+  el.setAttribute('data-wf-detail-stamp', stamp);
+  el.innerHTML = '<div class="view-inner">' +
+    screenHead(tr('工作流'), String(name), chipGo(tr('← 工作流'), 'workflows', 'mute', false)) +
+    '<div data-wf-detail><div class="small faint">' + esc(tr('工作流现读中…（定义/运行/任务）')) + '</div></div></div>';
+  (async () => {
+    const [wfsRes, runsRes, tasksRes] = await Promise.all([
+      ctx.api.workflows(), ctx.api.workflowRuns(), ctx.api.tasks(),
+    ]);
+    if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;
+    const rows = wfApiRows(wfsRes);
+    const runsAll = wfApiRuns(runsRes);
+    const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
+    const alias = WF_ALIASES[String(name)];
+    let wf = rows.find((x) => String(x && x.name) === String(name));
+    if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
+    const usedName = wf ? String(wf.name) : String(name);
+    const runs = runsAll.filter((r) => String(r && r.workflow) === usedName)
+      .sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
+    let sessionRows = [];
+    const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
+    if (taskIds.length && ctx.api.taskSessions) {
+      try {
+        const sr = await ctx.api.taskSessions(taskIds);
+        if (sr && sr.ok && Array.isArray(sr.data && sr.data.items)) sessionRows = sr.data.items;
+      } catch { /* 映射缺席=会话未记录，不编造 */ }
+    }
+    if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;
+    const detail = el.querySelector('[data-wf-detail]');
+    if (!detail) return;
+    if (!rows.length && !runs.length) {
+      detail.innerHTML = emptyBox(tr('工作流面暂不可读'),
+        tr('GET /v1/workflows 与 /v1/workflows/runs 均未返回数据——') + ' ' +
+        chipGo(tr('重试'), 'wf/' + encodeURIComponent(String(name)), 'acc', true));
+      return;
+    }
+    if (!wf) {
+      const similar = rows.filter((x) => String(x.name || '').toLowerCase().includes(String(name).toLowerCase().split('-')[0]))
+        .slice(0, 8);
+      detail.innerHTML = emptyBox(tr('工作流不在册'), tr('暂无此工作流（可能已下线或名称有误）。')) +
+        (similar.length ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('相近工作流')) + '</span></div><div class="card-b">' +
+          similar.map((x) => chipGo(String(x.name), 'wf/' + encodeURIComponent(String(x.name)), 'mute', true)).join(' ') + '</div></div>' : '');
+      return;
+    }
+    const latest = wf.latest || null;
+    const exec = wf.execution || {};
+    const aliasNote = String(name) !== usedName
+      ? chip(tr('词形兼容') + '：' + String(name) + ' → ' + usedName, 'mute') : '';
+    // 概览 kv（复用既有 kv 渲染）
+    const kvRows = [
+      [tr('来源'), chip(String(wf.specSource || '—'), wf.specSource === 'builtin' ? 'acc' : (wf.specSource === 'object' ? 'ok' : 'mute'))],
+      [tr('执行面'), exec.connector ? chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + ' ' +
+        chipGo(String(exec.connector), 'connectors', 'mute', true, tr('ConnectorOps')) : '—'],
+      [tr('骨架'), exec.skeleton ? chip(tr('在册'), 'ok') : chip(tr('缺席'), 'mute')],
+      [tr('运行'), chip(tr('环内 ') + runs.length + ' / 累计 ' + String(wf.runsTotal != null ? wf.runsTotal : '—'), runs.length ? 'acc' : 'mute') +
+        (wf.runs24h != null ? ' ' + chip('24h ' + String(wf.runs24h), 'mute') : '')],
+      [tr('最新'), latest ? runChip(latest) + ' ' + chip('run #' + String(latest.run), 'mono') + ' ' + esc(relAge(latest.startedAt) || '') : '—'],
+      [tr('生效'), wf.effective ? chip(String(wf.effective.scope || '') + ' · ' + (wf.effective.enabled ? tr('启用') : tr('停用')), wf.effective.enabled ? 'ok' : 'mute') : '—'],
+    ];
+    const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
+    const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
+    detail.innerHTML =
+      '<div class="run-hero"><div class="rh-top">' +
+      (aliasNote ? aliasNote : '') + '</div>' +
+      '<div class="rh-title">' + esc(usedName) + ' ' + chip(String(wf.specSource || '—'), 'acc') + ' ' +
+      chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + '</div>' +
+      '<div class="rh-meta"><span>' + esc(tr('定义/运行/任务均为现读真实数据')) + '</span>' +
+      (latest ? '<span>' + esc(tr('最近运行') + ' ') + runChip(latest) + '</span>' : '') + '</div>' +
+      '<div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div>' +
+      '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('定义')) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
+      '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
+      '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
+      (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
+      (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
+        esc(tr('该 workflow 暂无运行记录——')) + (exec.state === 'unbound' ? esc(tr('执行面未绑定（ConnectorOps 骨架缺席），任务不会拉起 run。')) : '') +
+        '</div></div></div>');
+    bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
+  })().catch((e) => {
+    if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;
+    const detail = el.querySelector('[data-wf-detail]');
+    if (detail) detail.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' +
+      esc(tr('工作流现读失败：') + String((e && e.message) || e)) + '</div></div></div>';
+  });
 }
 
 /** 运行独立页（#/wf/:name/r/:n）——人视角布局：
@@ -327,8 +580,8 @@ function runScreen(el, ctx, name, no) {
       emptyBox(tr('运行记录不在册'), tr('暂无此运行记录（可能已归档）。')) + '</div>';
     return;
   }
-  const st = String(run.status || '');
-  const stCls = st === 'suspended' ? 'warn' : (RUN_CLS[st] || 'mute');
+  let st = String(run.status || '');
+  let stCls = st === 'suspended' ? 'warn' : (RUN_CLS[st] || 'mute');
   const startedAt = run.startedAt || run.at || run.ts;
   const gateWord = st === 'suspended' ? tr('等审批')
     : (st === 'running' ? tr('运行中')
@@ -357,6 +610,10 @@ function runScreen(el, ctx, name, no) {
     '</div>' +
     /* stepper（视觉中心） */
     '<div class="step-line" data-step-line></div>' +
+    '<div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(tr('会话')) + '</span></div>' +
+    '<div class="card-b" data-run-session>' + wfSessionChip(run.sessionId) + '</div></div>' +
+    '<div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(tr('节点会话')) + '</span></div>' +
+    '<div class="card-b" data-run-node-sessions><div class="small faint">' + esc(tr('节点会话现读中…')) + '</div></div></div>' +
     /* 双栏：当前相位 | 事件时间线 */
     '<div class="run-cols">' +
     '<div class="run-col"><div class="panel-h">' + esc(tr('当前相位')) + '</div><div data-run-now></div></div>' +
@@ -448,6 +705,32 @@ function runScreen(el, ctx, name, no) {
       : '<div class="tl-empty">' + esc(tr('暂无相关事件——流程推进时此处实时更新。')) + '</div>');
   };
   paintLine(); paintNow(); paintTl();
+  /* 节点会话：Task 列表 + journal taskId 反查（真实 session-*）；读失败=会话未记录，不编造。 */
+  let nodeSessionRows = [];
+  let nodeTask = null;
+  const hydrateNodeSessions = async () => {
+    const box = el.querySelector('[data-run-node-sessions]');
+    if (!box || !el.isConnected) return;
+    const key = wfTaskKey(run.involved);
+    if (!key) { box.innerHTML = '<div class="small faint">' + esc(tr('该运行未关联 Task 对象——节点会话未记录。')) + '</div>'; return; }
+    try {
+      const [tasksRes, sessionsRes] = await Promise.all([
+        ctx.api.tasks(),
+        ctx.api.taskSessions ? ctx.api.taskSessions([key]) : Promise.resolve({ ok: false }),
+      ]);
+      if (!el.isConnected) return;
+      const tasks = wfApiTasks(tasksRes);
+      nodeTask = tasks.find((t) => String(t.scope || 'global') + '/' + String(t.name || '') === key) || null;
+      nodeSessionRows = sessionsRes && sessionsRes.ok && Array.isArray(sessionsRes.data && sessionsRes.data.items) ? sessionsRes.data.items : [];
+      box.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
+      const topAnchor = wfSessionAnchor(run, nodeTask, nodeSessionRows);
+      const sessionBox = el.querySelector('[data-run-session]');
+      if (sessionBox) sessionBox.innerHTML = wfSessionChip(topAnchor.sid, topAnchor.label);
+    } catch {
+      if (el.isConnected) box.innerHTML = '<div class="small faint">' + esc(tr('节点会话读取失败——不冒充已记录。')) + '</div>';
+    }
+  };
+  hydrateNodeSessions();
   /* runs face 现读重注水（phases/phase/status/involved/transitions——字段缺席=保留原值不编造） */
   const refreshFace = () => ctx.api.workflowRuns().then((r) => {
     if (!r.ok || !el.isConnected) return;
@@ -457,9 +740,16 @@ function runScreen(el, ctx, name, no) {
     run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
     run.phase = full.phase || run.phase;
     run.status = full.status || run.status;
+    st = String(run.status || '');
+    stCls = st === 'suspended' ? 'warn' : (RUN_CLS[st] || 'mute');
+    run.sessionId = full.sessionId || run.sessionId;
     run.involved = full.involved || run.involved;
     run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
     run.history = Array.isArray(full.history) ? full.history : run.history;
+    const sessionBox = el.querySelector('[data-run-session]');
+    if (sessionBox) sessionBox.innerHTML = wfSessionChip(run.sessionId);
+    const nodeBox = el.querySelector('[data-run-node-sessions]');
+    if (nodeBox && wfTaskKey(run.involved)) nodeBox.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
     paintLine(); paintNow(); paintTl();
   });
   refreshFace();

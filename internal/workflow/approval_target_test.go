@@ -41,3 +41,18 @@ func TestRejectSignalTargetRun(t *testing.T) {
 		t.Fatalf("#2 不应被 #1 的驳回带走: status=%s", r.Status)
 	}
 }
+
+func TestHistoryRowCarriesSessionID(t *testing.T) {
+	runs := NewRunLog(nil)
+	seedAdvance(t, runs, "workflows/core-workflow", "core-workflow", Analyzing, RunRunning)
+	runs.mu.Lock()
+	runs.ring[len(runs.ring)-1].SessionID = "session-real-1"
+	runs.mu.Unlock()
+	runs.mu.Lock()
+	histAppend(&runs.ring[len(runs.ring)-1], "Analyzing", "Planning", "advance")
+	runs.mu.Unlock()
+	rows := runs.State().Runs[0].History
+	if len(rows) < 1 || rows[len(rows)-1].SessionID != "session-real-1" {
+		t.Fatalf("history row should carry session anchor: %+v", rows)
+	}
+}

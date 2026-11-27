@@ -875,7 +875,60 @@ var CoreConsoleWeb = (() => {
     ["\u56FE\u7247\u4E0A\u4F20\u5931\u8D25", "Image upload failed"],
     ["\u56FE\u7247\u8D85\u8FC7 8MB \u4E0A\u9650", "Image exceeds the 8MB limit"],
     ["\u6700\u8FD1\u4F1A\u8BDD", "Recent chats"],
-    ["\u5168\u90E8\u4F1A\u8BDD", "All chats"]
+    ["\u5168\u90E8\u4F1A\u8BDD", "All chats"],
+    /* ── 2026-11-27 Workflow 详情（真实定义/节点/任务/会话）── */
+    ["\u4EFB\u52A1", "Tasks"],
+    ["\u4EFB\u52A1\u951A\uFF08\u975E sessionId\uFF09", "Task anchor (not a sessionId)"],
+    ["\u4F1A\u8BDD\u672A\u8BB0\u5F55", "No session recorded"],
+    ["\u542F\u7528", "Enabled"],
+    ["\u505C\u7528", "Disabled"],
+    ["\u5230\u8FBE", "Arrivals"],
+    ["\u5230\u8FC7", "Visits"],
+    ["\u5F53\u524D", "Current"],
+    ["\u5DF2\u8D70\u8FC7", "Completed"],
+    ["\u672A\u5230\u8FBE", "Not reached"],
+    ["\u6700\u65B0", "Latest"],
+    ["\u6700\u8FD1", "Recent"],
+    ["\u6700\u8FD1\u8FD0\u884C", "Latest run"],
+    ["\u6765\u6E90", "Source"],
+    ["\u5B9A\u4E49", "Definition"],
+    ["\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E", "Definition, runs and tasks are live data"],
+    ["\u5728\u518C", "Registered"],
+    ["\u7F3A\u5E2D", "Absent"],
+    ["\u6267\u884C\u9762", "Execution"],
+    ["\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09", "Execution nodes (ConnectorOps skeleton)"],
+    ["\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09", "Nodes (phase chain)"],
+    ["\u8282\u70B9\u4F1A\u8BDD", "Node sessions"],
+    ["\u8282\u70B9\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026", "Loading node sessions\u2026"],
+    ["\u8282\u70B9\u4F1A\u8BDD\u8BFB\u53D6\u5931\u8D25\u2014\u2014\u4E0D\u5192\u5145\u5DF2\u8BB0\u5F55\u3002", "Failed to read node sessions \u2014 not shown as recorded."],
+    ["\u8BE5\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\u2014\u2014\u8282\u70B9\u4F1A\u8BDD\u672A\u8BB0\u5F55\u3002", "This run has no linked Task object \u2014 no node session recorded."],
+    ["\u8FD0\u884C\u8BB0\u5F55", "Runs"],
+    ["\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002", "Runs are not linked to Task objects (trigger source is Proposal/Template/other \u2014 see run involved)."],
+    ["\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014", "No runs for this workflow \u2014 "],
+    ["\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002", "Execution is unbound (ConnectorOps skeleton absent); tasks do not start runs."],
+    ["\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\u2014\u2014workflow apply \u540E\u7684\u843D\u5730 agent \u5F85\u63A5\u7EBF\uFF1B\u5F53\u524D\u8282\u70B9=\u76F8\u4F4D\u94FE\uFF0C\u8282\u70B9\u7EA7\u4F1A\u8BDD\u672A\u5355\u72EC\u8BB0\u5F55\u3002", "Execution is unbound (ConnectorOps skeleton absent) \u2014 the workflow apply agent is pending; current nodes are the phase chain, with no separate node sessions recorded."],
+    ["\u8282\u70B9\u4F1A\u8BDD\u951A=history.sessionId \u2192 run.sessionId \u2192 Task journal \u53CD\u67E5\uFF08\u7A7A=\u672A\u8BB0\u5F55\uFF0C\u4E0D\u7F16\u9020\uFF1B\u65E7 task.agentSession=taskId \u4E0D\u5F53 session\uFF09\u3002", "Node session anchor: history.sessionId \u2192 run.sessionId \u2192 Task journal lookup (empty = not recorded; legacy task.agentSession=taskId is not treated as a session)."],
+    ["\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u4E2D\u2026\uFF08\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\uFF09", "Loading workflow\u2026 (definition/runs/tasks)"],
+    ["\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u5931\u8D25\uFF1A", "Failed to load workflow: "],
+    ["\u5DE5\u4F5C\u6D41\u9762\u6682\u4E0D\u53EF\u8BFB", "Workflow data unavailable"],
+    ["GET /v1/workflows \u4E0E /v1/workflows/runs \u5747\u672A\u8FD4\u56DE\u6570\u636E\u2014\u2014", "Neither GET /v1/workflows nor /v1/workflows/runs returned data \u2014 "],
+    ["\u76F8\u8FD1\u5DE5\u4F5C\u6D41", "Similar workflows"],
+    ["\u8BCD\u5F62\u517C\u5BB9", "Alias"],
+    ["\u7F16\u8F91 Workflow", "Edit Workflow"],
+    ["\u7F16\u8F91 Workflow \u58F0\u660E", "Edit Workflow declaration"],
+    ["\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09", "Edit definition (workflow.md)"],
+    ["\u76F8\u4F4D\u8868\uFF08scheme\uFF09", "Phase table (scheme)"],
+    ["\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0", "Design doc workspace"],
+    ["\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002", "Click a node to see the runs/tasks and real session anchors that reached it."],
+    ["\u6682\u65E0\u8FD0\u884C\u5230\u8FBE\u8BE5\u8282\u70B9\u3002", "No runs reached this node."],
+    ["\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002", "This workflow has no projected phase chain."],
+    ["\u73AF\u5185 ", "In ring "],
+    ["runs", "runs"],
+    ["ConnectorOps", "ConnectorOps"],
+    ["\u9AA8\u67B6", "Skeleton"],
+    ["\u751F\u6548", "Effective"],
+    ["\u8FD0\u884C\u4F1A\u8BDD", "Run session"],
+    ["\u4EFB\u52A1\u4F1A\u8BDD", "Task session"]
   ];
 
   // src/core/i18n.js
@@ -1880,6 +1933,8 @@ var CoreConsoleWeb = (() => {
       events: (limit = 200) => request("v1/events?limit=" + Number(limit)),
       workflows: () => request("v1/workflows"),
       workflowRuns: () => request("v1/workflows/runs"),
+      tasks: () => request("v1/tasks"),
+      taskSessions: (taskIds) => request("/core-console/task-sessions?taskIds=" + encodeURIComponent(taskIds.join(","))),
       sessions: () => request("v1/sessions"),
       session: (id) => request("v1/sessions/" + enc(String(id == null ? "" : id))),
       /* 会话上下文契约面（G-14——routes_sessions.go：ContextPack 词形投影+编辑分叉） */
@@ -3048,44 +3103,6 @@ var CoreConsoleWeb = (() => {
     if (/-workflow$/.test(r)) return "core-workflow";
     return "";
   }
-  function phaseGraphHtml(run, ctx2) {
-    const phases = Array.isArray(run.phases) ? run.phases : [];
-    const cur = String(run.phase || "");
-    const st = String(run.status || "");
-    const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
-    const isTerminal = st === "done" || st === "converged";
-    const nodeHtml2 = (p, i) => {
-      const active = p === cur && !isTerminal;
-      const done = visited.has(p) && (p !== cur || isTerminal);
-      const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
-      return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
-    };
-    const body = phases.length ? phases.map((p, i) => nodeHtml2(p, i)).join('<span class="pg-edge">\u2192</span>') : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || t("\u5355\u8282\u70B9\uFF08\u58F0\u660E\u672A\u6295\u5F71\u76F8\u4F4D\uFF09")) + "</div>" + runChip(run) + "</div>";
-    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\u67E5\u770B\u8BE5\u9636\u6BB5\u7684\u4E8B\u4EF6\u4E0E\u6D89\u53CA\u6587\u6863\u3002")) + '</div><div data-pg-drawer style="margin-top:10px"></div>';
-  }
-  function bindPhaseGraph(el, ctx2, run) {
-    el.querySelectorAll("[data-pg-node]").forEach((n) => {
-      n.addEventListener("click", () => {
-        const ph = String(n.getAttribute("data-pg-node") || "");
-        const drawer = el.querySelector("[data-pg-drawer]");
-        if (!drawer) return;
-        const evs = ctx2.store.events().filter((e) => {
-          const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-          return hay.includes(String(run.workflow || "")) || hay.includes(ph);
-        }).slice(0, 10);
-        const involved = String(run.involved || "");
-        const evRows = evs.length ? evs.map((e) => {
-          const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-          const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
-          return '<div class="mini-row"' + goAttr + '><div class="mr-main"><div><b>' + esc(String(e.type || "")) + '</b></div><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 60)) + '</div></div><span class="small faint">' + esc(relAge(e.ts) || "") + "</span></div>";
-        }).join("") : '<div class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u8BE5\u76F8\u4F4D\u4E8B\u4EF6\u3002")) + "</div>";
-        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' + (involved ? '<div class="mr-sub">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + involved.split(",").map((x) => {
-          const parts = x.trim().split("/");
-          return parts.length >= 3 ? '<span class="ref-chip" data-go="obj/' + esc(parts[0]) + "/" + esc(parts[1]) + "/" + esc(parts[2]) + '">' + esc(x.trim()) + "</span>" : '<span class="small faint mono">' + esc(x.trim()) + "</span>";
-        }).join(" ") + "</div>" : "") + '<div class="small faint">' + esc(t("\u4E8B\u4EF6\u94FE\uFF08\u5F52\u6863\u7A97\u53E3\uFF09\uFF1A")) + "</div>" + evRows + "</div></div>";
-      });
-    });
-  }
   var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
   function isTerminalRun(st) {
     return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
@@ -3197,34 +3214,220 @@ var CoreConsoleWeb = (() => {
       paintRuns();
     })();
   }
-  function detailScreen(el, ctx2, name) {
-    const wfs = ctx2.store.workflows();
-    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const wf = wfs.find((w) => String(w && (w.name || w.workflow || "")) === String(name));
-    const head = screenHead(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "name=" + String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false));
-    if (!wf && !runs.length) {
-      el.innerHTML = '<div class="view-inner">' + head + emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + "</div>";
-      return;
+  var WF_ALIASES = { "bug-workflow": "bug-lifecycle" };
+  function wfApiRows(res) {
+    const d = res && res.ok ? res.data : null;
+    return d && Array.isArray(d.workflows) ? d.workflows : [];
+  }
+  function wfApiRuns(res) {
+    const d = res && res.ok ? res.data : null;
+    return d && Array.isArray(d.runs) ? d.runs : [];
+  }
+  function wfApiTasks(res) {
+    const d = res && res.ok ? res.data : null;
+    return d && Array.isArray(d.tasks) ? d.tasks : [];
+  }
+  function wfTaskIndex(tasks) {
+    const m = /* @__PURE__ */ new Map();
+    for (const t2 of tasks) {
+      if (!t2 || !t2.name) continue;
+      m.set(String(t2.scope || "global") + "/" + String(t2.name), t2);
     }
-    const rows = [];
-    if (wf) {
-      if (wf.scope) rows.push(["scope", esc(String(wf.scope))]);
-      if (wf.resourceVersion != null) rows.push(["rv", esc(String(wf.resourceVersion))]);
-      if (wf.spec && wf.spec.title) rows.push([t("\u6807\u9898"), esc(String(wf.spec.title))]);
-      if (wf.spec && wf.spec.goalRef) rows.push([t("\u76EE\u6807"), chipGo(String(wf.spec.goalRef), involvedRoute(String(wf.spec.goalRef)) || "docs", "mute", true, t("\u76EE\u6807\u6587\u6863"))]);
-      const impl = wf.spec && wf.spec.impl || wf.execution && wf.execution.impl || "";
-      const repoChip = impl ? repoLinkChip(String(impl), String(impl)) : "";
-      if (repoChip) rows.push([t("\u5B9E\u73B0\u4ED3\u5E93"), repoChip]);
+    return m;
+  }
+  function wfTaskKey(involved) {
+    const m = /^Task\/([^/]+)\/([^/]+)/.exec(String(involved || ""));
+    return m ? m[1] + "/" + m[2] : "";
+  }
+  function wfSessionAnchor(run, task, sessionRows, hist = null) {
+    const hs = String(hist && hist.sessionId || "");
+    if (/^session[-_]/i.test(hs)) return { sid: hs, label: t("\u8282\u70B9\u4F1A\u8BDD") };
+    const direct = String(run && run.sessionId || "");
+    if (/^session[-_]/i.test(direct)) return { sid: direct, label: t("\u8FD0\u884C\u4F1A\u8BDD") };
+    const key = wfTaskKey(run && run.involved);
+    const candidates = (Array.isArray(sessionRows) ? sessionRows : []).filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || "")));
+    if (!candidates.length) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    const started = Date.parse(String(run && (run.startedAt || run.at || run.ts) || ""));
+    if (!Number.isFinite(started)) return { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    candidates.sort((a, b) => {
+      const da = Number.isFinite(Number(a.startedAt)) ? Math.abs(Number(a.startedAt) - started) : Number.POSITIVE_INFINITY;
+      const db = Number.isFinite(Number(b.startedAt)) ? Math.abs(Number(b.startedAt) - started) : Number.POSITIVE_INFINITY;
+      return da - db;
+    });
+    return { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+  }
+  function wfRealSession(run, task, sessionRows) {
+    return wfSessionAnchor(run, task, sessionRows).sid;
+  }
+  function wfSessionChip(sid, label) {
+    const s = String(sid || "");
+    if (!s) return '<span class="small faint">' + esc(t("\u4F1A\u8BDD\u672A\u8BB0\u5F55")) + "</span>";
+    const isSession = /^session[-_]/i.test(s);
+    if (!isSession) return '<span class="small faint">' + esc((label ? t(label) + " " : "") + t("\u4EFB\u52A1\u951A\uFF08\u975E sessionId\uFF09") + " " + trunc(s, 24)) + "</span>";
+    return chipGo((label ? t(label) + " " : "") + trunc(s, 24), "session/" + encodeURIComponent(s), "acc", true, s);
+  }
+  function wfNodeStats(runs, phases) {
+    const stats = /* @__PURE__ */ new Map();
+    for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+    for (const r of runs) {
+      const cur = String(r.phase || "");
+      if (stats.has(cur)) stats.get(cur).cur++;
+      const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String(h && h.to || "")));
+      for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
+      if (String(r.status || "") === "failed" && stats.has("Failed")) stats.get("Failed").failed++;
     }
-    if (wf && wf.spec && wf.spec.dependsOn) rows.push([t("\u4F9D\u8D56"), depChips(wf.spec.dependsOn, "workflow")]);
-    rows.push([t("\u8FD0\u884C"), chip(runs.length + t(" \u6B21"), runs.length ? "acc" : "mute")]);
-    const runRows = runs.map((r, i) => {
-      const no = r.run != null ? r.run : r.no != null ? r.no : runs.length - i;
-      return '<div class="mini-row" data-go="wf/' + encodeURIComponent(String(name)) + "/r/" + encodeURIComponent(String(no)) + '"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small mono">' + esc(trunc(String(r.route || r.trigger || "\u2014"), 80)) + '</div></div><span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span></div>";
+    return stats;
+  }
+  function wfNodeGraphHtml(wf, runs) {
+    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+    const failed = runs.filter((r) => String(r.status || "") === "failed").length;
+    const list2 = phases.concat(failed && !phases.includes("Failed") ? ["Failed"] : []);
+    if (!list2.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>";
+    const stats = wfNodeStats(runs, list2);
+    const body = list2.map((p) => {
+      const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
+      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited || s.failed ? " done" : "") + (p === "Failed" ? " fail" : "");
+      return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (s.cur ? '<span class="chip acc tiny">' + esc(t("\u5F53\u524D") + " " + s.cur) + "</span>" : "") + (s.visited ? '<span class="chip mute tiny">' + esc(t("\u5230\u8FC7") + " " + s.visited) + "</span>" : "") + "</div>";
+    }).join('<span class="pg-edge">\u2192</span>');
+    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+  }
+  function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
+    el.querySelectorAll("[data-wf-node]").forEach((n) => {
+      n.addEventListener("click", () => {
+        const ph = String(n.getAttribute("data-wf-node") || "");
+        const drawer = el.querySelector("[data-wf-node-drawer]");
+        if (!drawer) return;
+        const hits = runs.filter((r) => String(r.phase || "") === ph || (Array.isArray(r.history) ? r.history : []).some((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph));
+        const rows = hits.length ? hits.map((r) => {
+          const no = r.run != null ? r.run : r.no != null ? r.no : "";
+          const task = taskIdx.get(wfTaskKey(r.involved));
+          const hist = (Array.isArray(r.history) ? r.history : []).find((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph);
+          const anchor = wfSessionAnchor(r, task, sessionRows, hist);
+          return '<div class="mini-row"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</div></div><div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + " " + chipGo(t("\u8FD0\u884C"), "wf/" + encodeURIComponent(wfName) + "/r/" + encodeURIComponent(String(no)), "mute", true) + "</div></div>";
+        }).join("") : '<div class="small faint">' + esc(t("\u6682\u65E0\u8FD0\u884C\u5230\u8FBE\u8BE5\u8282\u70B9\u3002")) + "</div>";
+        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span><span class="h-right">' + esc(t("\u5230\u8FBE") + " " + hits.length) + '</span></div><div class="card-b">' + rows + "</div></div>";
+      });
+    });
+  }
+  function wfFlowNodesHtml(wf) {
+    const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
+    if (!nodes.length) {
+      return '<div class="small faint">' + esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\u2014\u2014workflow apply \u540E\u7684\u843D\u5730 agent \u5F85\u63A5\u7EBF\uFF1B\u5F53\u524D\u8282\u70B9=\u76F8\u4F4D\u94FE\uFF0C\u8282\u70B9\u7EA7\u4F1A\u8BDD\u672A\u5355\u72EC\u8BB0\u5F55\u3002")) + "</div>";
+    }
+    return '<div class="wf-flow">' + nodes.map((n) => '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || "\u2014")) + '</div><div class="small">' + esc(String(n.title || "")) + '</div><div class="small faint">' + esc([n.unit, n.op, n.connector, n.provider].filter(Boolean).join(" \xB7 ")) + "</div></div>").join("") + "</div>";
+  }
+  function wfRunNodesHtml(run, task, sessionRows = []) {
+    const phases = (Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")]).map(String);
+    const byTo = /* @__PURE__ */ new Map();
+    for (const h of Array.isArray(run.history) ? run.history : []) {
+      if (h && h.to) byTo.set(String(h.to), h);
+    }
+    const cur = String(run.phase || "");
+    const rows = phases.map((p) => {
+      const h = byTo.get(p);
+      const state = p === cur ? t("\u5F53\u524D") : h ? t("\u5DF2\u8D70\u8FC7") : t("\u672A\u5230\u8FBE");
+      const anchor = wfSessionAnchor(run, task, sessionRows, h);
+      return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + "</b> " + chip(state, p === cur ? "acc" : h ? "ok" : "mute") + '</div><div class="mr-sub small mono">' + esc(h ? String(h.on || "") : "") + '</div></div><div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || "") + "</span>" : "") + "</div></div>";
     }).join("");
-    const run0 = runs[0] || { workflow: String(name), phases: [], phase: "", status: "" };
-    el.innerHTML = '<div class="view-inner">' + head + t('<div class="card"><div class="card-h"><span class="h-title">\u6982\u89C8</span></div><div class="card-b">') + kv(rows) + "</div></div>" + t('<h2 class="sec-title">\u8282\u70B9\u56FE</h2><div class="card"><div class="card-b" data-pg-box>') + phaseGraphHtml(run0, ctx2) + "</div></div>" + t('<h2 class="sec-title">\u8FD0\u884C\u8BB0\u5F55</h2>') + (runRows ? '<div class="card">' + runRows + "</div>" : t('<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002</div>')) + "</div>";
-    bindPhaseGraph(el, ctx2, run0);
+    return '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u951A=history.sessionId \u2192 run.sessionId \u2192 Task journal \u53CD\u67E5\uFF08\u7A7A=\u672A\u8BB0\u5F55\uFF0C\u4E0D\u7F16\u9020\uFF1B\u65E7 task.agentSession=taskId \u4E0D\u5F53 session\uFF09\u3002")) + "</div>" + rows;
+  }
+  function wfTasksHtml(runs, taskIdx, sessionRows = []) {
+    const seen = /* @__PURE__ */ new Map();
+    for (const r of runs) {
+      const key = wfTaskKey(r.involved);
+      if (!key) continue;
+      if (!seen.has(key)) seen.set(key, { key, task: taskIdx.get(key), runs: [] });
+      seen.get(key).runs.push(r);
+    }
+    if (!seen.size) return "";
+    const rows = [...seen.values()].map((x) => {
+      const t2 = x.task;
+      const title = t2 ? String(t2.title || t2.name || x.key) : x.key;
+      const ph = t2 ? String(t2.phase || "") : "";
+      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + "</b> " + (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || "mute") : "") + '</div><div class="mr-sub small mono">Task/' + esc(x.key) + " \xB7 " + esc(t("runs") + " " + x.runs.length) + '</div></div><div class="mr-side">' + wfSessionChip(wfRealSession(x.runs[0], t2, sessionRows), "\u4EFB\u52A1\u4F1A\u8BDD") + " " + chipGo(t("\u4EFB\u52A1"), "task/" + encodeURIComponent(x.key), "mute", true) + "</div></div>";
+    }).join("");
+    return '<h2 class="sec-title">' + esc(t("\u4EFB\u52A1")) + '</h2><div class="card">' + rows + "</div>";
+  }
+  function wfRunsHtml(runs, taskIdx, sessionRows = []) {
+    if (!runs.length) return "";
+    return '<h2 class="sec-title">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div class="card">' + runs.map((r, i) => {
+      const no = r.run != null ? r.run : r.no != null ? r.no : i + 1;
+      const task = taskIdx.get(wfTaskKey(r.involved));
+      const sid = wfRealSession(r, task, sessionRows);
+      return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum"><span class="ex-chev">\u25B6</span><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</span><span class="wf-run-side">' + wfSessionChip(sid, "\u8FD0\u884C\u4F1A\u8BDD") + '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span>" + chipGo(t("\u8FD0\u884C\u8BE6\u60C5"), "wf/" + encodeURIComponent(String(r.workflow || "")) + "/r/" + encodeURIComponent(String(no)), "mute", true) + '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + "</div></details>";
+    }).join("") + "</div>";
+  }
+  function wfEditChips(wf, name) {
+    if (wf && String(wf.specSource || "") === "object") {
+      const scope = String(wf.scope || "global");
+      return chipGo(t("\u7F16\u8F91 Workflow"), docRoute("Workflow", scope, name), "acc", true, t("\u7F16\u8F91 Workflow \u58F0\u660E")) + " " + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Workflow", scope, name), "mute", true);
+    }
+    return chipGo(t("\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09"), wfDesignRoute(), "acc", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + " " + chipGo(t("\u76F8\u4F4D\u8868\uFF08scheme\uFF09"), "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("core/scheme.yaml"), "mute", true);
+  }
+  var wfDetailSeq = 0;
+  function detailScreen(el, ctx2, name) {
+    const stamp = "#" + ++wfDetailSeq;
+    el.setAttribute("data-wf-detail-stamp", stamp);
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5DE5\u4F5C\u6D41"), String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false)) + '<div data-wf-detail><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u4E2D\u2026\uFF08\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\uFF09")) + "</div></div></div>";
+    (async () => {
+      const [wfsRes, runsRes, tasksRes] = await Promise.all([
+        ctx2.api.workflows(),
+        ctx2.api.workflowRuns(),
+        ctx2.api.tasks()
+      ]);
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const rows = wfApiRows(wfsRes);
+      const runsAll = wfApiRuns(runsRes);
+      const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
+      const alias = WF_ALIASES[String(name)];
+      let wf = rows.find((x) => String(x && x.name) === String(name));
+      if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
+      const usedName = wf ? String(wf.name) : String(name);
+      const runs = runsAll.filter((r) => String(r && r.workflow) === usedName).sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
+      let sessionRows = [];
+      const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
+      if (taskIds.length && ctx2.api.taskSessions) {
+        try {
+          const sr = await ctx2.api.taskSessions(taskIds);
+          if (sr && sr.ok && Array.isArray(sr.data && sr.data.items)) sessionRows = sr.data.items;
+        } catch {
+        }
+      }
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const detail = el.querySelector("[data-wf-detail]");
+      if (!detail) return;
+      if (!rows.length && !runs.length) {
+        detail.innerHTML = emptyBox(
+          t("\u5DE5\u4F5C\u6D41\u9762\u6682\u4E0D\u53EF\u8BFB"),
+          t("GET /v1/workflows \u4E0E /v1/workflows/runs \u5747\u672A\u8FD4\u56DE\u6570\u636E\u2014\u2014") + " " + chipGo(t("\u91CD\u8BD5"), "wf/" + encodeURIComponent(String(name)), "acc", true)
+        );
+        return;
+      }
+      if (!wf) {
+        const similar = rows.filter((x) => String(x.name || "").toLowerCase().includes(String(name).toLowerCase().split("-")[0])).slice(0, 8);
+        detail.innerHTML = emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + (similar.length ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u76F8\u8FD1\u5DE5\u4F5C\u6D41")) + '</span></div><div class="card-b">' + similar.map((x) => chipGo(String(x.name), "wf/" + encodeURIComponent(String(x.name)), "mute", true)).join(" ") + "</div></div>" : "");
+        return;
+      }
+      const latest = wf.latest || null;
+      const exec = wf.execution || {};
+      const aliasNote = String(name) !== usedName ? chip(t("\u8BCD\u5F62\u517C\u5BB9") + "\uFF1A" + String(name) + " \u2192 " + usedName, "mute") : "";
+      const kvRows = [
+        [t("\u6765\u6E90"), chip(String(wf.specSource || "\u2014"), wf.specSource === "builtin" ? "acc" : wf.specSource === "object" ? "ok" : "mute")],
+        [t("\u6267\u884C\u9762"), exec.connector ? chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + " " + chipGo(String(exec.connector), "connectors", "mute", true, t("ConnectorOps")) : "\u2014"],
+        [t("\u9AA8\u67B6"), exec.skeleton ? chip(t("\u5728\u518C"), "ok") : chip(t("\u7F3A\u5E2D"), "mute")],
+        [t("\u8FD0\u884C"), chip(t("\u73AF\u5185 ") + runs.length + " / \u7D2F\u8BA1 " + String(wf.runsTotal != null ? wf.runsTotal : "\u2014"), runs.length ? "acc" : "mute") + (wf.runs24h != null ? " " + chip("24h " + String(wf.runs24h), "mute") : "")],
+        [t("\u6700\u65B0"), latest ? runChip(latest) + " " + chip("run #" + String(latest.run), "mono") + " " + esc(relAge(latest.startedAt) || "") : "\u2014"],
+        [t("\u751F\u6548"), wf.effective ? chip(String(wf.effective.scope || "") + " \xB7 " + (wf.effective.enabled ? t("\u542F\u7528") : t("\u505C\u7528")), wf.effective.enabled ? "ok" : "mute") : "\u2014"]
+      ];
+      const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
+      const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
+      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
+    })().catch((e) => {
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const detail = el.querySelector("[data-wf-detail]");
+      if (detail) detail.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u5931\u8D25\uFF1A") + String(e && e.message || e)) + "</div></div></div>";
+    });
   }
   function bindDocLinks(scopeEl, ctx2) {
     scopeEl.querySelectorAll("[data-go]").forEach((n) => {
@@ -3238,13 +3441,13 @@ var CoreConsoleWeb = (() => {
       el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u8FD0\u884C\u8BB0\u5F55\uFF08\u53EF\u80FD\u5DF2\u5F52\u6863\uFF09\u3002")) + "</div>";
       return;
     }
-    const st = String(run.status || "");
-    const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+    let st = String(run.status || "");
+    let stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
     const startedAt = run.startedAt || run.at || run.ts;
     const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
     const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
     const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
-    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
+    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-session>' + wfSessionChip(run.sessionId) + '</div></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u8282\u70B9\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-node-sessions><div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
     const sel = { idx: 0, phases: [] };
     const lineEl = el.querySelector("[data-step-line]");
     const paintLine = () => {
@@ -3308,6 +3511,34 @@ var CoreConsoleWeb = (() => {
     paintLine();
     paintNow();
     paintTl();
+    let nodeSessionRows = [];
+    let nodeTask = null;
+    const hydrateNodeSessions = async () => {
+      const box = el.querySelector("[data-run-node-sessions]");
+      if (!box || !el.isConnected) return;
+      const key = wfTaskKey(run.involved);
+      if (!key) {
+        box.innerHTML = '<div class="small faint">' + esc(t("\u8BE5\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\u2014\u2014\u8282\u70B9\u4F1A\u8BDD\u672A\u8BB0\u5F55\u3002")) + "</div>";
+        return;
+      }
+      try {
+        const [tasksRes, sessionsRes] = await Promise.all([
+          ctx2.api.tasks(),
+          ctx2.api.taskSessions ? ctx2.api.taskSessions([key]) : Promise.resolve({ ok: false })
+        ]);
+        if (!el.isConnected) return;
+        const tasks = wfApiTasks(tasksRes);
+        nodeTask = tasks.find((t2) => String(t2.scope || "global") + "/" + String(t2.name || "") === key) || null;
+        nodeSessionRows = sessionsRes && sessionsRes.ok && Array.isArray(sessionsRes.data && sessionsRes.data.items) ? sessionsRes.data.items : [];
+        box.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
+        const topAnchor = wfSessionAnchor(run, nodeTask, nodeSessionRows);
+        const sessionBox = el.querySelector("[data-run-session]");
+        if (sessionBox) sessionBox.innerHTML = wfSessionChip(topAnchor.sid, topAnchor.label);
+      } catch {
+        if (el.isConnected) box.innerHTML = '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u8BFB\u53D6\u5931\u8D25\u2014\u2014\u4E0D\u5192\u5145\u5DF2\u8BB0\u5F55\u3002")) + "</div>";
+      }
+    };
+    hydrateNodeSessions();
     const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
       if (!r.ok || !el.isConnected) return;
       const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
@@ -3316,9 +3547,16 @@ var CoreConsoleWeb = (() => {
       run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
       run.phase = full.phase || run.phase;
       run.status = full.status || run.status;
+      st = String(run.status || "");
+      stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+      run.sessionId = full.sessionId || run.sessionId;
       run.involved = full.involved || run.involved;
       run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
       run.history = Array.isArray(full.history) ? full.history : run.history;
+      const sessionBox = el.querySelector("[data-run-session]");
+      if (sessionBox) sessionBox.innerHTML = wfSessionChip(run.sessionId);
+      const nodeBox = el.querySelector("[data-run-node-sessions]");
+      if (nodeBox && wfTaskKey(run.involved)) nodeBox.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
       paintLine();
       paintNow();
       paintTl();

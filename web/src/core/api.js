@@ -70,6 +70,8 @@ export function createApi(base = '', paths = {}) {
     events: (limit = 200) => request('v1/events?limit=' + Number(limit)),
     workflows: () => request('v1/workflows'),
     workflowRuns: () => request('v1/workflows/runs'),
+    tasks: () => request('v1/tasks'),
+    taskSessions: (taskIds) => request('/core-console/task-sessions?taskIds=' + encodeURIComponent(taskIds.join(','))),
     sessions: () => request('v1/sessions'),
     session: (id) => request('v1/sessions/' + enc(String(id == null ? '' : id))),
     /* 会话上下文契约面（G-14——routes_sessions.go：ContextPack 词形投影+编辑分叉） */

@@ -128,10 +128,11 @@ func transitionRows(ts []Transition) []TransitionRow {
 // HistoryRow 运行轨迹一行（F-04——真实迁移留痕：静态表 transitions 的运行期对应行；
 // UI 按本行集标绿已走过节点与时间线，静态表不再当时间线展示）。
 type HistoryRow struct {
-	From string `json:"from"` // 迁移源相位
-	To   string `json:"to"`   // 迁移目标相位
-	On   string `json:"on"`   // 迁移事件（advance/ApprovalGranted/ApprovalRejected/converged）
-	At   string `json:"at"`   // 迁移时刻（RFC3339Nano）
+	From      string `json:"from"`                // 迁移源相位
+	To        string `json:"to"`                  // 迁移目标相位
+	On        string `json:"on"`                  // 迁移事件（advance/ApprovalGranted/ApprovalRejected/converged）
+	At        string `json:"at"`                  // 迁移时刻（RFC3339Nano）
+	SessionID string `json:"sessionId,omitempty"` // 迁移时刻 run 会话锚（空=未回填——诚实缺席，不编造节点会话）
 }
 
 // ReconcileWorkflow 对账锚的循环本体锚（owner 对账 workflow → core-workflow）。
@@ -476,7 +477,7 @@ func histAppend(run *RunRecord, from, to, on string) {
 	if len(run.History) >= histMax {
 		run.History = run.History[len(run.History)-histMax+1:]
 	}
-	run.History = append(run.History, HistoryRow{From: from, To: to, On: on, At: stampNano(time.Now())})
+	run.History = append(run.History, HistoryRow{From: from, To: to, On: on, At: stampNano(time.Now()), SessionID: run.SessionID})
 }
 
 // State 查询快照（拷贝返回，调用方可安全持有；runs 旧→新）。
