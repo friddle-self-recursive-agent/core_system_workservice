@@ -802,19 +802,15 @@ var CoreConsoleWeb = (() => {
     ["\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355", "Find all drifted docs and produce a reconciliation list"],
     ["\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981", "Summarize the current loop into a SessionLog"],
     ["\u68C0\u67E5 workflow \u5F15\u64CE\u7684\u8FD0\u884C\u8BB0\u5F55\uFF0C\u6807\u51FA\u5931\u8D25\u539F\u56E0", "Inspect workflow engine runs and flag failure causes"],
-    ["\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09", "Interject (inject into the running session now \u2014 steer)"],
     ["\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026", "Submit a request / find a doc / update a doc\u2026"],
     ["\u53D1\u9001", "Send"],
-    ["\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09", "Stop (interrupt the running turn)"],
-    ["Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62", "Enter to send \xB7 Shift+Enter for newline \xB7 becomes interject/stop while running"],
-    ["Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295", "Enter to interject \xB7 \u300C\u25A0\u300D stops the running turn \xB7 falls back to queue when idle"],
-    ["\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09", "Acceptance mode = steer (inject into the running session now)"],
-    ["\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09", "Acceptance mode = queue (enqueued \u2014 read when the agent winds down)"],
+    ["\u505C\u6B62", "Stop"],
+    ["Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C", "Enter to send \xB7 Shift+Enter for newline"],
     ["\u6B63\u5728\u8C03\u7528", "Calling"],
     ["\u5DF2 {n} \u79D2", "({n}s)"],
     ["agent \u8FD0\u884C\u4E2D\u2026", "agent working\u2026"],
     ["\u6392\u961F {n}", "queue {n}"],
-    ["\u63D2\u8BDD {n}", "steer {n}"],
+    ["\u8FFD\u52A0 {n}", "+{n} sent"],
     ["\u5DF2\u6DF1\u5EA6\u601D\u8003", "Deep thinking"],
     ["\u5DF2\u8C03\u7528", "Called"],
     ["\u5B8C\u6210", "done"],
@@ -13267,7 +13263,7 @@ ${text2}</tr>
   }
   function sessionRowHtml(m) {
     if (!m.session) {
-      return t('<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u5951\u7EA6\u9762\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>');
+      return t('<div class="small faint">\u4F1A\u8BDD\u4E0D\u5728\u6D3B\u6027\u8D26\uFF08\u65E0\u5FC3\u8DF3\u884C\uFF09\u2014\u2014\u4ECD\u53EF\u67E5\u770B/\u7F16\u8F91\u672C\u4F1A\u8BDD\u4E0A\u4E0B\u6587\u8986\u76D6\uFF08\u4E0D\u5192\u5145\u5728\u518C\uFF09\u3002</div>');
     }
     const s = m.session;
     const cls = s.state === "suspected-stall" || s.state === "escalated" ? "esc" : s.state ? "acc" : "mute";
@@ -13321,7 +13317,7 @@ ${text2}</tr>
   function renderSessionCtx(m) {
     const headChips = (m.degraded ? chip(t("\u7D22\u5F15\u5019\u9009\u6295\u5F71"), "warn") : "") + (m.writeOpen ? chip(t("\u5199\u9762\u5F00"), "ok") : chip(t("\u5199\u9762\u5173\u65AD"), "esc")) + (m.canRevert ? chip(t("\u53EF\u64A4\u9500"), "acc") : "");
     const ovLine = m.override ? t('<div class="small faint" style="margin-top:6px">\u73B0\u884C\u8986\u76D6\uFF1Arevision ') + esc(fmtNum(m.override.revision)) + " \xB7 takeBudget " + esc(fmtNum(m.override.takeBudget)) + " \xB7 by " + esc(m.override.by || "\u2014") + (m.override.note ? t(" \xB7 \u5907\u6CE8 ") + esc(trunc(m.override.note, 60)) : "") + (m.override.updatedAt ? " \xB7 " + esc(relAge(m.override.updatedAt) || "") : "") + "</div>" : t('<div class="small faint" style="margin-top:6px">\u65E0\u8986\u76D6\uFF08\u751F\u6548\u503C=ContextPolicy \u7F3A\u7701\u2014\u2014PUT \u540E\u6B64\u5904\u73B0\u8BFB\u8986\u76D6\u884C\uFF09\u3002</div>');
-    return t('<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587\uFF08ContextPack \u5951\u7EA6\u9762\uFF09</span><span class="h-right">') + headChips + '</span></div><div class="card-b">' + sessionRowHtml(m) + '<div style="margin-top:10px">' + kv([
+    return t('<div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span><span class="h-right">') + headChips + '</span></div><div class="card-b">' + sessionRowHtml(m) + '<div style="margin-top:10px">' + kv([
       ["takeBudget", '<b class="mono">' + esc(fmtNum(m.takeBudget)) + t('</b> <span class="small faint">\uFF08\u7F3A\u7701 ') + esc(fmtNum(m.takeBudgetDefault)) + t(" \xB7 \u57DF ") + m.policy.minTakeBudget + "\u2013" + m.policy.maxTakeBudget + "\uFF09</span>"],
       ["tagSig", m.tags.length ? m.tags.map((t2) => chipGo(t2, tagRoute(t2), "mute", true, t("\u770B\u540C tag \u6587\u6863"))).join(" ") : t('<span class="faint small">\u672A\u88C5\u914D\uFF08tagSigSource=') + esc(m.tagSigSource) + "\uFF09</span>"],
       [t("\u5206\u7247\u7F13\u5B58"), m.stats ? t("\u5171 ") + esc(fmtNum(m.stats.total)) + t(" \u7247 \xB7 stale ") + esc(fmtNum(m.stats.stale)) + t(" \xB7 \u91CD\u5EFA\u9608\u503C ") + esc(fmtNum(m.stats.threshold)) : '<span class="faint">\u2014</span>'],
@@ -14159,7 +14155,7 @@ ${text2}</tr>
     const qd = Number(st.queueDepth) || 0;
     const sd = Number(st.steerDepth) || 0;
     const queue = qd ? ' <span class="chip acc tiny">' + esc(t("\u6392\u961F {n}").replace("{n}", String(qd))) + "</span>" : "";
-    const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u63D2\u8BDD {n}").replace("{n}", String(sd))) + "</span>" : "";
+    const steer = sd ? ' <span class="chip llm tiny">' + esc(t("\u8FFD\u52A0 {n}").replace("{n}", String(sd))) + "</span>" : "";
     const body = tool ? t("\u6B63\u5728\u8C03\u7528") + ' <span class="chat-live-tool">' + esc(tool) + "</span>\u2026 " + dur : t("\u6DF1\u5EA6\u6C42\u7D22\u4E2D\u2026");
     return '<div class="chat-live"><span class="lamp pulse-ok"></span><span>' + body + "</span>" + queue + steer + "</div>";
   }
@@ -14207,7 +14203,7 @@ ${text2}</tr>
   }
   function composerHtmlInner(can, running) {
     const mode = running ? "steer" : "queue";
-    return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(running ? t("Enter \u63D2\u8BDD \xB7 \u300C\u25A0\u300D\u505C\u6B62\u8FD0\u884C\u4E2D\u56DE\u5408 \xB7 \u7A7A\u95F2\u5373\u56DE queue \u843D\u6295") : t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C \xB7 \u8FD0\u884C\u4E2D\u53D8\u63D2\u8BDD\u4E0E\u505C\u6B62")) + "</div>";
+    return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C")) + "</div>";
   }
   function screenShell(can) {
     return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div><div data-cc-ctx></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
@@ -14342,18 +14338,13 @@ ${text2}</tr>
       live.remove();
     }
     const btn = el.querySelector("[data-cc-send]");
-    const ta = el.querySelector("[data-cc-text]");
     const running = !!(st && st.running === true);
     if (btn && running !== (btn.dataset.mode === "steer")) {
       btn.dataset.mode = running ? "steer" : "queue";
-      btn.title = running ? t("\u505C\u6B62\uFF08interrupt \u8FD0\u884C\u4E2D\u56DE\u5408\uFF09") : t("\u53D1\u9001");
+      btn.title = running ? t("\u505C\u6B62") : t("\u53D1\u9001");
       const ico = btn.querySelector(".chat-send-ico");
       if (ico) ico.textContent = running ? "\u25A0" : "\u2191";
       btn.classList.toggle("stop", running);
-    }
-    if (ta) {
-      const ph = running ? t("\u63D2\u8BDD\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\u2014\u2014steer\uFF09") : t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026");
-      if (ta.placeholder !== ph) ta.placeholder = ph;
     }
   }
   async function refreshState(el, f) {
@@ -14368,14 +14359,6 @@ ${text2}</tr>
     }
     CHAT.state = r.data;
     paintState(el);
-    paintSendModeNote(el);
-  }
-  function paintSendModeNote(el) {
-    const note2 = el.querySelector("[data-cc-note]");
-    if (!note2) return;
-    const st = CHAT.state;
-    const running = !!(st && st.running === true);
-    note2.textContent = running ? t("\u53D7\u7406\u8BCD\u5F62=steer\uFF08\u7ACB\u5373\u6CE8\u5165\u8FD0\u884C\u4E2D\u4F1A\u8BDD\uFF09") : t("\u53D7\u7406\u8BCD\u5F62=queue\uFF08\u6392\u961F\u843D\u6295\u2014\u2014agent \u6536\u5C3E\u5373\u8BFB\uFF09");
   }
   async function refreshTranscript(el, f) {
     const box = streamEl(el);
