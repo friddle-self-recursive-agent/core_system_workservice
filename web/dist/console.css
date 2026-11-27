@@ -3376,69 +3376,6 @@
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
-.cc-app .wf-graph-scroll {
-  overflow-x: auto;
-  padding: 6px 2px 12px;
-}
-.cc-app .wf-graph {
-  position: relative;
-  margin: 0 auto;
-}
-.cc-app .wf-graph-node {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: 4px 9px;
-  background: var(--panel);
-  border: 1px solid var(--border-2);
-  border-radius: var(--ds-rad-card);
-  cursor: pointer;
-  transition: border-color .12s;
-}
-.cc-app .wf-graph-node:hover {
-  border-color: var(--accent);
-}
-.cc-app .wf-graph-side {
-  border-style: dashed;
-  opacity: .72;
-}
-.cc-app .wf-graph-unit {
-  display: flex;
-  gap: 4px;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-.cc-app .wf-graph-name {
-  font-size: var(--fs-small);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cc-app .wf-graph-edge {
-  fill: none;
-  stroke: var(--border-2);
-  stroke-width: 1.4;
-  marker-end: url(#wfg-arrow);
-}
-.cc-app .wf-graph-branch {
-  stroke: var(--accent);
-  stroke-dasharray: 4 3;
-}
-.cc-app .wf-graph-elabel {
-  position: absolute;
-  transform: translate(-50%, 0);
-  font-size: var(--fs-tiny, 11px);
-  color: var(--accent);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 1px 7px;
-  white-space: nowrap;
-  z-index: 1;
-}
 
 /* styles/home.css */
 .cc-app .home {

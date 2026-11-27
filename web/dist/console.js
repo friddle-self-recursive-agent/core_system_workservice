@@ -13296,7 +13296,7 @@ ${text2}</tr>
       ref.name,
       t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09"),
       kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute")
-    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + "</div>" : "") + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref, cached ? content : "") + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + "</div></section></div></div>";
+    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + (ref.kind === "Provider" ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(t("\u65B0\u5EFA Provider \u5BF9\u8C61\uFF08openai \u517C\u5BB9\u7F51\u5173/\u8D26\u53F7/\u5BC6\u94A5\u5F15\u7528/\u6A21\u578B\u5206\u7EA7\uFF09")) + '">+ ' + esc(t("\u6DFB\u52A0 Provider")) + "</button>" : "") + "</div>" : "") + "<div data-provider-create></div>" + (ref.kind === "Agent" ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>" : "") + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref, cached ? content : "") + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + "</div></section></div></div>";
     const picker = el.querySelector("[data-obj-picker]");
     if (picker) {
       picker.addEventListener("change", () => {
@@ -13305,6 +13305,8 @@ ${text2}</tr>
       });
     }
     hydrateSchemePanel(el, ctx2, ref.kind);
+    if (ref.kind === "Provider") hydrateProviderCreate(el, ctx2);
+    if (ref.kind === "Agent") hydrateAgentProviderBinding(el, ctx2, ref);
     if (!cached) {
       hydrateDoc(el, ctx2, ref).then((c) => {
         if (c == null || !el.isConnected) return;
@@ -13353,6 +13355,109 @@ ${text2}</tr>
       return;
     }
     renderScreen(el, ctx2, ref);
+  }
+  async function hydrateProviderCreate(el, ctx2) {
+    const slot = el.querySelector("[data-provider-create]");
+    const btn = el.querySelector("[data-add-provider]");
+    if (!slot || !btn) return;
+    let open = false;
+    btn.addEventListener("click", () => {
+      open = !open;
+      if (!open) {
+        slot.innerHTML = "";
+        return;
+      }
+      slot.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-bottom:10px"><div class="card-h"><span class="h-title">' + esc(t("\u6DFB\u52A0 Provider\uFF08OpenAI \u517C\u5BB9\uFF09")) + '</span></div><div class="card-b"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' + prow("name", "openai-2", t("\u5BF9\u8C61\u540D\uFF08\u5982 openai-2\uFF09")) + prow("account", "openai-main", t("\u8D26\u53F7\u6807\u8BC6 (auth.account)")) + prow("secretSrc", "secret:llm/openai-key", t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)\u2014\u2014\u96F6\u660E\u6587")) + prow("baseUrl", "https://api.openai.com/v1", t("Base \u5730\u5740 (config.baseUrl)")) + prow("lowModel", "flash-tier", t("Low \u6863\u6A21\u578B")) + prow("stdModel", "standard-tier", t("Standard \u6863\u6A21\u578B")) + prow("highModel", "reasoning-tier", t("High \u6863\u6A21\u578B")) + '</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button type="button" class="btn btn-chip sm" data-prov-create>' + esc(t("\u521B\u5EFA Provider")) + '</button><span class="small faint" data-prov-create-msg></span></div></div></div>';
+      const createBtn = slot.querySelector("[data-prov-create]");
+      if (createBtn) createBtn.addEventListener("click", () => createProvider(el, ctx2, slot));
+    });
+  }
+  function prow(key, def2, label) {
+    return '<div><div class="small faint">' + esc(label) + '</div><input class="inp mono" data-prov-new="' + key + '" value="' + esc(def2) + '" style="width:100%" /></div>';
+  }
+  async function createProvider(el, ctx2, slot) {
+    const get = (k) => {
+      const n = slot.querySelector('[data-prov-new="' + k + '"]');
+      return n ? String(n.value || "").trim() : "";
+    };
+    const msg = slot.querySelector("[data-prov-create-msg]");
+    const name = get("name");
+    if (!name) {
+      if (msg) msg.textContent = t("\u5BF9\u8C61\u540D\u5FC5\u586B");
+      return;
+    }
+    const yaml2 = [
+      "apiVersion: core/v1",
+      "kind: Provider",
+      "metadata:",
+      "  name: " + name,
+      "  scope: global",
+      "spec:",
+      "  auth:",
+      "    account: " + (get("account") || "openai-main"),
+      "    secret:",
+      "      source: " + (get("secretSrc") || "secret:llm/openai-key"),
+      "  config:",
+      "    baseUrl: " + (get("baseUrl") || "https://api.openai.com/v1"),
+      "    models:",
+      "      low: " + (get("lowModel") || "flash-tier"),
+      "      standard: " + (get("stdModel") || "standard-tier"),
+      "      high: " + (get("highModel") || "reasoning-tier")
+    ].join("\n");
+    if (msg) msg.textContent = t("\u6B63\u5728\u521B\u5EFA Provider\u2026");
+    const r = await ctx2.api.apply({
+      kind: "Provider",
+      scope: "global",
+      name,
+      resourceVersion: 0,
+      content: yaml2,
+      fieldManager: "console:provider-create",
+      reasonRef: "provider-create:" + name
+    });
+    if (msg) msg.textContent = r.ok ? t("Provider \u5DF2\u521B\u5EFA\u751F\u6548 (rv=" + ((r.data && r.data.rv) != null ? r.data.rv : "?") + ")\u2014\u2014\u5237\u65B0\u540E\u53EF\u5728\u5207\u6362\u5668\u770B\u5230") : t("\u521B\u5EFA\u5931\u8D25\uFF1A") + String(r.error || r.status);
+  }
+  async function hydrateAgentProviderBinding(el, ctx2, ref) {
+    const slot = el.querySelector("[data-agent-binding]");
+    if (!slot) return;
+    const res = await ctx2.api.object("Agent", ref.scope, ref.name);
+    if (!res.ok || !el.isConnected) {
+      slot.innerHTML = '<div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u6682\u4E0D\u53EF\u8BFB")) + "</div>";
+      return;
+    }
+    const raw = String(res.data && res.data.content || "");
+    const rv = res.data && res.data.resourceVersion != null ? Number(res.data.resourceVersion) : 0;
+    const m = raw.match(/defaultProvider:\s*([^\n#]+)/);
+    const cur = m ? m[1].trim().replace(/^["']|["']$/g, "") : "openai-default";
+    const provs = (ctx2.store.objects() || []).filter((o) => o.kind === "Provider");
+    const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? " selected" : "") + ">" + esc(p.name) + "</option>").join("");
+    const freeIn = '<input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(t("\u6216\u624B\u586B provider \u540D")) + '" />';
+    slot.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("Agent \u9ED8\u8BA4 Provider \u7ED1\u5B9A")) + '</span><span class="h-right">' + chip("rv=" + rv, "mute") + '</span></div><div class="card-b" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="small faint">' + esc(t("spec.defaultProvider\uFF08\u7F3A\u7701 openai-default\uFF1B\u4E0D\u540C Agent \u53EF\u7ED1\u4E0D\u540C Provider\uFF09")) + ':</span><select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(t("\u2014 \u9009\u62E9\u5728\u518C Provider\uFF08") + provs.length + t(" \u5728\u518C\uFF09")) + " \u2014</option>" + opts + "</select>" + freeIn + '<button type="button" class="btn btn-chip sm" data-bind-save>' + esc(t("\u4FDD\u5B58\u7ED1\u5B9A")) + '</button><span class="small faint" data-bind-msg></span></div></div>';
+    const pick = slot.querySelector("[data-bind-pick]");
+    const free = slot.querySelector("[data-bind-free]");
+    if (pick) pick.addEventListener("change", () => {
+      if (free) free.value = String(pick.value || "");
+    });
+    const save = slot.querySelector("[data-bind-save]");
+    if (save) save.addEventListener("click", async () => {
+      const msg = slot.querySelector("[data-bind-msg]");
+      const val = String(free && free.value || "").trim().replace(/^["']|["']$/g, "");
+      if (!val) {
+        if (msg) msg.textContent = t("provider \u540D\u5FC5\u586B");
+        return;
+      }
+      const next = m && m[1] !== void 0 ? raw.replace(/defaultProvider:\s*[^\n#]*/, "defaultProvider: " + val) : raw.replace(/(spec:\n)/, "$1  defaultProvider: " + val + "\n");
+      if (msg) msg.textContent = t("\u6B63\u5728\u4FDD\u5B58\u7ED1\u5B9A\u2026");
+      const r = await ctx2.api.apply({
+        kind: "Agent",
+        scope: ref.scope,
+        name: ref.name,
+        resourceVersion: rv,
+        content: next,
+        fieldManager: "console:agent-provider-bind",
+        reasonRef: "agent-bind:" + ref.name
+      });
+      if (msg) msg.textContent = r.ok ? t("\u7ED1\u5B9A\u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + ((r.data && r.data.rv) != null ? r.data.rv : "?") + ")\u2014\u2014\u8BE5 Agent \u540E\u7EED\u8C03\u7528\u6539\u7528\u6B64 Provider") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+    });
   }
 
   // src/screens/editor.js

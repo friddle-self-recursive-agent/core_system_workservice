@@ -272,7 +272,11 @@ function renderScreen(el, ctx, ref) {
   el.innerHTML = '<div class="view-inner">' +
     screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
-    (pickerHtml(el, ctx, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx, ref) + '</div>' : '') +
+    (pickerHtml(el, ctx, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx, ref) +
+      (ref.kind === 'Provider' ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(tr('新建 Provider 对象（openai 兼容网关/账号/密钥引用/模型分级）')) + '">+ ' + esc(tr('添加 Provider')) + '</button>' : '') +
+      '</div>' : '') +
+    '<div data-provider-create></div>' +
+    (ref.kind === 'Agent' ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(tr('Provider 绑定现读中…')) + '</div></div>' : '') +
     '<div class="obj-grid">' +
     tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
@@ -295,6 +299,11 @@ function renderScreen(el, ctx, ref) {
 
   // F-08 ③：scheme 字段卡活体注水（快照 kinds 缺席=现读 /v1/scheme/kinds）。
   hydrateSchemePanel(el, ctx, ref.kind);
+
+  // Provider 工作台增强（2026-11-27 用户指令：页面上添加 Provider+配置 openai key）。
+  if (ref.kind === 'Provider') hydrateProviderCreate(el, ctx);
+  // Agent 默认 Provider 绑定编辑（scheme Agent spec.defaultProvider 缺省 openai-default——不同 agent 绑不同 provider）。
+  if (ref.kind === 'Agent') hydrateAgentProviderBinding(el, ctx, ref);
 
   if (!cached) {
     hydrateDoc(el, ctx, ref).then((c) => {
@@ -353,4 +362,113 @@ export function render(el, ctx) {
     return;
   }
   renderScreen(el, ctx, ref);
+}
+
+/** 添加 Provider 表单（2026-11-27 用户指令：页面上添加 Provider 配置 openai key）——
+ * 组装 Provider 对象 YAML（auth.secret 引用式零明文）apply 创建；默认 provider 名可自定。 */
+async function hydrateProviderCreate(el, ctx) {
+  const slot = el.querySelector('[data-provider-create]');
+  const btn = el.querySelector('[data-add-provider]');
+  if (!slot || !btn) return;
+  let open = false;
+  btn.addEventListener('click', () => {
+    open = !open;
+    if (!open) { slot.innerHTML = ''; return; }
+    slot.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-bottom:10px"><div class="card-h">' +
+      '<span class="h-title">' + esc(tr('添加 Provider（OpenAI 兼容）')) + '</span></div><div class="card-b">' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' +
+      prow('name', 'openai-2', tr('对象名（如 openai-2）')) +
+      prow('account', 'openai-main', tr('账号标识 (auth.account)')) +
+      prow('secretSrc', 'secret:llm/openai-key', tr('密钥引用 (auth.secret.source)——零明文')) +
+      prow('baseUrl', 'https://api.openai.com/v1', tr('Base 地址 (config.baseUrl)')) +
+      prow('lowModel', 'flash-tier', tr('Low 档模型')) +
+      prow('stdModel', 'standard-tier', tr('Standard 档模型')) +
+      prow('highModel', 'reasoning-tier', tr('High 档模型')) +
+      '</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center">' +
+      '<button type="button" class="btn btn-chip sm" data-prov-create>' + esc(tr('创建 Provider')) + '</button>' +
+      '<span class="small faint" data-prov-create-msg></span></div></div></div>';
+    const createBtn = slot.querySelector('[data-prov-create]');
+    if (createBtn) createBtn.addEventListener('click', () => createProvider(el, ctx, slot));
+  });
+}
+
+function prow(key, def, label) {
+  return '<div><div class="small faint">' + esc(label) + '</div>' +
+    '<input class="inp mono" data-prov-new="' + key + '" value="' + esc(def) + '" style="width:100%" /></div>';
+}
+
+async function createProvider(el, ctx, slot) {
+  const get = (k) => { const n = slot.querySelector('[data-prov-new="' + k + '"]'); return n ? String(n.value || '').trim() : ''; };
+  const msg = slot.querySelector('[data-prov-create-msg]');
+  const name = get('name');
+  if (!name) { if (msg) msg.textContent = tr('对象名必填'); return; }
+  const yaml = [
+    'apiVersion: core/v1',
+    'kind: Provider',
+    'metadata:',
+    '  name: ' + name,
+    '  scope: global',
+    'spec:',
+    '  auth:',
+    '    account: ' + (get('account') || 'openai-main'),
+    '    secret:',
+    '      source: ' + (get('secretSrc') || 'secret:llm/openai-key'),
+    '  config:',
+    '    baseUrl: ' + (get('baseUrl') || 'https://api.openai.com/v1'),
+    '    models:',
+    '      low: ' + (get('lowModel') || 'flash-tier'),
+    '      standard: ' + (get('stdModel') || 'standard-tier'),
+    '      high: ' + (get('highModel') || 'reasoning-tier'),
+  ].join('\n');
+  if (msg) msg.textContent = tr('正在创建 Provider…');
+  const r = await ctx.api.apply({
+    kind: 'Provider', scope: 'global', name, resourceVersion: 0,
+    content: yaml, fieldManager: 'console:provider-create', reasonRef: 'provider-create:' + name,
+  });
+  if (msg) msg.textContent = r.ok
+    ? tr('Provider 已创建生效 (rv=' + ((r.data && r.data.rv) != null ? r.data.rv : '?') + ')——刷新后可在切换器看到')
+    : (tr('创建失败：') + String(r.error || r.status));
+}
+
+/** Agent 默认 Provider 绑定编辑（scheme Agent spec.defaultProvider；不同 agent 绑不同 provider）——
+ * 现读对象 YAML defaultProvider 行→下拉选在册 Provider→apply 更新（rv 乐观锁）。 */
+async function hydrateAgentProviderBinding(el, ctx, ref) {
+  const slot = el.querySelector('[data-agent-binding]');
+  if (!slot) return;
+  const res = await ctx.api.object('Agent', ref.scope, ref.name);
+  if (!res.ok || !el.isConnected) { slot.innerHTML = '<div class="small faint">' + esc(tr('Provider 绑定暂不可读')) + '</div>'; return; }
+  const raw = String((res.data && res.data.content) || '');
+  const rv = (res.data && res.data.resourceVersion != null) ? Number(res.data.resourceVersion) : 0;
+  const m = raw.match(/defaultProvider:\s*([^\n#]+)/);
+  const cur = m ? m[1].trim().replace(/^["']|["']$/g, '') : 'openai-default';
+  const provs = (ctx.store.objects() || []).filter((o) => o.kind === 'Provider');
+  const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+  const freeIn = '<input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(tr('或手填 provider 名')) + '" />';
+  slot.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('Agent 默认 Provider 绑定')) +
+    '</span><span class="h-right">' + chip('rv=' + rv, 'mute') + '</span></div><div class="card-b" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+    '<span class="small faint">' + esc(tr('spec.defaultProvider（缺省 openai-default；不同 Agent 可绑不同 Provider）')) + ':</span>' +
+    '<select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(tr('— 选择在册 Provider（') + provs.length + tr(' 在册）')) + ' —</option>' + opts + '</select>' +
+    freeIn +
+    '<button type="button" class="btn btn-chip sm" data-bind-save>' + esc(tr('保存绑定')) + '</button>' +
+    '<span class="small faint" data-bind-msg></span></div></div>';
+  const pick = slot.querySelector('[data-bind-pick]');
+  const free = slot.querySelector('[data-bind-free]');
+  if (pick) pick.addEventListener('change', () => { if (free) free.value = String(pick.value || ''); });
+  const save = slot.querySelector('[data-bind-save]');
+  if (save) save.addEventListener('click', async () => {
+    const msg = slot.querySelector('[data-bind-msg]');
+    const val = String((free && free.value) || '').trim().replace(/^["']|["']$/g, '');
+    if (!val) { if (msg) msg.textContent = tr('provider 名必填'); return; }
+    const next = m && m[1] !== undefined
+      ? raw.replace(/defaultProvider:\s*[^\n#]*/, 'defaultProvider: ' + val)
+      : raw.replace(/(spec:\n)/, '$1  defaultProvider: ' + val + '\n');
+    if (msg) msg.textContent = tr('正在保存绑定…');
+    const r = await ctx.api.apply({
+      kind: 'Agent', scope: ref.scope, name: ref.name, resourceVersion: rv,
+      content: next, fieldManager: 'console:agent-provider-bind', reasonRef: 'agent-bind:' + ref.name,
+    });
+    if (msg) msg.textContent = r.ok
+      ? tr('绑定已保存生效 (rv=' + ((r.data && r.data.rv) != null ? r.data.rv : '?') + ')——该 Agent 后续调用改用此 Provider')
+      : (tr('保存失败：') + String(r.error || r.status));
+  });
 }
