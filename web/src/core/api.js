@@ -20,12 +20,19 @@ export function createApi(base = '', paths = {}) {
     /* `/`开头=绝对词位（部署注入的宿主路由，如 /core-console/apply）不拼 base；其余相对 B。 */
     const p = String(path);
     const url = p.startsWith('/') ? p : B + '/' + p.replace(/^\/+/, '');
+    /* 超时护栏（2026-11-27）：后端 contextidx/慢装配可能让 fetch 永久 pending,
+     * 页面卡在「注水中…」永远不恢复。默认 15s / 写 30s，可 opts.timeout 覆盖。 */
+    const timeoutMs = opts.timeout != null ? Number(opts.timeout)
+      : (opts.method && opts.method !== 'GET' ? 30000 : 15000);
+    const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = ctl && timeoutMs > 0 ? setTimeout(() => ctl.abort(), timeoutMs) : null;
     try {
       const res = await fetch(url, {
         method: opts.method || 'GET',
         headers: opts.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         credentials: 'same-origin',
+        signal: ctl ? ctl.signal : undefined,
       });
       const text = await res.text();
       let data = null;
@@ -36,7 +43,12 @@ export function createApi(base = '', paths = {}) {
       }
       return { ok: true, data };
     } catch (e) {
-      return { ok: false, status: 0, error: String((e && e.message) || e) };
+      const aborted = ctl && ctl.signal.aborted;
+      return { ok: false, status: 0,
+        error: aborted ? '请求超时（后端未在 ' + timeoutMs + 'ms 内响应，恢复后重进即现读）'
+                       : String((e && e.message) || e) };
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 

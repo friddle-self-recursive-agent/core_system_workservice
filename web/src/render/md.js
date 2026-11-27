@@ -208,3 +208,47 @@ export function rawDisclosure(title, content) {
   return '<details class="md-raw"><summary>' + esc(title || tr('原文')) + '</summary>' +
     '<pre class="mono md-raw-pre">' + esc(content == null ? '' : content) + '</pre></details>';
 }
+
+/* ---------- frontmatter 拆分 + scheme 简易标签（2026-11-27 用户裁决） ----------
+ * 文档 = frontmatter(YAML 属性) + markdown 正文。属性在库/metainfo 里，
+ * 不是正文内容 → 顶栏用轻量 chip 展示，复杂的收进折叠（默认不展开）；
+ * scheme 描述字段一律 esc 纯文本（不走 markdown），正文才走 renderMarkdown。
+ */
+export function splitFrontmatter(src) {
+  const s = String(src == null ? '' : src);
+  if (!s.startsWith('---')) return { fm: '', body: s };
+  const end = s.indexOf('\n---', 3);
+  if (end < 0) return { fm: '', body: s };
+  return { fm: s.slice(4, end), body: s.slice(end + 4).replace(/^\n/, '') };
+}
+
+function isChipValue(v) {
+  if (v == null) return false;
+  if (Array.isArray(v)) return v.length <= 4 && v.every((x) => x == null || typeof x !== 'object' || Array.isArray(x));
+  if (typeof v === 'object') return false;
+  return String(v).length <= 80;
+}
+
+/** scheme → 简易标签 HTML（chip 平铺 + 复杂字段 details 折叠，全 esc 纯文本）。 */
+export function schemeChips(frontmatter) {
+  const fm = String(frontmatter || '').trim();
+  if (!fm) return '';
+  const tree = loadYaml(fm);
+  if (!tree || !Object.keys(tree).length) return '<span class="scheme-chip mono">' + esc(trunc(fm, 80)) + '</span>';
+  const chips = [], complex = [];
+  Object.keys(tree).forEach((k) => {
+    const v = tree[k];
+    if (isChipValue(v)) {
+      const val = Array.isArray(v) ? v.join(', ') : String(v);
+      chips.push('<span class="scheme-chip"><span class="scheme-chip-k">' + esc(k) + '</span>' +
+        '<span class="scheme-chip-v">' + esc(trunc(val, 80)) + '</span></span>');
+    } else complex.push([k, v]);
+  });
+  let out = '<div class="scheme-chips">' + chips.join('') + '</div>';
+  if (complex.length) {
+    const lines = complex.map(([k, v]) => k + ': ' + (typeof v === 'string' ? v : JSON.stringify(v, null, 2))).join('\n');
+    out += '<details class="scheme-more"><summary>' + esc(tr('scheme 详细（') + complex.length + tr(' 项，默认折叠）')) + '</summary>' +
+      '<pre class="mono scheme-more-pre">' + esc(trunc(lines, 4000)) + '</pre></details>';
+  }
+  return out;
+}

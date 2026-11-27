@@ -9,22 +9,13 @@
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute } from '../render/chips.js';
-import { renderMarkdown, yamlToCards, rawDisclosure } from '../render/md.js';
+import { renderMarkdown, yamlToCards, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
 import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
 
 /* AI 修文档通道契约（2026-11-26 用户裁决：文档不再手编——对话框经 LLM 修文档然后 Apply）：
  * window.__CC.chatFaces.docFix(prompt, ref) => Promise<string>|string——返回建议全文；
  * 未注入=面板显式缺席（人仍可在「原文」视图手编——零旁路）。 */
 
-
-/* frontmatter 拆分（scheme 派生内容——默认折叠隐藏，expand 才看完整 scheme；三次裁决）。 */
-function splitFrontmatter(content) {
-  const s = String(content || '');
-  if (!s.startsWith('---')) return { fm: '', body: s };
-  const end = s.indexOf('\n---', 3);
-  if (end < 0) return { fm: '', body: s };
-  return { fm: s.slice(0, end + 4), body: s.slice(end + 4).replace(/^\n/, '') };
-}
 
 function aiFaces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
@@ -147,9 +138,7 @@ function paintBody(key) {
     ? (isMarkdownDoc(ed.ref.kind, ed.ref.name)
       ? (function () {
           const { fm, body } = splitFrontmatter(ed.working);
-          const fmHtml = fm
-            ? '<details class="scheme-fold"><summary class="ex-sum"><span class="ex-chev">▸</span>' + esc(tr('scheme（frontmatter 声明——expand 查看完整）')) + '</summary><pre class="mono small scheme-pre">' + esc(fm) + '</pre></details>'
-            : '';
+          const fmHtml = fm ? schemeChips(fm) : '';
           return '<div data-md-render="1">' + fmHtml + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), ed.working);
         })()
       : '<div data-md-cards="1">' + (yamlToCards(ed.working) || tr('<div class="ob-empty">（空声明）</div>')) + '</div>' + rawDisclosure('YAML', ed.working))

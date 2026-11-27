@@ -149,7 +149,7 @@
   font-size: var(--fs-small); font-weight: 500; border: 1px solid transparent;
   transition: background .12s, color .12s;
 }
-.cc-app .nav-item.l2 { padding-left: 24px; }
+.cc-app .nav-item.l2 { padding-left: 16px; }
 .cc-app .nav-item.l3 { padding-left: 36px; }
 .cc-app .nav-item:hover { background: var(--panel-2); color: var(--text); }
 .cc-app .nav-item.active {
@@ -169,7 +169,7 @@
 /* 顶栏 + 主视区 */
 .cc-app .main-wrap { flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 0; }
 .cc-app .topbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 16px;
   height: 48px; padding: 0 24px; border-bottom: 1px solid var(--border);
   background: var(--glass);
   backdrop-filter: var(--ds-glass-blur);
@@ -177,7 +177,15 @@
   flex-shrink: 0;
 }
 .cc-app .topbar-crumb { font-size: var(--fs-small); font-weight: 600; color: var(--text); }
-.cc-app .topbar-right { display: flex; align-items: center; gap: 12px; }
+.cc-app .topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+/* 一级 Tab（2026-11-27）：横排顶部，默认系统控制台在最左 */
+.cc-app .level-tabs { display: flex; align-items: center; gap: 4px; flex: none; }
+.cc-app .level-tab { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px;
+  border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--text-2);
+  font-size: var(--fs-small); font-weight: 500; cursor: pointer; white-space: nowrap; font-family: var(--sans); }
+.cc-app .level-tab:hover { background: var(--panel-2); color: var(--text); }
+.cc-app .level-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--border-2); font-weight: 600; }
+.cc-app .level-tab .nav-ico { width: 16px; }
 .cc-app .topbar .lang-toggle { margin: 0; }
 .cc-app .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .cc-app .view {

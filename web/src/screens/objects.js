@@ -7,7 +7,7 @@
 
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
-import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
+import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
 /** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。
@@ -216,9 +216,10 @@ function hydrateSchemePanel(el, ctx, kind) {
 function contentPanel(kind, name, content) {
   if (!String(content || '').trim()) return tr('<div class="ob-empty">本文档暂无正文。</div>');
   if (isMarkdownDoc(kind, name)) {
-    return '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure(tr('原文'), content);
+    const { fm, body } = splitFrontmatter(content);
+    return '<div data-md-render="1">' + (fm ? schemeChips(fm) : '') + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), content);
   }
-  return '<div data-md-cards="1">' + (yamlToCards(content) || tr('<div class="ob-empty">（空声明）</div>')) + '</div>' + rawDisclosure('YAML', content);
+  return (schemeChips(content) || tr('<div class="ob-empty">（空声明）</div>')) + rawDisclosure('YAML', content);
 }
 
 /* ---------- 正文懒取（docCache(rv) 命中=复用；未命中=现读后入缓存并重绘） ---------- */

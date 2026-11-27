@@ -5,7 +5,7 @@
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute, syncBadge, tagRoute } from '../render/chips.js';
-import { renderMarkdown, rawDisclosure } from '../render/md.js';
+import { renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
 import { frontmatterTags, tagsOfRef, loadContextIndexDocs, cachedIndexTagsOf, hasCachedIndex } from './tags.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -231,7 +231,8 @@ async function hydrateDesignDoc(el, ctx, repo, path) {
   }
   const data = res.data && typeof res.data === 'object' ? res.data : {};
   const content = data.content != null ? String(data.content) : (typeof res.data === 'string' ? res.data : '');
-  box.innerHTML = '<div data-md-render="1">' + renderMarkdown(content) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
+  const { fm, body } = splitFrontmatter(content);
+  box.innerHTML = '<div data-md-render="1">' + (fm ? schemeChips(fm) : '') + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
     '<div class="small faint" style="margin-top:6px">' + (data.sha ? 'HEAD ' + esc(String(data.sha).slice(0, 8)) : 'HEAD') +
     tr('（git 权威零缓存） · 草稿/Apply 通路经编辑器屏（doc/…）。</div>');
 }

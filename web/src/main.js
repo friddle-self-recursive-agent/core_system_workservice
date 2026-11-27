@@ -93,28 +93,32 @@ function approvalBadge() {
 /* 侧栏：品牌行 + 三级分组树（一级 section 头=级别折叠；二级条目 icon+徽；三级缩进子组）。 */
 function navTree() { return NAV_TREE; }
 
-function sidebarHtml() {
-  const sections = navTree().map((sec) => {
-    const open = curLevel === sec.level;
-    const items = sec.items.map(([r, label, icon]) => {
-      const badge = r === 'approvals' ? approvalBadge() : '';
-      return '<div class="nav-item l2" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
-        '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + badge + '</div>';
-    }).join('');
-    const sub = sec.sub
-      ? '<div class="nav-sub-h" data-fold="' + esc(sec.sub.label) + '"><span class="nav-ico fold-chev">' + (foldState[sec.sub.label] ? '▸' : '▾') + '</span>' + esc(tr(sec.sub.label)) + '</div>' +
-        (foldState[sec.sub.label] ? '' : '<nav class="side-nav l3">' + sec.sub.items.map(([r, label, icon]) =>
-          '<div class="nav-item l3" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
-          '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + '</div>').join('') + '</nav>')
-      : '';
-    return '<div class="nav-section' + (open ? ' open' : '') + '" data-section="' + sec.level + '">' +
-      '<div class="nav-section-h" data-level="' + sec.level + '">' +
-      '<span class="nav-ico">' + sec.icon + '</span>' + esc(tr(sec.label)) +
-      '<span class="fold-chev">' + (open ? '▾' : '▸') + '</span></div>' +
-      (open ? '<nav class="side-nav l2">' + items + '</nav>' + sub : '') +
-      '</div>';
+/* 一级 Tab（2026-11-27 用户裁决「一级在左二级在右/默认在左」）：
+ * 一级分组从侧栏移出，横排做顶栏 Tab（默认系统控制台在最左）；
+ * 侧栏只渲染当前一级下的二级条目。 */
+function levelTabsHtml() {
+  return navTree().map((sec) => {
+    const on = curLevel === sec.level;
+    return '<button class="level-tab' + (on ? ' active' : '') + '" data-level="' + esc(sec.level) + '">' +
+      '<span class="nav-ico">' + sec.icon + '</span>' + esc(tr(sec.label)) + '</button>';
   }).join('');
-  return sections; /* footer 唯一份在 shellHtml（§19 R5：双 footer=连接灯覆写竞态，删侧栏内重复） */
+}
+
+function sidebarHtml() {
+  const sec = navTree().find((s) => s.level === curLevel) || navTree()[0];
+  if (!sec) return '';
+  const items = sec.items.map(([r, label, icon]) => {
+    const badge = r === 'approvals' ? approvalBadge() : '';
+    return '<div class="nav-item l2" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
+      '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + badge + '</div>';
+  }).join('');
+  const sub = sec.sub
+    ? '<div class="nav-sub-h" data-fold="' + esc(sec.sub.label) + '"><span class="nav-ico fold-chev">' + (foldState[sec.sub.label] ? '▸' : '▾') + '</span>' + esc(tr(sec.sub.label)) + '</div>' +
+      (foldState[sec.sub.label] ? '' : '<nav class="side-nav l3">' + sec.sub.items.map(([r, label, icon]) =>
+        '<div class="nav-item l3" data-nav="' + esc(r.split('/')[0]) + '" data-go="' + esc(r) + '">' +
+        '<span class="nav-ico">' + icon + '</span>' + esc(tr(label)) + '</div>').join('') + '</nav>')
+    : '';
+  return '<nav class="side-nav l2">' + items + '</nav>' + sub;
 }
 
 function sideFootHtml() {
@@ -142,6 +146,7 @@ function shellHtml() {
     sideFootHtml() +
     '</aside>' +
     '<div class="main-wrap"><header class="topbar">' +
+    '<nav class="level-tabs" data-level-tabs>' + levelTabsHtml() + '</nav>' +
     '<span class="topbar-crumb" data-topbar-crumb></span>' +
     '<span class="topbar-right">' +
     /* L-01：连接状态灯只保留顶栏一处（侧栏底角双灯退役——重复状态灯收口）。 */
@@ -164,15 +169,18 @@ function paintNav(route) {
       (r === 'welcome' && (route === 'service')) ||
       (r === 'chat' && (route === 'session' || route.startsWith('chat')));
     n.classList.toggle('active', on);
-    // 三级菜单：路由命中时所在 section 自动展开并置级别
-    const section = n.closest('.nav-section');
-    if (on && section && section.dataset.section && section.dataset.section !== curLevel) {
-      curLevel = section.dataset.section;
-      try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
-      const tree = document.querySelector('[data-nav-tree]');
-      if (tree) tree.innerHTML = sidebarHtml();
-    }
   });
+  // 一级归属随路由推进（Tab + 侧栏同步；一级已移到顶栏，侧栏不再有 nav-section）
+  const wantLevel = (function () {
+    const hit = navTree().find((s) => s.items.some(([r]) => r === route || r.split('/')[0] === route));
+    return hit ? hit.level : null;
+  })();
+  if (wantLevel && wantLevel !== curLevel) {
+    curLevel = wantLevel;
+    try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
+    const tree = document.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml();
+    const tabs = document.querySelector('[data-level-tabs]'); if (tabs) tabs.innerHTML = levelTabsHtml();
+  }
 }
 
 /* 屏包装（params 注入+当前 route 记录+导航高亮；crumb=NAV 现译词形）。
@@ -264,6 +272,7 @@ export function mount(root, opts = {}) {
     const lv = ev.target.closest('[data-level]');
     if (lv) { ev.preventDefault(); curLevel = lv.dataset.level; try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
       const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml();
+      const tabs = root.querySelector('[data-level-tabs]'); if (tabs) tabs.innerHTML = levelTabsHtml();
       router.go('welcome'); return; }
     const fold = ev.target.closest('[data-fold]');
     if (fold) { ev.preventDefault(); const g = fold.dataset.fold; foldState[g] = !foldState[g];
@@ -278,6 +287,8 @@ export function mount(root, opts = {}) {
   onLocaleChange(() => {
     const tree = root.querySelector('[data-nav-tree]');
     if (tree) tree.innerHTML = sidebarHtml();
+    const tabs = root.querySelector('[data-level-tabs]');
+    if (tabs) tabs.innerHTML = levelTabsHtml();
     paintConn(lastConnState);
     if (view.isConnected) router.render();
     try { document.title = 'Core Console'; } catch { /* 无 document 环境 */ }

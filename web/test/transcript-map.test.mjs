@@ -143,3 +143,19 @@ test('emptyStateHtml：问候 + 4 枚示例 chips（data-cc-sample 真实可发�
   assert.equal(hits.length, 4, '示例 chips=4')
   assert.ok(html.includes('chat-empty-hi'), '问候词形')
 })
+
+/* ---------- 2026-11-27 bug 回归锚 ---------- */
+
+test('mapTranscript：tool-only assistant 轮次不产生空回复气泡', () => {
+  const nodes = mapTranscript([
+    { seq: 1, type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '查日志' }] } },
+    { seq: 2, type: 'assistant/message', data: { content: [{ type: 'tool-call', id: 'c1', name: 'bash', arguments: '{"cmd":"ls"}' }] } },
+    { seq: 3, type: 'tool/call', data: { callId: 'c1', name: 'bash', arguments: '{"cmd":"ls"}' } },
+    { seq: 4, type: 'tool/result', data: { callId: 'c1', content: 'a.txt' } },
+    { seq: 5, type: 'assistant/message', data: { content: [{ type: 'text', text: '结论' }] } },
+  ])
+  const assistants = nodes.filter((n) => n.kind === 'assistant')
+  assert.equal(assistants.length, 1, '只有最终有正文的助手轮次保留')
+  assert.equal(assistants[0].text, '结论')
+  assert.equal(nodes.filter((n) => n.kind === 'tool').length, 1, '工具调用去重后只有一个节点')
+})

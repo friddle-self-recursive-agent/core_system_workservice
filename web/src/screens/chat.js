@@ -59,6 +59,10 @@ export function mapTranscript(events) {
     } else if (type === 'assistant/message') {
       const b = blocksOf(data.content);
       for (const tc of b.toolCalls) order.push(tc.id);
+      // 工具轮次（只有 tool-call、无 text/reasoning）不生成助手节点——
+      // 工具本身会作为 kind:'tool' 节点渲染（「已调用 bash」），
+      // 否则每条工具调用都多一个「（空回复）」气泡，转录被空壳刷屏（2026-11-27 实测 bug）。
+      if (!b.text && !b.reasoning && b.toolCalls.length) continue;
       nodes.push({ kind: 'assistant', seq, time, text: b.text, reasoning: b.reasoning });
     } else if (type === 'tool/call') {
       const id = String(data.callId || data.id || '');
@@ -72,7 +76,12 @@ export function mapTranscript(events) {
       nodes.push({ kind: 'system', seq, time, text: String(data.text ?? data.content ?? ''), dev: type === 'developer/message' });
     }
   }
+  // callId 去重：assistant 消息里的 tool-call block 与独立 tool/call 事件可能同时携带
+  // 同一 callId，不去重会渲染两个「已调用 X」节点（2026-11-27 实测）。
+  const seenToolIds = new Set();
   for (const id of order) {
+    if (seenToolIds.has(id)) continue;
+    seenToolIds.add(id);
     const t = tools.get(id);
     if (!t) continue;
     nodes.push({ kind: 'tool', seq: t.seq, time: t.time, name: t.name || tr('工具'), args: t.args, result: t.result });
@@ -137,18 +146,18 @@ function nodeHtml(n, names) {
         '<button class="btn btn-ghost sm" data-cc-retry="' + esc(String(n.requestId || '')) + '">' + esc(tr('重试')) + '</button></div>'
       : '';
     return '<div class="chat-msg-user" data-node="' + esc(nodeKey(n)) + '">' +
-      '<div class="chat-bubble">' + (n.text ? linkifyRefs(n.text, names) : '<span class="faint">…</span>') + '</div>' +
+      '<div class="chat-bubble">' + (n.text ? renderMarkdown(n.text) : '<span class="faint">…</span>') + '</div>' +
       (pending || err ? '<div>' + pending + err + '</div>' : '') +
       '</div>';
   }
   if (n.kind === 'assistant') {
+    // 无正文助手节点不渲染（工具轮次已在 mapTranscript 过滤，这里是纯空流防御）。
+    if (!n.text && !n.reasoning) return '';
     const reasoning = n.reasoning
       ? '<details class="chat-fold"><summary><span class="ex-chev">▸</span>' + esc(tr('已深度思考')) + '</summary>' +
         '<div class="ex-body">' + linkifyRefs(n.reasoning, names) + '</div></details>'
       : '';
-    const body = n.text
-      ? '<div class="chat-md">' + renderMarkdown(n.text) + '</div>'
-      : '<div class="chat-md faint">' + esc(tr('（空回复）')) + '</div>';
+    const body = n.text ? '<div class="chat-md">' + renderMarkdown(n.text) + '</div>' : '';
     return '<div class="chat-msg-ai" data-node="' + esc(nodeKey(n)) + '">' + reasoning + body + '</div>';
   }
   if (n.kind === 'tool') {
@@ -263,6 +272,9 @@ function composerHtmlInner(can, running) {
     ' title="' + esc(running ? tr('停止（interrupt 运行中回合）') : tr('发送')) + '">' +
     '<span class="chat-send-ico">' + (running ? '■' : '↑') + '</span></button>' +
     '</div>' +
+    '<div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(tr('附加图片（≤8MB）')) + '">🖼 ' + esc(tr('图片')) +
+    '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label>' +
+    '<span class="cc-img-previews" data-cc-img-previews></span></div>' +
     '<div class="chat-foot">' +
     esc(running
       ? tr('Enter 插话 · 「■」停止运行中回合 · 空闲即回 queue 落投')
@@ -554,6 +566,54 @@ function bindRetry(el, f) {
   });
 }
 
+/** 图片附加（2026-11-27）：选中/粘贴 → f.uploadImage → 把 ![image](url) 追加到 composer。
+ * 不拦 doSend —— 图片作为 markdown 文本随原发送流程走（agent prompt 契约不变）。 */
+function bindImageUpload(el, f) {
+  if (!f || typeof f.uploadImage !== 'function') return;
+  const input = el.querySelector('[data-cc-img]');
+  const previews = el.querySelector('[data-cc-img-previews]');
+  const ta = el.querySelector('[data-cc-text]');
+  if (!input || !ta) return;
+  const note = (msg) => { const n = el.querySelector('[data-cc-note]'); if (n) n.textContent = msg; };
+  const uploadOne = async (file) => {
+    if (!file || !String(file.type || '').startsWith('image/')) return;
+    if (file.size > (8 << 20)) { note(tr('图片超过 8MB 上限')); return; }
+    note(tr('图片上传中…'));
+    try {
+      const url = await f.uploadImage(file);
+      const tag = '![image](' + url + ')';
+      ta.value = ta.value.trimEnd() + (ta.value.trimEnd() ? '\n' : '') + tag;
+      autoGrow(ta);
+      note(tr('图片已附加（随消息发送）'));
+      if (previews) {
+        const img = document.createElement('img');
+        img.src = url; img.alt = 'preview';
+        img.style.cssText = 'width:44px;height:44px;object-fit:cover;border-radius:6px;margin-left:6px';
+        previews.appendChild(img);
+      }
+    } catch (e) { note(tr('图片上传失败（') + String((e && e.message) || e) + tr('）')); }
+  };
+  input.addEventListener('change', () => {
+    Array.from(input.files || []).forEach(uploadOne);
+    input.value = '';
+  });
+  ta.addEventListener('paste', (ev) => {
+    const items = Array.from((ev.clipboardData && ev.clipboardData.items) || []);
+    const hit = items.find((it) => String(it.type || '').startsWith('image/'));
+    if (!hit) return;
+    const file = hit.getAsFile();
+    if (file) { ev.preventDefault(); uploadOne(file); }
+  });
+  if (previews) previews.addEventListener('click', (ev) => {
+    const img = ev.target.closest('img');
+    if (!img) return;
+    const src = img.getAttribute('src') || '';
+    ta.value = ta.value.split('\n').filter((ln) => ln.trim() !== '![image](' + src + ')').join('\n');
+    autoGrow(ta);
+    img.remove();
+  });
+}
+
 async function doStop(el, f) {
   const note = el.querySelector('[data-cc-note]');
   if (!CHAT.sessionId) return;
@@ -659,6 +719,7 @@ function dialogScreen(el, ctx) {
   });
 
   bindRetry(el, f);
+  bindImageUpload(el, f);
   ensureCtxBar(el, CHAT.sessionId);
   refreshSessions(el, f);
   refreshTranscript(el, f);
