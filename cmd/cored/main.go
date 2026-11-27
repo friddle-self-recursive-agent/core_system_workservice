@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/approvaldiff"
@@ -346,7 +347,11 @@ func run() error {
 	// 文档库在册即挂接（读稿+现值→Provider low 档调 LLM 整理→DocumentDiff 落库，workflow-engine writer；同名幂等防重）；
 	// 秘密库缺席=secret: 引用解析缺口可见（判决降级为缺席注记不编造）。声明面=scheme docTypes DocumentDiff+
 	// Workflow.spec.approval.diffSummary（diffAgent=ops_core_inner_agent 词形）。
-	diffGen := &approvaldiff.Generator{Repo: nil, Drafts: drafts, Secrets: secrets, Logf: func(f string, a ...any) {
+	var secStore connectors.SecretStore
+	if secrets != nil {
+		secStore = secrets // 真 nil 接口——typed-nil 指针会让 ResolveSecret 误入 store.Secret panic
+	}
+	diffGen := &approvaldiff.Generator{Repo: nil, Drafts: drafts, Secrets: secStore, Logf: func(f string, a ...any) {
 		fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
 	}}
 	diffAgentState := "off（未挂文档库——人审挂起不生成判决文档）"

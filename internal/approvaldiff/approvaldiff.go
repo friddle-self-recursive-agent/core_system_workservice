@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -47,9 +48,10 @@ type providerCfg struct {
 // OnApprovalSuspended 契约入口（引擎 goroutine 调用——本方法阻塞自有协程不阻塞引擎）。
 // objKey=kind/scope/name（run.Involved 投影）。全程失败只记 stderr 不回灌引擎。
 func (g *Generator) OnApprovalSuspended(run workflow.RunRecord, objKey string) {
+	g.trace("enter objKey=" + objKey + " run=" + fmt.Sprint(run.Run))
 	defer func() {
-		if rec := recover(); rec != nil && g.Logf != nil {
-			g.Logf("approvaldiff: 判决文档生成 panic obj=%s: %v", objKey, rec)
+		if rec := recover(); rec != nil {
+			g.trace("panic obj=" + objKey + ": " + fmt.Sprint(rec))
 		}
 	}()
 	if g.Repo == nil || g.Logf == nil || objKey == "" {
@@ -57,13 +59,14 @@ func (g *Generator) OnApprovalSuspended(run workflow.RunRecord, objKey string) {
 	}
 	kind, scope, name, ok := splitObjKey(objKey)
 	if !ok {
-		g.Logf("approvaldiff: objKey 词形不合规 %q（期望 kind/scope/name）——跳过", objKey)
+		g.trace("bad-objKey " + objKey)
 		return
 	}
 	ctx := context.Background()
-	docName := diffDocName(kind+"-"+name, "", 0)
+	docName := diffDocName(kind, name, 0)
 	// 幂等：同对象同 rv 判决已在册=跳过（防重——引擎不重试但部署重启可能重挂）。
 	if _, err := g.Repo.Get(ctx, "DocumentDiff", "global", docName); err == nil {
+		g.trace("idempotent-skip " + docName)
 		return
 	}
 	base, working, verdict := g.summarize(ctx, kind, scope, name)
@@ -71,20 +74,40 @@ func (g *Generator) OnApprovalSuspended(run workflow.RunRecord, objKey string) {
 	if _, _, err := g.Repo.Write(ctx, &repository.Object{
 		Kind: "DocumentDiff", Scope: "global", Name: docName, Content: []byte(content),
 	}, "workflow-engine", "approval-diff:"+objKey); err != nil {
-		g.Logf("approvaldiff: DocumentDiff 落库失败 obj=%s: %v", objKey, err)
+		g.trace("write-fail obj=" + objKey + " err=" + err.Error())
 		return
 	}
 	g.Logf("approvaldiff: 判决文档已落库 %s（obj=%s）", docName, objKey)
 }
 
+// trace 部署探针：stderr=socketpair 黑洞（authority cored）——判决链路取证走文件尾随。
+func (g *Generator) trace(msg string) {
+	if f, err := osOpenAppend("/tmp/approvaldiff.log"); err == nil {
+		fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05"), msg)
+		f.Close()
+	}
+	if g.Logf != nil {
+		g.Logf("approvaldiff: %s", msg)
+	}
+}
+
+func osOpenAppend(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+}
+
 // summarize 读双值+调 LLM（任一步失败=诚实缺席词形，不编造）。
 func (g *Generator) summarize(ctx context.Context, kind, scope, name string) (base, working, verdict string) {
 	base = readBase(g.Repo, ctx, kind, scope, name)
+	g.trace("base-read len=" + fmt.Sprint(len(base)))
 	working = readWorking(g.Drafts, kind, scope, name)
+	g.trace("draft-read len=" + fmt.Sprint(len(working)))
 	if working == "" {
+		g.trace("no-draft obj=" + kind + "/" + scope + "/" + name)
 		return base, working, "（待批稿缺席——本对象可能走对象直写面，判决文档仅留锚）"
 	}
+	g.trace("llm-call start model-path")
 	verdict = g.callLLM(ctx, base, working, kind, name)
+	g.trace("llm-call done len=" + fmt.Sprint(len(verdict)))
 	return base, working, verdict
 }
 
@@ -123,7 +146,9 @@ func (g *Generator) callLLM(ctx context.Context, base, working, kind, name strin
 		timeout = 30 * time.Second
 	}
 	cli := &http.Client{Timeout: timeout}
+	g.trace("http-do url=" + url + " model=" + cfg.Model)
 	resp, err := cli.Do(req)
+	g.trace("http-done err=" + fmt.Sprint(err != nil))
 	if err != nil {
 		return "（LLM 调用失败——" + err.Error() + "）"
 	}
@@ -159,10 +184,12 @@ func (g *Generator) provider() (providerCfg, error) {
 				} `yaml:"secret"`
 			} `yaml:"auth"`
 			Config struct {
-				BaseURL string `yaml:"baseUrl"`
-				Models  struct {
+				BaseURL    string `yaml:"baseUrl"`
+				ModelTiers struct {
 					Low string `yaml:"low"`
-				} `yaml:"models"`
+				} `yaml:"modelTiers"`
+				TaskModelMapping map[string]string `yaml:"taskModelMapping"`
+				Models           []string          `yaml:"models"`
 			} `yaml:"config"`
 		} `yaml:"spec"`
 	}
@@ -172,7 +199,19 @@ func (g *Generator) provider() (providerCfg, error) {
 	if d.Spec.Config.BaseURL == "" {
 		return providerCfg{}, fmt.Errorf("Provider/%s 缺 config.baseUrl", pn)
 	}
-	model := d.Spec.Config.Models.Low
+	g.trace("provider-read base=" + d.Spec.Config.BaseURL + " secret=" + d.Spec.Auth.Secret.Source)
+	// 模型名解析顺序：taskModelMapping["ops_core_inner_agent"]（真实网关模型名——tier 词形
+	// 是全系统语义，网关不认）> modelTiers.low > models[0] > flash-tier 兜底。
+	model := ""
+	if m, ok := d.Spec.Config.TaskModelMapping["ops_core_inner_agent"]; ok {
+		model = m
+	}
+	if model == "" {
+		model = d.Spec.Config.ModelTiers.Low
+	}
+	if model == "" && len(d.Spec.Config.Models) > 0 {
+		model = d.Spec.Config.Models[0] // 退档：models 列表首项=低档
+	}
 	if model == "" {
 		model = "flash-tier"
 	}
@@ -201,7 +240,7 @@ func buildDoc(run workflow.RunRecord, objKey, docName, verdict, base, working st
 		"  provider: " + quoteYAML(gProvName),
 		"  changed: " + quoteYAML(changed),
 		"  verdict: |",
-	}, "\n") + indentBlock(verdict, "    ")
+	}, "\n") + "\n" + indentBlock(verdict, "    ")
 }
 
 // —— 小工具 ——
