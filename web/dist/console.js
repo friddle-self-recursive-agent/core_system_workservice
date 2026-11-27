@@ -2197,9 +2197,9 @@ var CoreConsoleWeb = (() => {
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   var SAMPLES = [
-    ["\u4EE3\u7801\u5BA1\u6838", "\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"],
-    ["\u627E\u6587\u6863", "\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"],
-    ["\u66F4\u65B0\u6587\u6863", "\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981\u5E76\u66F4\u65B0\u76F8\u5173\u6587\u6863"]
+    ["\u2713 \u4EE3\u7801\u5BA1\u6838", "\u8FDB\u884C\u4EE3\u7801\u5BA1\u6838\uFF0C\u770B\u770B\u5B9E\u9645\u548C\u6587\u6863\u5DEE\u8DDD\u6709\u591A\u5927\uFF0C\u5E76\u8FDB\u884C\u4FEE\u590D"],
+    ["\u2315 \u627E\u6587\u6863", "\u627E\u51FA\u6240\u6709 drift \u7684\u6587\u6863\u5E76\u751F\u6210\u5BF9\u8D26\u6E05\u5355"],
+    ["\u270E \u66F4\u65B0\u6587\u6863", "\u628A\u5F53\u524D\u5FAA\u73AF\u7684\u72B6\u6001\u5199\u6210\u4E00\u4EFD SessionLog \u6458\u8981\u5E76\u66F4\u65B0\u76F8\u5173\u6587\u6863"]
   ];
   function heroComposerHtml() {
     return '<div class="home-box" data-home-box><textarea class="home-text" data-home-text rows="2" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\u3001\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '" aria-label="' + esc(t("\u5BF9\u8BDD\u8F93\u5165")) + '"></textarea><div class="home-bar"><div class="home-tools">' + SAMPLES.map(([label, full]) => '<button type="button" class="home-tool" data-home-sample="' + esc(full) + '">' + esc(t(label)) + "</button>").join("") + '<label class="home-tool home-img" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-home-img hidden></label></div><button type="button" class="home-send" data-home-send aria-label="' + esc(t("\u53D1\u9001")) + '" title="' + esc(t("\u53D1\u9001")) + '"><span aria-hidden="true">\u2191</span></button></div></div><div class="home-note" data-home-note aria-live="polite"></div>';
@@ -2209,8 +2209,9 @@ var CoreConsoleWeb = (() => {
     if (!rows.length) return "";
     return '<div class="home-recent-h">' + esc(t("\u6700\u8FD1\u4F1A\u8BDD")) + '</div><div class="home-recent-list">' + rows.map((s) => {
       const id = String(s.sessionId);
-      const title = String(s.title || "").trim() || id;
-      return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '"><span class="home-recent-dot' + (s.running === true ? " live" : "") + '"></span><span class="home-recent-t">' + esc(trunc(title, 30)) + "</span>" + (s.updatedAt ? '<span class="home-recent-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</button>";
+      const when = s.updatedAt ? relAge(Number(s.updatedAt)) || "" : "";
+      const label = String(s.title || "").trim() || t("\u4F1A\u8BDD") + (when ? " \xB7 " + when : "");
+      return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '"><span class="home-recent-dot' + (s.running === true ? " live" : "") + '"></span><span class="home-recent-t">' + esc(trunc(label, 30)) + "</span>" + (s.updatedAt ? '<span class="home-recent-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</button>";
     }).join("") + '<button type="button" class="home-recent-chip all" data-go="chat/core-headless">' + esc(t("\u5168\u90E8\u4F1A\u8BDD")) + " \u2192</button></div>";
   }
   function sessionRoute(sessionId) {

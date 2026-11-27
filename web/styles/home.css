@@ -51,7 +51,7 @@
   box-shadow: 0 20px 60px rgba(30, 50, 90, .14), 0 0 0 4px var(--ds-accent-ring-soft);
 }
 .cc-app .home-text {
-  display: block; width: 100%; min-height: 64px; max-height: 204px;
+  display: block; width: 100%; min-height: 84px; max-height: 204px;
   border: 0; background: transparent; resize: none; outline: none;
   color: var(--text); font: inherit; font-size: 17px; line-height: 1.6;
 }
@@ -60,8 +60,8 @@
 .cc-app .home-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .cc-app .home-tool {
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px;
-  border: 1px solid var(--border-2); border-radius: var(--rad-pill);
-  background: rgba(255, 255, 255, .70); color: var(--text-2);
+  border: 1px solid rgba(77, 107, 254, .18); border-radius: var(--rad-pill);
+  background: rgba(77, 107, 254, .07); color: var(--ds-accent-text);
   font-family: var(--sans); font-size: var(--fs-small); font-weight: 500;
   cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, color .12s;
 }

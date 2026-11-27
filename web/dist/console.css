@@ -2860,7 +2860,7 @@
 .cc-app .home-text {
   display: block;
   width: 100%;
-  min-height: 64px;
+  min-height: 84px;
   max-height: 204px;
   border: 0;
   background: transparent;
@@ -2894,10 +2894,10 @@
   gap: 6px;
   height: 32px;
   padding: 0 14px;
-  border: 1px solid var(--border-2);
+  border: 1px solid rgba(77, 107, 254, .18);
   border-radius: var(--rad-pill);
-  background: rgba(255, 255, 255, .70);
-  color: var(--text-2);
+  background: rgba(77, 107, 254, .07);
+  color: var(--ds-accent-text);
   font-family: var(--sans);
   font-size: var(--fs-small);
   font-weight: 500;

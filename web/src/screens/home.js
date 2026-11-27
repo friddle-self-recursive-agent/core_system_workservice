@@ -14,9 +14,9 @@ function faces() {
 
 /** 真实示例（点击填入，不自动发送）——键=短标签，值=完整可发提示。 */
 const SAMPLES = [
-  ['代码审核', '进行代码审核，看看实际和文档差距有多大，并进行修复'],
-  ['找文档', '找出所有 drift 的文档并生成对账清单'],
-  ['更新文档', '把当前循环的状态写成一份 SessionLog 摘要并更新相关文档'],
+  ['✓ 代码审核', '进行代码审核，看看实际和文档差距有多大，并进行修复'],
+  ['⌕ 找文档', '找出所有 drift 的文档并生成对账清单'],
+  ['✎ 更新文档', '把当前循环的状态写成一份 SessionLog 摘要并更新相关文档'],
 ];
 
 /** DeepSeek 式大 composer（home 与总览大屏共用；不含标题/最近会话）。 */
@@ -48,10 +48,12 @@ export function recentSessionsHtml(items) {
     '<div class="home-recent-list">' +
     rows.map((s) => {
       const id = String(s.sessionId);
-      const title = String(s.title || '').trim() || id;
+      const when = s.updatedAt ? (relAge(Number(s.updatedAt)) || '') : '';
+      // 宿主 list 无标题词形：不拿裸 id 当面（长串难读）——用「会话 · N 前」诚实占位，id 只进 tooltip。
+      const label = String(s.title || '').trim() || (tr('会话') + (when ? ' · ' + when : ''));
       return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '">' +
         '<span class="home-recent-dot' + (s.running === true ? ' live' : '') + '"></span>' +
-        '<span class="home-recent-t">' + esc(trunc(title, 30)) + '</span>' +
+        '<span class="home-recent-t">' + esc(trunc(label, 30)) + '</span>' +
         (s.updatedAt ? '<span class="home-recent-time">' + esc(relAge(Number(s.updatedAt)) || '') + '</span>' : '') +
         '</button>';
     }).join('') +
