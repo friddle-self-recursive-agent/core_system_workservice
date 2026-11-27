@@ -570,8 +570,8 @@ func writeTaskFile(id string, spec Spec) (string, error) {
 			"mode": spec.Workspace.Mode, "base": spec.Workspace.Base, "branch": spec.Workspace.Branch,
 		},
 		"permissionMode": spec.PermissionMode, // default-dsh-agent/v1 契约 spawn-agent 参数覆写口（空=宿主按契约缺省 danger-full-access）
-		"agent":    spec.Agent,
-		"priority": spec.Priority,
+		"agent":          spec.Agent,
+		"priority":       spec.Priority,
 		"verify": "验证要求（R-TYPE-3）：完成前必须过 Verify——code 规则→connectops-code-audit；" +
 			"agent 规则→规则原文+diff 丢给 agent（verdict+证据）；human 规则→审批。验证失败不得 done。",
 		"landing": "产物落地唯一路径=Apply/合并队列；Apply 须携 fieldManager=task:" + id +
