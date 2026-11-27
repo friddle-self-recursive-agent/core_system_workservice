@@ -161,9 +161,14 @@ function ctxPanel(rv) {
     ' ' + chipGo(tr('在文档库中打开'), 'docs', 'mute', true) + '</div>';
 }
 
-function opsPanel(ref) {
+function opsPanel(ref, content) {
   // 代码 ref 直达仓库（2026-11-26 用户裁决——内部仓与外部仓都可 [ref] 打开代码仓库地址）。
-  const repoChips = [ref.scope, ref.name]
+  // N-02 接线补充：connector.download 词形（pkg://<仓>/<子路径>）优先——对象 connector 声明
+  // 携带真实仓库路径；缺失=scope/name 词形降级（仓家族名才出 chip，不编造外链）。
+  let downloadRef = '';
+  const m = /download:\s*"?(pkg:\/\/[^"\s}]+)/.exec(String(content || ''));
+  if (m) downloadRef = m[1];
+  const repoChips = [downloadRef, ref.scope, ref.name]
     .map((x) => repoLinkChip(String(x || ''), String(x || '')))
     .filter(Boolean).join(' ');
   return '<div>' +
@@ -272,7 +277,7 @@ function renderScreen(el, ctx, ref) {
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
     (ruleState ? rulePanel(ruleState) : tr('<div class="small faint">规则命中判定中…</div>')) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">') + ctxPanel(ref.rv) + '</div></section>' +
-    tr('<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">') + opsPanel(ref) + '</div></section>' +
+    tr('<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">') + opsPanel(ref, cached ? content : '') + '</div></section>' +
     tr('<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
     '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
     '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + '</div></section>' +
