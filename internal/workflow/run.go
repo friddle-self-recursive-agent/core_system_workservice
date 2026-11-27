@@ -319,7 +319,7 @@ func NewRunLog(opts *RunOptions) *RunLog {
 			// 启动期文件 IO（非热路径）；解析缺席=零投影（诚实降级，缺口可见不编造）。
 			if r.opts.Specs != nil {
 				for i := range runs {
-					if runs[i].SpecSource == SpecObject && len(runs[i].Nodes) == 0 {
+					if len(runs[i].Nodes) == 0 { // docs 命中即回填（builtin 遮蔽同口径——StartRun 节点投影注）
 						runs[i].Nodes = r.opts.Specs.ResolveSpec(runs[i].Workflow).Nodes
 					}
 				}
@@ -351,8 +351,12 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			if len(view.Phases) > 0 {
 				phases = view.Phases
 			}
-			nodes = view.Nodes // 节点投影随 run 快照（service 落点判定纯内存——运行期零文件 IO）
 		}
+		// 节点投影随 run 快照（2026-11-27 service session 裁决——service 落点判定纯内存，
+		// 运行期零文件 IO）。口径与 approvalMode 同款：docs 对象命中即投影（builtin 遮蔽下
+		// docs 权威种子的富节点 unit:service 声明仍供拉起面——纯 builtin 无文档对象=零投影
+		// 零翻转；文档词形与 builtin 相位词汇分歧时 serviceNodeOf 查不中=天然零动作防御）。
+		nodes = view.Nodes
 		if view.ApprovalMode != "" {
 			approvalMode = view.ApprovalMode // spec.approval.mode=auto|agent 投影（Agent 节点自动判断/自动级别）
 		}
