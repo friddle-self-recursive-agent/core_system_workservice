@@ -1954,6 +1954,8 @@ var CoreConsoleWeb = (() => {
       revContent: (kind, scope, name, rv) => request("v1/rev-content/" + enc(kind) + "/" + enc(name) + "?scope=" + enc(scope || "global") + "&rv=" + enc(String(rv))),
       deliveries: () => request("v1/notifications/deliveries"),
       codeAuditFindings: () => request("v1/code-audit/findings"),
+      exportConfig: () => request("v1/docs-export/config"),
+      saveExportConfig: (payload) => request("v1/docs-export/config", { method: "PUT", body: payload }),
       /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
       apply: (payload) => request(P.apply, { method: "POST", body: payload }),
       saveDraft: (payload) => request(P.drafts, { method: "POST", body: payload }),
@@ -3097,6 +3099,751 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
+  // src/screens/workflow-config.js
+  function defaultLoopSpec(name = "core-system-developer-loop", existing = {}) {
+    const s = existing && typeof existing === "object" ? existing : {};
+    const logSrc = s.logSource || {};
+    const collector = logSrc.collector || {};
+    const timer = logSrc.timer || s.triggers && s.triggers.timer || {};
+    const approval = s.approval || {};
+    const sysBind = s.systemBindings || {};
+    const devSys = sysBind.developerSystem || {};
+    const depSys = sysBind.deploySystem || {};
+    const devConv = devSys.conventions || {};
+    const ver = s.verification || {};
+    const reg = s.regression || {};
+    const llm = s.llm || {};
+    const defaultConditions = [
+      { id: "lint-rules", kind: "code", title: "\u4EE3\u7801 Lint \u4E0E\u89C4\u5219\u5BA1\u6838 (R-PUB-1 / R-DOC-6 / R-ENG-7 \u2264800\u884C)", command: "connectops-code-audit/audit", required: true },
+      { id: "unit-tests", kind: "test", title: "\u540E\u7AEF\u4E0E\u524D\u7AEF\u5355\u5143/\u96C6\u6210\u6D4B\u8BD5\u5168\u7EFF (go test ./... & npm test)", command: "go test ./... && npm test", required: true },
+      { id: "live-probe", kind: "agent", title: "\u6D3B\u4F53\u63A2\u9488\u4E0E\u9875\u9762\u65E0\u5047\u6570\u636E/\u65E0\u62A5\u9519\u9A8C\u8BC1", command: "agent-verify", required: true }
+    ];
+    const defaultPostActions = [
+      { id: "bugdoc-lifecycle", kind: "doc-lifecycle", targetDocType: "BugDoc", action: reg.bugDocPolicy || "invalidate", enabled: true, title: "\u4E34\u65F6 BugDoc \u6536\u5C3E\u5904\u7406\uFF08\u6807\u8BB0\u5931\u6548 invalidate / \u5220\u9664 delete / \u4FDD\u7559 keep\uFF0C\u53EF\u589E\u5220\u6B64\u9879\uFF09" },
+      { id: "status-insync", kind: "status-writeback", targetPhase: "InSync", enabled: true, title: "\u56DE\u5199 ServiceInstance.status.phase = InSync\uFF08\u6E05\u96F6\u6F02\u79FB\uFF09" }
+    ];
+    const defaultPhases = [
+      { name: "log-event", phase: "Idle", title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event", unit: "connectops", connector: collector.connector || "connectops-log-collector", op: collector.op || "collect-logs", provider: llm.provider || "openai-default", modelTier: "low", entryEvents: ["BugReport", "MetricThreshold", "ExternalChanged", "ReconcileTick", "LoopRequested"] },
+      { name: "agent-judge", phase: "Analyzing", title: "2. Agent \u5224\u65AD\uFF08\u8BC4\u4F30\u4FEE\u590D\u4EF7\u503C/\u4EA7\u51FA\u65B9\u6848\u6216 BugDoc\uFF09", unit: "agent", op: "judge-issue", provider: llm.provider || "openai-default", modelTier: "high", globalRuleRefs: ["rule/rule_eng", "rule/rule_doc"] },
+      { name: "approval-gate", phase: "AwaitingApproval", title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279", unit: "gate", op: "approval-check", provider: llm.provider || "openai-default", modelTier: "high" },
+      { name: "doc-apply", phase: "Planning", title: "4. Doc Apply\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/BugDoc \u7B2C\u4E8C\u5207\u5165\u70B9\uFF09", unit: "session", op: "apply-doc", provider: llm.provider || "openai-default", modelTier: "standard", globalRuleRefs: ["rule/rule_doc", "rule/rule_eng"], entryEvents: ["DocApplied"] },
+      { name: "developer-system", phase: "Executing", title: "5. developer-system \u7814\u53D1\u5B9E\u73B0", unit: "agent", connector: devSys.connector || "connectops-developer", op: devSys.op || "develop", provider: llm.provider || "openai-default", modelTier: "high", globalRuleRefs: ["rule/rule_eng", "rule/rule_ux", "rule/rule_pub"], service: devSys.service || "developer-system" },
+      { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08Verify \u6761\u4EF6\u89E3\u91CA\u6267\u884C\uFF09", unit: "connectops", connector: ver.connector || "connectops-code-audit", op: ver.op || "audit", provider: llm.provider || "openai-default", modelTier: "low" },
+      { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u5E03\u4E0A\u7EBF", unit: "connectops", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", provider: llm.provider || "openai-default", modelTier: "low", service: depSys.service || "deploy-system" },
+      { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "session", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low" }
+    ];
+    return {
+      name,
+      enabled: s.enabled != null ? Boolean(s.enabled) : false,
+      immutableNodes: name === "core-system-developer-loop" ? true : Boolean(s.immutableNodes),
+      undeletable: name === "core-system-developer-loop" || name === "default-task" ? true : Boolean(s.undeletable),
+      servicesInvolved: Array.isArray(s.services && s.services.involved) ? s.services.involved.join(", ") : "self-recursive-core, developer-system, deploy-system",
+      servicesMode: s.services && s.services.mode || "act",
+      provider: llm.provider || "openai-default",
+      defaultModel: llm.model || "reasoning-tier",
+      globalRuleRefs: Array.isArray(s.globalRuleRefs) ? s.globalRuleRefs.join(", ") : "rule/rule_eng, rule/rule_doc, rule/rule_ux, rule/rule_ctx, rule/rule_pub",
+      logEvents: Array.isArray(logSrc.events) ? logSrc.events.join(", ") : "BugReport, MetricThreshold, ExternalChanged, ReconcileTick, LoopRequested",
+      logMinLevel: logSrc.minLevel || "warn",
+      logServices: Array.isArray(logSrc.services) ? logSrc.services.join(", ") : "self-recursive-core",
+      logKeyword: logSrc.keywordMatch || "ERROR|PANIC|FAIL|drift|unhealthy",
+      timerEnabled: timer.enabled != null ? Boolean(timer.enabled) : true,
+      timerInterval: timer.interval || timer.resync || "30m",
+      timerCron: timer.cron || "*/30 * * * *",
+      collectorConnector: collector.connector || "connectops-log-collector",
+      collectorOp: collector.op || "collect-logs",
+      collectorQuery: collector.query || "level>=warn",
+      docApplyEntryEnabled: true,
+      docApplyDocTypes: "Goal, Desc, Rule, WorkflowDesign, ImplDoc, VerifyDoc, BugDoc",
+      approvalMode: approval.mode || "agent",
+      approvalCriteria: approval.autoCriteria || "\u5355\u6D4B\u5168\u7EFF\u3001\u7B26\u5408\u5168\u5C40 rule_eng/rule_doc \u89C4\u8303\u4E14\u4E0D\u6D89\u53CA\u7834\u574F\u6027\u9AD8\u5371\u5220\u5E93\u64CD\u4F5C\u65F6\u81EA\u52A8\u6279\u51C6\u653E\u884C",
+      approvalMaxRisk: approval.maxRiskLevel || "low",
+      devService: devSys.service || "developer-system",
+      devResolution: devSys.resolution || "default",
+      devConnector: devSys.connector || "connectops-developer",
+      devOp: devSys.op || "develop",
+      devBranchPrefix: devConv.branchPrefix || "agent/",
+      devWorktreeDir: devConv.worktreeDir || "worktrees/",
+      devMaxLines: devConv.maxFileLines || 800,
+      deployService: depSys.service || "deploy-system",
+      deployResolution: depSys.resolution || "default",
+      deployConnector: depSys.connector || "connectops-deploy",
+      deployOp: depSys.op || "release",
+      verifyMode: ver.mode || "both",
+      verifyConnector: ver.connector || "connectops-code-audit",
+      verifyOp: ver.op || "audit",
+      verifyOnFail: ver.onFail || "retry-develop",
+      conditions: Array.isArray(ver.conditions) && ver.conditions.length ? ver.conditions : defaultConditions,
+      bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? "delete" : "invalidate"),
+      statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
+      postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
+      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases : defaultPhases
+    };
+  }
+  function buildWorkflowYaml(cfg, scope = "global") {
+    const splitList = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const inv = splitList(cfg.servicesInvolved);
+    const rules = splitList(cfg.globalRuleRefs);
+    const logEvs = splitList(cfg.logEvents);
+    const logSvcs = splitList(cfg.logServices);
+    const docTypes = splitList(cfg.docApplyDocTypes);
+    const q = (s) => JSON.stringify(String(s == null ? "" : s));
+    const condLines = (cfg.conditions || []).map(
+      (c, idx) => `      - {id: ${q(c.id || "cond-" + (idx + 1))}, kind: ${q(c.kind || "code")}, title: ${q(c.title || "")}, command: ${q(c.command || "")}, required: ${Boolean(c.required)}}`
+    ).join("\n");
+    const actionLines = (cfg.postActions || []).map(
+      (a, idx) => `      - {id: ${q(a.id || "act-" + (idx + 1))}, kind: ${q(a.kind || "doc-lifecycle")}, targetDocType: ${q(a.targetDocType || "BugDoc")}, action: ${q(a.action || cfg.bugDocPolicy || "invalidate")}, enabled: ${Boolean(a.enabled)}, title: ${q(a.title || "")}}`
+    ).join("\n");
+    return `apiVersion: core/v1
+kind: Workflow
+metadata:
+  name: ${cfg.name}
+  scope: ${scope}
+  labels:
+    core/origin: builtin
+spec:
+  enabled: ${Boolean(cfg.enabled)}
+  immutableNodes: ${Boolean(cfg.immutableNodes)}
+  undeletable: ${Boolean(cfg.undeletable)}
+  connector: connector-ops/${cfg.name}
+  services:
+    involved: [${inv.map(q).join(", ")}]
+    mode: ${cfg.servicesMode || "act"}
+  llm:
+    provider: ${cfg.provider || "openai-default"}
+    model: ${q(cfg.defaultModel || "reasoning-tier")}
+    tier: high
+    nodeMapping:
+      log-event: {tier: low, model: "flash-tier"}
+      agent-judge: {tier: high, model: "reasoning-tier"}
+      approval-gate: {tier: high, model: "reasoning-tier"}
+      doc-apply: {tier: standard, model: "standard-tier"}
+      developer-system: {tier: high, model: "reasoning-tier"}
+      verify: {tier: low, model: "flash-tier"}
+      deploy-system: {tier: low, model: "flash-tier"}
+      report-archive: {tier: low, model: "flash-tier"}
+  globalRuleRefs: [${rules.map(q).join(", ")}]
+  logSource:
+    events: [${logEvs.map(q).join(", ")}]
+    minLevel: ${cfg.logMinLevel || "warn"}
+    services: [${logSvcs.map(q).join(", ")}]
+    keywordMatch: ${q(cfg.logKeyword || "")}
+    timer:
+      enabled: ${Boolean(cfg.timerEnabled)}
+      interval: ${q(cfg.timerInterval || "30m")}
+      cron: ${q(cfg.timerCron || "*/30 * * * *")}
+    collector:
+      connector: ${cfg.collectorConnector || "connectops-log-collector"}
+      op: ${cfg.collectorOp || "collect-logs"}
+      query: ${q(cfg.collectorQuery || "level>=warn")}
+      autoDevelopOnMissing: true
+  triggers:
+    events:
+      types: [${logEvs.concat(cfg.docApplyEntryEnabled ? ["DocApplied"] : []).map(q).join(", ")}]
+      minLevel: ${cfg.logMinLevel || "warn"}
+    timer:
+      resync: ${q(cfg.timerInterval || "30m")}
+      enabled: ${Boolean(cfg.timerEnabled)}
+      interval: ${q(cfg.timerInterval || "30m")}
+      cron: ${q(cfg.timerCron || "*/30 * * * *")}
+  entryPoints:
+    - {node: log-event, phase: Idle, enabled: true, events: [${logEvs.map(q).join(", ")}], description: "\u5165\u53E3 1\uFF1A\u76D1\u542C\u65E5\u5FD7/\u8FD0\u884C\u671F Bug/\u5B9A\u65F6\u5DE1\u68C0\u4E8B\u4EF6\u4ECE\u5934\u6D41\u8F6C"}
+    - {node: doc-apply, phase: Planning, enabled: ${Boolean(cfg.docApplyEntryEnabled)}, events: ["DocApplied"], docTypes: [${docTypes.map(q).join(", ")}], description: "\u5165\u53E3 2\uFF1A\u7528\u6237\u5BF9\u8BDD\u4FEE\u6539\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u63A5\u4ECE\u8282\u70B9 4 \u5207\u5165"}
+  ingest:
+    dedup: {window: 5m}
+    group: {by: service, max: 20}
+    filterLevels: [warn, error, fatal]
+  approval:
+    mode: ${cfg.approvalMode || "agent"}
+    autoCriteria: ${q(cfg.approvalCriteria || "")}
+    maxRiskLevel: ${cfg.approvalMaxRisk || "low"}
+  systemBindings:
+    developerSystem:
+      service: ${cfg.devService || "developer-system"}
+      resolution: ${cfg.devResolution || "default"}
+      connector: ${cfg.devConnector || "connectops-developer"}
+      op: ${cfg.devOp || "develop"}
+      conventions:
+        branchPrefix: ${q(cfg.devBranchPrefix || "agent/")}
+        worktreeDir: ${q(cfg.devWorktreeDir || "worktrees/")}
+        tmpDir: "tmp/"
+        maxFileLines: ${Number(cfg.devMaxLines) || 800}
+    deploySystem:
+      service: ${cfg.deployService || "deploy-system"}
+      resolution: ${cfg.deployResolution || "default"}
+      connector: ${cfg.deployConnector || "connectops-deploy"}
+      op: ${cfg.deployOp || "release"}
+  verification:
+    mode: ${cfg.verifyMode || "both"}
+    connector: ${cfg.verifyConnector || "connectops-code-audit"}
+    op: ${cfg.verifyOp || "audit"}
+    onFail: ${cfg.verifyOnFail || "retry-develop"}
+    conditions:
+${condLines || "      []"}
+  phases:
+    - {name: log-event,        phase: Idle,             title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event",        unit: connectops, connector: ${cfg.collectorConnector || "connectops-log-collector"}, op: ${cfg.collectorOp || "collect-logs"}, provider: ${cfg.provider || "openai-default"}, modelTier: low,      entryEvents: [${logEvs.map(q).join(", ")}]}
+    - {name: agent-judge,      phase: Analyzing,        title: "2. Agent \u5224\u65AD",             unit: agent,      op: judge-issue,  provider: ${cfg.provider || "openai-default"}, modelTier: high,     globalRuleRefs: ["rule/rule_eng", "rule/rule_doc"]}
+    - {name: approval-gate,    phase: AwaitingApproval, title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279",     unit: gate,       op: approval-check, provider: ${cfg.provider || "openai-default"}, modelTier: high}
+    - {name: doc-apply,        phase: Planning,         title: "4. Doc Apply\uFF08\u591A\u5165\u53E3\u5207\u5165\u70B9\uFF09", unit: session,    op: apply-doc,    provider: ${cfg.provider || "openai-default"}, modelTier: standard, globalRuleRefs: ["rule/rule_doc", "rule/rule_eng"], entryEvents: ["DocApplied"]}
+    - {name: developer-system, phase: Executing,        title: "5. developer-system \u5F00\u53D1",   unit: agent,      connector: ${cfg.devConnector || "connectops-developer"}, op: ${cfg.devOp || "develop"}, provider: ${cfg.provider || "openai-default"}, modelTier: high, globalRuleRefs: ["rule/rule_eng", "rule/rule_ux", "rule/rule_pub"], service: ${cfg.devService || "developer-system"}}
+    - {name: verify,           phase: Verifying,        title: "6. \u9A8C\u6536\uFF08Verify\uFF09",          unit: connectops, connector: ${cfg.verifyConnector || "connectops-code-audit"}, op: ${cfg.verifyOp || "audit"}, provider: ${cfg.provider || "openai-default"}, modelTier: low}
+    - {name: deploy-system,    phase: Deploying,        title: "7. deploy-system \u53D1\u7248",      unit: connectops, connector: ${cfg.deployConnector || "connectops-deploy"}, op: ${cfg.deployOp || "release"}, provider: ${cfg.provider || "openai-default"}, modelTier: low, service: ${cfg.deployService || "deploy-system"}}
+    - {name: report-archive,   phase: Reporting,        title: "8. \u603B\u7ED3\u5F52\u6863 + \u56DE\u5199 InSync",  unit: session,    op: archive-report, provider: ${cfg.provider || "openai-default"}, modelTier: low}
+  transitions:
+    - {from: Idle,             on: advance,            to: Analyzing}
+    - {from: Idle,             on: "entry:DocApplied", to: Planning}
+    - {from: Analyzing,        on: advance,            to: AwaitingApproval}
+    - {from: Analyzing,        on: worth_fixing,       to: AwaitingApproval}
+    - {from: Analyzing,        on: ignore,             to: Reporting}
+    - {from: AwaitingApproval, on: advance,            to: Planning}
+    - {from: AwaitingApproval, on: ApprovalGranted,    to: Planning}
+    - {from: AwaitingApproval, on: ApprovalRejected,   to: Failed}
+    - {from: Planning,         on: advance,            to: Executing}
+    - {from: Executing,        on: advance,            to: Verifying}
+    - {from: Verifying,        on: advance,            to: Deploying}
+    - {from: Verifying,        on: retry-develop,      to: Executing}
+    - {from: Deploying,        on: advance,            to: Reporting}
+  onEscalate: {action: pause, notify: bind-role}
+  onFailed:
+    backoff: 30s*2^n
+    maxAttempts: 3
+    rollbackPolicy: by-step
+    escalate: {to: root, notify: bind-role}
+  brakes:
+    cooldown: 2m
+    maxMutationsPerTick: 10
+    avoidRepeatFix: true
+  regression:
+    statusWriteback: ${Boolean(cfg.statusWriteback)}
+    bugDocPolicy: ${cfg.bugDocPolicy || "invalidate"}
+    cleanTempBugDoc: ${cfg.bugDocPolicy === "delete"}
+    targetPhaseOnConverge: InSync
+    postActions:
+${actionLines || "      []"}
+    reports: [DriftReport, SessionLog]
+`;
+  }
+  function workflowStudioHtml(wf, usedName) {
+    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
+    const scope = wf && wf.primaryScope || "global";
+    const yamlText = wf && wf.rawYaml ? String(wf.rawYaml) : buildWorkflowYaml(cfg, scope);
+    const condRowsHtml = (cfg.conditions || []).map(
+      (c, idx) => `<div class="mini-row" data-wf-cond-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-cond-req="${idx}" ${c.required !== false ? "checked" : ""} title="\u5FC5\u8FC7\u786C\u95E8" /><select class="inp" data-cond-kind="${idx}" style="width:110px">` + ["code", "test", "agent", "probe", "custom"].map((k) => `<option value="${k}" ${c.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><input class="inp" data-cond-title="${idx}" value="${esc(c.title || "")}" placeholder="\u9A8C\u6536\u6761\u4EF6\u63CF\u8FF0" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="${esc(c.command || "")}" placeholder="\u6267\u884C\u547D\u4EE4\u6216 ConnectorOps/op" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button></div>`
+    ).join("");
+    const postActRowsHtml = (cfg.postActions || []).map(
+      (a, idx) => `<div class="mini-row" data-wf-act-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-act-en="${idx}" ${a.enabled !== false ? "checked" : ""} title="\u542F\u7528\u6B64\u6536\u5C3E\u52A8\u4F5C" /><select class="inp" data-act-kind="${idx}" style="width:140px">` + ["doc-lifecycle", "status-writeback", "notify", "custom"].map((k) => `<option value="${k}" ${a.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate" ${(a.action || cfg.bugDocPolicy) === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete" ${(a.action || cfg.bugDocPolicy) === "delete" ? "selected" : ""}>\u5220\u9664\u6587\u6863 (delete)</option><option value="keep" ${(a.action || cfg.bugDocPolicy) === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="${esc(a.title || "")}" placeholder="\u6536\u5C3E\u52A8\u4F5C\u8BF4\u660E" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button></div>`
+    ).join("");
+    const designNodesHtml = (cfg.phases || []).map(
+      (n, i) => `<tr><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit || "session", "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04">Provider: ${esc(n.provider || cfg.provider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.globalRuleRefs) && n.globalRuleRefs.length ? esc(n.globalRuleRefs.join(", ")) : "\u2014"}</td></tr>`
+    ).join("");
+    return `
+  <h2 class="sec-title">${esc(t("\u8BBE\u8BA1\u8868\u4E0E\u8282\u70B9\u6D41\u8F6C\u67B6\u6784\uFF08Workflow + Scheme = \u58F0\u660E\u5C42\uFF0C\u4EE3\u7801 = \u901A\u7528\u89E3\u91CA\u5668\uFF09"))}</h2>
+  <div class="card">
+    <div class="card-h">
+      <span class="h-title">${esc(t("8 \u8282\u70B9\u4E3B\u5E72\u3001\u53CC\u89E6\u53D1\u5165\u53E3\u4E0E\u6309\u4EFB\u52A1\u667A\u5546\u5206\u7EA7\u6A21\u578B\u8BBE\u8BA1\u8868"))}</span>
+      <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
+    </div>
+    <div class="card-b" style="overflow-x:auto">
+      <div class="small faint" style="margin-bottom:8px">
+        ${esc(t("\u5165\u53E3 1\uFF08\u8FD0\u884C\u671F\u65E5\u5FD7/Bug/\u5DE1\u68C0\u4E8B\u4EF6\uFF09\u4ECE\u8282\u70B9 1 (Idle) \u987A\u6B21\u6D41\u8F6C\uFF1B\u5165\u53E3 2\uFF08\u5BF9\u8BDD\u4FEE\u6539\u8BBE\u8BA1\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied\uFF09\u76F4\u63A5\u4ECE\u8282\u70B9 4 (Planning / Doc Apply) \u5207\u5165\uFF0C\u76F4\u8D70 developer-system \u2192 \u9A8C\u6536 \u2192 deploy-system \u2192 \u603B\u7ED3\u5F52\u6863\u3002\u70B9\u51FB\u4EFB\u610F Provider \u5FBD\u7AE0\u53EF\u76F4\u63A5\u914D\u7F6E OpenAIProvider \u8D26\u53F7\u3001Base \u5730\u5740\u4E0E\u6A21\u578B\u5206\u7EA7\u3002"))}
+      </div>
+      <table class="tbl">
+        <thead><tr><th>\u8282\u70B9</th><th>\u76F8\u4F4D</th><th>\u804C\u8D23\u8BF4\u660E</th><th>\u6267\u884C\u5355\u5143</th><th>ConnectorOps / \u7B97\u5B50</th><th>OpenAIProvider / \u6A21\u578B\u5206\u7EA7</th><th>\u5F15\u7528 Global Rules</th></tr></thead>
+        <tbody>${designNodesHtml}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div data-provider-drawer></div>
+
+  <h2 class="sec-title">${esc(t("\u4EE5\u4EBA\u4E3A\u672C\u53EF\u89C6\u5316\u914D\u7F6E\u5DE5\u4F5C\u53F0\uFF08Scheme Adapter \u5C42\u914D\u7F6E\uFF0C\u4FDD\u5B58\u5373 Apply \u843D\u5E93\uFF09"))}</h2>
+  <div class="card" data-wf-studio>
+    <div class="card-h">
+      <span class="h-title">${esc(usedName)} \xB7 ${esc(t("\u5168\u8282\u70B9\u53C2\u6570\u3001\u81EA\u52A8\u5BA1\u6279\u3001\u9A8C\u6536\u6761\u4EF6\u4E0E\u4E34\u65F6 BugDoc \u6536\u5C3E\u7B56\u7565\u914D\u7F6E"))}</span>
+      <div>
+        ${cfg.undeletable ? chip(t("\u5185\u7F6E\u4FDD\u62A4\uFF1A\u4E0D\u53EF\u5220\u9664"), "warn") : ""}
+        ${cfg.immutableNodes ? chip(t("\u4E3B\u5E72\u8282\u70B9\u62D3\u6251\u9501\u5B9A\uFF08\u53C2\u6570\u53EF\u914D\uFF09"), "acc") : ""}
+      </div>
+    </div>
+    <div class="card-b">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("A. \u603B\u63A7\u5F00\u5173\u4E0E\u5168\u5C40\u89C4\u5219\u5F15\u7528"))}</b>
+          <div style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" data-cfg="enabled" ${cfg.enabled ? "checked" : ""} />
+              <span><b>${esc(t("\u542F\u7528\u6B64\u5DE5\u4F5C\u6D41 (spec.enabled)"))}</b> ${esc(t("\uFF08\u51FA\u5382\u9ED8\u8BA4\u4E0D\u542F\u52A8\uFF1Bcore-system \u81EA\u6211\u8FED\u4EE3\u663E\u5F0F\u5F00\u542F\uFF09"))}</span>
+            </label>
+          </div>
+          <div style="margin-top:8px">
+            <div class="small faint">${esc(t("\u6D89\u53CA\u670D\u52A1 (services.involved)"))}</div>
+            <input class="inp" data-cfg="servicesInvolved" value="${esc(cfg.servicesInvolved)}" style="width:100%" />
+          </div>
+          <div style="margin-top:8px">
+            <div class="small faint">${esc(t("Session/Agent \u9ED8\u8BA4\u5F15\u7528\u5168\u5C40\u89C4\u5219 (globalRuleRefs)"))}</div>
+            <input class="inp mono" data-cfg="globalRuleRefs" value="${esc(cfg.globalRuleRefs)}" style="width:100%" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("B. \u8282\u70B9 1\uFF08\u76D1\u542C\u65E5\u5FD7\u4E0E Event \u8FC7\u6EE4 + ConnectorOps \u6536\u96C6\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u76D1\u542C\u4E8B\u4EF6\u7C7B\u578B"))}</div>
+              <input class="inp mono" data-cfg="logEvents" value="${esc(cfg.logEvents)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6700\u4F4E\u65E5\u5FD7\u7EA7\u522B"))}</div>
+              <select class="inp" data-cfg="logMinLevel" style="width:100%">
+                ${["debug", "info", "warn", "error", "fatal"].map((l) => `<option value="${l}" ${cfg.logMinLevel === l ? "selected" : ""}>${l}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u8FC7\u6EE4 Service"))}</div>
+              <input class="inp mono" data-cfg="logServices" value="${esc(cfg.logServices)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u65E5\u5FD7\u5173\u952E\u8BCD/\u6B63\u5219\u8FC7\u6EE4"))}</div>
+              <input class="inp mono" data-cfg="logKeyword" value="${esc(cfg.logKeyword)}" style="width:100%" />
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 110px auto;gap:6px;align-items:end">
+            <div>
+              <div class="small faint">${esc(t("\u65E5\u5FD7\u6536\u96C6 ConnectorOps"))}</div>
+              <input class="inp mono" data-cfg="collectorConnector" value="${esc(cfg.collectorConnector)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6536\u96C6\u7B97\u5B50 op"))}</div>
+              <input class="inp mono" data-cfg="collectorOp" value="${esc(cfg.collectorOp)}" style="width:100%" />
+            </div>
+            <button type="button" class="btn tiny acc" data-develop-collector title="\u5F53\u65E5\u5FD7\u6536\u96C6 ConnectorOps \u7F3A\u5931\u6216\u4E3A\u9AA8\u67B6\u65F6\uFF0C\u76F4\u63A5\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u5E76\u6253\u5F00\u7F16\u8F91">${esc(t("\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1/\u7F16\u8F91"))}</button>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:auto 100px 1fr;gap:6px;align-items:center">
+            <label><input type="checkbox" data-cfg="timerEnabled" ${cfg.timerEnabled ? "checked" : ""} /> ${esc(t("\u5B9A\u65F6\u89E6\u53D1"))}</label>
+            <input class="inp mono" data-cfg="timerInterval" value="${esc(cfg.timerInterval)}" placeholder="30m" />
+            <input class="inp mono" data-cfg="timerCron" value="${esc(cfg.timerCron)}" placeholder="*/30 * * * *" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("C. \u8282\u70B9 3\uFF08\u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09& \u8282\u70B9 4\uFF08Doc Apply \u7B2C\u4E8C\u5165\u53E3\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u8282\u70B9 3 \u5BA1\u6279\u6A21\u5F0F (approval.mode)"))}</div>
+              <select class="inp" data-cfg="approvalMode" style="width:100%">
+                <option value="agent" ${cfg.approvalMode === "agent" ? "selected" : ""}>agent\uFF08Agent \u6309\u89C4\u5219\u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09</option>
+                <option value="auto" ${cfg.approvalMode === "auto" ? "selected" : ""}>auto\uFF08\u5168\u81EA\u52A8\u653E\u884C\u4E0D\u6302\u8D77\uFF09</option>
+                <option value="human" ${cfg.approvalMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u5BA1\u6279\u6302\u8D77\uFF09</option>
+              </select>
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u81EA\u52A8\u653E\u884C\u6700\u9AD8\u98CE\u9669"))}</div>
+              <select class="inp" data-cfg="approvalMaxRisk" style="width:100%">
+                ${["low", "medium", "high"].map((r) => `<option value="${r}" ${cfg.approvalMaxRisk === r ? "selected" : ""}>${r}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px">
+            <div class="small faint">${esc(t("Agent \u81EA\u52A8\u5BA1\u6279\u5224\u65AD\u51C6\u5219 (autoCriteria)"))}</div>
+            <input class="inp" data-cfg="approvalCriteria" value="${esc(cfg.approvalCriteria)}" style="width:100%" />
+          </div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ds-border)">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" data-cfg="docApplyEntryEnabled" ${cfg.docApplyEntryEnabled ? "checked" : ""} />
+              <span><b>${esc(t("\u542F\u7528\u8282\u70B9 4 (Doc Apply) \u591A\u5165\u53E3\u5207\u5165"))}</b> ${esc(t("\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u5207\u8282\u70B9 4\uFF09"))}</span>
+            </label>
+            <input class="inp mono" data-cfg="docApplyDocTypes" value="${esc(cfg.docApplyDocTypes)}" style="width:100%;margin-top:4px" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("D. \u8282\u70B9 5 & 7\uFF08developer-system / deploy-system \u9010\u5C42\u7ED1\u5B9A\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u7814\u53D1\u7CFB\u7EDF (developer-system)"))}</div>
+              <input class="inp mono" data-cfg="devService" value="${esc(cfg.devService)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
+              <select class="inp" data-cfg="devResolution" style="width:100%">
+                <option value="default" ${cfg.devResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5F00\u6E90\u4E60\u60EF)</option>
+                <option value="install" ${cfg.devResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
+                <option value="import" ${cfg.devResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5DF2\u6709\u7CFB\u7EDF)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 80px;gap:6px">
+            <input class="inp mono" data-cfg="devBranchPrefix" value="${esc(cfg.devBranchPrefix)}" placeholder="\u5206\u652F\u524D\u7F00 agent/" title="\u5F00\u6E90\u4E60\u60EF\uFF1A\u5206\u652F\u524D\u7F00" />
+            <input class="inp mono" data-cfg="devWorktreeDir" value="${esc(cfg.devWorktreeDir)}" placeholder="worktrees/" title="\u5F00\u6E90\u4E60\u60EF\uFF1Aworktree \u76EE\u5F55" />
+            <input class="inp mono" data-cfg="devMaxLines" value="${esc(String(cfg.devMaxLines))}" placeholder="800" title="\u5355\u6587\u4EF6\u884C\u6570\u4E0A\u9650" />
+          </div>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u53D1\u5E03\u7CFB\u7EDF (deploy-system)"))}</div>
+              <input class="inp mono" data-cfg="deployService" value="${esc(cfg.deployService)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
+              <select class="inp" data-cfg="deployResolution" style="width:100%">
+                <option value="default" ${cfg.deployResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5BBF\u4E3B\u53D1\u5E03)</option>
+                <option value="install" ${cfg.deployResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
+                <option value="import" ${cfg.deployResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5916\u90E8\u53D1\u5E03)</option>
+              </select>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(t("E. \u8282\u70B9 6\uFF08\u9A8C\u6536 Verify \u914D\u7F6E \u2014\u2014 \u600E\u4E48\u9A8C\u6536\u3001\u9A8C\u6536\u6761\u4EF6\u53EF\u81EA\u7531\u6DFB\u52A0/\u5220\u9664\uFF09"))}</b>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select class="inp" data-cfg="verifyMode">
+              <option value="both" ${cfg.verifyMode === "both" ? "selected" : ""}>both\uFF08\u4EE3\u7801\u5BA1\u6838 + Agent \u9A8C\u6536\uFF09</option>
+              <option value="code" ${cfg.verifyMode === "code" ? "selected" : ""}>code\uFF08\u4EC5\u4EE3\u7801\u89C4\u5219\u5BA1\u6838\uFF09</option>
+              <option value="agent" ${cfg.verifyMode === "agent" ? "selected" : ""}>agent\uFF08\u4EC5 Agent \u63A2\u9488\u9A8C\u6536\uFF09</option>
+              <option value="human" ${cfg.verifyMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u786E\u8BA4\u9A8C\u6536\uFF09</option>
+            </select>
+            <select class="inp" data-cfg="verifyOnFail">
+              <option value="retry-develop" ${cfg.verifyOnFail === "retry-develop" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u6253\u56DE developer-system \u91CD\u4FEE</option>
+              <option value="block" ${cfg.verifyOnFail === "block" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u963B\u65AD\u5E76\u4E0A\u62A5</option>
+              <option value="ask" ${cfg.verifyOnFail === "ask" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u8F6C\u4EBA\u5DE5\u88C1\u51B3</option>
+            </select>
+            <button type="button" class="btn tiny acc" data-cond-add>${esc(t("+ \u6DFB\u52A0\u9A8C\u6536\u6761\u4EF6"))}</button>
+          </div>
+        </div>
+        <div data-wf-cond-list>${condRowsHtml}</div>
+      </div></div>
+
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(t("F. \u8282\u70B9 8\uFF08\u603B\u7ED3\u5F52\u6863 Reporting \u901A\u7528\u89E3\u91CA\u5668\u6536\u5C3E\u52A8\u4F5C \u2014\u2014 \u4E34\u65F6 BugDoc \u9ED8\u8BA4\u53EF\u6807\u8BB0\u5931\u6548/\u5220\u9664/\u9009\u62E9\u4E0D\u5220\u9664\uFF0C\u52A8\u4F5C\u9879\u53EF\u81EA\u7531\u589E\u5220\uFF09"))}</b>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="small faint">${esc(t("\u4E34\u65F6 BugDoc \u9ED8\u8BA4\u7B56\u7565\uFF1A"))}</span>
+            <select class="inp" data-cfg="bugDocPolicy">
+              <option value="invalidate" ${cfg.bugDocPolicy === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548\u5F52\u6863 (invalidate)</option>
+              <option value="delete" ${cfg.bugDocPolicy === "delete" ? "selected" : ""}>\u5220\u9664\u4E34\u65F6 BugDoc (delete)</option>
+              <option value="keep" ${cfg.bugDocPolicy === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-cfg="statusWriteback" ${cfg.statusWriteback ? "checked" : ""} /> ${esc(t("\u56DE\u5199 InSync"))}</label>
+            <button type="button" class="btn tiny acc" data-act-add>${esc(t("+ \u6DFB\u52A0\u6536\u5C3E\u52A8\u4F5C"))}</button>
+          </div>
+        </div>
+        <div data-wf-act-list>${postActRowsHtml}</div>
+      </div></div>
+
+      <details class="ex-block" open>
+        <summary class="ex-sum"><span class="ex-chev">\u25B6</span><b>${esc(t("Workflow \u5B8C\u6574 YAML \u58F0\u660E\uFF08\u89E3\u91CA\u5668\u6743\u5A01\u6E90\uFF0C\u8868\u5355\u8054\u52A8\u5B9E\u65F6\u751F\u6210\uFF0C\u4E5F\u53EF\u76F4\u63A5\u7F16\u8F91 YAML\uFF09"))}</b></summary>
+        <div class="ex-body">
+          <textarea class="inp mono" data-wf-yaml rows="18" style="width:100%;font-size:12px;line-height:1.45">${esc(yamlText)}</textarea>
+        </div>
+      </details>
+
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="btn acc" data-wf-save>${esc(t("\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E"))}</button>
+        <button type="button" class="btn mute" data-wf-sync-yaml>${esc(t("\u4ECE\u4E0A\u65B9\u8868\u5355\u91CD\u65B0\u751F\u6210 YAML"))}</button>
+        <span class="small faint" data-wf-save-msg></span>
+      </div>
+    </div>
+  </div>`;
+  }
+  function bindWorkflowStudio(el, ctx2, wf, usedName, onSaved) {
+    const studio = el.querySelector("[data-wf-studio]");
+    if (!studio) return;
+    const scope = wf && wf.primaryScope || "global";
+    let baseRv = Number(wf && wf.primaryRv || 0);
+    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
+    const readFormIntoCfg = () => {
+      studio.querySelectorAll("[data-cfg]").forEach((inp) => {
+        const k = inp.getAttribute("data-cfg");
+        if (inp.type === "checkbox") cfg[k] = Boolean(inp.checked);
+        else cfg[k] = inp.value;
+      });
+      const conds = [];
+      studio.querySelectorAll("[data-wf-cond-row]").forEach((row) => {
+        const idx = row.getAttribute("data-wf-cond-row");
+        conds.push({
+          id: "cond-" + (conds.length + 1),
+          required: Boolean(row.querySelector(`[data-cond-req="${idx}"]`)?.checked),
+          kind: row.querySelector(`[data-cond-kind="${idx}"]`)?.value || "code",
+          title: row.querySelector(`[data-cond-title="${idx}"]`)?.value || "",
+          command: row.querySelector(`[data-cond-cmd="${idx}"]`)?.value || ""
+        });
+      });
+      cfg.conditions = conds;
+      const acts = [];
+      studio.querySelectorAll("[data-wf-act-row]").forEach((row) => {
+        const idx = row.getAttribute("data-wf-act-row");
+        acts.push({
+          id: "act-" + (acts.length + 1),
+          enabled: Boolean(row.querySelector(`[data-act-en="${idx}"]`)?.checked),
+          kind: row.querySelector(`[data-act-kind="${idx}"]`)?.value || "doc-lifecycle",
+          targetDocType: "BugDoc",
+          action: row.querySelector(`[data-act-policy="${idx}"]`)?.value || cfg.bugDocPolicy || "invalidate",
+          title: row.querySelector(`[data-act-title="${idx}"]`)?.value || ""
+        });
+      });
+      cfg.postActions = acts;
+    };
+    const syncYamlBox = () => {
+      readFormIntoCfg();
+      const box = studio.querySelector("[data-wf-yaml]");
+      if (box) box.value = buildWorkflowYaml(cfg, scope);
+    };
+    studio.querySelectorAll("[data-cfg]").forEach((inp) => {
+      inp.addEventListener("change", syncYamlBox);
+    });
+    const bindRowDeletes = () => {
+      studio.querySelectorAll("[data-cond-del]").forEach((btn) => {
+        btn.onclick = () => {
+          btn.closest("[data-wf-cond-row]")?.remove();
+          syncYamlBox();
+        };
+      });
+      studio.querySelectorAll("[data-act-del]").forEach((btn) => {
+        btn.onclick = () => {
+          btn.closest("[data-wf-act-row]")?.remove();
+          syncYamlBox();
+        };
+      });
+      studio.querySelectorAll("[data-wf-cond-row] input, [data-wf-cond-row] select, [data-wf-act-row] input, [data-wf-act-row] select").forEach((inp) => {
+        inp.onchange = syncYamlBox;
+      });
+    };
+    bindRowDeletes();
+    studio.querySelector("[data-cond-add]")?.addEventListener("click", () => {
+      const list2 = studio.querySelector("[data-wf-cond-list]");
+      if (!list2) return;
+      const idx = Date.now();
+      const div = document.createElement("div");
+      div.className = "mini-row";
+      div.setAttribute("data-wf-cond-row", String(idx));
+      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      div.innerHTML = `<input type="checkbox" data-cond-req="${idx}" checked /><select class="inp" data-cond-kind="${idx}" style="width:110px"><option value="code">code</option><option value="test">test</option><option value="agent">agent</option><option value="probe">probe</option><option value="custom">custom</option></select><input class="inp" data-cond-title="${idx}" value="\u81EA\u5B9A\u4E49\u9A8C\u6536\u6761\u4EF6" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="connectops-code-audit/audit" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button>`;
+      list2.appendChild(div);
+      bindRowDeletes();
+      syncYamlBox();
+    });
+    studio.querySelector("[data-act-add]")?.addEventListener("click", () => {
+      const list2 = studio.querySelector("[data-wf-act-list]");
+      if (!list2) return;
+      const idx = Date.now();
+      const div = document.createElement("div");
+      div.className = "mini-row";
+      div.setAttribute("data-wf-act-row", String(idx));
+      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      div.innerHTML = `<input type="checkbox" data-act-en="${idx}" checked /><select class="inp" data-act-kind="${idx}" style="width:140px"><option value="doc-lifecycle">doc-lifecycle</option><option value="status-writeback">status-writeback</option><option value="notify">notify</option><option value="custom">custom</option></select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate">\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete">\u5220\u9664\u6587\u6863 (delete)</option><option value="keep">\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="\u4E34\u65F6 BugDoc \u6536\u5C3E\u52A8\u4F5C" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button>`;
+      list2.appendChild(div);
+      bindRowDeletes();
+      syncYamlBox();
+    });
+    studio.querySelector("[data-wf-sync-yaml]")?.addEventListener("click", syncYamlBox);
+    studio.querySelector("[data-develop-collector]")?.addEventListener("click", async () => {
+      readFormIntoCfg();
+      const connName = String(cfg.collectorConnector || "connectops-log-collector").trim();
+      const opName = String(cfg.collectorOp || "collect-logs").trim();
+      const msg = studio.querySelector("[data-wf-save-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728\u68C0\u67E5/\u751F\u6210 ConnectorOps \u9AA8\u67B6\u5E76\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u2026");
+      const existing = await ctx2.api.object("ConnectorOps", "global", connName);
+      if (!existing.ok) {
+        const connYaml = `apiVersion: core/v1
+kind: ConnectorOps
+metadata:
+  name: ${connName}
+  scope: global
+spec:
+  workservice: workflow-engine
+  workflow: ${usedName}
+  provider: ${cfg.provider || "openai-default"}
+  llm:
+    provider: ${cfg.provider || "openai-default"}
+    tier: low
+    model: "flash-tier"
+  ops: [${opName}]
+  config:
+    query: ${JSON.stringify(cfg.collectorQuery || "level>=warn")}
+    services: ${JSON.stringify(cfg.logServices || "self-recursive-core")}
+`;
+        await ctx2.api.apply({ kind: "ConnectorOps", scope: "global", name: connName, resourceVersion: 0, content: connYaml, fieldManager: "console:workflow-studio", reasonRef: "develop-collector:" + connName });
+      }
+      if (msg) msg.innerHTML = esc(t("\u5DF2\u5C31\u7EEA ConnectorOps/global/" + connName + " \u2014\u2014 ")) + chipGo(t("\u6253\u5F00 ConnectorOps \u7F16\u8F91\u5668\u5F00\u53D1\u7B97\u5B50"), docRoute("ConnectorOps", "global", connName), "acc", true);
+    });
+    studio.querySelector("[data-wf-save]")?.addEventListener("click", async () => {
+      const yamlBox = studio.querySelector("[data-wf-yaml]");
+      const content = yamlBox ? yamlBox.value : buildWorkflowYaml(cfg, scope);
+      const msg = studio.querySelector("[data-wf-save-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u2026");
+      let rv = baseRv;
+      const cur = await ctx2.api.object("Workflow", scope, usedName);
+      if (cur.ok && cur.data && cur.data.resourceVersion != null) rv = Number(cur.data.resourceVersion) || 0;
+      const res = await ctx2.api.apply({
+        kind: "Workflow",
+        scope,
+        name: usedName,
+        resourceVersion: rv,
+        content,
+        fieldManager: "console:workflow-studio",
+        reasonRef: "workflow-config:" + usedName
+      });
+      if (!res.ok) {
+        if (msg) msg.textContent = t("Apply \u5931\u8D25\uFF1A") + String(res.error || res.status);
+        return;
+      }
+      baseRv = Number(res.data && res.data.rv) || rv + 1;
+      if (msg) msg.textContent = t("\u5DF2\u4FDD\u5B58\u5E76 Apply \u751F\u6548\uFF08rv=" + baseRv + "\uFF09");
+      if (typeof onSaved === "function") onSaved();
+    });
+    el.querySelectorAll("[data-open-provider]").forEach((btn) => {
+      btn.addEventListener("click", () => openProviderDrawer(el, ctx2, btn.getAttribute("data-open-provider") || "openai-default"));
+    });
+    el.querySelectorAll("[data-open-conn]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cName = btn.getAttribute("data-open-conn");
+        if (cName && ctx2.router) ctx2.router.go(docRoute("ConnectorOps", "global", cName));
+      });
+    });
+  }
+  async function openProviderDrawer(el, ctx2, providerName = "openai-default") {
+    const slot = el.querySelector("[data-provider-drawer]");
+    if (!slot) return;
+    slot.innerHTML = `<div class="card" style="border:1px solid var(--ds-accent)"><div class="card-b"><div class="small faint">${esc(t("\u6B63\u5728\u52A0\u8F7D OpenAIProvider (" + providerName + ") \u914D\u7F6E\u2026"))}</div></div></div>`;
+    const res = await ctx2.api.object("Provider", "global", providerName);
+    const rv = res.ok && res.data && res.data.resourceVersion != null ? Number(res.data.resourceVersion) : 0;
+    const raw = res.ok && res.data && res.data.content ? String(res.data.content) : "";
+    const extract = (re, def2) => {
+      const m = raw.match(re);
+      return m ? m[1].trim().replace(/^["']|["']$/g, "") : def2;
+    };
+    const account = extract(/account:\s*([^\n#]+)/, "magpie-openai-gateway");
+    const secretSrc = extract(/source:\s*([^\n}#]+)/, "secret:llm/magpie-gateway-key");
+    const baseUrl = extract(/baseUrl:\s*([^\n#]+)/, "https://magpie.ListenAll.cn/v1");
+    const lowModel = extract(/low:\s*([^\n}#]+)/, "flash-tier");
+    const stdModel = extract(/standard:\s*([^\n}#]+)/, "standard-tier");
+    const highModel = extract(/high:\s*([^\n}#]+)/, "reasoning-tier");
+    slot.innerHTML = `
+  <div class="card" style="border:1px solid var(--ds-accent);margin-bottom:14px">
+    <div class="card-h">
+      <span class="h-title">${esc(t("OpenAIProvider \u914D\u7F6E\u9762\u677F"))} \xB7 <span class="mono">${esc(providerName)}</span> (rv=${rv})</span>
+      <button type="button" class="btn tiny mute" data-prov-close>${esc(t("\u6536\u8D77"))}</button>
+    </div>
+    <div class="card-b">
+      <div class="small faint" style="margin-bottom:8px">${esc(t("\u6240\u6709 Session\u3001ConnectorOps \u4E0E Workflow \u8282\u70B9\u9ED8\u8BA4\u7ED1\u5B9A\u6B64 OpenAIProvider\u3002\u652F\u6301\u6309\u4EFB\u52A1\u667A\u5546\u8981\u6C42\u5206\u7EA7\u8DEF\u7531\uFF1A\u91CD\u590D\u6027/\u65E5\u5FD7\u8FC7\u6EE4\u4EFB\u52A1\u7528\u4F4E\u667A\u5546\u8F7B\u91CF\u6A21\u578B\uFF08low\uFF09\uFF0C\u5E38\u89C4\u5F00\u53D1\u7528\u6807\u51C6\u6A21\u578B\uFF08standard\uFF09\uFF0C\u67B6\u6784\u8BBE\u8BA1\u4E0E\u590D\u6742\u6839\u56E0\u8BCA\u65AD\u7528\u9AD8\u667A\u5546\u63A8\u7406\u6A21\u578B\uFF08high\uFF09\u3002"))}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        <div>
+          <div class="small faint">${esc(t("\u8D26\u53F7\u6807\u8BC6 (auth.account)"))}</div>
+          <input class="inp mono" data-prov="account" value="${esc(account)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)"))}</div>
+          <input class="inp mono" data-prov="secretSrc" value="${esc(secretSrc)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("OpenAI \u517C\u5BB9 Base \u5730\u5740 (config.baseUrl)"))}</div>
+          <input class="inp mono" data-prov="baseUrl" value="${esc(baseUrl)}" style="width:100%" />
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">
+        <div>
+          <div class="small faint">${esc(t("Low \u6863\u6A21\u578B\uFF08\u91CD\u590D\u6027\u4EFB\u52A1/\u65E5\u5FD7\u6536\u96C6/\u4EE3\u7801\u5BA1\u6838\u7B97\u5B50\uFF09"))}</div>
+          <input class="inp mono" data-prov="lowModel" value="${esc(lowModel)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("Standard \u6863\u6A21\u578B\uFF08Doc Apply/\u5E38\u89C4\u5F00\u53D1\u7B97\u5B50\uFF09"))}</div>
+          <input class="inp mono" data-prov="stdModel" value="${esc(stdModel)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("High \u6863\u6A21\u578B\uFF08\u67B6\u6784\u8BBE\u8BA1/Agent \u5224\u65AD/\u81EA\u52A8\u5BA1\u6279/\u6838\u5FC3\u7814\u53D1\uFF09"))}</div>
+          <input class="inp mono" data-prov="highModel" value="${esc(highModel)}" style="width:100%" />
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn acc" data-prov-save>${esc(t("\u4FDD\u5B58\u5E76 Apply OpenAIProvider"))}</button>
+        ${chipGo(t("\u5728\u5BF9\u8C61\u7F16\u8F91\u5668\u4E2D\u67E5\u770B YAML"), docRoute("Provider", "global", providerName), "mute", true)}
+        <span class="small faint" data-prov-msg></span>
+      </div>
+    </div>
+  </div>`;
+    slot.querySelector("[data-prov-close]")?.addEventListener("click", () => {
+      slot.innerHTML = "";
+    });
+    slot.querySelector("[data-prov-save]")?.addEventListener("click", async () => {
+      const val = (k) => slot.querySelector(`[data-prov="${k}"]`)?.value.trim() || "";
+      const yamlContent = `apiVersion: core/v1
+kind: Provider
+metadata:
+  name: ${providerName}
+  scope: global
+spec:
+  kind: openai
+  trustLevel: trusted
+  auth:
+    scheme: bearer
+    account: ${JSON.stringify(val("account") || "magpie-openai-gateway")}
+    secret:
+      source: ${JSON.stringify(val("secretSrc") || "secret:llm/magpie-gateway-key")}
+      rotation: manual
+  config:
+    baseUrl: ${JSON.stringify(val("baseUrl") || "https://magpie.ListenAll.cn/v1")}
+    defaultModel: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+    models: [${JSON.stringify(val("lowModel"))}, ${JSON.stringify(val("stdModel"))}, ${JSON.stringify(val("highModel"))}]
+    modelTiers:
+      low: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      standard: ${JSON.stringify(val("stdModel") || "standard-tier")}
+      high: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+    taskModelMapping:
+      connectops-log-collector: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      connectops-code-audit: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      connectops-deploy: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      doc-apply: ${JSON.stringify(val("stdModel") || "standard-tier")}
+      agent-judge: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+      approval-gate: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+      connectops-developer: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+`;
+      const msg = slot.querySelector("[data-prov-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728 Apply OpenAIProvider\u2026");
+      const r = await ctx2.api.apply({
+        kind: "Provider",
+        scope: "global",
+        name: providerName,
+        resourceVersion: rv,
+        content: yamlContent,
+        fieldManager: "console:provider-drawer",
+        reasonRef: "openai-provider:" + providerName
+      });
+      if (msg) msg.textContent = r.ok ? t("OpenAIProvider \u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + (r.data && r.data.rv) + ")") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+    });
+  }
+  async function hydrateDocsExportConfig(el, ctx2) {
+    const slot = el.querySelector("[data-wf-export-cfg]");
+    if (!slot || !ctx2.api.exportConfig) return;
+    const r = await ctx2.api.exportConfig();
+    if (!r.ok || !el.isConnected) return;
+    const cfg = r.data || {};
+    const excl = Array.isArray(cfg.excludeDocTypes) ? cfg.excludeDocTypes.join(", ") : "BugDoc, DriftReport, PlanDoc, SessionLog";
+    slot.innerHTML = `
+  <div class="card">
+    <div class="card-h"><span class="h-title">${esc(t("\u6587\u6863 Git \u5BFC\u51FA\u72EC\u7ACB\u914D\u7F6E\uFF08\u6570\u636E\u5E93 docs_export_config\uFF0C\u975E\u4EE3\u7801\u786C\u7F16\u7801\uFF09"))}</span></div>
+    <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" data-exp-inc ${cfg.includeRuntimeDocs ? "checked" : ""} />
+        <span>${esc(t("\u5BFC\u51FA\u65F6\u5305\u542B\u8FD0\u884C\u65F6\u4E34\u65F6\u6587\u6863 (includeRuntimeDocs)"))}</span>
+      </label>
+      <span class="small faint">${esc(t("\u9ED8\u8BA4\u6392\u9664\u7684\u8FD0\u884C\u65F6 docTypes\uFF1A"))}</span>
+      <input class="inp mono" data-exp-types value="${esc(excl)}" style="min-width:280px;flex:1" />
+      <button type="button" class="btn tiny acc" data-exp-save>${esc(t("\u4FDD\u5B58\u5BFC\u51FA\u914D\u7F6E"))}</button>
+      <span class="small faint" data-exp-msg></span>
+    </div>
+  </div>`;
+    slot.querySelector("[data-exp-save]")?.addEventListener("click", async () => {
+      const inc = Boolean(slot.querySelector("[data-exp-inc]")?.checked);
+      const types2 = String(slot.querySelector("[data-exp-types]")?.value || "").split(",").map((x) => x.trim()).filter(Boolean);
+      const msg = slot.querySelector("[data-exp-msg]");
+      const res = await ctx2.api.saveExportConfig({ includeRuntimeDocs: inc, excludeDocTypes: types2, excludeKinds: cfg.excludeKinds || [] });
+      if (msg) msg.textContent = res.ok ? t("\u5BFC\u51FA\u914D\u7F6E\u5DF2\u66F4\u65B0\u5165\u5E93") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(res.error || res.status);
+    });
+  }
+
   // src/screens/workflows.js
   function wfAnchorOfRoute(route) {
     const r = String(route || "");
@@ -3130,7 +3877,7 @@ var CoreConsoleWeb = (() => {
     const tpls = ctx2.store.refs("Template");
     const bugWf = ctx2.store.refs("Workflow").find((w) => w && w.name === "bug-lifecycle");
     const bugRuns = ctx2.store.runs().filter((r) => r && String(r.workflow || r.name || "") === "bug-lifecycle");
-    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="small">' + esc(t("\u7F3A\u9677\u95ED\u73AF\u771F\u5B9E Workflow \u5BF9\u8C61\uFF08BugReport\u2192\u4E34\u65F6 BugDoc\u2192\u9A8C\u8BC1\u2192\u5173\u95ED\uFF09\u3002")) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
+    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="dh-actions">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
     const tplBlock = tpls.length ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join("") + "</div>" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u6D41\u7A0B\u6A21\u677F\uFF08Template \u5BF9\u8C61\u5728\u518C\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002")) + " " + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + "</div></div></div>";
     return bugBlock + tplBlock;
   }
@@ -3167,8 +3914,9 @@ var CoreConsoleWeb = (() => {
       t("\u5DE5\u4F5C\u6D41"),
       t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
       chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
-    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + "</div>";
+    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + '<div data-wf-export-cfg style="margin-top:18px"></div></div>';
     paintRuns();
+    hydrateDocsExportConfig(el, ctx2);
     (async () => {
       const stamp = typeof location !== "undefined" ? location.hash : "";
       const slot = el.querySelector("[data-wf-reg]");
@@ -3216,25 +3964,27 @@ var CoreConsoleWeb = (() => {
       paintRuns();
     })();
   }
-  var WF_ALIASES = { "bug-workflow": "bug-lifecycle" };
+  var WF_ALIASES = {
+    "bug-workflow": "core-system-developer-loop",
+    "bug-lifecycle": "core-system-developer-loop",
+    "core-workflow": "core-system-developer-loop",
+    "dev-delivery": "core-system-developer-loop",
+    "apply-workflow": "default-task",
+    "simple-shot": "default-task",
+    "watch-only": "default-task"
+  };
   function wfApiRows(res) {
-    const d = res && res.ok ? res.data : null;
-    return d && Array.isArray(d.workflows) ? d.workflows : [];
+    return res && res.ok && res.data && Array.isArray(res.data.workflows) ? res.data.workflows : [];
   }
   function wfApiRuns(res) {
-    const d = res && res.ok ? res.data : null;
-    return d && Array.isArray(d.runs) ? d.runs : [];
+    return res && res.ok && res.data && Array.isArray(res.data.runs) ? res.data.runs : [];
   }
   function wfApiTasks(res) {
-    const d = res && res.ok ? res.data : null;
-    return d && Array.isArray(d.tasks) ? d.tasks : [];
+    return res && res.ok && res.data && Array.isArray(res.data.tasks) ? res.data.tasks : [];
   }
   function wfTaskIndex(tasks) {
     const m = /* @__PURE__ */ new Map();
-    for (const t2 of tasks) {
-      if (!t2 || !t2.name) continue;
-      m.set(String(t2.scope || "global") + "/" + String(t2.name), t2);
-    }
+    for (const t2 of tasks) if (t2 && t2.name) m.set(String(t2.scope || "global") + "/" + String(t2.name), t2);
     return m;
   }
   function wfTaskKey(involved) {
@@ -3387,11 +4137,12 @@ var CoreConsoleWeb = (() => {
       const rows = wfApiRows(wfsRes);
       const runsAll = wfApiRuns(runsRes);
       const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
-      const alias = WF_ALIASES[String(name)];
+      const serverAliases = wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases || {};
+      const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
       let wf = rows.find((x) => String(x && x.name) === String(name));
       if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
-      const usedName = wf ? String(wf.name) : String(name);
-      const runs = runsAll.filter((r) => String(r && r.workflow) === usedName).sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
+      const usedName = wf ? String(wf.name) : String(alias || name);
+      const runs = runsAll.filter((r) => String(r && r.workflow) === usedName || String(r && r.workflow) === String(name)).sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
       let sessionRows = [];
       const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
       if (taskIds.length && ctx2.api.taskSessions) {
@@ -3429,8 +4180,10 @@ var CoreConsoleWeb = (() => {
       ];
       const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
       const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
-      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
       bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
+      bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
+      hydrateDocsExportConfig(el, ctx2);
     })().catch((e) => {
       if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
       const detail = el.querySelector("[data-wf-detail]");

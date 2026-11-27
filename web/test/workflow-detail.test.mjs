@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { wfTaskKey, wfRealSession, wfRunNodesHtml, wfNodeGraphHtml, wfFlowNodesHtml } from '../src/screens/workflows.js'
+import { defaultLoopSpec, buildWorkflowYaml, workflowStudioHtml } from '../src/screens/workflow-config.js'
 
 test('wfTaskKey：只解析 Task/scope/name 三段 involved', () => {
   assert.equal(wfTaskKey('Task/self-recursive-core/console-audit-20261126'), 'self-recursive-core/console-audit-20261126')
@@ -90,3 +91,22 @@ test('wfRunNodesHtml：未到达节点不挂 Task 会话', () => {
   assert.match(html, /无会话（未到达）/)
   assert.equal((html.match(/data-go="session\/session-real"/g) || []).length, 1, '只有当前/已到节点挂会话深链')
 })
+
+test('workflowStudioHtml & buildWorkflowYaml：8 节点主干、双入口 DocApplied、自动审批、BugDoc 收尾可增删/可设失效或保留、OpenAIProvider 点击即配', () => {
+  const cfg = defaultLoopSpec('core-system-developer-loop', {})
+  assert.equal(cfg.enabled, false, '出厂默认不自动启动')
+  assert.equal(cfg.immutableNodes, true, '内置主干节点拓扑锁定')
+  assert.equal(cfg.undeletable, true, '内置禁止删除')
+  assert.equal(cfg.bugDocPolicy, 'invalidate', '临时 BugDoc 默认策略为标记失效归档')
+  const yaml = buildWorkflowYaml(cfg, 'global')
+  assert.match(yaml, /name: core-system-developer-loop/)
+  assert.match(yaml, /on: "entry:DocApplied", to: Planning/)
+  assert.match(yaml, /bugDocPolicy: invalidate/)
+  assert.match(yaml, /provider: openai-default/)
+  const html = workflowStudioHtml({}, 'core-system-developer-loop')
+  assert.match(html, /data-open-provider="openai-default"/)
+  assert.match(html, /data-develop-collector/)
+  assert.match(html, /data-cond-add/)
+  assert.match(html, /data-act-add/)
+})
+

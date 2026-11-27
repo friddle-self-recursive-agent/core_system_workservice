@@ -1,16 +1,10 @@
-/* workflows.js —— 工作流三区列表（§19.3：在册注册表=GET /v1/workflows 现读 ∪ 运行记录=
- * GET /v1/workflows/runs 现读+快照 runs 聚合并显去重 ∪ 模板三卡（§9b 静态卡，实例化置灰））
- * + 详情（概览/节点图）+ 运行独立页（hero 批闸按钮=ApprovalGranted/ApprovalRejected 事件发布）。
- * 快照不带 workflows 键=旧「假空态」根因——注册表/runs 一律走活体 GET 面，失败=诚实降级词形。
- * wfAnchorOfRoute：route→workflow 锚映射（'workflows/x' 剥前缀；'-workflow$' 兜底
- * 'core-workflow'——语义移植旧 console-app 同名函数）。 */
-
+/* workflows.js —— 工作流三区列表 + 详情（全节点可视化配置工作台/节点图/任务/会话） + 运行独立页 */
 import { esc, trunc, timeHtml, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoLinkChip, objRoute, docRoute } from '../render/chips.js';
 import { depChips } from './tasks.js';
 import { t as tr } from '../core/i18n.js';
+import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
 
-/** route → workflow 锚（不匹配=空串——不编造锚）。 */
 export function wfAnchorOfRoute(route) {
   const r = String(route || '');
   if (!r) return '';
@@ -19,10 +13,7 @@ export function wfAnchorOfRoute(route) {
   return '';
 }
 
-
-/* 相位管线节点图（数据=run.phases/transitions/phase——声明序列原样；缺席=单节点诚实降级）。
- * F-04：节点标色按 run.history 运行轨迹（真实走过的步），不按下标盲标绿——失败/挂起 run
- * 不再把未执行节点标绿。节点点击 → 下方抽屉（该相位关联事件链+involved 文档 chips）。 */
+/* 相位管线节点图（节点标色按 run.history 运行轨迹） */
 function phaseGraphHtml(run, ctx) {
   const phases = Array.isArray(run.phases) ? run.phases : [];
   const cur = String(run.phase || '');
@@ -119,20 +110,11 @@ export function templatesSectionHtml(ctx) {
   const bugWf = ctx.store.refs('Workflow').find((w) => w && w.name === 'bug-lifecycle');
   const bugRuns = ctx.store.runs().filter((r) => r && String(r.workflow || r.name || '') === 'bug-lifecycle');
   const bugBlock = (bugWf || bugRuns.length)
-    ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span>' +
-      '<span class="h-right">' + chip('Workflow', 'acc') + ' ' + chip(bugRuns.length + tr(' 次运行'), bugRuns.length ? 'acc' : 'mute') + '</span></div>' +
-      '<div class="card-b"><div class="small">' + esc(tr('缺陷闭环真实 Workflow 对象（BugReport→临时 BugDoc→验证→关闭）。')) + '</div>' +
-      '<div class="dh-actions" style="margin-top:8px">' +
-      chipGo(tr('工作流详情'), 'wf/bug-lifecycle', 'acc', true) + ' ' +
-      chipGo(tr('文档库 BugDoc'), 'docs', 'mute', true) +
-      '</div></div></div>'
+    ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip('Workflow', 'acc') + ' ' + chip(bugRuns.length + tr(' 次运行'), bugRuns.length ? 'acc' : 'mute') + '</span></div><div class="card-b"><div class="dh-actions">' + chipGo(tr('工作流详情'), 'wf/bug-lifecycle', 'acc', true) + ' ' + chipGo(tr('文档库 BugDoc'), 'docs', 'mute', true) + '</div></div></div>'
     : '';
   const tplBlock = tpls.length
     ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join('') + '</div>'
-    : '<div class="card"><div class="card-b"><div class="small faint">' +
-      esc(tr('暂无流程模板（Template 对象在册后此处显示）。')) + ' ' +
-      chipGo(tr('设计见 workflow.md §9b'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) +
-      '</div></div></div>';
+    : '<div class="card"><div class="card-b"><div class="small faint">' + esc(tr('暂无流程模板（Template 对象在册后此处显示）。')) + ' ' + chipGo(tr('设计见 workflow.md §9b'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) + '</div></div></div>';
   return bugBlock + tplBlock;
 }
 
@@ -196,9 +178,11 @@ function listScreen(el, ctx) {
     '<div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(tr('运行记录现读中…')) + '</div></div></div></div>' +
     '<h2 class="sec-title" style="margin-top:18px">' + esc(tr('模板')) + '</h2>' +
     templatesSectionHtml(ctx) +
+    '<div data-wf-export-cfg style="margin-top:18px"></div>' +
     '</div>';
 
   paintRuns();
+  hydrateDocsExportConfig(el, ctx);
 
   /* 注册表现读（活体面——不再读快照 workflows 键） */
   (async () => {
@@ -263,32 +247,23 @@ function listScreen(el, ctx) {
   })();
 }
 
-/* ── 工作流详情 v2（2026-11-27 用户目标：展示/编辑/节点/任务/节点会话，全部真实数据） ──
- * 三源现读：GET /v1/workflows（定义+执行绑定+ConnectorOps 骨架）∪ GET /v1/workflows/runs
- * （运行/节点轨迹/会话锚）∪ GET /v1/tasks（任务标题/agentSession 会话入口）。
- * 编辑：object 源→Workflow 编辑器；builtin 源→设计文档/scheme（高敏，不伪造表单）。
- * 节点会话：history[].sessionId → run.sessionId → task.agentSession；空=未记录，不编造。 */
+/* ── 工作流详情 v2（定义/以人为本可视化配置/节点/任务/节点会话） ── */
+const WF_ALIASES = {
+  'bug-workflow': 'core-system-developer-loop',
+  'bug-lifecycle': 'core-system-developer-loop',
+  'core-workflow': 'core-system-developer-loop',
+  'dev-delivery': 'core-system-developer-loop',
+  'apply-workflow': 'default-task',
+  'simple-shot': 'default-task',
+  'watch-only': 'default-task',
+};
 
-const WF_ALIASES = { 'bug-workflow': 'bug-lifecycle' };
-
-function wfApiRows(res) {
-  const d = res && res.ok ? res.data : null;
-  return d && Array.isArray(d.workflows) ? d.workflows : [];
-}
-function wfApiRuns(res) {
-  const d = res && res.ok ? res.data : null;
-  return d && Array.isArray(d.runs) ? d.runs : [];
-}
-function wfApiTasks(res) {
-  const d = res && res.ok ? res.data : null;
-  return d && Array.isArray(d.tasks) ? d.tasks : [];
-}
+function wfApiRows(res) { return (res && res.ok && res.data && Array.isArray(res.data.workflows)) ? res.data.workflows : []; }
+function wfApiRuns(res) { return (res && res.ok && res.data && Array.isArray(res.data.runs)) ? res.data.runs : []; }
+function wfApiTasks(res) { return (res && res.ok && res.data && Array.isArray(res.data.tasks)) ? res.data.tasks : []; }
 function wfTaskIndex(tasks) {
   const m = new Map();
-  for (const t of tasks) {
-    if (!t || !t.name) continue;
-    m.set(String(t.scope || 'global') + '/' + String(t.name), t);
-  }
+  for (const t of tasks) if (t && t.name) m.set(String(t.scope || 'global') + '/' + String(t.name), t);
   return m;
 }
 export function wfTaskKey(involved) {
@@ -506,11 +481,12 @@ function detailScreen(el, ctx, name) {
     const rows = wfApiRows(wfsRes);
     const runsAll = wfApiRuns(runsRes);
     const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
-    const alias = WF_ALIASES[String(name)];
+    const serverAliases = (wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases) || {};
+    const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
     let wf = rows.find((x) => String(x && x.name) === String(name));
     if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
-    const usedName = wf ? String(wf.name) : String(name);
-    const runs = runsAll.filter((r) => String(r && r.workflow) === usedName)
+    const usedName = wf ? String(wf.name) : String(alias || name);
+    const runs = runsAll.filter((r) => String(r && r.workflow) === usedName || String(r && r.workflow) === String(name))
       .sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
     let sessionRows = [];
     const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
@@ -565,11 +541,15 @@ function detailScreen(el, ctx, name) {
       '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('定义')) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
+      workflowStudioHtml(wf, usedName) +
+      '<div data-wf-export-cfg style="margin-top:14px"></div>' +
       (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
       (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
         esc(tr('该 workflow 暂无运行记录——')) + (exec.state === 'unbound' ? esc(tr('执行面未绑定（ConnectorOps 骨架缺席），任务不会拉起 run。')) : '') +
         '</div></div></div>');
     bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
+    bindWorkflowStudio(el, ctx, wf, usedName, () => detailScreen(el, ctx, usedName));
+    hydrateDocsExportConfig(el, ctx);
   })().catch((e) => {
     if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;
     const detail = el.querySelector('[data-wf-detail]');
