@@ -4,7 +4,7 @@
 // ③ 发送路由：sessionRoute 单段编码。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { heroComposerHtml, recentSessionsHtml, sessionRoute } from '../src/screens/home.js'
+import { heroComposerHtml, recentSessionsHtml, sessionRoute, submitHome } from '../src/screens/home.js'
 
 test('heroComposerHtml：DeepSeek 版大 composer（示例 chips/图片/圆形发送；无旧 select）', () => {
   const html = heroComposerHtml()
@@ -35,4 +35,52 @@ test('recentSessionsHtml：清单倒序/上限 6/空清单不渲染/标题转义
 test('sessionRoute：单段编码（#/session/<id>）', () => {
   assert.equal(sessionRoute('abc'), 'session/abc')
   assert.equal(sessionRoute('a/b c'), 'session/a%2Fb%20c')
+})
+
+test('submitHome：create→send(queue)→进入 #/session/<id>（宿主发 id，零手填）', async () => {
+  const calls = []
+  const notes = []
+  const el = {
+    querySelector(sel) {
+      if (sel === '[data-home-text]') return { value: '帮我看一下文档差距' }
+      if (sel === '[data-home-send]') return { disabled: false }
+      if (sel === '[data-home-note]') return { set textContent(v) { notes.push(String(v)) }, get textContent() { return notes[notes.length - 1] || '' } }
+      return null
+    },
+  }
+  globalThis.window = { __CC: { chatFaces: {
+    create: async () => { calls.push(['create']); return { status: 200, data: { sessionId: 's-new' } } },
+    send: async (sid, text) => { calls.push(['send', sid, text]); return { status: 200 } },
+  } } }
+  let nav = ''
+  try {
+    const ok = await submitHome(el, { go: (p) => { nav = p } })
+    assert.equal(ok, true)
+    assert.deepEqual(calls, [['create'], ['send', 's-new', '帮我看一下文档差距']], 'create 先行、send 落同一会话（默认 queue）')
+    assert.equal(nav, 'session/s-new', '发送成功=进入真实会话屏')
+    assert.ok(notes.some((n) => n.includes('正在发送')), '过程词形在册')
+  } finally {
+    delete globalThis.window
+  }
+})
+
+test('submitHome：通路缺席=显式缺席词形，不冒充已发送', async () => {
+  const notes = []
+  const el = {
+    querySelector(sel) {
+      if (sel === '[data-home-text]') return { value: 'hello' }
+      if (sel === '[data-home-send]') return { disabled: false }
+      if (sel === '[data-home-note]') return { set textContent(v) { notes.push(String(v)) }, get textContent() { return notes[notes.length - 1] || '' } }
+      return null
+    },
+  }
+  let navigated = false
+  try {
+    const ok = await submitHome(el, { go: () => { navigated = true } })
+    assert.equal(ok, false)
+    assert.equal(navigated, false)
+    assert.ok(notes.some((n) => n.includes('对话通路未注入')), '显式缺席词形')
+  } finally {
+    delete globalThis.window
+  }
 })
