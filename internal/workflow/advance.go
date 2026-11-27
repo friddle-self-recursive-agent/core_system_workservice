@@ -194,6 +194,7 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 const (
 	spawnKindService = "service"
 	spawnKindDiffDoc = "diffdoc"
+	spawnKindInner   = "inner"
 )
 
 type spawnReq struct {
@@ -218,6 +219,9 @@ func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
 			run.SuspendWhy = SuspendService
 			return &spawnReq{kind: spawnKindService, run: *run, node: node}
 		}
+	}
+	if sp := r.landInnerLocked(run, next); sp != nil {
+		return sp // executor=inner 的轻量执行单元：挂起+锁外派发（2026-11-28 润滑剂裁定）
 	}
 	r.applyAdvanceLocked(run, next)
 	// 审批判决文档触发窗口：本拍刚落人审挂起（挂起 run 后续拍被 Status!=RunRunning 跳过，
@@ -315,6 +319,17 @@ func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
 			_ = recover()
 			r.opts.DiffSummarizer.OnApprovalSuspended(run, objKey)
 		}(sp.run, sp.run.Involved)
+	case spawnKindInner:
+		if r.opts.InnerAgent == nil {
+			return
+		}
+		go func(run RunRecord, node NodeView) {
+			defer func() { _ = recover() }() // panic 不崩引擎（实现侧 trace 自记）
+			if err := r.opts.InnerAgent.RunInner(run, node); err != nil {
+				return // 失败=留挂起（run.status.lastError 由实现侧写；续行靠重试/人介入）
+			}
+			r.InnerDone(run.Run, "inner:"+node.Name)
+		}(sp.run, sp.node)
 	default:
 		if r.opts.ServiceSpawns != nil {
 			r.opts.ServiceSpawns.SpawnFromRun(sp.run, sp.node)

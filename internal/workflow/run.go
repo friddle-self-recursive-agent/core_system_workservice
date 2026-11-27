@@ -186,7 +186,7 @@ type RunRecord struct {
 	// SuspendWhy 挂起因由（2026-11-27 service session 裁决——新载荷键=代际判别器）：
 	// approval=闸锚挂起（缺省词形=既有口径不标注）；service=service 执行 session 进行中
 	// （ServiceSpawner 挂接时落点即挂起——serviceexec.go）。空=非挂起/未细分。
-	SuspendWhy string `json:"suspendWhy,omitempty"`
+	SuspendWhy string `json:"suspendWhy,omitempty"` // service|inner-agent（2026-11-28 内置轻量 agent——低智商润滑剂）
 }
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
@@ -262,6 +262,18 @@ type RunOptions struct {
 	// 实际挂起等人（auto/agent 模式直续不触发）时锁外异步调用实现侧（读稿+现值→内置小
 	// agent 调 LLM 整理→DocumentDiff 文档落库——ops_core_inner_agent 词形，实现归装配层）。
 	DiffSummarizer DiffSummarizer
+	// InnerAgent 内置轻量 agent 执行面（2026-11-28 用户裁定「doc-apply 的审批以及部分服务
+	// 运行起来可以使用内置的 agent 来做润滑剂。即低智商要求的可以使用内置 agent」——可选
+	// 能力，nil=既有行为面零翻转）。挂接后 run 落 executor=inner 的 agent/service 节点即挂起
+	// （suspendWhy=inner-agent）+ 锁外派发 RunInner（引擎内直调 Provider 轻量 LLM——不拉
+	// session）；实现完成调 InnerDone 续行（on=inner-resume 轨迹行）。
+	InnerAgent InnerAgentRunner
+}
+
+// InnerAgentRunner 内置轻量 agent 契约（ops_core_inner_agent 词形——润滑剂：低智商环节
+// 不拉 session 引擎内直调 LLM）。实现侧自管产物落库与幂等；err 非 nil=留挂起（续行靠重试）。
+type InnerAgentRunner interface {
+	RunInner(run RunRecord, node NodeView) error
 }
 
 // DiffSummarizer 审批判决文档生成契约（实现侧异步执行——引擎只通知不等待不重试；

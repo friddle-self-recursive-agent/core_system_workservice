@@ -36,12 +36,13 @@ type PostActionView struct {
 // ServiceSpawn session 拉起面（serviceexec.go）；其余声明字段（refDocs/contextPassing/…）
 // 对象 spec 透传不在本投影（消费方=文档面/前端节点表）。
 type NodeView struct {
-	Name          string   `json:"name"`                  // 节点名（富声明 name；标量相位=相位名同词）
-	Phase         string   `json:"phase"`                 // 相位锚（run.Phase 同词域）
-	Unit          string   `json:"unit,omitempty"`        // connectops|agent|service|gate（空=未声明——旧词形透传）
-	Service       string   `json:"service,omitempty"`     // unit=service：目标系统名（developer-system…）
-	Op            string   `json:"op,omitempty"`          // 调用 op（develop|acceptance|release…）
-	Role          string   `json:"role,omitempty"`        // permissionRole（P7 权限随文档——随载荷透传给执行通路）
+	Name          string   `json:"name"`                    // 节点名（富声明 name；标量相位=相位名同词）
+	Phase         string   `json:"phase"`                   // 相位锚（run.Phase 同词域）
+	Unit          string   `json:"unit,omitempty"`          // connectops|agent|service|gate（空=未声明——旧词形透传）
+	Executor      string   `json:"executor,omitempty"`      // dsh（缺省，重型通路）| inner（2026-11-28 用户裁定「低智商要求的可以使用内置 agent」——引擎内置轻量 LLM 通路 ops_core_inner_agent，不拉 session 零拉起开销）
+	Service       string   `json:"service,omitempty"`       // unit=service：目标系统名（developer-system…）
+	Op            string   `json:"op,omitempty"`            // 调用 op（develop|acceptance|release…）
+	Role          string   `json:"role,omitempty"`          // permissionRole（P7 权限随文档——随载荷透传给执行通路）
 	ContextFields []string `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
 	EntryEvents   []string `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
 }
@@ -110,13 +111,14 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 	}
 	if n.Kind == yaml.MappingNode {
 		var m struct {
-			Name          string   `yaml:"name"`
-			Phase         string   `yaml:"phase"`
-			Title         string   `yaml:"title"`
-			Unit          string   `yaml:"unit"`
-			Service       string   `yaml:"service"`
-			Op            string   `yaml:"op"`
-			Role          string   `yaml:"permissionRole"`
+			Name           string `yaml:"name"`
+			Phase          string `yaml:"phase"`
+			Title          string `yaml:"title"`
+			Unit           string `yaml:"unit"`
+			Service        string `yaml:"service"`
+			Op             string `yaml:"op"`
+			Executor       string `yaml:"executor"`
+			Role           string `yaml:"permissionRole"`
 			ContextPassing struct {
 				PreviousRound bool     `yaml:"previousRound"`
 				Fields        []string `yaml:"fields"`
@@ -134,7 +136,7 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 			p = m.Title
 		}
 		return NodeView{Name: m.Name, Phase: p, Unit: m.Unit, Service: m.Service, Op: m.Op, Role: m.Role,
-			ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents}, p != ""
+			Executor: m.Executor, ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents}, p != ""
 	}
 	return NodeView{}, false
 }

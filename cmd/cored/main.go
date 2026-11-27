@@ -363,6 +363,15 @@ func run() error {
 		diffGen.Repo = repo
 		runOpts.DiffSummarizer = diffGen
 	}
+	// 内置轻量 agent 执行面（2026-11-28 用户裁定「doc-apply 的审批以及部分服务运行起来可以
+	// 使用内置的 agent 来做润滑剂。即低智商要求的可以使用内置 agent」）：executor=inner 的
+	// agent/service 节点挂接 Runner（引擎内直调 Provider——不拉 session；产物 DocumentDiff
+	// inneragent-* 落库，完成 InnerDone 续行）。缺席=零翻转（inner 节点照旧纯查表推进）。
+	runOpts.InnerAgent = &approvaldiff.Runner{G: diffGen}
+	innerAgentState := "off（未挂文档库——inner 节点零翻转）"
+	if repo != nil {
+		innerAgentState = "on（ops_core_inner_agent：executor=inner 节点引擎内直调 LLM）"
+	}
 	runOpts.Store = rtStore              // 运行态投影写穿透+启动恢复（G-01——六类投影第一段：run/触发/送达/唤醒）
 	runOpts.Brakes.Enabled = *brakesFlag // 刹车闸挂接态（缺省关断=零刹车既有行为面零翻转）
 	// service 节点 session 拉起面（2026-11-27 用户裁决「builtin 的 service 的 agent 可以用
@@ -556,6 +565,7 @@ func run() error {
 	}
 	fmt.Fprintf(os.Stderr, "cored: 刹车闸=%s（--brakes；on=受理路径冷却门（同锚同 involved cooldown 窗口内触发不落 run——braked 计数可见；跨 involved 不互踩）+推进拍变更上限（每拍每锚 run 相位变更数受生效刹车值约束——capped 计数可见，超限本拍零动作下拍续推）——workflow.md 规则 17；刹车值=spec.brakes 声明收紧，宽松方向钳回强制默认（可收紧不可关闭）；off=关断零刹车缺省不改行为面）\n", brakesState)
 	fmt.Fprintf(os.Stderr, "cored: 判决文档生成面=%s（ops_core_inner_agent）\n", diffAgentState)
+	fmt.Fprintf(os.Stderr, "cored: 内置轻量agent面=%s（润滑剂——executor=inner 低智商节点引擎内直调 LLM）\n", innerAgentState)
 	fmt.Fprintf(os.Stderr, "cored: 对象声明表投影=%s（对象 spec 解析 v0.27 表投影+v0.28 相位投影与迁移判定接线——object 源 run 相位/声明表按文档库 spec 投影，声明了 phases 的对象参与既有表驱动判定；未声明 phases=零投影既有行为面不变）\n", objSpecState)
 	if draftOpts != nil {
 		restored, skipped, err := drafts.Restore()

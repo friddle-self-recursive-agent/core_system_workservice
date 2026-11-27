@@ -124,11 +124,11 @@ type ServiceSpawnOptions struct {
 type ServiceSpawnLog struct {
 	opts ServiceSpawnOptions
 
-	mu       sync.Mutex
-	seq      int64
-	ring     []ServiceSpawnRecord
-	spawned  int64
-	dropped  int64
+	mu      sync.Mutex
+	seq     int64
+	ring    []ServiceSpawnRecord
+	spawned int64
+	dropped int64
 }
 
 // NewServiceSpawnLog 构建拉起投影落点。挂有 Store 时先做启动恢复（装载历史行续接 seq/

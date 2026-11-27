@@ -43,6 +43,7 @@ type providerCfg struct {
 	BaseURL   string
 	SecretSrc string
 	Model     string
+	Mapping   map[string]string
 }
 
 // OnApprovalSuspended 契约入口（引擎 goroutine 调用——本方法阻塞自有协程不阻塞引擎）。
@@ -111,6 +112,24 @@ func (g *Generator) summarize(ctx context.Context, kind, scope, name string) (ba
 	return base, working, verdict
 }
 
+// complete 通用 LLM 调用（model 已解析真名）——Runner/判决共用内核。
+func (g *Generator) complete(ctx context.Context, cfg providerCfg, model, sys, user string) string {
+	return g.chat(ctx, cfg, model, sys, user)
+}
+
+// ModelOverride taskModelMapping[op] 真网关模型名（tier 词形网关不认——ops_core_inner_agent
+// 词形映射在 Provider 对象 taskModelMapping，部署侧 apply 配置）。
+func (g *Generator) ModelOverride(op string) (string, bool) {
+	if op == "" || g.Repo == nil {
+		return "", false
+	}
+	cfg, err := g.provider()
+	if err != nil {
+		return "", false
+	}
+	return cfg.Mapping[op], cfg.Mapping[op] != ""
+}
+
 // callLLM 小内置 agent：Provider low 档模型，输入双文档，输出人话判决。
 func (g *Generator) callLLM(ctx context.Context, base, working, kind, name string) string {
 	cfg, err := g.provider()
@@ -119,6 +138,11 @@ func (g *Generator) callLLM(ctx context.Context, base, working, kind, name strin
 	}
 	sys := "你是审批辅助小 agent（ops_core_inner_agent）。对比文档基线与待批稿，用中文人话总结：1) 改了什么（逐条、具体）；2) 为什么要改（若可判断）；3) 影响面与风险（有无删改关键约束/权限/验收判据）。不超过 300 字，只依据给出的两份文本，不编造。"
 	user := fmt.Sprintf("对象：%s/%s\n\n【基线（现值）】\n%s\n\n【待批稿】\n%s", kind, name, clip(base, 6000), clip(working, 6000))
+	return g.chat(ctx, cfg, cfg.Model, sys, user)
+}
+
+// chat HTTP 交互内核（502/503 退避重试×2——BugDoc #3 同源瞬态病）。
+func (g *Generator) chat(ctx context.Context, cfg providerCfg, model, sys, user string) string {
 	payload := map[string]any{
 		"model": cfg.Model,
 		"messages": []map[string]string{
@@ -146,11 +170,35 @@ func (g *Generator) callLLM(ctx context.Context, base, working, kind, name strin
 		timeout = 30 * time.Second
 	}
 	cli := &http.Client{Timeout: timeout}
+	// 502/瞬态重试（BugDoc bug-workflow-agent-502-20261127 #3 同源——网关偶发 502 空流
+	// 是在册 bug；判决小 agent 侧带退避重试 2 次，重试上限后走失败词形不编造）。
 	g.trace("http-do url=" + url + " model=" + cfg.Model)
-	resp, err := cli.Do(req)
-	g.trace("http-done err=" + fmt.Sprint(err != nil))
-	if err != nil {
-		return "（LLM 调用失败——" + err.Error() + "）"
+	var resp *http.Response
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 3 * time.Second)
+			req, _ = http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+			req.Header.Set("Content-Type", "application/json")
+			if cfg.SecretSrc != "" {
+				if key, kerr := connectors.ResolveSecret(cfg.SecretSrc, g.Secrets, nil); kerr == nil {
+					req.Header.Set("Authorization", "Bearer "+key)
+				}
+			}
+		}
+		var doErr error
+		resp, doErr = cli.Do(req)
+		err = doErr
+		g.trace("http-done attempt=" + fmt.Sprint(attempt) + " err=" + fmt.Sprint(err != nil))
+		if err == nil && resp.StatusCode != http.StatusBadGateway && resp.StatusCode != http.StatusServiceUnavailable {
+			break
+		}
+		if resp != nil {
+			resp.Body.Close()
+			resp = nil
+		}
+	}
+	if err != nil || resp == nil {
+		return "（LLM 调用失败——" + fmt.Sprint(err) + "）"
 	}
 	defer resp.Body.Close()
 	var out struct {
@@ -215,7 +263,7 @@ func (g *Generator) provider() (providerCfg, error) {
 	if model == "" {
 		model = "flash-tier"
 	}
-	return providerCfg{BaseURL: d.Spec.Config.BaseURL, SecretSrc: d.Spec.Auth.Secret.Source, Model: model}, nil
+	return providerCfg{BaseURL: d.Spec.Config.BaseURL, SecretSrc: d.Spec.Auth.Secret.Source, Model: model, Mapping: d.Spec.Config.TaskModelMapping}, nil
 }
 
 // buildDoc 组装 DocumentDiff 对象（yaml 对象+verdict 正文；锚=target@rv+run+agent 词形）。
