@@ -2209,8 +2209,7 @@ var CoreConsoleWeb = (() => {
     if (!rows.length) return "";
     return '<div class="home-recent-h">' + esc(t("\u6700\u8FD1\u4F1A\u8BDD")) + '</div><div class="home-recent-list">' + rows.map((s) => {
       const id = String(s.sessionId);
-      const when = s.updatedAt ? relAge(Number(s.updatedAt)) || "" : "";
-      const label = String(s.title || "").trim() || t("\u4F1A\u8BDD") + (when ? " \xB7 " + when : "");
+      const label = String(s.title || "").trim() || t("\u4F1A\u8BDD");
       return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '"><span class="home-recent-dot' + (s.running === true ? " live" : "") + '"></span><span class="home-recent-t">' + esc(trunc(label, 30)) + "</span>" + (s.updatedAt ? '<span class="home-recent-time">' + esc(relAge(Number(s.updatedAt)) || "") + "</span>" : "") + "</button>";
     }).join("") + '<button type="button" class="home-recent-chip all" data-go="chat/core-headless">' + esc(t("\u5168\u90E8\u4F1A\u8BDD")) + " \u2192</button></div>";
   }

@@ -48,9 +48,8 @@ export function recentSessionsHtml(items) {
     '<div class="home-recent-list">' +
     rows.map((s) => {
       const id = String(s.sessionId);
-      const when = s.updatedAt ? (relAge(Number(s.updatedAt)) || '') : '';
-      // 宿主 list 无标题词形：不拿裸 id 当面（长串难读）——用「会话 · N 前」诚实占位，id 只进 tooltip。
-      const label = String(s.title || '').trim() || (tr('会话') + (when ? ' · ' + when : ''));
+      // 宿主 list 无标题词形：不拿裸 id 当面（长串难读）——用「会话」+ 右侧相对时间诚实占位，id 只进 tooltip。
+      const label = String(s.title || '').trim() || tr('会话');
       return '<button type="button" class="home-recent-chip" data-go="' + esc(sessionRoute(id)) + '" title="' + esc(id) + '">' +
         '<span class="home-recent-dot' + (s.running === true ? ' live' : '') + '"></span>' +
         '<span class="home-recent-t">' + esc(trunc(label, 30)) + '</span>' +
