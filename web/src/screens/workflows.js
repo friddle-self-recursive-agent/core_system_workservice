@@ -21,14 +21,19 @@ export function wfAnchorOfRoute(route) {
 
 
 /* 相位管线节点图（数据=run.phases/transitions/phase——声明序列原样；缺席=单节点诚实降级）。
- * 节点点击 → 下方抽屉（该相位关联事件链+involved 文档 chips——日志=R归档窗口内事实）。 */
+ * F-04：节点标色按 run.history 运行轨迹（真实走过的步），不按下标盲标绿——失败/挂起 run
+ * 不再把未执行节点标绿。节点点击 → 下方抽屉（该相位关联事件链+involved 文档 chips）。 */
 function phaseGraphHtml(run, ctx) {
   const phases = Array.isArray(run.phases) ? run.phases : [];
   const cur = String(run.phase || '');
   const st = String(run.status || '');
+  // 已走过节点集=history 轨迹 to 词集（含收束行——Reporting 计入）；静态表不再当轨迹源。
+  const visited = new Set((Array.isArray(run.history) ? run.history : [])
+    .map((h) => String((h && h.to) || '')).filter(Boolean));
+  const isTerminal = st === 'done' || st === 'converged';
   const nodeHtml = (p, i) => {
-    const active = p === cur;
-    const done = st === 'done' || (cur && phases.indexOf(cur) > i);
+    const active = p === cur && !isTerminal;
+    const done = visited.has(p) && (p !== cur || isTerminal);
     const cls = 'pg-node' + (active ? ' active' : '') + (done ? ' done' : '') + (p === 'Failed' ? ' fail' : '');
     return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div>' +
       '<div class="pg-name">' + esc(p) + '</div>' + (active ? chip(st || tr('进行中'), 'acc') : '') + '</div>';
@@ -76,7 +81,9 @@ function bindPhaseGraph(el, ctx, run) {
   });
 }
 
-const RUN_CLS = { running: 'acc', done: 'ok', ok: 'ok', success: 'ok', failed: 'esc', error: 'esc', canceled: 'mute', queued: 'mute', pending: 'mute' };
+const RUN_CLS = { running: 'acc', done: 'ok', ok: 'ok', success: 'ok', converged: 'ok', failed: 'esc', error: 'esc', canceled: 'mute', queued: 'mute', pending: 'mute' };
+/** 单次 run 终态判定（F-04 闭合集：converged|failed|canceled|done=终态——终态不写「正在发生」）。 */
+function isTerminalRun(st) { return ['done', 'converged', 'failed', 'canceled', 'ok', 'success'].includes(String(st || '')); }
 const REG_CLS = { running: 'acc', active: 'acc', suspended: 'warn', awaitingapproval: 'warn', failed: 'esc', error: 'esc', done: 'ok', ok: 'ok', idle: 'mute', registered: 'mute' };
 const PH_CLS = { awaitingapproval: 'warn', failed: 'esc', done: 'ok', executing: 'acc', running: 'acc' };
 
@@ -323,7 +330,9 @@ function runScreen(el, ctx, name, no) {
   const st = String(run.status || '');
   const stCls = st === 'suspended' ? 'warn' : (RUN_CLS[st] || 'mute');
   const startedAt = run.startedAt || run.at || run.ts;
-  const gateWord = st === 'suspended' ? tr('等审批') : (st === 'running' ? tr('运行中') : st);
+  const gateWord = st === 'suspended' ? tr('等审批')
+    : (st === 'running' ? tr('运行中')
+      : (st === 'converged' ? tr('已收束') : (st === 'failed' ? tr('已驳回') : st)));
   /* 批闸（§19 R3——run 恢复唯一人工通路=对 Workflow 锚发布 ApprovalGranted/ApprovalRejected；
    * scope=run.owner||'global'；无闸锚词形不显示按钮=诚实）。 */
   const canGate = String(run.phase || '') === 'AwaitingApproval' || st === 'suspended';
@@ -364,9 +373,14 @@ function runScreen(el, ctx, name, no) {
     sel.phases = phases;
     const curIdx = phases.indexOf(run.phase);
     if (curIdx >= 0) sel.idx = curIdx;
+    // F-04：标绿判据=history 运行轨迹（真实走过的步）——按下标盲标绿的缺陷（失败 run
+    // 全绿）收口；轨迹缺席=只亮当前相位（不冒充走过）。
+    const visited = new Set((Array.isArray(run.history) ? run.history : [])
+      .map((h) => String((h && h.to) || '')).filter(Boolean));
+    const isTerminal = st === 'done' || st === 'converged';
     lineEl.innerHTML = phases.map((p, i) => {
-      const done = st === 'done' || (curIdx >= 0 ? i < curIdx : false);
-      const active = i === curIdx && st !== 'done';
+      const done = visited.has(p) && (p !== run.phase || isTerminal);
+      const active = i === curIdx && !isTerminal;
       const dot = done ? '✓' : (active ? '' : String(i + 1));
       const conn = i < phases.length - 1
         ? '<div class="step-conn' + (done || (curIdx >= 0 && i < curIdx) ? ' fill' : '') + '"></div>' : '';
@@ -398,14 +412,17 @@ function runScreen(el, ctx, name, no) {
       }).join(' ');
     nowEl.innerHTML =
       '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || tr('进行中'), stCls) : '') + '</div>' +
-      '<div class="small faint">' + esc(isCur ? tr('正在发生——推进由 patch 实时刷新') : tr('历史相位——事件按归档窗口回放')) + '</div>' +
+      '<div class="small faint">' + esc(isCur
+        ? (isTerminalRun(st) ? tr('该相位已收束——单次运行结束') : tr('进行中——状态实时刷新'))
+        : tr('历史相位——按运行轨迹回放')) + '</div>' +
       (refs ? '<div class="now-refs">' + esc(tr('涉及')) + '：' + refs + '</div>' : '') +
       (isCur && st === 'suspended' ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(tr('去处理这条审批')) + '</span></div>' : '');
     bindDocLinks(nowEl, ctx);
   };
   const paintTl = () => {
-    /* 相位迁移（runs face transitions——字段缺席=不画不编造）；下方仍为归档窗口事件链。 */
-    const trans = Array.isArray(run.transitions) ? run.transitions.filter(Boolean) : [];
+    /* F-04：时间线=history 运行轨迹（真实迁移行含时刻）；静态 transitions 不再当事件时间线展示
+     *（轨迹缺席=不画不编造）。下方仍为归档窗口事件链。 */
+    const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
     const transHtml = trans.length
       ? '<div class="small faint" style="margin-bottom:6px">' + esc(tr('阶段推进记录：')) + '</div><div class="tl" style="margin-bottom:10px">' +
         trans.slice(0, 20).map((x) => {
@@ -442,6 +459,7 @@ function runScreen(el, ctx, name, no) {
     run.status = full.status || run.status;
     run.involved = full.involved || run.involved;
     run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
+    run.history = Array.isArray(full.history) ? full.history : run.history;
     paintLine(); paintNow(); paintTl();
   });
   refreshFace();

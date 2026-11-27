@@ -11394,9 +11394,11 @@ ${text2}</tr>
     const phases = Array.isArray(run.phases) ? run.phases : [];
     const cur = String(run.phase || "");
     const st = String(run.status || "");
+    const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
+    const isTerminal = st === "done" || st === "converged";
     const nodeHtml2 = (p, i) => {
-      const active = p === cur;
-      const done = st === "done" || cur && phases.indexOf(cur) > i;
+      const active = p === cur && !isTerminal;
+      const done = visited.has(p) && (p !== cur || isTerminal);
       const cls = "pg-node" + (active ? " active" : "") + (done ? " done" : "") + (p === "Failed" ? " fail" : "");
       return '<div class="' + cls + '" data-pg-node="' + esc(p) + '"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (active ? chip(st || t("\u8FDB\u884C\u4E2D"), "acc") : "") + "</div>";
     };
@@ -11426,7 +11428,10 @@ ${text2}</tr>
       });
     });
   }
-  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
+  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
+  function isTerminalRun(st) {
+    return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
+  }
   var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
   var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
   function runChip(r) {
@@ -11578,7 +11583,7 @@ ${text2}</tr>
     const st = String(run.status || "");
     const stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
     const startedAt = run.startedAt || run.at || run.ts;
-    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st;
+    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
     const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
     const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
     el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
@@ -11589,9 +11594,11 @@ ${text2}</tr>
       sel.phases = phases;
       const curIdx = phases.indexOf(run.phase);
       if (curIdx >= 0) sel.idx = curIdx;
+      const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
+      const isTerminal = st === "done" || st === "converged";
       lineEl.innerHTML = phases.map((p, i) => {
-        const done = st === "done" || (curIdx >= 0 ? i < curIdx : false);
-        const active = i === curIdx && st !== "done";
+        const done = visited.has(p) && (p !== run.phase || isTerminal);
+        const active = i === curIdx && !isTerminal;
         const dot = done ? "\u2713" : active ? "" : String(i + 1);
         const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
         return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
@@ -11619,11 +11626,11 @@ ${text2}</tr>
         const p2 = x.split("/");
         return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
       }).join(" ");
-      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? t("\u6B63\u5728\u53D1\u751F\u2014\u2014\u63A8\u8FDB\u7531 patch \u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u4E8B\u4EF6\u6309\u5F52\u6863\u7A97\u53E3\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
+      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? isTerminalRun(st) ? t("\u8BE5\u76F8\u4F4D\u5DF2\u6536\u675F\u2014\u2014\u5355\u6B21\u8FD0\u884C\u7ED3\u675F") : t("\u8FDB\u884C\u4E2D\u2014\u2014\u72B6\u6001\u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u6309\u8FD0\u884C\u8F68\u8FF9\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
       bindDocLinks(nowEl, ctx2);
     };
     const paintTl = () => {
-      const trans = Array.isArray(run.transitions) ? run.transitions.filter(Boolean) : [];
+      const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
       const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u9636\u6BB5\u63A8\u8FDB\u8BB0\u5F55\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
         const at = String(x && (x.at || x.ts || x.time) || "");
         const from = String(x && (x.from || x.fromPhase) || "\u2014");
@@ -11653,6 +11660,7 @@ ${text2}</tr>
       run.status = full.status || run.status;
       run.involved = full.involved || run.involved;
       run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
+      run.history = Array.isArray(full.history) ? full.history : run.history;
       paintLine();
       paintNow();
       paintTl();
