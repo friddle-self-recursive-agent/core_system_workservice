@@ -14,6 +14,7 @@
  * 现读（缺席/失败=诚实降级词形，不冒充无循环）。 */
 
 import { esc, relAge, fmtNum, trunc } from '../core/format.js';
+import { runApprovalInfoOf, runApprovalInfoHtml } from './approvals.js';
 import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -151,18 +152,20 @@ function pendingRunsOf(ctx) {
     String(r.phase || '') === 'AwaitingApproval'));
 }
 
-function pendingRunRowHtml(x) {
+function pendingRunRowHtml(x, infoHtml = '') {
   const btnAttrs = (t) =>
     ' data-appr-' + t + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) +
     '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
   /* L-02：审批行「上标题+状态、下操作按钮」双行结构——窄列（1100px）不再硬塞
-   * 5 个横向元素（core-workflow 断词/2h 折行/徽章挤压收口）。 */
+   * 5 个横向元素（core-workflow 断词/2h 折行/徽章挤压收口）。
+   * 审批信息面（2026-11-27 三次裁决）：待批行带已更新文档/待批稿/闸前判断摘要——批准不再盲点。 */
   return '<div class="dash-row appr-row" data-appr-row>' +
     '<div class="dr-main">' + chip(tr('待批'), 'warn') +
     '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b>' +
     '<span class="small faint">#' + esc(x.run) + '</span>' +
     chip(x.phase, 'warn') +
     (x.started ? '<span class="small faint">' + esc(x.started) + '</span>' : '') +
+    (infoHtml ? '<div class="small" style="flex-basis:100%;margin-top:4px">' + infoHtml + '</div>' : '') +
     '</div>' +
     '<div class="appr-acts">' +
     /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
@@ -233,7 +236,7 @@ function pendingApprovalsHtml(ctx, scope) {
       scope: runOwnerScope(r),
       phase: String(r.phase || r.state || 'AwaitingApproval'),
       started: r.startedAt ? (relAge(r.startedAt) || '') : '',
-    });
+    }, runApprovalInfoHtml(runApprovalInfoOf(ctx.store, wf, runOwnerScope(r), run, String(r.startedAt || ''))));
   }).filter(Boolean);
   // L-03 修复随行：pendingRunRowHtml 原模板尾部多余 '</div></div>' 已在行内闭合——无残留标签。
   const drafts = ctx.store.drafts()

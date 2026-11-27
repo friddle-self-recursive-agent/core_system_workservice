@@ -2571,7 +2571,7 @@ var CoreConsoleWeb = (() => {
     "core_system_workservice",
     "core_system_dsh_plugin",
     "common_connector"
-    /* 部署侧私有仓名经 window.__CC.repoNames 注入（R-PUB：不入公开仓） */
+    // 部署侧私有仓名经 window.__CC.repoNames 注入（R-PUB：不入公开仓）
   ];
   function repoUrl(ref) {
     const r = String(ref || "").trim().replace(/^"+|"+$/g, "");
@@ -2624,6 +2624,624 @@ var CoreConsoleWeb = (() => {
     }
     if (wf) return chipGo("\u540C\u6B65\u4E2D", "wf/" + encSeg(wf), "acc", true, "Workflow " + wf);
     return chip("\u540C\u6B65\u4E2D", "acc");
+  }
+
+  // node_modules/diff/libesm/diff/base.js
+  var Diff = class {
+    diff(oldStr, newStr, options2 = {}) {
+      let callback;
+      if (typeof options2 === "function") {
+        callback = options2;
+        options2 = {};
+      } else if ("callback" in options2) {
+        callback = options2.callback;
+      }
+      const oldString = this.castInput(oldStr, options2);
+      const newString = this.castInput(newStr, options2);
+      const oldTokens = this.removeEmpty(this.tokenize(oldString, options2));
+      const newTokens = this.removeEmpty(this.tokenize(newString, options2));
+      return this.diffWithOptionsObj(oldTokens, newTokens, options2, callback);
+    }
+    diffWithOptionsObj(oldTokens, newTokens, options2, callback) {
+      var _a2;
+      const done = (value) => {
+        value = this.postProcess(value, options2);
+        if (callback) {
+          setTimeout(function() {
+            callback(value);
+          }, 0);
+          return void 0;
+        } else {
+          return value;
+        }
+      };
+      const newLen = newTokens.length, oldLen = oldTokens.length;
+      let editLength = 1;
+      let maxEditLength = newLen + oldLen;
+      if (options2.maxEditLength != null) {
+        maxEditLength = Math.min(maxEditLength, options2.maxEditLength);
+      }
+      const maxExecutionTime = (_a2 = options2.timeout) !== null && _a2 !== void 0 ? _a2 : Infinity;
+      const abortAfterTimestamp = Date.now() + maxExecutionTime;
+      const bestPath = [{ oldPos: -1, lastComponent: void 0 }];
+      let newPos = this.extractCommon(bestPath[0], newTokens, oldTokens, 0, options2);
+      if (bestPath[0].oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+        return done(this.buildValues(bestPath[0].lastComponent, newTokens, oldTokens));
+      }
+      let minDiagonalToConsider = -Infinity, maxDiagonalToConsider = Infinity;
+      const execEditLength = () => {
+        for (let diagonalPath = Math.max(minDiagonalToConsider, -editLength); diagonalPath <= Math.min(maxDiagonalToConsider, editLength); diagonalPath += 2) {
+          let basePath;
+          const removePath = bestPath[diagonalPath - 1], addPath = bestPath[diagonalPath + 1];
+          if (removePath) {
+            bestPath[diagonalPath - 1] = void 0;
+          }
+          let canAdd = false;
+          if (addPath) {
+            const addPathNewPos = addPath.oldPos - diagonalPath;
+            canAdd = addPath && 0 <= addPathNewPos && addPathNewPos < newLen;
+          }
+          const canRemove = removePath && removePath.oldPos + 1 < oldLen;
+          if (!canAdd && !canRemove) {
+            bestPath[diagonalPath] = void 0;
+            continue;
+          }
+          if (!canRemove || canAdd && removePath.oldPos < addPath.oldPos) {
+            basePath = this.addToPath(addPath, true, false, 0, options2);
+          } else {
+            basePath = this.addToPath(removePath, false, true, 1, options2);
+          }
+          newPos = this.extractCommon(basePath, newTokens, oldTokens, diagonalPath, options2);
+          if (basePath.oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
+            return done(this.buildValues(basePath.lastComponent, newTokens, oldTokens)) || true;
+          } else {
+            bestPath[diagonalPath] = basePath;
+            if (basePath.oldPos + 1 >= oldLen) {
+              maxDiagonalToConsider = Math.min(maxDiagonalToConsider, diagonalPath - 1);
+            }
+            if (newPos + 1 >= newLen) {
+              minDiagonalToConsider = Math.max(minDiagonalToConsider, diagonalPath + 1);
+            }
+          }
+        }
+        editLength++;
+      };
+      if (callback) {
+        (function exec() {
+          setTimeout(function() {
+            if (editLength > maxEditLength || Date.now() > abortAfterTimestamp) {
+              return callback(void 0);
+            }
+            if (!execEditLength()) {
+              exec();
+            }
+          }, 0);
+        })();
+      } else {
+        while (editLength <= maxEditLength && Date.now() <= abortAfterTimestamp) {
+          const ret = execEditLength();
+          if (ret) {
+            return ret;
+          }
+        }
+      }
+    }
+    addToPath(path, added, removed, oldPosInc, options2) {
+      const last = path.lastComponent;
+      if (last && !options2.oneChangePerToken && last.added === added && last.removed === removed) {
+        return {
+          oldPos: path.oldPos + oldPosInc,
+          lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
+        };
+      } else {
+        return {
+          oldPos: path.oldPos + oldPosInc,
+          lastComponent: { count: 1, added, removed, previousComponent: last }
+        };
+      }
+    }
+    extractCommon(basePath, newTokens, oldTokens, diagonalPath, options2) {
+      const newLen = newTokens.length, oldLen = oldTokens.length;
+      let oldPos = basePath.oldPos, newPos = oldPos - diagonalPath, commonCount = 0;
+      while (newPos + 1 < newLen && oldPos + 1 < oldLen && this.equals(oldTokens[oldPos + 1], newTokens[newPos + 1], options2)) {
+        newPos++;
+        oldPos++;
+        commonCount++;
+        if (options2.oneChangePerToken) {
+          basePath.lastComponent = { count: 1, previousComponent: basePath.lastComponent, added: false, removed: false };
+        }
+      }
+      if (commonCount && !options2.oneChangePerToken) {
+        basePath.lastComponent = { count: commonCount, previousComponent: basePath.lastComponent, added: false, removed: false };
+      }
+      basePath.oldPos = oldPos;
+      return newPos;
+    }
+    equals(left, right, options2) {
+      if (options2.comparator) {
+        return options2.comparator(left, right);
+      } else {
+        return left === right || !!options2.ignoreCase && left.toLowerCase() === right.toLowerCase();
+      }
+    }
+    removeEmpty(array) {
+      const ret = [];
+      for (let i = 0; i < array.length; i++) {
+        if (array[i]) {
+          ret.push(array[i]);
+        }
+      }
+      return ret;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    castInput(value, options2) {
+      return value;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    tokenize(value, options2) {
+      return Array.from(value);
+    }
+    join(chars) {
+      return chars.join("");
+    }
+    postProcess(changeObjects, options2) {
+      return changeObjects;
+    }
+    get useLongestToken() {
+      return false;
+    }
+    buildValues(lastComponent, newTokens, oldTokens) {
+      const components = [];
+      let nextComponent;
+      while (lastComponent) {
+        components.push(lastComponent);
+        nextComponent = lastComponent.previousComponent;
+        delete lastComponent.previousComponent;
+        lastComponent = nextComponent;
+      }
+      components.reverse();
+      const componentLen = components.length;
+      let componentPos = 0, newPos = 0, oldPos = 0;
+      for (; componentPos < componentLen; componentPos++) {
+        const component = components[componentPos];
+        if (!component.removed) {
+          if (!component.added && this.useLongestToken) {
+            let value = newTokens.slice(newPos, newPos + component.count);
+            value = value.map(function(value2, i) {
+              const oldValue = oldTokens[oldPos + i];
+              return oldValue.length > value2.length ? oldValue : value2;
+            });
+            component.value = this.join(value);
+          } else {
+            component.value = this.join(newTokens.slice(newPos, newPos + component.count));
+          }
+          newPos += component.count;
+          if (!component.added) {
+            oldPos += component.count;
+          }
+        } else {
+          component.value = this.join(oldTokens.slice(oldPos, oldPos + component.count));
+          oldPos += component.count;
+        }
+      }
+      return components;
+    }
+  };
+
+  // node_modules/diff/libesm/diff/line.js
+  var LineDiff = class extends Diff {
+    constructor() {
+      super(...arguments);
+      this.tokenize = tokenize;
+    }
+    equals(left, right, options2) {
+      if (options2.ignoreWhitespace) {
+        if (!options2.newlineIsToken || !left.includes("\n")) {
+          left = left.trim();
+        }
+        if (!options2.newlineIsToken || !right.includes("\n")) {
+          right = right.trim();
+        }
+      } else if (options2.ignoreNewlineAtEof && !options2.newlineIsToken) {
+        if (left.endsWith("\n")) {
+          left = left.slice(0, -1);
+        }
+        if (right.endsWith("\n")) {
+          right = right.slice(0, -1);
+        }
+      }
+      return super.equals(left, right, options2);
+    }
+  };
+  var lineDiff = new LineDiff();
+  function diffLines(oldStr, newStr, options2) {
+    return lineDiff.diff(oldStr, newStr, options2);
+  }
+  function tokenize(value, options2) {
+    if (options2.stripTrailingCr) {
+      value = value.replace(/\r\n/g, "\n");
+    }
+    const retLines = [], linesAndNewlines = value.split(/(\n|\r\n)/);
+    if (!linesAndNewlines[linesAndNewlines.length - 1]) {
+      linesAndNewlines.pop();
+    }
+    for (let i = 0; i < linesAndNewlines.length; i++) {
+      const line = linesAndNewlines[i];
+      if (i % 2 && !options2.newlineIsToken) {
+        retLines[retLines.length - 1] += line;
+      } else {
+        retLines.push(line);
+      }
+    }
+    return retLines;
+  }
+
+  // src/render/diff.js
+  function diffLines2(oldStr, newStr) {
+    const parts = diffLines(String(oldStr == null ? "" : oldStr), String(newStr == null ? "" : newStr));
+    const rows = [];
+    for (const p of parts) {
+      const lines = String(p.value == null ? "" : p.value).split("\n");
+      if (lines.length && lines[lines.length - 1] === "") lines.pop();
+      const t2 = p.added ? "+" : p.removed ? "-" : " ";
+      for (const s of lines) rows.push({ t: t2, s });
+    }
+    return compress(rows);
+  }
+  function compress(rows) {
+    const keep = new Array(rows.length).fill(false);
+    rows.forEach((r, i) => {
+      if (r.t !== " ") {
+        for (let j = Math.max(0, i - 2); j <= Math.min(rows.length - 1, i + 2); j++) keep[j] = true;
+      }
+    });
+    const out = [];
+    let last = -3;
+    rows.forEach((r, i) => {
+      if (!keep[i]) return;
+      if (i - last > 1 && r.t === " ") out.push({ t: "gap", s: "\u22EF" });
+      out.push(r);
+      last = i;
+    });
+    if (!out.length) out.push({ t: "ctx", s: t("\uFF08\u65E0\u5DEE\u5F02\uFF09") });
+    return out;
+  }
+  function renderDiff(lines, maxLines = 200) {
+    const cap = Number(maxLines) || 200;
+    const html3 = lines.slice(0, cap).map((l) => {
+      if (l.t === "gap") return '<div class="diff-line ctx">   \u22EF</div>';
+      const sign = l.t === "+" ? "+" : l.t === "-" ? "-" : " ";
+      const cls = l.t === "+" ? "add" : l.t === "-" ? "del" : "ctx";
+      return '<div class="diff-line ' + cls + '"><span class="d-sign">' + sign + "</span>" + esc(trunc(l.s, 500)) + "</div>";
+    }).join("");
+    const tail = lines.length > cap ? t('<div class="diff-line ctx">\u2026 \u5171 ') + lines.length + t(" \u884C\u5DEE\u5F02</div>") : "";
+    return '<div class="diff">' + html3 + tail + "</div>";
+  }
+  function diffStats(lines) {
+    let add = 0;
+    let del = 0;
+    (lines || []).forEach((l) => {
+      if (l.t === "+") add += 1;
+      else if (l.t === "-") del += 1;
+    });
+    return { add, del };
+  }
+  function hunksOf(lines) {
+    let n = 0;
+    let inHunk = false;
+    (lines || []).forEach((l) => {
+      if (l.t === "+" || l.t === "-") {
+        if (!inHunk) {
+          n += 1;
+          inHunk = true;
+        }
+      } else {
+        inHunk = false;
+      }
+    });
+    return n;
+  }
+
+  // src/screens/approvals.js
+  var ignored = /* @__PURE__ */ new Set();
+  function pendingItems(ctx2) {
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
+    const runs = ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).map((r) => ({ kind: "run", key: "run|" + String(r.workflow || "") + "#" + String(r.run != null ? r.run : ""), run: r }));
+    const props = ctx2.store.proposals().filter((p) => p && p.name && String(p.status || "submitted") === "submitted").map((p) => ({ kind: "proposal", key: "proposal|" + String(p.scope || "global") + "|" + String(p.name), proposal: p }));
+    const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
+    return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
+  }
+  function apKeyOf(d) {
+    return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
+  }
+  function runApprovalInfoOf(store2, wf, scope, run, startedAt) {
+    const anchor = "Workflow/" + String(scope || "global") + "/" + String(wf || "");
+    const ev = (store2.events() || []).find((e) => e && e.type === "ApprovalNeeded" && String(e.involved || "").indexOf(anchor) >= 0);
+    const docs = (store2.events() || []).filter((e) => e && e.type === "DocApplied").filter((e) => !startedAt || String(e.ts || e.at || "") >= String(startedAt)).slice(0, 5).map((e) => String(e.involved || "").split(",")[0].trim()).filter(Boolean);
+    const drs = (store2.drafts() || []).filter((d) => d && d.kind && d.name).slice(0, 5).map((d) => d.kind + "/" + (d.scope || "global") + "/" + d.name);
+    return { judge: ev ? String(ev.summary || "") : "", docs, drafts: drs };
+  }
+  function runApprovalInfoHtml(info) {
+    const parts = [];
+    if (info.docs.length) {
+      parts.push('<span class="chip ok tiny">\u5DF2\u66F4\u65B0 ' + info.docs.length + ' \u7BC7</span> <span class="mono small">' + esc(info.docs.map((d) => trunc(d, 30)).join("\u3001")) + "</span>");
+    }
+    if (info.drafts.length) {
+      parts.push('<span class="chip warn tiny">\u5F85\u6279\u7A3F ' + info.drafts.length + ' \u4EFD</span> <span class="mono small">' + esc(info.drafts.map((d) => trunc(d, 30)).join("\u3001")) + "</span>");
+    }
+    if (info.judge) {
+      parts.push('<span class="small">' + esc(t("\u5224\u65AD\uFF1A")) + esc(trunc(info.judge, 110)) + "</span>");
+    }
+    if (!parts.length) return '<span class="small faint">' + esc(t("\u7A97\u53E3\u5185\u65E0\u6587\u6863\u52A8\u6001\uFF08DocApplied/\u5F85\u6279\u7A3F\u7F3A\u5E2D\uFF09\u2014\u2014\u6279\u51C6\u524D\u8BE6\u60C5\u8BF7\u770B\u300C\u8FD0\u884C\u8BE6\u60C5\u300D\u3002")) + "</span>";
+    return parts.join(' <span class="faint">\xB7</span> ');
+  }
+  function wfAnchorOf(ev) {
+    const first = String(ev && ev.involved || "").split(",")[0].trim();
+    return /^Workflow\/[^/\s]+\/[^/\s]+$/.test(first) ? first : "";
+  }
+  function matchesApprovalFocus(it, focus) {
+    const f = String(focus || "").trim();
+    if (!f || !it) return false;
+    if (it.kind === "draft" && it.draft) {
+      const d = it.draft;
+      const key = d.kind + "/" + (d.scope || "global") + "/" + d.name;
+      return apKeyOf(d) === f || key === f || String(d.name) === f;
+    }
+    if (it.kind === "run" && it.run) {
+      const r = it.run;
+      return String(r.workflow || "") === f || "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "") === f || String(r.run) === f;
+    }
+    if (it.kind === "proposal" && it.proposal) {
+      const p = it.proposal;
+      return String(p.name) === f || "Proposal/" + String(p.scope || "global") + "/" + String(p.name) === f;
+    }
+    if (it.kind === "event" && it.ev) {
+      const e = it.ev;
+      return String(e.involved || "").includes(f) || String(e.summary || "").includes(f) || String(e.dedupKey || "").includes(f);
+    }
+    return false;
+  }
+  function itemHtml(ctx2, it, idx, focused = false) {
+    const approveCls = idx === 0 ? "btn btn-primary sm" : "btn btn-secondary sm";
+    const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : "";
+    if (it.kind === "run") {
+      const r = it.run;
+      const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
+      const no = String(r.run != null ? r.run : "");
+      const info = runApprovalInfoHtml(runApprovalInfoOf(ctx2.store, String(r.workflow || ""), String(r.owner || "global"), no, String(r.startedAt || "")));
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+    }
+    if (it.kind === "proposal") {
+      const p = it.proposal;
+      const anchor = "Proposal/" + String(p.scope || "global") + "/" + String(p.name);
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + '</span><span class="h-right">' + chip(String(p.status || "submitted"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(p.summary || ""), 200) || t("\uFF08summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF09")) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "obj/Proposal/" + encodeURIComponent(String(p.scope || "global")) + "/" + encodeURIComponent(String(p.name)), "mute", true, t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="approve">' + esc(t("\u6279\u51C6\uFF08= Apply\uFF09")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="reject">' + esc(t("\u9A73\u56DE")) + "</button></div></div></div>";
+    }
+    if (it.kind === "event") {
+      const e = it.ev;
+      const involved = String(e.involved || "");
+      const anchor = wfAnchorOf(e);
+      const wfName = anchor ? String(anchor.split("/")[2] || "") : "";
+      const route = involvedRoute(involved.split(",")[0] || "");
+      const gateBtns = anchor ? '<button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> " : '<button class="btn btn-secondary sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> ";
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : chip(involved || "\u2014", "mute")) + (wfName ? chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(wfName), "acc", true, t("Workflow \u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) : "") + '</div><div class="dh-actions" style="margin-top:10px">' + gateBtns + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + '">' + esc(t("\u5FFD\u7565")) + "</button></div></div></div>";
+    }
+    const d = it.draft;
+    const scope = d.scope || "global";
+    return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"' + hl + '><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip(t("\u7A3F: ") + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + t('"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-approve="' + esc(apKeyOf(d)) + t('">\u6279\u51C6\uFF08= Apply\uFF09</button> ') + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button> ') + '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + t('">\u7F16\u8F91\u5668</button>') + "</div></div></div>";
+  }
+  async function hydrateDiff(ctx2, d) {
+    const stamp = typeof location !== "undefined" ? location.hash : "";
+    const [draftR, faceR] = await Promise.all([
+      ctx2.api.draft(d.kind, d.name, d.scope || "global"),
+      ctx2.api.object(d.kind, d.scope || "global", d.name)
+    ]);
+    if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
+    if (!box) return;
+    if (!draftR.ok) {
+      box.innerHTML = t('<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(draftR.error || draftR.status)) + t("\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>");
+      return;
+    }
+    const dr = draftR.data && typeof draftR.data === "object" ? draftR.data : {};
+    const working = String(dr.content || "");
+    let base = t("\uFF08\u5BF9\u8C61\u5C1A\u672A\u843D\u5E93\u2014\u2014\u6279\u51C6\u5373\u521B\u5EFA\uFF09");
+    let baseNote = t("\u57FA\u51C6=r?");
+    if (faceR.ok) {
+      const data = faceR.data && typeof faceR.data === "object" ? faceR.data : {};
+      base = data.content != null ? String(data.content) : "";
+      baseNote = t("\u57FA\u51C6=r") + (dr.baseResourceVersion != null ? dr.baseResourceVersion : data.resourceVersion != null ? data.resourceVersion : "?");
+    } else if (faceR.status !== 404) {
+      base = t("\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A") + String(faceR.error || faceR.status) + "\uFF09";
+    }
+    const stats = diffStats(diffLines2(base, working));
+    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
+  }
+  async function approve(ctx2, d, btn) {
+    btn.disabled = true;
+    btn.textContent = t("\u9884\u68C0\u4E2D\u2026");
+    const dry = await ctx2.api.apply({
+      kind: d.kind,
+      scope: d.scope || "global",
+      name: d.name,
+      fromDraft: true,
+      dryRun: true,
+      fieldManager: "console:approve",
+      reasonRef: "console:approve-dry"
+    });
+    btn.disabled = false;
+    btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
+    if (!dry.ok) {
+      if (typeof window !== "undefined") window.alert(t("dry-run \u9884\u68C0\u672A\u8FC7\uFF08") + String(dry.error || dry.status) + t("\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002"));
+      return;
+    }
+    const cur = dry.data && dry.data.rv != null ? Number(dry.data.rv) : null;
+    const expect = d.baseResourceVersion != null ? Number(d.baseResourceVersion) : null;
+    const lockNote = cur != null && expect != null ? cur === expect ? t("\u7248\u672C\u5BF9\u9F50 r") + cur : t("\u7248\u672C\u5DF2\u53D8\u5316\uFF08\u73B0 r") + cur + t(" vs \u7F16\u8F91\u57FA\u7EBF r") + expect + t("\u2014\u2014\u843D\u5E93\u524D\u8BF7\u5148\u5237\u65B0\uFF09") : "";
+    if (!window.confirm(t("\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09") + d.kind + "/" + d.name + t("\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=") + String(cur) + "\uFF09" + (lockNote ? "\uFF1B" + lockNote : "") + "\u3002")) return;
+    btn.disabled = true;
+    btn.textContent = t("\u843D\u5E93\u4E2D\u2026");
+    const r = await ctx2.api.apply({
+      kind: d.kind,
+      scope: d.scope || "global",
+      name: d.name,
+      fromDraft: true,
+      fieldManager: "console:approve",
+      reasonRef: "console:approve"
+    });
+    btn.disabled = false;
+    btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
+    if (!r.ok) {
+      window.alert(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002"));
+      return;
+    }
+    ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
+    const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
+    if (cardEl) cardEl.remove();
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
+    });
+  }
+  async function pubGateDecision(ctx2, btn, grant) {
+    const anchor = btn.getAttribute("data-ap-anchor") || "";
+    const key = btn.getAttribute(grant ? "data-ap-grant" : "data-ap-reject") || "";
+    const evId = btn.getAttribute("data-ap-ev") || "";
+    if (!anchor || !key) return;
+    const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalGranted \u540E run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalRejected \u540E run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+    if (!confirmed) return;
+    btn.disabled = true;
+    btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
+    const runNo = Number(btn.getAttribute("data-ap-run") || 0) || 0;
+    const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor, ...runNo > 0 ? { run: runNo } : {} };
+    if (evId) payload.dedupKey = "console-" + evId;
+    else payload.dedupKey = "console-appr-" + key + "-" + Date.now();
+    const r = await ctx2.api.eventPub(payload);
+    if (!r.ok) {
+      btn.disabled = false;
+      btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
+      window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+      return;
+    }
+    ignored.add(key);
+    const card = btn.closest(".ap-item");
+    if (card) card.remove();
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
+    });
+  }
+  async function proposalDecision(ctx2, p, decision, btn) {
+    const isApprove = decision === "approve";
+    const fm = isApprove ? "console:approve" : "console:reject";
+    if (!window.confirm((isApprove ? t("\u786E\u8BA4\u6279\u51C6\u63D0\u6848\uFF08Apply console:approve\uFF09") : t("\u786E\u8BA4\u9A73\u56DE\u63D0\u6848\uFF08Apply console:reject\uFF09")) + " " + String(p.name) + "\uFF1F")) return;
+    btn.disabled = true;
+    btn.textContent = t("\u5224\u5B9A\u4E2D\u2026");
+    const r = await ctx2.api.apply({
+      kind: "Proposal",
+      scope: p.scope || "global",
+      name: p.name,
+      fromDraft: true,
+      fieldManager: fm,
+      reasonRef: "console:" + decision + ":" + String(p.name || "")
+    });
+    btn.disabled = false;
+    btn.textContent = isApprove ? t("\u6279\u51C6\uFF08= Apply\uFF09") : t("\u9A73\u56DE");
+    if (!r || !r.ok) {
+      window.alert(t("\u63D0\u6848\u5224\u5B9A\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09\u2014\u2014\u63D0\u6848\u72B6\u6001\u672A\u7FFB\u8F6C\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+      return;
+    }
+    ignored.add("proposal|" + (p.scope || "global") + "|" + String(p.name));
+    const card = btn.closest(".ap-item");
+    if (card) card.remove();
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
+    });
+  }
+  async function hydrateLedger(ctx2) {
+    const stamp = typeof location !== "undefined" ? location.hash : "";
+    const slot = document.querySelector("[data-ap-ledger]");
+    if (!slot) return;
+    const r = await ctx2.api.approvals(20);
+    if (!el__isConnected(slot) || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    if (!r.ok) {
+      slot.innerHTML = t('<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u3002</div>");
+      return;
+    }
+    const rows = r.data && Array.isArray(r.data.approvals) ? r.data.approvals : [];
+    if (!rows.length) {
+      slot.innerHTML = t('<div class="small faint">\u6682\u65E0\u5DF2\u51B3\u8BB0\u5F55\uFF08\u6279\u51C6/\u9A73\u56DE\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002</div>');
+      return;
+    }
+    slot.innerHTML = t('<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>') + t("<th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>") + rows.map((x) => '<tr><td class="mono small">' + esc(String(x.ts || "").replace("T", " ").slice(0, 19)) + "</td><td>" + chip(String(x.decision || ""), x.decision === "granted" ? "ok" : "esc") + '</td><td class="mono small">' + (involvedRoute(x.obj) ? '<span class="lk" data-go="' + esc(involvedRoute(x.obj)) + '">' + esc(String(x.obj || "")) + "</span>" : esc(String(x.obj || ""))) + '</td><td class="mono small">' + esc(String(x.judgedBy || "anonymous")) + '</td><td class="mono small">' + esc(x.rv ? "r" + x.rv : "\u2014") + "</td></tr>").join("") + "</tbody></table></div>";
+  }
+  function el__isConnected(x) {
+    return !!(x && x.isConnected);
+  }
+  function inboxHtml(ctx2) {
+    const inbox = ctx2.store.inbox();
+    if (!inbox) return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u6682\u4E0D\u53EF\u7528\uFF08\u6295\u5F71\u7F3A\u5E2D\uFF09\u3002</div></div></div>');
+    const items = Array.isArray(inbox.items) ? inbox.items : [];
+    if (!items.length && !Number(inbox.total)) {
+      return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u4E3A\u7A7A\uFF08\u96F6\u5F85\u529E\uFF09\u3002</div></div></div>');
+    }
+    return '<div class="card">' + items.slice(0, 50).map((x) => {
+      const linkRaw = String(x && (x.link || x.ref || x.obj) || "");
+      const link2 = linkRaw.replace(/^#\//, "");
+      const route = link2 ? involvedRoute(link2) || link2 : "";
+      const main = String(x && (x.digest || x.title || x.summary || x.kind) || "\u2014");
+      const cls = String(x && x.class || x && x.kind || "");
+      const at = relAge(String(x && x.at || "")) || "";
+      return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(cls, "mute") + '</div><div class="mr-sub small faint">' + esc(at) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo(t("\u53BB\u5904\u7406"), route, "acc", true) + "</span>" : "") + "</div>";
+    }).join("") + "</div>";
+  }
+  function approvalsScreen(el, ctx2) {
+    const focus = String(ctx2.params && ctx2.params.focus || "").trim();
+    const rawItems = pendingItems(ctx2);
+    const matched = focus ? rawItems.filter((it) => matchesApprovalFocus(it, focus)) : [];
+    const rest = focus ? rawItems.filter((it) => !matchesApprovalFocus(it, focus)) : rawItems;
+    const items = matched.concat(rest);
+    const focusBanner = focus ? '<div class="card" style="margin-bottom:10px"><div class="card-b small" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + chip(t("\u5B9A\u4F4D\uFF1A") + focus, matched.length ? "acc" : "warn") + "<span>" + esc(matched.length ? t("\u5DF2\u7F6E\u9876\u9AD8\u4EAE\u5BF9\u5E94\u5F85\u5BA1\u9879\uFF08") + matched.length + t(" \u9879\uFF09\u3002") : t("\u5F85\u5BA1\u533A\u6682\u65E0\u5339\u914D\u9879\u2014\u2014\u53EF\u80FD\u5DF2\u51B3\u6216\u5C1A\u672A\u843D\u7A3F\uFF0C\u8BF7\u6838\u67E5\u4E0B\u65B9\u5DF2\u51B3\u8BB0\u5F55\u3002")) + "</span>" + chipGo(t("\u6E05\u9664\u5B9A\u4F4D"), "approvals", "mute", true) + "</div></div>" : "";
+    el.innerHTML = '<div class="view-inner">' + screenHead(
+      t("\u5BA1\u6279"),
+      t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\u3002\u4E8B\u4EF6\u884C\u6279\u51C6/\u9A73\u56DE=\u5BF9 Workflow \u951A\u53D1\u5E03 ApprovalGranted/ApprovalRejected\uFF08run \u7EED\u884C/\u7EC8\u6001 Failed\uFF09\uFF1B\u8349\u7A3F\u6279\u51C6=Apply\uFF1B\u5747=\u4EBA\u70B9\u786E\u8BA4\u3002"),
+      chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
+    ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
+    items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
+    hydrateLedger(ctx2);
+    if (focus && matched.length) {
+      const hit = el.querySelector('[data-ap-focused="1"]');
+      if (hit && hit.scrollIntoView) hit.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    el.querySelectorAll("[data-ap-approve]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const d = ctx2.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
+        if (d) approve(ctx2, d, btn);
+      });
+    });
+    el.querySelectorAll("[data-ap-grant]").forEach((btn) => {
+      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, true));
+    });
+    el.querySelectorAll("[data-ap-reject]").forEach((btn) => {
+      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, false));
+    });
+    const propById = new Map((ctx2.store.proposals() || []).filter((p) => p && p.name).map((p) => ["proposal|" + String(p.scope || "global") + "|" + String(p.name), p]));
+    el.querySelectorAll("[data-ap-prop]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const p = propById.get(btn.getAttribute("data-ap-prop") || "");
+        if (p) proposalDecision(ctx2, p, String(btn.getAttribute("data-ap-prop-decision") || "approve"), btn);
+      });
+    });
+    el.querySelectorAll("[data-ap-ignore]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        ignored.add(btn.dataset.apIgnore);
+        const card = btn.closest(".ap-item");
+        if (card) card.remove();
+      });
+    });
+    el.querySelectorAll("[data-go]").forEach((x) => {
+      x.addEventListener("click", () => ctx2.go(x.dataset.go));
+    });
+  }
+  function render2(el, ctx2) {
+    approvalsScreen(el, ctx2);
   }
 
   // src/screens/welcome.js
@@ -2727,9 +3345,9 @@ var CoreConsoleWeb = (() => {
   function pendingRunsOf(ctx2) {
     return ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval"));
   }
-  function pendingRunRowHtml(x) {
+  function pendingRunRowHtml(x, infoHtml = "") {
     const btnAttrs = (t2) => " data-appr-" + t2 + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) + '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
-    return '<div class="dash-row appr-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + '</div><div class="appr-acts">' + /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
+    return '<div class="dash-row appr-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + (infoHtml ? '<div class="small" style="flex-basis:100%;margin-top:4px">' + infoHtml + "</div>" : "") + '</div><div class="appr-acts">' + /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
      * 人批准前看不到 run 全貌）。 */
     (x.wf && x.run != null && x.run !== "" ? '<button class="btn btn-ghost sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + "/r/" + encodeURIComponent(String(x.run)) + '">' + esc(t("\u8FD0\u884C\u8BE6\u60C5")) + "</button>" : "") + '<button class="btn btn-chip sm"' + btnAttrs("grant") + ">" + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button><button class="btn btn-ghost btn-danger sm"' + btnAttrs("reject") + ">" + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div>";
   }
@@ -2791,7 +3409,7 @@ var CoreConsoleWeb = (() => {
         scope: runOwnerScope(r),
         phase: String(r.phase || r.state || "AwaitingApproval"),
         started: r.startedAt ? relAge(r.startedAt) || "" : ""
-      });
+      }, runApprovalInfoHtml(runApprovalInfoOf(ctx2.store, wf, runOwnerScope(r), run, String(r.startedAt || ""))));
     }).filter(Boolean);
     const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).filter((d) => !scope || String(d.scope || "global") === scope).map((d) => ({
       src: "draft",
@@ -2898,7 +3516,7 @@ var CoreConsoleWeb = (() => {
     const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).filter(inScope).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).filter((e) => !scope || String(e.involved || "").includes(scope)).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).filter((d) => !scope || String(d.scope || "global") === scope).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded" && (!scope || String(e.involved || "").includes(scope))).length, t("\u5F85\u5BA1\u660E\u7EC6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(taskPhaseOf(x))).filter(inScope).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
     return '<div class="view-inner">' + (opts.head || "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
   }
-  function render2(el, ctx2) {
+  function render3(el, ctx2) {
     el.innerHTML = dashLayout(ctx2, {
       head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>"
     });
@@ -3040,7 +3658,7 @@ var CoreConsoleWeb = (() => {
           if (s && s.ok) ctx2.store.init(s.data);
         }).catch(() => {
         });
-        if (el.isConnected) render3(el, ctx2);
+        if (el.isConnected) render4(el, ctx2);
       } else {
         alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38")));
       }
@@ -3209,7 +3827,7 @@ var CoreConsoleWeb = (() => {
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5173\u6CE8\u62A5\u544A"), t("severity \u6392\u5E8F \xB7 \u8BC1\u636E\u53EF\u70B9 \xB7 \u6570\u636E\u53EF\u4FE1\u5EA6\u663E\u5F0F"), chipGo(t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "mute", false)) + degradedNote + '<div data-loop-box="pending"></div>' + (sorted.length ? '<div class="att-list">' + sorted.map(attentionCard).join("") + "</div>" : emptyBox(t("\u672C\u7A97\u53E3\u65E0\u5173\u6CE8\u9879"), t("\u5F53\u524D\u6CA1\u6709\u9700\u8981\u5173\u6CE8\u7684\u98CE\u9669\u9879\u3002"))) + reportFooter(st.get("attention") && st.get("attention").dataQuality) + "</div>";
     hydrateLoop(el, ctx2);
   }
-  function render3(el, ctx2) {
+  function render4(el, ctx2) {
     if (ctx2.params && ctx2.params.id != null && ctx2.params.id !== "") taskDetailScreen(el, ctx2, String(ctx2.params.id));
     else tasksScreen(el, ctx2);
   }
@@ -3249,6 +3867,21 @@ var CoreConsoleWeb = (() => {
       { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08developer-system Agent \u9A8C\u6536 session\uFF09", unit: "service", service: devSys.service || "developer-system", op: "acceptance", contextPassing: { previousRound: true, fields: ["diff", "verifyConditions"] } },
       { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u7248\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", service: depSys.service || "deploy-system", contextPassing: { previousRound: true, fields: ["verifyReport", "release"] }, permissionRole: "role/deploy-system-ops" },
       { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "agent", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low", tools: ["findings-read", "doc-draft", "tag-write"] }
+    ];
+    const defaultTransitions = [
+      { from: "Idle", on: "advance", to: "Analyzing" },
+      { from: "Idle", on: "entry:DocApplied", to: "Planning" },
+      { from: "Analyzing", on: "advance", to: "AwaitingApproval" },
+      { from: "Analyzing", on: "worth_fixing", to: "AwaitingApproval" },
+      { from: "Analyzing", on: "ignore", to: "Reporting" },
+      { from: "AwaitingApproval", on: "advance", to: "Planning" },
+      { from: "AwaitingApproval", on: "ApprovalGranted", to: "Planning" },
+      { from: "AwaitingApproval", on: "ApprovalRejected", to: "Failed" },
+      { from: "Planning", on: "advance", to: "Executing" },
+      { from: "Executing", on: "advance", to: "Verifying" },
+      { from: "Verifying", on: "advance", to: "Deploying" },
+      { from: "Verifying", on: "retry-develop", to: "Executing" },
+      { from: "Deploying", on: "advance", to: "Reporting" }
     ];
     return {
       name,
@@ -3295,7 +3928,8 @@ var CoreConsoleWeb = (() => {
       bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? "delete" : "invalidate"),
       statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
       postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
-      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases.map((n) => n && n.unit === "session" ? { ...n, unit: "agent" } : n) : defaultPhases
+      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases.map((n) => n && n.unit === "session" ? { ...n, unit: "agent" } : n) : defaultPhases,
+      transitions: Array.isArray(s.transitions) && s.transitions.length ? s.transitions.map((t2) => ({ from: t2 && t2.from, on: t2 && t2.on, to: t2 && t2.to })).filter((t2) => t2.from && t2.to) : defaultTransitions
     };
   }
   function buildWorkflowYaml(cfg, scope = "global") {
@@ -3332,6 +3966,9 @@ var CoreConsoleWeb = (() => {
     const phaseLines = (cfg.phases || []).map(nodeLine).join("\n");
     const nodeMappingLines = (cfg.phases || []).map(
       (n) => `      ${n.name}: {tier: ${n.modelTier || "standard"}${n.model ? ", model: " + q(n.model) : ""}}`
+    ).join("\n");
+    const transLines = (cfg.transitions || []).map(
+      (t2) => `    - {from: ${t2.from}, on: ${q(String(t2.on || "advance"))}, to: ${t2.to}}`
     ).join("\n");
     return `apiVersion: core/v1
 kind: Workflow
@@ -3415,19 +4052,7 @@ ${condLines || "      []"}
   phases:
 ${phaseLines}
   transitions:
-    - {from: Idle,             on: advance,            to: Analyzing}
-    - {from: Idle,             on: "entry:DocApplied", to: Planning}
-    - {from: Analyzing,        on: advance,            to: AwaitingApproval}
-    - {from: Analyzing,        on: worth_fixing,       to: AwaitingApproval}
-    - {from: Analyzing,        on: ignore,             to: Reporting}
-    - {from: AwaitingApproval, on: advance,            to: Planning}
-    - {from: AwaitingApproval, on: ApprovalGranted,    to: Planning}
-    - {from: AwaitingApproval, on: ApprovalRejected,   to: Failed}
-    - {from: Planning,         on: advance,            to: Executing}
-    - {from: Executing,        on: advance,            to: Verifying}
-    - {from: Verifying,        on: advance,            to: Deploying}
-    - {from: Verifying,        on: retry-develop,      to: Executing}
-    - {from: Deploying,        on: advance,            to: Reporting}
+${transLines}
   onEscalate: {action: pause, notify: bind-role}
   onFailed:
     backoff: 30s*2^n
@@ -3449,13 +4074,16 @@ ${actionLines || "      []"}
 `;
   }
   var NODE_UNITS = ["connectops", "agent", "service", "gate"];
-  var UNIT_CHIP = { connectops: "mute", agent: "acc", service: "warn", gate: "llm" };
-  function nodeCardHtml(n, i, defProvider) {
+  var UNIT_CHIP = { connectops: "mute", agent: "acc", service: "warn", gate: "llm", side: "esc" };
+  function nodeRowHtml(n, i, defProvider) {
+    return `<tr data-node-edit="${esc(n.name || "")}" style="cursor:pointer" title="${esc(t("\u70B9\u51FB\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E"))}"><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit || "connectops", UNIT_CHIP[n.unit] || "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || defProvider)}" title="${esc(t("\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04"))}">Provider: ${esc(n.provider || defProvider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.refRules) && n.refRules.length ? esc(n.refRules.join(", ")) : "\u2014"}${Array.isArray(n.refTags) && n.refTags.length ? ' <span class="faint">tag:</span>' + esc(n.refTags.join(",")) : ""}</td></tr>`;
+  }
+  function nodeFieldsHtml(n, defProvider) {
     const u = n.unit || "connectops";
     const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
-    const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-node="${key}" data-ni="${i}" value="${esc(val == null ? "" : String(val))}" style="width:100%"></div>`;
+    const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-nm="${key}" value="${esc(val == null ? "" : String(val))}" style="width:100%"></div>`;
     const base = grid(
-      inp("\u8282\u70B9\u540D (name)", "name", n.name || "node-" + (i + 1)) + inp("\u76F8\u4F4D (phase)", "phase", n.phase || "Idle") + `<div><div class="small faint">${esc(t("\u804C\u8D23\u8BF4\u660E (title)"))}</div><input class="inp" data-node="title" data-ni="${i}" value="${esc(n.title || "")}" style="width:100%"></div><div><div class="small faint">${esc(t("\u6267\u884C\u5355\u5143 (unit)"))}</div><select class="inp" data-node="unit" data-ni="${i}" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${x}${x === "gate" ? t("\uFF08\u63A7\u5236\u8282\u70B9\uFF09") : ""}</option>`).join("")}</select></div>`
+      inp("\u8282\u70B9\u540D (name)", "name", n.name || "") + inp("\u76F8\u4F4D (phase)", "phase", n.phase || "Idle") + `<div><div class="small faint">${esc(t("\u804C\u8D23\u8BF4\u660E (title)"))}</div><input class="inp" data-nm="title" value="${esc(n.title || "")}" style="width:100%"></div><div><div class="small faint">${esc(t("\u6267\u884C\u5355\u5143 (unit)"))}</div><select class="inp" data-nm="unit" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${x}${x === "gate" ? t("\uFF08\u63A7\u5236\u8282\u70B9\uFF09") : ""}</option>`).join("")}</select></div>`
     );
     const rows = [base];
     if (u === "agent") {
@@ -3464,7 +4092,7 @@ ${actionLines || "      []"}
       ));
     } else if (u === "service") {
       rows.push(grid(
-        inp("\u76EE\u6807\u7CFB\u7EDF (service)", "service", n.service || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("ConnectorOps", "connector", n.connector || "") + inp("\u6743\u9650 Role (permissionRole\u2014\u2014P7 \u968F\u6587\u6863\u6388\u4E88)", "permissionRole", n.permissionRole || "") + inp("\u4E0A\u4E00\u8F6E\u4E0A\u4E0B\u6587\u5B57\u6BB5 (contextPassing.fields)", "ctxFields", (n.contextPassing && n.contextPassing.fields || []).join(", ")) + `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-node="ctxPrev" data-ni="${i}" ${!n.contextPassing || n.contextPassing.previousRound !== false ? "checked" : ""}> ${esc(t("\u4F20\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587"))}</label></div>`
+        inp("\u76EE\u6807\u7CFB\u7EDF (service)", "service", n.service || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("ConnectorOps", "connector", n.connector || "") + inp("\u6743\u9650 Role (permissionRole\u2014\u2014P7 \u968F\u6587\u6863\u6388\u4E88)", "permissionRole", n.permissionRole || "") + inp("\u4E0A\u4E00\u8F6E\u4E0A\u4E0B\u6587\u5B57\u6BB5 (contextPassing.fields)", "ctxFields", (n.contextPassing && n.contextPassing.fields || []).join(", ")) + `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-nm="ctxPrev" ${!n.contextPassing || n.contextPassing.previousRound !== false ? "checked" : ""}> ${esc(t("\u4F20\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587"))}</label></div>`
       ));
     } else if (u === "connectops") {
       rows.push(grid(
@@ -3473,7 +4101,133 @@ ${actionLines || "      []"}
     } else {
       rows.push(grid(inp("\u95F8\u7B97\u5B50 (op)", "op", n.op || "approval-check")));
     }
-    return `<div class="card" style="margin:0 0 8px 0" data-node-card="${i}"><div class="card-b"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div>${chip(u === "gate" ? t("\u63A7\u5236\u8282\u70B9") : u, UNIT_CHIP[u] || "mute")} <b class="mono small">${esc(n.name || "")}</b></div><button type="button" class="btn tiny mute" data-node-del="${i}">${esc(t("\u5220\u9664\u8282\u70B9"))}</button></div>` + rows.join("") + `</div></div>`;
+    return rows.join("");
+  }
+  function readNodeFields(root, base) {
+    const get = (k) => root.querySelector(`[data-nm="${k}"]`);
+    const lst = (k) => String(get(k) ? get(k).value : "").split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
+    const u = get("unit") ? get("unit").value : base.unit || "connectops";
+    const n = {
+      ...base,
+      name: get("name") && get("name").value.trim() || base.name || "node",
+      phase: get("phase") && get("phase").value.trim() || "Idle",
+      title: get("title") ? get("title").value : base.title || "",
+      unit: u
+    };
+    if (u === "agent") {
+      n.provider = get("provider") ? get("provider").value.trim() : "";
+      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "standard";
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
+        n[k] = lst(k);
+      });
+      delete n.service;
+      delete n.contextPassing;
+      delete n.permissionRole;
+    } else if (u === "service") {
+      n.service = get("service") ? get("service").value.trim() : "";
+      n.op = get("op") ? get("op").value.trim() : "";
+      n.connector = get("connector") ? get("connector").value.trim() : "";
+      n.permissionRole = get("permissionRole") ? get("permissionRole").value.trim() : "";
+      n.contextPassing = { previousRound: Boolean(get("ctxPrev") && get("ctxPrev").checked), fields: lst("ctxFields") };
+      ["refDocs", "refRules", "refTags", "tagRules", "tools"].forEach((k) => delete n[k]);
+    } else if (u === "connectops") {
+      n.connector = get("connector") ? get("connector").value.trim() : "";
+      n.op = get("op") ? get("op").value.trim() : "";
+      n.provider = get("provider") ? get("provider").value.trim() : "";
+      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "low";
+      n.entryEvents = lst("entryEvents");
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole"].forEach((k) => delete n[k]);
+    } else {
+      n.op = get("op") ? get("op").value.trim() : "approval-check";
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole", "connector", "provider", "modelTier", "entryEvents"].forEach((k) => delete n[k]);
+    }
+    return n;
+  }
+  function wfGraphHtml(phases, transitions) {
+    const byPhase = /* @__PURE__ */ new Map();
+    (phases || []).forEach((n) => {
+      if (!n || !n.phase && !n.name) return;
+      const key = String(n.phase || n.name);
+      if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || "", unit: n.unit || "connectops", entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+    });
+    const nodes = [...byPhase.values()];
+    const known = new Set(nodes.map((n) => n.key));
+    const edges = [];
+    (transitions || []).forEach((t2) => {
+      if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
+      [t2.from, t2.to].forEach((k) => {
+        if (!known.has(k)) {
+          nodes.push({ key: k, name: k, title: t("\u4FA7\u8F68\u6001\uFF08\u975E\u6B63\u5411\u4E3B\u7EBF\uFF09"), unit: "side", entry: false });
+          known.add(k);
+        }
+      });
+      edges.push({ from: t2.from, on: String(t2.on || "advance"), to: t2.to });
+    });
+    const branchPairs = new Set(edges.filter((e) => e.on !== "advance").map((e) => e.from + "\u2192" + e.to));
+    const drawn = [];
+    const seenPair = /* @__PURE__ */ new Set();
+    edges.forEach((e) => {
+      const pair = e.from + "\u2192" + e.to;
+      if (e.on === "advance" && branchPairs.has(pair)) return;
+      if (seenPair.has(pair + "|" + e.on)) return;
+      seenPair.add(pair + "|" + e.on);
+      drawn.push(e);
+    });
+    if (!nodes.length) return "";
+    const level = new Map(nodes.map((n) => [n.key, 0]));
+    for (let pass = 0; pass < nodes.length; pass++) {
+      let changed = false;
+      drawn.forEach((e) => {
+        const lf = level.get(e.from) || 0;
+        const lt = level.get(e.to) || 0;
+        if (lt < lf + 1 && lf + 1 < nodes.length) {
+          level.set(e.to, lf + 1);
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+    let entryNo = 0;
+    nodes.forEach((n) => {
+      if (n.entry) n.entryLabel = t("\u5165\u53E3") + ++entryNo;
+    });
+    const cols = /* @__PURE__ */ new Map();
+    nodes.forEach((n) => {
+      const lv = level.get(n.key) || 0;
+      if (!cols.has(lv)) cols.set(lv, []);
+      cols.get(lv).push(n);
+    });
+    const NW = 190, NH = 56, GX = 108, GY = 28;
+    let maxRows = 1;
+    cols.forEach((rows) => {
+      maxRows = Math.max(maxRows, rows.length);
+    });
+    const colKeys = [...cols.keys()].sort((a, b) => a - b);
+    const W = colKeys.length * (NW + GX) - GX + 8;
+    const H = maxRows * (NH + GY) - GY + 10;
+    const pos = /* @__PURE__ */ new Map();
+    colKeys.forEach((lv, ci) => {
+      const rows = cols.get(lv);
+      const yOff = Math.max(5, (H - (rows.length * (NH + GY) - GY)) / 2);
+      rows.forEach((n, ri) => pos.set(n.key, { x: ci * (NW + GX) + 4, y: yOff + ri * (NH + GY) }));
+    });
+    const nodeDiv = (n) => {
+      const p = pos.get(n.key);
+      const unitCls = UNIT_CHIP[n.unit] || "mute";
+      const unitLabel = n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit === "side" ? t("\u4FA7\u8F68") : n.unit;
+      return '<div class="wf-graph-node' + (n.unit === "side" ? " wf-graph-side" : "") + '" style="left:' + p.x + "px;top:" + p.y + "px;width:" + NW + "px;height:" + NH + 'px" data-graph-node="' + esc(n.name) + '" title="' + esc((n.title || n.name) + " \xB7 " + n.key) + '"><div class="wf-graph-unit"><span class="chip ' + unitCls + ' tiny">' + esc(unitLabel) + "</span>" + (n.entryLabel ? ' <span class="chip acc tiny">' + esc(n.entryLabel) + "</span>" : "") + '</div><div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + "</span></div></div>";
+    };
+    const svg2 = drawn.map((e) => {
+      const a = pos.get(e.from), b = pos.get(e.to);
+      if (!a || !b) return "";
+      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const mx = (x1 + x2) / 2;
+      const d = "M " + x1 + " " + y1 + " C " + mx + " " + y1 + ", " + mx + " " + y2 + ", " + x2 + " " + y2;
+      const branch = !(e.on === "advance");
+      const label = branch ? '<div class="wf-graph-elabel" style="left:' + mx + "px;top:" + Math.round((y1 + y2) / 2 - 9) + 'px">' + esc(e.on) + "</div>" : "";
+      return '<path d="' + d + '" class="wf-graph-edge' + (branch ? " wf-graph-branch" : "") + '"></path>' + label;
+    }).join("");
+    return '<div class="wf-graph" style="width:' + W + "px;height:" + H + 'px"><svg width="' + W + '" height="' + H + '" style="position:absolute;left:0;top:0;pointer-events:none"><defs><marker id="wfg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--border-2)"></path></marker></defs>' + svg2 + "</svg>" + nodes.map(nodeDiv).join("") + "</div>";
   }
   function workflowStudioHtml(wf, usedName) {
     const cfg = defaultLoopSpec(usedName, wf && wf.spec);
@@ -3485,23 +4239,34 @@ ${actionLines || "      []"}
     const postActRowsHtml = (cfg.postActions || []).map(
       (a, idx) => `<div class="mini-row" data-wf-act-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-act-en="${idx}" ${a.enabled !== false ? "checked" : ""} title="\u542F\u7528\u6B64\u6536\u5C3E\u52A8\u4F5C" /><select class="inp" data-act-kind="${idx}" style="width:140px">` + ["doc-lifecycle", "status-writeback", "notify", "custom"].map((k) => `<option value="${k}" ${a.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate" ${(a.action || cfg.bugDocPolicy) === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete" ${(a.action || cfg.bugDocPolicy) === "delete" ? "selected" : ""}>\u5220\u9664\u6587\u6863 (delete)</option><option value="keep" ${(a.action || cfg.bugDocPolicy) === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="${esc(a.title || "")}" placeholder="\u6536\u5C3E\u52A8\u4F5C\u8BF4\u660E" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button></div>`
     ).join("");
-    const designNodesHtml = (cfg.phases || []).map(
-      (n, i) => `<tr><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit || "connectops", UNIT_CHIP[n.unit] || "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04">Provider: ${esc(n.provider || cfg.provider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.globalRuleRefs) && n.globalRuleRefs.length ? esc(n.globalRuleRefs.join(", ")) : "\u2014"}</td></tr>`
-    ).join("");
+    const designNodesHtml = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
     return `
   <h2 class="sec-title">${esc(t("\u8BBE\u8BA1\u8868\u4E0E\u8282\u70B9\u6D41\u8F6C\u67B6\u6784\uFF08Workflow + Scheme = \u58F0\u660E\u5C42\uFF0C\u4EE3\u7801 = \u901A\u7528\u89E3\u91CA\u5668\uFF09"))}</h2>
   <div class="card">
     <div class="card-h">
-      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u4E3B\u5E72\u3001\u53CC\u89E6\u53D1\u5165\u53E3\u4E0E\u6309\u4EFB\u52A1\u667A\u5546\u5206\u7EA7\u6A21\u578B\u8BBE\u8BA1\u8868"))}</span>
+      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u76F8\u4F4D\u94FE\uFF08\u591A\u8D77\u70B9 / \u6761\u4EF6\u5206\u53C9\u8FB9\u2014\u2014\u5224\u65AD\u8BCD\u5F62=LLM \u5206\u652F\u8F93\u51FA\uFF1B\u70B9\u51FB\u8282\u70B9\u76D2\u6216\u8868\u884C\u5F39\u7A97\u7F16\u8F91\uFF09"))}</span>
       <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
+    </div>
+    <div class="card-b" style="overflow-x:auto">
+      <div class="wf-graph-scroll" data-node-graph>${wfGraphHtml(cfg.phases, cfg.transitions)}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-h">
+      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u4E3B\u5E72\u8BBE\u8BA1\u8868\uFF08\u70B9\u51FB\u4EFB\u610F\u884C\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E\uFF09"))}</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="btn tiny acc" data-node-add>${esc(t("+ \u6DFB\u52A0\u8282\u70B9"))}</button>
+        <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
+      </div>
     </div>
     <div class="card-b" style="overflow-x:auto">
       <div class="small faint" style="margin-bottom:8px">
         ${esc(t("\u5165\u53E3 1\uFF08\u8FD0\u884C\u671F\u65E5\u5FD7/Bug/\u5DE1\u68C0\u4E8B\u4EF6\uFF09\u4ECE\u8282\u70B9 1 (Idle) \u987A\u6B21\u6D41\u8F6C\uFF1B\u5165\u53E3 2\uFF08\u5BF9\u8BDD\u4FEE\u6539\u8BBE\u8BA1\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied\uFF09\u76F4\u63A5\u4ECE\u8282\u70B9 4 (Planning / Doc Apply) \u5207\u5165\uFF0C\u76F4\u8D70 developer-system \u2192 \u9A8C\u6536 \u2192 deploy-system \u2192 \u603B\u7ED3\u5F52\u6863\u3002\u70B9\u51FB\u4EFB\u610F Provider \u5FBD\u7AE0\u53EF\u76F4\u63A5\u914D\u7F6E OpenAIProvider \u8D26\u53F7\u3001Base \u5730\u5740\u4E0E\u6A21\u578B\u5206\u7EA7\u3002"))}
       </div>
       <table class="tbl">
-        <thead><tr><th>\u8282\u70B9</th><th>\u76F8\u4F4D</th><th>\u804C\u8D23\u8BF4\u660E</th><th>\u6267\u884C\u5355\u5143</th><th>ConnectorOps / \u7B97\u5B50</th><th>OpenAIProvider / \u6A21\u578B\u5206\u7EA7</th><th>\u5F15\u7528 Global Rules</th></tr></thead>
-        <tbody>${designNodesHtml}</tbody>
+        <thead><tr><th>\u8282\u70B9</th><th>\u76F8\u4F4D</th><th>\u804C\u8D23\u8BF4\u660E</th><th>\u6267\u884C\u5355\u5143</th><th>ConnectorOps / \u7B97\u5B50</th><th>OpenAIProvider / \u6A21\u578B\u5206\u7EA7</th><th>ref \u89C4\u5219 / ref tag</th></tr></thead>
+        <tbody data-node-tbody>${designNodesHtml}</tbody>
       </table>
     </div>
   </div>
@@ -3693,15 +4458,6 @@ ${actionLines || "      []"}
         </div>
       </details>
 
-      <div class="card" style="margin-bottom:12px"><div class="card-b">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          <b>${esc(t("G. \u8282\u70B9\u6D41\u8F6C\u7F16\u8F91\uFF08\u6267\u884C\u5355\u5143\u4E09\u578B connectops/agent/service\uFF1Bagent \u70B9\u8FDB\u5373\u914D\u2014\u2014LLM/ref \u6587\u6863/ref \u89C4\u5219/ref tag/tag \u89C4\u5219/\u5DE5\u5177\uFF1Bservice=\u8C03\u76EE\u6807\u7CFB\u7EDF\u4E14\u5185\u90E8\u7531\u5176 agent \u6267\u884C+\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587+\u6743\u9650 Role\uFF1B\u8282\u70B9\u53EF\u52A0\u5220\u2014\u2014\u5982\u5220\u9A8C\u6536\u8282\u70B9\uFF09"))}</b>
-          <span class="small faint">${esc(t("\u6539\u52A8\u968F\u300C\u4FDD\u5B58\u5E76 Apply\u300D\u4EE5 Workflow \u6587\u6863\u5BF9\u8C61\u843D\u8D26"))}</span>
-        </div>
-        <div data-wf-node-list>${(cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join("")}</div>
-        <button type="button" class="btn tiny acc" data-node-add>${esc(t("+ \u6DFB\u52A0\u8282\u70B9"))}</button>
-      </div></div>
-
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn acc" data-wf-save>${esc(t("\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E"))}</button>
         <button type="button" class="btn mute" data-wf-sync-yaml>${esc(t("\u4ECE\u4E0A\u65B9\u8868\u5355\u91CD\u65B0\u751F\u6210 YAML"))}</button>
@@ -3747,47 +4503,6 @@ ${actionLines || "      []"}
         });
       });
       cfg.postActions = acts;
-      const nodeCards = studio.querySelectorAll("[data-node-card]");
-      if (nodeCards.length) {
-        const nodes = [];
-        nodeCards.forEach((card) => {
-          const get = (k) => card.querySelector(`[data-node="${k}"]`);
-          const lst = (k) => String(get(k) ? get(k).value : "").split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
-          const u = get("unit") ? get("unit").value : "connectops";
-          const n = {
-            name: get("name") && get("name").value.trim() || "node-" + (nodes.length + 1),
-            phase: get("phase") && get("phase").value.trim() || "Idle",
-            title: get("title") ? get("title").value : "",
-            unit: u
-          };
-          if (u === "agent") {
-            n.provider = get("provider") ? get("provider").value.trim() : cfg.provider;
-            n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "standard";
-            ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
-              n[k] = lst(k);
-            });
-          } else if (u === "service") {
-            n.service = get("service") ? get("service").value.trim() : "";
-            n.op = get("op") ? get("op").value.trim() : "";
-            n.connector = get("connector") ? get("connector").value.trim() : "";
-            n.permissionRole = get("permissionRole") ? get("permissionRole").value.trim() : "";
-            n.contextPassing = {
-              previousRound: Boolean(get("ctxPrev") && get("ctxPrev").checked),
-              fields: lst("ctxFields")
-            };
-          } else if (u === "connectops") {
-            n.connector = get("connector") ? get("connector").value.trim() : "";
-            n.op = get("op") ? get("op").value.trim() : "";
-            n.provider = get("provider") ? get("provider").value.trim() : cfg.provider;
-            n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "low";
-            n.entryEvents = lst("entryEvents");
-          } else {
-            n.op = get("op") ? get("op").value.trim() : "approval-check";
-          }
-          nodes.push(n);
-        });
-        cfg.phases = nodes;
-      }
     };
     const syncYamlBox = () => {
       readFormIntoCfg();
@@ -3842,37 +4557,65 @@ ${actionLines || "      []"}
       syncYamlBox();
     });
     studio.querySelector("[data-wf-sync-yaml]")?.addEventListener("click", syncYamlBox);
-    const nodeList = studio.querySelector("[data-wf-node-list]");
-    const bindNodeEvents = () => {
-      if (!nodeList) return;
-      nodeList.querySelectorAll("[data-node-del]").forEach((btn) => {
-        btn.onclick = () => {
-          readFormIntoCfg();
-          cfg.phases.splice(Number(btn.getAttribute("data-node-del")), 1);
-          renderNodeList();
+    const repaintNodeSurfaces = () => {
+      const tbl = el.querySelector("[data-node-tbody]");
+      if (tbl) tbl.innerHTML = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
+      const graph = el.querySelector("[data-node-graph]");
+      if (graph) graph.innerHTML = wfGraphHtml(cfg.phases, cfg.transitions);
+      bindRowClicks();
+    };
+    const closeModal = () => {
+      el.querySelectorAll(".chat-modal[data-nm-modal]").forEach((m) => m.remove());
+    };
+    const openNodeModal = (nameOrIdx) => {
+      readFormIntoCfg();
+      const idx = typeof nameOrIdx === "number" ? nameOrIdx : cfg.phases.findIndex((n) => n.name === nameOrIdx);
+      if (idx < 0 || !cfg.phases[idx]) return;
+      closeModal();
+      const modal = document.createElement("div");
+      modal.className = "chat-modal";
+      modal.setAttribute("data-nm-modal", "1");
+      const paint3 = (node) => {
+        modal.innerHTML = '<div class="chat-modal-mask"></div><div class="chat-modal-panel"><div class="chat-modal-head"><div class="chat-modal-title"><span class="chip ' + (UNIT_CHIP[node.unit] || "mute") + ' tiny">' + esc(node.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : node.unit || "connectops") + '</span> <b class="mono">' + esc(node.name || "") + "</b> \xB7 " + esc(t("\u8282\u70B9\u7EC6\u8282\u914D\u7F6E")) + '</div><div class="chat-modal-acts"><button type="button" class="btn tiny mute" data-nm-cancel>' + esc(t("\u53D6\u6D88")) + '</button></div></div><div class="chat-modal-body"><div data-nm-fields>' + nodeFieldsHtml(node, cfg.provider) + '</div><div style="margin-top:14px;display:flex;gap:8px;align-items:center"><button type="button" class="btn acc sm" data-nm-save>' + esc(t("\u4FDD\u5B58\u8282\u70B9")) + '</button><button type="button" class="btn btn-ghost btn-danger sm" data-nm-del>' + esc(t("\u5220\u9664\u8282\u70B9")) + '</button><span class="small faint">' + esc(t("\u6539\u52A8\u968F\u300C\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u300D\u4EE5 Workflow \u6587\u6863\u5BF9\u8C61\u843D\u8D26")) + "</span></div></div></div>";
+        modal.querySelector("[data-nm-cancel]").addEventListener("click", closeModal);
+        modal.querySelector(".chat-modal-mask").addEventListener("click", closeModal);
+        modal.querySelector('[data-nm="unit"]').addEventListener("change", () => {
+          const draft = readNodeFields(modal, cfg.phases[idx]);
+          cfg.phases[idx] = draft;
+          paint3(cfg.phases[idx]);
+        });
+        modal.querySelector("[data-nm-save]").addEventListener("click", () => {
+          cfg.phases[idx] = readNodeFields(modal, cfg.phases[idx]);
+          closeModal();
+          repaintNodeSurfaces();
           syncYamlBox();
-        };
+        });
+        modal.querySelector("[data-nm-del]").addEventListener("click", () => {
+          cfg.phases.splice(idx, 1);
+          closeModal();
+          repaintNodeSurfaces();
+          syncYamlBox();
+        });
+      };
+      paint3(cfg.phases[idx]);
+      el.appendChild(modal);
+    };
+    const bindRowClicks = () => {
+      el.querySelectorAll("[data-node-edit]").forEach((row) => {
+        row.onclick = () => openNodeModal(row.getAttribute("data-node-edit") || "");
       });
-      nodeList.querySelectorAll("[data-node]").forEach((inp) => {
-        inp.onchange = () => {
-          readFormIntoCfg();
-          renderNodeList();
-          syncYamlBox();
-        };
+      el.querySelectorAll("[data-graph-node]").forEach((box) => {
+        box.onclick = () => openNodeModal(box.getAttribute("data-graph-node") || "");
       });
     };
-    const renderNodeList = () => {
-      if (!nodeList) return;
-      nodeList.innerHTML = (cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join("");
-      bindNodeEvents();
-    };
-    studio.querySelector("[data-node-add]")?.addEventListener("click", () => {
+    el.querySelector("[data-node-add]")?.addEventListener("click", () => {
       readFormIntoCfg();
       cfg.phases.push({ name: "node-" + (cfg.phases.length + 1), phase: "Idle", title: "\u65B0\u8282\u70B9", unit: "connectops", provider: cfg.provider, modelTier: "standard" });
-      renderNodeList();
+      repaintNodeSurfaces();
       syncYamlBox();
+      openNodeModal(cfg.phases.length - 1);
     });
-    bindNodeEvents();
+    bindRowClicks();
     studio.querySelector("[data-develop-collector]")?.addEventListener("click", async () => {
       readFormIntoCfg();
       const connName = String(cfg.collectorConnector || "connectops-log-collector").trim();
@@ -4579,7 +5322,7 @@ spec:
       });
     });
   }
-  function render4(el, ctx2) {
+  function render5(el, ctx2) {
     const p = ctx2.params || {};
     if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
     else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
@@ -4694,7 +5437,7 @@ spec:
     });
     box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
   }
-  function render5(el, ctx2) {
+  function render6(el, ctx2) {
     const id = ctx2.params && ctx2.params.id;
     if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
     else listScreen2(el, ctx2);
@@ -12593,7 +13336,7 @@ ${text2}</tr>
     return '<select class="inp" data-obj-picker style="max-width:280px" title="' + esc(t("\u5207\u6362\u5BF9\u8C61")) + '"><option value="">\u2014 ' + esc(t("\u5207\u6362\u5BF9\u8C61\uFF08") + objs.length + t(" \u5728\u518C\uFF09")) + " \u2014</option>" + opts + "</select>";
   }
   var rulesPending = /* @__PURE__ */ new Map();
-  function render6(el, ctx2) {
+  function render7(el, ctx2) {
     const p = ctx2.params || {};
     let objs = ctx2.store.objects();
     let ref = null;
@@ -12610,322 +13353,6 @@ ${text2}</tr>
       return;
     }
     renderScreen(el, ctx2, ref);
-  }
-
-  // node_modules/diff/libesm/diff/base.js
-  var Diff = class {
-    diff(oldStr, newStr, options2 = {}) {
-      let callback;
-      if (typeof options2 === "function") {
-        callback = options2;
-        options2 = {};
-      } else if ("callback" in options2) {
-        callback = options2.callback;
-      }
-      const oldString = this.castInput(oldStr, options2);
-      const newString = this.castInput(newStr, options2);
-      const oldTokens = this.removeEmpty(this.tokenize(oldString, options2));
-      const newTokens = this.removeEmpty(this.tokenize(newString, options2));
-      return this.diffWithOptionsObj(oldTokens, newTokens, options2, callback);
-    }
-    diffWithOptionsObj(oldTokens, newTokens, options2, callback) {
-      var _a2;
-      const done = (value) => {
-        value = this.postProcess(value, options2);
-        if (callback) {
-          setTimeout(function() {
-            callback(value);
-          }, 0);
-          return void 0;
-        } else {
-          return value;
-        }
-      };
-      const newLen = newTokens.length, oldLen = oldTokens.length;
-      let editLength = 1;
-      let maxEditLength = newLen + oldLen;
-      if (options2.maxEditLength != null) {
-        maxEditLength = Math.min(maxEditLength, options2.maxEditLength);
-      }
-      const maxExecutionTime = (_a2 = options2.timeout) !== null && _a2 !== void 0 ? _a2 : Infinity;
-      const abortAfterTimestamp = Date.now() + maxExecutionTime;
-      const bestPath = [{ oldPos: -1, lastComponent: void 0 }];
-      let newPos = this.extractCommon(bestPath[0], newTokens, oldTokens, 0, options2);
-      if (bestPath[0].oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
-        return done(this.buildValues(bestPath[0].lastComponent, newTokens, oldTokens));
-      }
-      let minDiagonalToConsider = -Infinity, maxDiagonalToConsider = Infinity;
-      const execEditLength = () => {
-        for (let diagonalPath = Math.max(minDiagonalToConsider, -editLength); diagonalPath <= Math.min(maxDiagonalToConsider, editLength); diagonalPath += 2) {
-          let basePath;
-          const removePath = bestPath[diagonalPath - 1], addPath = bestPath[diagonalPath + 1];
-          if (removePath) {
-            bestPath[diagonalPath - 1] = void 0;
-          }
-          let canAdd = false;
-          if (addPath) {
-            const addPathNewPos = addPath.oldPos - diagonalPath;
-            canAdd = addPath && 0 <= addPathNewPos && addPathNewPos < newLen;
-          }
-          const canRemove = removePath && removePath.oldPos + 1 < oldLen;
-          if (!canAdd && !canRemove) {
-            bestPath[diagonalPath] = void 0;
-            continue;
-          }
-          if (!canRemove || canAdd && removePath.oldPos < addPath.oldPos) {
-            basePath = this.addToPath(addPath, true, false, 0, options2);
-          } else {
-            basePath = this.addToPath(removePath, false, true, 1, options2);
-          }
-          newPos = this.extractCommon(basePath, newTokens, oldTokens, diagonalPath, options2);
-          if (basePath.oldPos + 1 >= oldLen && newPos + 1 >= newLen) {
-            return done(this.buildValues(basePath.lastComponent, newTokens, oldTokens)) || true;
-          } else {
-            bestPath[diagonalPath] = basePath;
-            if (basePath.oldPos + 1 >= oldLen) {
-              maxDiagonalToConsider = Math.min(maxDiagonalToConsider, diagonalPath - 1);
-            }
-            if (newPos + 1 >= newLen) {
-              minDiagonalToConsider = Math.max(minDiagonalToConsider, diagonalPath + 1);
-            }
-          }
-        }
-        editLength++;
-      };
-      if (callback) {
-        (function exec() {
-          setTimeout(function() {
-            if (editLength > maxEditLength || Date.now() > abortAfterTimestamp) {
-              return callback(void 0);
-            }
-            if (!execEditLength()) {
-              exec();
-            }
-          }, 0);
-        })();
-      } else {
-        while (editLength <= maxEditLength && Date.now() <= abortAfterTimestamp) {
-          const ret = execEditLength();
-          if (ret) {
-            return ret;
-          }
-        }
-      }
-    }
-    addToPath(path, added, removed, oldPosInc, options2) {
-      const last = path.lastComponent;
-      if (last && !options2.oneChangePerToken && last.added === added && last.removed === removed) {
-        return {
-          oldPos: path.oldPos + oldPosInc,
-          lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
-        };
-      } else {
-        return {
-          oldPos: path.oldPos + oldPosInc,
-          lastComponent: { count: 1, added, removed, previousComponent: last }
-        };
-      }
-    }
-    extractCommon(basePath, newTokens, oldTokens, diagonalPath, options2) {
-      const newLen = newTokens.length, oldLen = oldTokens.length;
-      let oldPos = basePath.oldPos, newPos = oldPos - diagonalPath, commonCount = 0;
-      while (newPos + 1 < newLen && oldPos + 1 < oldLen && this.equals(oldTokens[oldPos + 1], newTokens[newPos + 1], options2)) {
-        newPos++;
-        oldPos++;
-        commonCount++;
-        if (options2.oneChangePerToken) {
-          basePath.lastComponent = { count: 1, previousComponent: basePath.lastComponent, added: false, removed: false };
-        }
-      }
-      if (commonCount && !options2.oneChangePerToken) {
-        basePath.lastComponent = { count: commonCount, previousComponent: basePath.lastComponent, added: false, removed: false };
-      }
-      basePath.oldPos = oldPos;
-      return newPos;
-    }
-    equals(left, right, options2) {
-      if (options2.comparator) {
-        return options2.comparator(left, right);
-      } else {
-        return left === right || !!options2.ignoreCase && left.toLowerCase() === right.toLowerCase();
-      }
-    }
-    removeEmpty(array) {
-      const ret = [];
-      for (let i = 0; i < array.length; i++) {
-        if (array[i]) {
-          ret.push(array[i]);
-        }
-      }
-      return ret;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    castInput(value, options2) {
-      return value;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    tokenize(value, options2) {
-      return Array.from(value);
-    }
-    join(chars) {
-      return chars.join("");
-    }
-    postProcess(changeObjects, options2) {
-      return changeObjects;
-    }
-    get useLongestToken() {
-      return false;
-    }
-    buildValues(lastComponent, newTokens, oldTokens) {
-      const components = [];
-      let nextComponent;
-      while (lastComponent) {
-        components.push(lastComponent);
-        nextComponent = lastComponent.previousComponent;
-        delete lastComponent.previousComponent;
-        lastComponent = nextComponent;
-      }
-      components.reverse();
-      const componentLen = components.length;
-      let componentPos = 0, newPos = 0, oldPos = 0;
-      for (; componentPos < componentLen; componentPos++) {
-        const component = components[componentPos];
-        if (!component.removed) {
-          if (!component.added && this.useLongestToken) {
-            let value = newTokens.slice(newPos, newPos + component.count);
-            value = value.map(function(value2, i) {
-              const oldValue = oldTokens[oldPos + i];
-              return oldValue.length > value2.length ? oldValue : value2;
-            });
-            component.value = this.join(value);
-          } else {
-            component.value = this.join(newTokens.slice(newPos, newPos + component.count));
-          }
-          newPos += component.count;
-          if (!component.added) {
-            oldPos += component.count;
-          }
-        } else {
-          component.value = this.join(oldTokens.slice(oldPos, oldPos + component.count));
-          oldPos += component.count;
-        }
-      }
-      return components;
-    }
-  };
-
-  // node_modules/diff/libesm/diff/line.js
-  var LineDiff = class extends Diff {
-    constructor() {
-      super(...arguments);
-      this.tokenize = tokenize;
-    }
-    equals(left, right, options2) {
-      if (options2.ignoreWhitespace) {
-        if (!options2.newlineIsToken || !left.includes("\n")) {
-          left = left.trim();
-        }
-        if (!options2.newlineIsToken || !right.includes("\n")) {
-          right = right.trim();
-        }
-      } else if (options2.ignoreNewlineAtEof && !options2.newlineIsToken) {
-        if (left.endsWith("\n")) {
-          left = left.slice(0, -1);
-        }
-        if (right.endsWith("\n")) {
-          right = right.slice(0, -1);
-        }
-      }
-      return super.equals(left, right, options2);
-    }
-  };
-  var lineDiff = new LineDiff();
-  function diffLines(oldStr, newStr, options2) {
-    return lineDiff.diff(oldStr, newStr, options2);
-  }
-  function tokenize(value, options2) {
-    if (options2.stripTrailingCr) {
-      value = value.replace(/\r\n/g, "\n");
-    }
-    const retLines = [], linesAndNewlines = value.split(/(\n|\r\n)/);
-    if (!linesAndNewlines[linesAndNewlines.length - 1]) {
-      linesAndNewlines.pop();
-    }
-    for (let i = 0; i < linesAndNewlines.length; i++) {
-      const line = linesAndNewlines[i];
-      if (i % 2 && !options2.newlineIsToken) {
-        retLines[retLines.length - 1] += line;
-      } else {
-        retLines.push(line);
-      }
-    }
-    return retLines;
-  }
-
-  // src/render/diff.js
-  function diffLines2(oldStr, newStr) {
-    const parts = diffLines(String(oldStr == null ? "" : oldStr), String(newStr == null ? "" : newStr));
-    const rows = [];
-    for (const p of parts) {
-      const lines = String(p.value == null ? "" : p.value).split("\n");
-      if (lines.length && lines[lines.length - 1] === "") lines.pop();
-      const t2 = p.added ? "+" : p.removed ? "-" : " ";
-      for (const s of lines) rows.push({ t: t2, s });
-    }
-    return compress(rows);
-  }
-  function compress(rows) {
-    const keep = new Array(rows.length).fill(false);
-    rows.forEach((r, i) => {
-      if (r.t !== " ") {
-        for (let j = Math.max(0, i - 2); j <= Math.min(rows.length - 1, i + 2); j++) keep[j] = true;
-      }
-    });
-    const out = [];
-    let last = -3;
-    rows.forEach((r, i) => {
-      if (!keep[i]) return;
-      if (i - last > 1 && r.t === " ") out.push({ t: "gap", s: "\u22EF" });
-      out.push(r);
-      last = i;
-    });
-    if (!out.length) out.push({ t: "ctx", s: t("\uFF08\u65E0\u5DEE\u5F02\uFF09") });
-    return out;
-  }
-  function renderDiff(lines, maxLines = 200) {
-    const cap = Number(maxLines) || 200;
-    const html3 = lines.slice(0, cap).map((l) => {
-      if (l.t === "gap") return '<div class="diff-line ctx">   \u22EF</div>';
-      const sign = l.t === "+" ? "+" : l.t === "-" ? "-" : " ";
-      const cls = l.t === "+" ? "add" : l.t === "-" ? "del" : "ctx";
-      return '<div class="diff-line ' + cls + '"><span class="d-sign">' + sign + "</span>" + esc(trunc(l.s, 500)) + "</div>";
-    }).join("");
-    const tail = lines.length > cap ? t('<div class="diff-line ctx">\u2026 \u5171 ') + lines.length + t(" \u884C\u5DEE\u5F02</div>") : "";
-    return '<div class="diff">' + html3 + tail + "</div>";
-  }
-  function diffStats(lines) {
-    let add = 0;
-    let del = 0;
-    (lines || []).forEach((l) => {
-      if (l.t === "+") add += 1;
-      else if (l.t === "-") del += 1;
-    });
-    return { add, del };
-  }
-  function hunksOf(lines) {
-    let n = 0;
-    let inHunk = false;
-    (lines || []).forEach((l) => {
-      if (l.t === "+" || l.t === "-") {
-        if (!inHunk) {
-          n += 1;
-          inHunk = true;
-        }
-      } else {
-        inHunk = false;
-      }
-    });
-    return n;
   }
 
   // src/screens/editor.js
@@ -13269,7 +13696,7 @@ ${text2}</tr>
       });
     }
   }
-  function render7(el, ctx2) {
+  function render8(el, ctx2) {
     screenCtx = ctx2;
     const ref = resolveRef(ctx2);
     if (!ref) {
@@ -14978,7 +15405,7 @@ ${text2}</tr>
     if (sessTick % 4 !== 1) return;
     refreshSessions(el, f);
   }
-  function render8(el, ctx2) {
+  function render9(el, ctx2) {
     const id = ctx2.params && ctx2.params.id;
     const agent = ctx2.params && ctx2.params.agent;
     const paramKey = id != null && id !== "" ? "session/" + String(id) : "chat/" + String(agent || "");
@@ -15013,286 +15440,6 @@ ${text2}</tr>
     }
     const f = faces2();
     if (f) refreshTranscript(el, f);
-  }
-
-  // src/screens/approvals.js
-  var ignored = /* @__PURE__ */ new Set();
-  function pendingItems(ctx2) {
-    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
-    const runs = ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).map((r) => ({ kind: "run", key: "run|" + String(r.workflow || "") + "#" + String(r.run != null ? r.run : ""), run: r }));
-    const props = ctx2.store.proposals().filter((p) => p && p.name && String(p.status || "submitted") === "submitted").map((p) => ({ kind: "proposal", key: "proposal|" + String(p.scope || "global") + "|" + String(p.name), proposal: p }));
-    const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
-    return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
-  }
-  function apKeyOf(d) {
-    return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
-  }
-  function wfAnchorOf(ev) {
-    const first = String(ev && ev.involved || "").split(",")[0].trim();
-    return /^Workflow\/[^/\s]+\/[^/\s]+$/.test(first) ? first : "";
-  }
-  function matchesApprovalFocus(it, focus) {
-    const f = String(focus || "").trim();
-    if (!f || !it) return false;
-    if (it.kind === "draft" && it.draft) {
-      const d = it.draft;
-      const key = d.kind + "/" + (d.scope || "global") + "/" + d.name;
-      return apKeyOf(d) === f || key === f || String(d.name) === f;
-    }
-    if (it.kind === "run" && it.run) {
-      const r = it.run;
-      return String(r.workflow || "") === f || "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "") === f || String(r.run) === f;
-    }
-    if (it.kind === "proposal" && it.proposal) {
-      const p = it.proposal;
-      return String(p.name) === f || "Proposal/" + String(p.scope || "global") + "/" + String(p.name) === f;
-    }
-    if (it.kind === "event" && it.ev) {
-      const e = it.ev;
-      return String(e.involved || "").includes(f) || String(e.summary || "").includes(f) || String(e.dedupKey || "").includes(f);
-    }
-    return false;
-  }
-  function itemHtml(it, idx, focused = false) {
-    const approveCls = idx === 0 ? "btn btn-primary sm" : "btn btn-secondary sm";
-    const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : "";
-    if (it.kind === "run") {
-      const r = it.run;
-      const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
-      const no = String(r.run != null ? r.run : "");
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
-    }
-    if (it.kind === "proposal") {
-      const p = it.proposal;
-      const anchor = "Proposal/" + String(p.scope || "global") + "/" + String(p.name);
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + '</span><span class="h-right">' + chip(String(p.status || "submitted"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(p.summary || ""), 200) || t("\uFF08summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF09")) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "obj/Proposal/" + encodeURIComponent(String(p.scope || "global")) + "/" + encodeURIComponent(String(p.name)), "mute", true, t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="approve">' + esc(t("\u6279\u51C6\uFF08= Apply\uFF09")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="reject">' + esc(t("\u9A73\u56DE")) + "</button></div></div></div>";
-    }
-    if (it.kind === "event") {
-      const e = it.ev;
-      const involved = String(e.involved || "");
-      const anchor = wfAnchorOf(e);
-      const wfName = anchor ? String(anchor.split("/")[2] || "") : "";
-      const route = involvedRoute(involved.split(",")[0] || "");
-      const gateBtns = anchor ? '<button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-ev="' + esc(String(e.id == null ? "" : e.id)) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> " : '<button class="btn btn-secondary sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" disabled title="' + esc(t("\u4E8B\u4EF6\u672A\u643A\u5E26 Workflow \u951A")) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button> ";
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(e.type)) + '</span><span class="h-right">' + chip(String(e.level || "warn"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(e.summary || e.involved || ""), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + (route ? chipGo(involved.split(",")[0], route, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : chip(involved || "\u2014", "mute")) + (wfName ? chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(wfName), "acc", true, t("Workflow \u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) : "") + '</div><div class="dh-actions" style="margin-top:10px">' + gateBtns + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + '">' + esc(t("\u5FFD\u7565")) + "</button></div></div></div>";
-    }
-    const d = it.draft;
-    const scope = d.scope || "global";
-    return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"' + hl + '><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip(t("\u7A3F: ") + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + t('"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-approve="' + esc(apKeyOf(d)) + t('">\u6279\u51C6\uFF08= Apply\uFF09</button> ') + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button> ') + '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + t('">\u7F16\u8F91\u5668</button>') + "</div></div></div>";
-  }
-  async function hydrateDiff(ctx2, d) {
-    const stamp = typeof location !== "undefined" ? location.hash : "";
-    const [draftR, faceR] = await Promise.all([
-      ctx2.api.draft(d.kind, d.name, d.scope || "global"),
-      ctx2.api.object(d.kind, d.scope || "global", d.name)
-    ]);
-    if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-    const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
-    if (!box) return;
-    if (!draftR.ok) {
-      box.innerHTML = t('<div class="small faint">\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(draftR.error || draftR.status)) + t("\uFF09\u2014\u2014\u91CD\u8FDB\u5373\u6062\u590D\u3002</div>");
-      return;
-    }
-    const dr = draftR.data && typeof draftR.data === "object" ? draftR.data : {};
-    const working = String(dr.content || "");
-    let base = t("\uFF08\u5BF9\u8C61\u5C1A\u672A\u843D\u5E93\u2014\u2014\u6279\u51C6\u5373\u521B\u5EFA\uFF09");
-    let baseNote = t("\u57FA\u51C6=r?");
-    if (faceR.ok) {
-      const data = faceR.data && typeof faceR.data === "object" ? faceR.data : {};
-      base = data.content != null ? String(data.content) : "";
-      baseNote = t("\u57FA\u51C6=r") + (dr.baseResourceVersion != null ? dr.baseResourceVersion : data.resourceVersion != null ? data.resourceVersion : "?");
-    } else if (faceR.status !== 404) {
-      base = t("\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A") + String(faceR.error || faceR.status) + "\uFF09";
-    }
-    const stats = diffStats(diffLines2(base, working));
-    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
-  }
-  async function approve(ctx2, d, btn) {
-    btn.disabled = true;
-    btn.textContent = t("\u9884\u68C0\u4E2D\u2026");
-    const dry = await ctx2.api.apply({
-      kind: d.kind,
-      scope: d.scope || "global",
-      name: d.name,
-      fromDraft: true,
-      dryRun: true,
-      fieldManager: "console:approve",
-      reasonRef: "console:approve-dry"
-    });
-    btn.disabled = false;
-    btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
-    if (!dry.ok) {
-      if (typeof window !== "undefined") window.alert(t("dry-run \u9884\u68C0\u672A\u8FC7\uFF08") + String(dry.error || dry.status) + t("\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002"));
-      return;
-    }
-    const cur = dry.data && dry.data.rv != null ? Number(dry.data.rv) : null;
-    const expect = d.baseResourceVersion != null ? Number(d.baseResourceVersion) : null;
-    const lockNote = cur != null && expect != null ? cur === expect ? t("\u7248\u672C\u5BF9\u9F50 r") + cur : t("\u7248\u672C\u5DF2\u53D8\u5316\uFF08\u73B0 r") + cur + t(" vs \u7F16\u8F91\u57FA\u7EBF r") + expect + t("\u2014\u2014\u843D\u5E93\u524D\u8BF7\u5148\u5237\u65B0\uFF09") : "";
-    if (!window.confirm(t("\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09") + d.kind + "/" + d.name + t("\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=") + String(cur) + "\uFF09" + (lockNote ? "\uFF1B" + lockNote : "") + "\u3002")) return;
-    btn.disabled = true;
-    btn.textContent = t("\u843D\u5E93\u4E2D\u2026");
-    const r = await ctx2.api.apply({
-      kind: d.kind,
-      scope: d.scope || "global",
-      name: d.name,
-      fromDraft: true,
-      fieldManager: "console:approve",
-      reasonRef: "console:approve"
-    });
-    btn.disabled = false;
-    btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
-    if (!r.ok) {
-      window.alert(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002"));
-      return;
-    }
-    ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
-    const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
-    if (cardEl) cardEl.remove();
-    ctx2.api.snapshot().then((s) => {
-      if (s.ok) ctx2.store.init(s.data);
-    });
-  }
-  async function pubGateDecision(ctx2, btn, grant) {
-    const anchor = btn.getAttribute("data-ap-anchor") || "";
-    const key = btn.getAttribute(grant ? "data-ap-grant" : "data-ap-reject") || "";
-    const evId = btn.getAttribute("data-ap-ev") || "";
-    if (!anchor || !key) return;
-    const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalGranted \u540E run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalRejected \u540E run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
-    if (!confirmed) return;
-    btn.disabled = true;
-    btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
-    const runNo = Number(btn.getAttribute("data-ap-run") || 0) || 0;
-    const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor, ...runNo > 0 ? { run: runNo } : {} };
-    if (evId) payload.dedupKey = "console-" + evId;
-    else payload.dedupKey = "console-appr-" + key + "-" + Date.now();
-    const r = await ctx2.api.eventPub(payload);
-    if (!r.ok) {
-      btn.disabled = false;
-      btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
-      window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
-      return;
-    }
-    ignored.add(key);
-    const card = btn.closest(".ap-item");
-    if (card) card.remove();
-    ctx2.api.snapshot().then((s) => {
-      if (s.ok) ctx2.store.init(s.data);
-    });
-  }
-  async function proposalDecision(ctx2, p, decision, btn) {
-    const isApprove = decision === "approve";
-    const fm = isApprove ? "console:approve" : "console:reject";
-    if (!window.confirm((isApprove ? t("\u786E\u8BA4\u6279\u51C6\u63D0\u6848\uFF08Apply console:approve\uFF09") : t("\u786E\u8BA4\u9A73\u56DE\u63D0\u6848\uFF08Apply console:reject\uFF09")) + " " + String(p.name) + "\uFF1F")) return;
-    btn.disabled = true;
-    btn.textContent = t("\u5224\u5B9A\u4E2D\u2026");
-    const r = await ctx2.api.apply({
-      kind: "Proposal",
-      scope: p.scope || "global",
-      name: p.name,
-      fromDraft: true,
-      fieldManager: fm,
-      reasonRef: "console:" + decision + ":" + String(p.name || "")
-    });
-    btn.disabled = false;
-    btn.textContent = isApprove ? t("\u6279\u51C6\uFF08= Apply\uFF09") : t("\u9A73\u56DE");
-    if (!r || !r.ok) {
-      window.alert(t("\u63D0\u6848\u5224\u5B9A\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09\u2014\u2014\u63D0\u6848\u72B6\u6001\u672A\u7FFB\u8F6C\uFF0C\u53EF\u91CD\u8BD5\u3002"));
-      return;
-    }
-    ignored.add("proposal|" + (p.scope || "global") + "|" + String(p.name));
-    const card = btn.closest(".ap-item");
-    if (card) card.remove();
-    ctx2.api.snapshot().then((s) => {
-      if (s.ok) ctx2.store.init(s.data);
-    });
-  }
-  async function hydrateLedger(ctx2) {
-    const stamp = typeof location !== "undefined" ? location.hash : "";
-    const slot = document.querySelector("[data-ap-ledger]");
-    if (!slot) return;
-    const r = await ctx2.api.approvals(20);
-    if (!el__isConnected(slot) || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-    if (!r.ok) {
-      slot.innerHTML = t('<div class="small faint">\u5BA1\u6279\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u3002</div>");
-      return;
-    }
-    const rows = r.data && Array.isArray(r.data.approvals) ? r.data.approvals : [];
-    if (!rows.length) {
-      slot.innerHTML = t('<div class="small faint">\u6682\u65E0\u5DF2\u51B3\u8BB0\u5F55\uFF08\u6279\u51C6/\u9A73\u56DE\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002</div>');
-      return;
-    }
-    slot.innerHTML = t('<h2 class="sec-title">\u5DF2\u51B3\u8BB0\u5F55</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>') + t("<th>\u65F6\u523B</th><th>\u5224\u5B9A</th><th>\u5BF9\u8C61</th><th>\u5224\u5B9A\u4E3B\u4F53</th><th>rv</th></tr></thead><tbody>") + rows.map((x) => '<tr><td class="mono small">' + esc(String(x.ts || "").replace("T", " ").slice(0, 19)) + "</td><td>" + chip(String(x.decision || ""), x.decision === "granted" ? "ok" : "esc") + '</td><td class="mono small">' + (involvedRoute(x.obj) ? '<span class="lk" data-go="' + esc(involvedRoute(x.obj)) + '">' + esc(String(x.obj || "")) + "</span>" : esc(String(x.obj || ""))) + '</td><td class="mono small">' + esc(String(x.judgedBy || "anonymous")) + '</td><td class="mono small">' + esc(x.rv ? "r" + x.rv : "\u2014") + "</td></tr>").join("") + "</tbody></table></div>";
-  }
-  function el__isConnected(x) {
-    return !!(x && x.isConnected);
-  }
-  function inboxHtml(ctx2) {
-    const inbox = ctx2.store.inbox();
-    if (!inbox) return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u6682\u4E0D\u53EF\u7528\uFF08\u6295\u5F71\u7F3A\u5E2D\uFF09\u3002</div></div></div>');
-    const items = Array.isArray(inbox.items) ? inbox.items : [];
-    if (!items.length && !Number(inbox.total)) {
-      return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u4E3A\u7A7A\uFF08\u96F6\u5F85\u529E\uFF09\u3002</div></div></div>');
-    }
-    return '<div class="card">' + items.slice(0, 50).map((x) => {
-      const linkRaw = String(x && (x.link || x.ref || x.obj) || "");
-      const link2 = linkRaw.replace(/^#\//, "");
-      const route = link2 ? involvedRoute(link2) || link2 : "";
-      const main = String(x && (x.digest || x.title || x.summary || x.kind) || "\u2014");
-      const cls = String(x && x.class || x && x.kind || "");
-      const at = relAge(String(x && x.at || "")) || "";
-      return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(cls, "mute") + '</div><div class="mr-sub small faint">' + esc(at) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo(t("\u53BB\u5904\u7406"), route, "acc", true) + "</span>" : "") + "</div>";
-    }).join("") + "</div>";
-  }
-  function approvalsScreen(el, ctx2) {
-    const focus = String(ctx2.params && ctx2.params.focus || "").trim();
-    const rawItems = pendingItems(ctx2);
-    const matched = focus ? rawItems.filter((it) => matchesApprovalFocus(it, focus)) : [];
-    const rest = focus ? rawItems.filter((it) => !matchesApprovalFocus(it, focus)) : rawItems;
-    const items = matched.concat(rest);
-    const focusBanner = focus ? '<div class="card" style="margin-bottom:10px"><div class="card-b small" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' + chip(t("\u5B9A\u4F4D\uFF1A") + focus, matched.length ? "acc" : "warn") + "<span>" + esc(matched.length ? t("\u5DF2\u7F6E\u9876\u9AD8\u4EAE\u5BF9\u5E94\u5F85\u5BA1\u9879\uFF08") + matched.length + t(" \u9879\uFF09\u3002") : t("\u5F85\u5BA1\u533A\u6682\u65E0\u5339\u914D\u9879\u2014\u2014\u53EF\u80FD\u5DF2\u51B3\u6216\u5C1A\u672A\u843D\u7A3F\uFF0C\u8BF7\u6838\u67E5\u4E0B\u65B9\u5DF2\u51B3\u8BB0\u5F55\u3002")) + "</span>" + chipGo(t("\u6E05\u9664\u5B9A\u4F4D"), "approvals", "mute", true) + "</div></div>" : "";
-    el.innerHTML = '<div class="view-inner">' + screenHead(
-      t("\u5BA1\u6279"),
-      t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\u3002\u4E8B\u4EF6\u884C\u6279\u51C6/\u9A73\u56DE=\u5BF9 Workflow \u951A\u53D1\u5E03 ApprovalGranted/ApprovalRejected\uFF08run \u7EED\u884C/\u7EC8\u6001 Failed\uFF09\uFF1B\u8349\u7A3F\u6279\u51C6=Apply\uFF1B\u5747=\u4EBA\u70B9\u786E\u8BA4\u3002"),
-      chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
-    ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
-    items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
-    hydrateLedger(ctx2);
-    if (focus && matched.length) {
-      const hit = el.querySelector('[data-ap-focused="1"]');
-      if (hit && hit.scrollIntoView) hit.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-    el.querySelectorAll("[data-ap-approve]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const d = ctx2.store.drafts().find((x) => apKeyOf(x) === btn.dataset.apApprove);
-        if (d) approve(ctx2, d, btn);
-      });
-    });
-    el.querySelectorAll("[data-ap-grant]").forEach((btn) => {
-      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, true));
-    });
-    el.querySelectorAll("[data-ap-reject]").forEach((btn) => {
-      btn.addEventListener("click", () => pubGateDecision(ctx2, btn, false));
-    });
-    const propById = new Map((ctx2.store.proposals() || []).filter((p) => p && p.name).map((p) => ["proposal|" + String(p.scope || "global") + "|" + String(p.name), p]));
-    el.querySelectorAll("[data-ap-prop]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const p = propById.get(btn.getAttribute("data-ap-prop") || "");
-        if (p) proposalDecision(ctx2, p, String(btn.getAttribute("data-ap-prop-decision") || "approve"), btn);
-      });
-    });
-    el.querySelectorAll("[data-ap-ignore]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        ignored.add(btn.dataset.apIgnore);
-        const card = btn.closest(".ap-item");
-        if (card) card.remove();
-      });
-    });
-    el.querySelectorAll("[data-go]").forEach((x) => {
-      x.addEventListener("click", () => ctx2.go(x.dataset.go));
-    });
-  }
-  function render9(el, ctx2) {
-    approvalsScreen(el, ctx2);
   }
 
   // src/screens/tags.js
@@ -16140,7 +16287,7 @@ ${text2}</tr>
       } catch {
       }
     });
-    router.route("home", screenOf(render)).route("welcome", screenOf(render2)).route("obj", screenOf(render6)).route("obj/:kind", screenOf(render6)).route("obj/:kind/:scope/:name", screenOf(render6)).route("events", screenOf(render5)).route("event/:id", screenOf(render5)).route("tasks", screenOf(render3)).route("task/:id", screenOf(render3)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render7)).route("doc/:kind/:scope/:name", screenOf(render7)).route("chat/:agent", screenOf(render8)).route("session/:id", screenOf(render8)).route("approvals", screenOf(render9)).route("approvals/:focus", screenOf(render9)).route("inbox", screenOf(render9)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render4)).route("wf/:name", screenOf(render4)).route("wf/:name/r/:n", screenOf(render4)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
+    router.route("home", screenOf(render)).route("welcome", screenOf(render3)).route("obj", screenOf(render7)).route("obj/:kind", screenOf(render7)).route("obj/:kind/:scope/:name", screenOf(render7)).route("events", screenOf(render6)).route("event/:id", screenOf(render6)).route("tasks", screenOf(render4)).route("task/:id", screenOf(render4)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render8)).route("doc/:kind/:scope/:name", screenOf(render8)).route("chat/:agent", screenOf(render9)).route("session/:id", screenOf(render9)).route("approvals", screenOf(render2)).route("approvals/:focus", screenOf(render2)).route("inbox", screenOf(render2)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render5)).route("wf/:name", screenOf(render5)).route("wf/:name/r/:n", screenOf(render5)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
     router.mount(view);
     const stream = connectStream({
       url: BASES.ws || wsUrlOf(opts.location || (typeof location !== "undefined" ? location : null)),

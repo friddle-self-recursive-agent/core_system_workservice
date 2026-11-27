@@ -36,6 +36,45 @@ function apKeyOf(d) {
   return (d.kind + '/' + (d.scope || 'global') + '/' + d.name).replace(/[^A-Za-z0-9]/g, '_');
 }
 
+/* ── 审批信息面（2026-11-27 三次裁决「批准啥？approve 至少要展示更新了哪些文档」）──
+ * 待批行/卡不得只有裸按钮：①本 run 窗口内已更新文档（DocApplied 事件归集）②待 apply
+ * 文档稿（草稿缓存——批准将落哪些文档）③闸前判断摘要（ApprovalNeeded 事件 summary=
+ * agent 判定词形——LLM 整理的信息随事件词形携带；缺席=诚实注记不编造）。 */
+
+export function runApprovalInfoOf(store, wf, scope, run, startedAt) {
+  const anchor = 'Workflow/' + String(scope || 'global') + '/' + String(wf || '');
+  const ev = (store.events() || []).find((e) => e && e.type === 'ApprovalNeeded' &&
+    String(e.involved || '').indexOf(anchor) >= 0);   // 锚唯一=最新闸前判断（LLM 判定词形随事件 summary 携带）
+  const docs = (store.events() || [])
+    .filter((e) => e && e.type === 'DocApplied')
+    .filter((e) => !startedAt || String(e.ts || e.at || '') >= String(startedAt))
+    .slice(0, 5)
+    .map((e) => String(e.involved || '').split(',')[0].trim())
+    .filter(Boolean);
+  const drs = (store.drafts() || [])
+    .filter((d) => d && d.kind && d.name)
+    .slice(0, 5)
+    .map((d) => d.kind + '/' + (d.scope || 'global') + '/' + d.name);
+  return { judge: ev ? String(ev.summary || '') : '', docs, drafts: drs };
+}
+
+export function runApprovalInfoHtml(info) {
+  const parts = [];
+  if (info.docs.length) {
+    parts.push('<span class="chip ok tiny">已更新 ' + info.docs.length + ' 篇</span> <span class="mono small">' +
+      esc(info.docs.map((d) => trunc(d, 30)).join('、')) + '</span>');
+  }
+  if (info.drafts.length) {
+    parts.push('<span class="chip warn tiny">待批稿 ' + info.drafts.length + ' 份</span> <span class="mono small">' +
+      esc(info.drafts.map((d) => trunc(d, 30)).join('、')) + '</span>');
+  }
+  if (info.judge) {
+    parts.push('<span class="small">' + esc(tr('判断：')) + esc(trunc(info.judge, 110)) + '</span>');
+  }
+  if (!parts.length) return '<span class="small faint">' + esc(tr('窗口内无文档动态（DocApplied/待批稿缺席）——批准前详情请看「运行详情」。')) + '</span>';
+  return parts.join(' <span class="faint">·</span> ');
+}
+
 /** 事件行→Workflow 锚（§19 R3 批闸语义：run 恢复唯一人工通路=对 Workflow 锚发
  * ApprovalGranted/ApprovalRejected——involved 首段非 Workflow 词形=无锚，按钮置灰诚实注记）。 */
 function wfAnchorOf(ev) {
@@ -70,19 +109,22 @@ export function matchesApprovalFocus(it, focus) {
 }
 
 /** 待审行（对象键 + 稿来源 + diff 容器 + 批准/忽略；run/proposal/事件行同构=摘要+锚 chips+按钮组）。 */
-function itemHtml(it, idx, focused = false) {
+function itemHtml(ctx, it, idx, focused = false) {
   const approveCls = idx === 0 ? 'btn btn-primary sm' : 'btn btn-secondary sm';
   const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : '';
   if (it.kind === 'run') {
     // F-09 ①：挂起 Workflow run 行（总览审批区同源——批准/驳回=对 Workflow 锚发布
     // ApprovalGranted/ApprovalRejected；锚词形与 §19 R3 批闸语义同源）。
+    // 审批信息面（三次裁决）：批准前展示已更新文档/待批稿/闸前判断摘要——不再裸按钮。
     const r = it.run;
     const anchor = 'Workflow/' + String(r.owner || 'global') + '/' + String(r.workflow || '');
     const no = String(r.run != null ? r.run : '');
+    const info = runApprovalInfoHtml(runApprovalInfoOf(ctx.store, String(r.workflow || ''), String(r.owner || 'global'), no, String(r.startedAt || '')));
     return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' +
       esc(String(r.workflow || '—')) + (no ? ' #' + esc(no) : '') + '</span>' +
       '<span class="h-right">' + chip(String(r.phase || 'AwaitingApproval'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || tr('工作流闸锚挂起——等待审批信号')), 160)) + '</div>' +
+      '<div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div>' +
       '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
       chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(String(r.workflow || '')) + (no ? '/r/' + encodeURIComponent(no) : ''), 'acc', true, tr('运行详情——批闸锚')) +
       '</div>' +
@@ -339,7 +381,7 @@ function approvalsScreen(el, ctx) {
       chip(tr('批量批准通路待后端词形——逐条批准（诚实注记）'), 'mute')) +
     focusBanner +
     (items.length
-      ? items.map((it, idx) => itemHtml(it, idx, !!focus && matchesApprovalFocus(it, focus))).join('')
+      ? items.map((it, idx) => itemHtml(ctx, it, idx, !!focus && matchesApprovalFocus(it, focus))).join('')
       : emptyBox(tr('暂无待审事项'), '', chipGo(tr('回 Welcome'), 'welcome', 'acc', false))) +
     tr('<div data-ap-ledger style="margin-top:20px"><div class="small faint">已决记录现读中…</div></div>') +
     tr('<h2 class="sec-title">收件箱（待你处理）</h2>') + inboxHtml(ctx) +

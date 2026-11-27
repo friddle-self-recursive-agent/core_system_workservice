@@ -46,6 +46,22 @@ export function defaultLoopSpec(name = 'core-system-developer-loop', existing = 
     { name: 'deploy-system', phase: 'Deploying', title: '7. deploy-system 发版（service 内部 agent 执行）', unit: 'service', connector: depSys.connector || 'connectops-deploy', op: depSys.op || 'release', service: depSys.service || 'deploy-system', contextPassing: { previousRound: true, fields: ['verifyReport', 'release'] }, permissionRole: 'role/deploy-system-ops' },
     { name: 'report-archive', phase: 'Reporting', title: '8. 总结归档（解释执行 postActions + 回写 InSync）', unit: 'agent', op: 'archive-report', provider: llm.provider || 'openai-default', modelTier: 'low', tools: ['findings-read', 'doc-draft', 'tag-write'] },
   ];
+  /* 迁移表=相位链图的边（多起点/条件分叉边——判断词形=LLM 分支输出；与 YAML transitions 同源联动）。 */
+  const defaultTransitions = [
+    { from: 'Idle', on: 'advance', to: 'Analyzing' },
+    { from: 'Idle', on: 'entry:DocApplied', to: 'Planning' },
+    { from: 'Analyzing', on: 'advance', to: 'AwaitingApproval' },
+    { from: 'Analyzing', on: 'worth_fixing', to: 'AwaitingApproval' },
+    { from: 'Analyzing', on: 'ignore', to: 'Reporting' },
+    { from: 'AwaitingApproval', on: 'advance', to: 'Planning' },
+    { from: 'AwaitingApproval', on: 'ApprovalGranted', to: 'Planning' },
+    { from: 'AwaitingApproval', on: 'ApprovalRejected', to: 'Failed' },
+    { from: 'Planning', on: 'advance', to: 'Executing' },
+    { from: 'Executing', on: 'advance', to: 'Verifying' },
+    { from: 'Verifying', on: 'advance', to: 'Deploying' },
+    { from: 'Verifying', on: 'retry-develop', to: 'Executing' },
+    { from: 'Deploying', on: 'advance', to: 'Reporting' },
+  ];
 
   return {
     name,
@@ -94,6 +110,9 @@ export function defaultLoopSpec(name = 'core-system-developer-loop', existing = 
     phases: (Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === 'object'
       ? s.phases.map((n) => (n && n.unit === 'session' ? { ...n, unit: 'agent' } : n))   // 旧 session 词形退役→agent（workflow.md §1.3）
       : defaultPhases),
+    transitions: Array.isArray(s.transitions) && s.transitions.length
+      ? s.transitions.map((t) => ({ from: t && t.from, on: t && t.on, to: t && t.to })).filter((t) => t.from && t.to)
+      : defaultTransitions,
   };
 }
 
@@ -137,6 +156,9 @@ export function buildWorkflowYaml(cfg, scope = 'global') {
   const phaseLines = (cfg.phases || []).map(nodeLine).join('\n');
   const nodeMappingLines = (cfg.phases || []).map((n) =>
     `      ${n.name}: {tier: ${n.modelTier || 'standard'}${n.model ? ', model: ' + q(n.model) : ''}}`
+  ).join('\n');
+  const transLines = (cfg.transitions || []).map((t) =>
+    `    - {from: ${t.from}, on: ${q(String(t.on || 'advance'))}, to: ${t.to}}`
   ).join('\n');
 
   return `apiVersion: core/v1
@@ -221,19 +243,7 @@ ${condLines || '      []'}
   phases:
 ${phaseLines}
   transitions:
-    - {from: Idle,             on: advance,            to: Analyzing}
-    - {from: Idle,             on: "entry:DocApplied", to: Planning}
-    - {from: Analyzing,        on: advance,            to: AwaitingApproval}
-    - {from: Analyzing,        on: worth_fixing,       to: AwaitingApproval}
-    - {from: Analyzing,        on: ignore,             to: Reporting}
-    - {from: AwaitingApproval, on: advance,            to: Planning}
-    - {from: AwaitingApproval, on: ApprovalGranted,    to: Planning}
-    - {from: AwaitingApproval, on: ApprovalRejected,   to: Failed}
-    - {from: Planning,         on: advance,            to: Executing}
-    - {from: Executing,        on: advance,            to: Verifying}
-    - {from: Verifying,        on: advance,            to: Deploying}
-    - {from: Verifying,        on: retry-develop,      to: Executing}
-    - {from: Deploying,        on: advance,            to: Reporting}
+${transLines}
   onEscalate: {action: pause, notify: bind-role}
   onFailed:
     backoff: 30s*2^n
@@ -258,22 +268,37 @@ ${actionLines || '      []'}
 /* ---------- 节点流转编辑（2026-11-27 用户裁决：执行单元三型 connectops/agent/service +
  * gate 控制节点；节点可加删「我要加节点或者我要去掉验收节点」；agent 点进即配 LLM/ref 文档/
  * ref 规则/ref tag/tag 规则/工具；service=调目标系统内部 agent 执行+上一轮详细上下文+
- * permissionRole）。纯渲染 nodeCardHtml(n, i, defProvider) → HTML；绑定在 bindWorkflowStudio。 */
+ * permissionRole）。节点细节=nodeFieldsHtml（弹窗体内）+ readNodeFields（保存/切 unit 共用）；
+ * 相位链图=wfGraphHtml（相位词汇为图键、条件边取代同端点 advance）。 */
 
 const NODE_UNITS = ['connectops', 'agent', 'service', 'gate'];
 
-const UNIT_CHIP = { connectops: 'mute', agent: 'acc', service: 'warn', gate: 'llm' };
+const UNIT_CHIP = { connectops: 'mute', agent: 'acc', service: 'warn', gate: 'llm', side: 'esc' };
 
-/** 单节点配置卡（点进即配：unit select 切换后由绑定层重渲染该列表）。 */
-function nodeCardHtml(n, i, defProvider) {
+/** 设计表行渲染（模块级——studio 首渲染与弹窗保存后重渲染同源）。 */
+function nodeRowHtml(n, i, defProvider) {
+  return `<tr data-node-edit="${esc(n.name || '')}" style="cursor:pointer" title="${esc(tr('点击弹窗编辑节点细节配置'))}">` +
+    `<td class="mono small">${i + 1}. ${esc(n.name || '')}</td>` +
+    `<td>${chip(n.phase || '—', 'acc')}</td>` +
+    `<td><b>${esc(n.title || '')}</b></td>` +
+    `<td class="mono small">${chip(n.unit === 'gate' ? tr('控制节点') : (n.unit || 'connectops'), UNIT_CHIP[n.unit] || 'mute')}</td>` +
+    `<td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : '—'}${n.op ? ` · ${esc(n.op)}` : ''}</td>` +
+    `<td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || defProvider)}" title="${esc(tr('点击配置 OpenAIProvider 账号/baseUrl/模型映射'))}">Provider: ${esc(n.provider || defProvider)}</span> ` +
+    `${chip('tier:' + (n.modelTier || 'standard'), n.modelTier === 'high' ? 'warn' : 'mute')}</td>` +
+    `<td class="small mono">${Array.isArray(n.refRules) && n.refRules.length ? esc(n.refRules.join(', ')) : '—'}${Array.isArray(n.refTags) && n.refTags.length ? ' <span class="faint">tag:</span>' + esc(n.refTags.join(',')) : ''}</td>` +
+    `</tr>`;
+}
+
+/** 节点细节字段组（unit 分型——弹窗体内复用；data-nm 词位）。 */
+function nodeFieldsHtml(n, defProvider) {
   const u = n.unit || 'connectops';
   const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
-  const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-node="${key}" data-ni="${i}" value="${esc(val == null ? '' : String(val))}" style="width:100%"></div>`;
+  const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-nm="${key}" value="${esc(val == null ? '' : String(val))}" style="width:100%"></div>`;
   const base = grid(
-    inp('节点名 (name)', 'name', n.name || ('node-' + (i + 1))) +
+    inp('节点名 (name)', 'name', n.name || '') +
     inp('相位 (phase)', 'phase', n.phase || 'Idle') +
-    `<div><div class="small faint">${esc(tr('职责说明 (title)'))}</div><input class="inp" data-node="title" data-ni="${i}" value="${esc(n.title || '')}" style="width:100%"></div>` +
-    `<div><div class="small faint">${esc(tr('执行单元 (unit)'))}</div><select class="inp" data-node="unit" data-ni="${i}" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? 'selected' : ''}>${x}${x === 'gate' ? tr('（控制节点）') : ''}</option>`).join('')}</select></div>`
+    `<div><div class="small faint">${esc(tr('职责说明 (title)'))}</div><input class="inp" data-nm="title" value="${esc(n.title || '')}" style="width:100%"></div>` +
+    `<div><div class="small faint">${esc(tr('执行单元 (unit)'))}</div><select class="inp" data-nm="unit" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? 'selected' : ''}>${x}${x === 'gate' ? tr('（控制节点）') : ''}</option>`).join('')}</select></div>`
   );
   const rows = [base];
   if (u === 'agent') {
@@ -294,7 +319,7 @@ function nodeCardHtml(n, i, defProvider) {
       inp('ConnectorOps', 'connector', n.connector || '') +
       inp('权限 Role (permissionRole——P7 随文档授予)', 'permissionRole', n.permissionRole || '') +
       inp('上一轮上下文字段 (contextPassing.fields)', 'ctxFields', ((n.contextPassing && n.contextPassing.fields) || []).join(', ')) +
-      `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-node="ctxPrev" data-ni="${i}" ${(!n.contextPassing || n.contextPassing.previousRound !== false) ? 'checked' : ''}> ${esc(tr('传上一轮详细上下文'))}</label></div>`
+      `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-nm="ctxPrev" ${(!n.contextPassing || n.contextPassing.previousRound !== false) ? 'checked' : ''}> ${esc(tr('传上一轮详细上下文'))}</label></div>`
     ));
   } else if (u === 'connectops') {
     rows.push(grid(
@@ -307,11 +332,134 @@ function nodeCardHtml(n, i, defProvider) {
   } else {
     rows.push(grid(inp('闸算子 (op)', 'op', n.op || 'approval-check')));
   }
-  return `<div class="card" style="margin:0 0 8px 0" data-node-card="${i}"><div class="card-b">` +
-    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">` +
-    `<div>${chip(u === 'gate' ? tr('控制节点') : u, UNIT_CHIP[u] || 'mute')} <b class="mono small">${esc(n.name || '')}</b></div>` +
-    `<button type="button" class="btn tiny mute" data-node-del="${i}">${esc(tr('删除节点'))}</button></div>` +
-    rows.join('') + `</div></div>`;
+  return rows.join('');
+}
+
+/** 弹窗字段组 → 节点对象（unit 分型读取——保存/切换 unit 共用）。 */
+function readNodeFields(root, base) {
+  const get = (k) => root.querySelector(`[data-nm="${k}"]`);
+  const lst = (k) => String(get(k) ? get(k).value : '').split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
+  const u = get('unit') ? get('unit').value : (base.unit || 'connectops');
+  const n = {
+    ...base,
+    name: (get('name') && get('name').value.trim()) || base.name || 'node',
+    phase: (get('phase') && get('phase').value.trim()) || 'Idle',
+    title: get('title') ? get('title').value : (base.title || ''),
+    unit: u,
+  };
+  if (u === 'agent') {
+    n.provider = get('provider') ? get('provider').value.trim() : '';
+    n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'standard';
+    ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'entryEvents'].forEach((k) => { n[k] = lst(k); });
+    delete n.service; delete n.contextPassing; delete n.permissionRole;
+  } else if (u === 'service') {
+    n.service = get('service') ? get('service').value.trim() : '';
+    n.op = get('op') ? get('op').value.trim() : '';
+    n.connector = get('connector') ? get('connector').value.trim() : '';
+    n.permissionRole = get('permissionRole') ? get('permissionRole').value.trim() : '';
+    n.contextPassing = { previousRound: Boolean(get('ctxPrev') && get('ctxPrev').checked), fields: lst('ctxFields') };
+    ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools'].forEach((k) => delete n[k]);
+  } else if (u === 'connectops') {
+    n.connector = get('connector') ? get('connector').value.trim() : '';
+    n.op = get('op') ? get('op').value.trim() : '';
+    n.provider = get('provider') ? get('provider').value.trim() : '';
+    n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'low';
+    n.entryEvents = lst('entryEvents');
+    ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'service', 'contextPassing', 'permissionRole'].forEach((k) => delete n[k]);
+  } else {
+    n.op = get('op') ? get('op').value.trim() : 'approval-check';
+    ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'service', 'contextPassing', 'permissionRole', 'connector', 'provider', 'modelTier', 'entryEvents'].forEach((k) => delete n[k]);
+  }
+  return n;
+}
+
+/** 节点相位链图（2026-11-27 三次裁决：多起点徽章/条件分叉边带 on 词形标签/侧轨虚线；
+ * 纯渲染——输入 phases+transitions → HTML+SVG；节点盒 data-graph-node=点击弹窗编辑锚）。
+ * 图键=相位词（transitions from/to=phase 词汇；节点盒显示 name/phase 双词形）。 */
+export function wfGraphHtml(phases, transitions) {
+  const byPhase = new Map();
+  (phases || []).forEach((n) => {
+    if (!n || (!n.phase && !n.name)) return;
+    const key = String(n.phase || n.name);
+    if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || '', unit: n.unit || 'connectops', entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+  });
+  const nodes = [...byPhase.values()];
+  const known = new Set(nodes.map((n) => n.key));
+  const edges = [];
+  (transitions || []).forEach((t) => {
+    if (!t || !t.from || !t.to || t.from === t.to) return;
+    [t.from, t.to].forEach((k) => {
+      if (!known.has(k)) {
+        nodes.push({ key: k, name: k, title: tr('侧轨态（非正向主线）'), unit: 'side', entry: false });
+        known.add(k);
+      }
+    });
+    edges.push({ from: t.from, on: String(t.on || 'advance'), to: t.to });
+  });
+  /* 条件边与 advance 边同 from→to 时，advance 视觉被条件边取代（线重叠难读） */
+  const branchPairs = new Set(edges.filter((e) => e.on !== 'advance').map((e) => e.from + '→' + e.to));
+  const drawn = [];
+  const seenPair = new Set();
+  edges.forEach((e) => {
+    const pair = e.from + '→' + e.to;
+    if (e.on === 'advance' && branchPairs.has(pair)) return;   // 条件边取代同端点 advance
+    if (seenPair.has(pair + '|' + e.on)) return;
+    seenPair.add(pair + '|' + e.on);
+    drawn.push(e);
+  });
+  if (!nodes.length) return '';
+  /* 最长路径层化（入度松弛，环边自然收敛——层封顶节点数） */
+  const level = new Map(nodes.map((n) => [n.key, 0]));
+  for (let pass = 0; pass < nodes.length; pass++) {
+    let changed = false;
+    drawn.forEach((e) => {
+      const lf = level.get(e.from) || 0;
+      const lt = level.get(e.to) || 0;
+      if (lt < lf + 1 && lf + 1 < nodes.length) { level.set(e.to, lf + 1); changed = true; }
+    });
+    if (!changed) break;
+  }
+  let entryNo = 0;
+  nodes.forEach((n) => { if (n.entry) n.entryLabel = tr('入口') + (++entryNo); });
+  const cols = new Map();
+  nodes.forEach((n) => { const lv = level.get(n.key) || 0; if (!cols.has(lv)) cols.set(lv, []); cols.get(lv).push(n); });
+  const NW = 190, NH = 56, GX = 108, GY = 28;
+  let maxRows = 1;
+  cols.forEach((rows) => { maxRows = Math.max(maxRows, rows.length); });
+  const colKeys = [...cols.keys()].sort((a, b) => a - b);
+  const W = colKeys.length * (NW + GX) - GX + 8;
+  const H = maxRows * (NH + GY) - GY + 10;
+  const pos = new Map();
+  colKeys.forEach((lv, ci) => {
+    const rows = cols.get(lv);
+    const yOff = Math.max(5, (H - (rows.length * (NH + GY) - GY)) / 2);
+    rows.forEach((n, ri) => pos.set(n.key, { x: ci * (NW + GX) + 4, y: yOff + ri * (NH + GY) }));
+  });
+  const nodeDiv = (n) => {
+    const p = pos.get(n.key);
+    const unitCls = UNIT_CHIP[n.unit] || 'mute';
+    const unitLabel = n.unit === 'gate' ? tr('控制节点') : n.unit === 'side' ? tr('侧轨') : n.unit;
+    return '<div class="wf-graph-node' + (n.unit === 'side' ? ' wf-graph-side' : '') + '" style="left:' + p.x + 'px;top:' + p.y + 'px;width:' + NW + 'px;height:' + NH + 'px" data-graph-node="' + esc(n.name) + '" title="' + esc((n.title || n.name) + ' · ' + n.key) + '">' +
+      '<div class="wf-graph-unit"><span class="chip ' + unitCls + ' tiny">' + esc(unitLabel) + '</span>' + (n.entryLabel ? ' <span class="chip acc tiny">' + esc(n.entryLabel) + '</span>' : '') + '</div>' +
+      '<div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + '</span></div></div>';
+  };
+  const svg = drawn.map((e) => {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    if (!a || !b) return '';
+    const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+    const mx = (x1 + x2) / 2;
+    const d = 'M ' + x1 + ' ' + y1 + ' C ' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2;
+    const branch = !(e.on === 'advance');
+    const label = branch
+      ? '<div class="wf-graph-elabel" style="left:' + mx + 'px;top:' + Math.round((y1 + y2) / 2 - 9) + 'px">' + esc(e.on) + '</div>'
+      : '';
+    return '<path d="' + d + '" class="wf-graph-edge' + (branch ? ' wf-graph-branch' : '') + '"></path>' + label;
+  }).join('');
+  return '<div class="wf-graph" style="width:' + W + 'px;height:' + H + 'px">' +
+    '<svg width="' + W + '" height="' + H + '" style="position:absolute;left:0;top:0;pointer-events:none">' +
+    '<defs><marker id="wfg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--border-2)"></path></marker></defs>' +
+    svg + '</svg>' +
+    nodes.map(nodeDiv).join('') + '</div>';
 }
 
 /** 四大设计表 + 以人为本可视化配置工作台 HTML */
@@ -348,33 +496,35 @@ export function workflowStudioHtml(wf, usedName) {
     `</div>`
   ).join('');
 
-  const designNodesHtml = (cfg.phases || []).map((n, i) =>
-    `<tr>` +
-      `<td class="mono small">${i + 1}. ${esc(n.name || '')}</td>` +
-      `<td>${chip(n.phase || '—', 'acc')}</td>` +
-      `<td><b>${esc(n.title || '')}</b></td>` +
-      `<td class="mono small">${chip(n.unit === 'gate' ? tr('控制节点') : (n.unit || 'connectops'), UNIT_CHIP[n.unit] || 'mute')}</td>` +
-      `<td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : '—'}${n.op ? ` · ${esc(n.op)}` : ''}</td>` +
-      `<td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || cfg.provider)}" title="点击配置 OpenAIProvider 账号/baseUrl/模型映射">Provider: ${esc(n.provider || cfg.provider)}</span> ` +
-      `${chip('tier:' + (n.modelTier || 'standard'), n.modelTier === 'high' ? 'warn' : 'mute')}</td>` +
-      `<td class="small mono">${Array.isArray(n.globalRuleRefs) && n.globalRuleRefs.length ? esc(n.globalRuleRefs.join(', ')) : '—'}</td>` +
-    `</tr>`
-  ).join('');
+  const designNodesHtml = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join('');
 
   return `
   <h2 class="sec-title">${esc(tr('设计表与节点流转架构（Workflow + Scheme = 声明层，代码 = 通用解释器）'))}</h2>
   <div class="card">
     <div class="card-h">
-      <span class="h-title">${esc(tr(String((cfg.phases || []).length) + ' 节点主干、双触发入口与按任务智商分级模型设计表'))}</span>
+      <span class="h-title">${esc(tr(String((cfg.phases || []).length) + ' 节点相位链（多起点 / 条件分叉边——判断词形=LLM 分支输出；点击节点盒或表行弹窗编辑）'))}</span>
       <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(tr('配置默认 OpenAIProvider (' + cfg.provider + ')'))}</button>
+    </div>
+    <div class="card-b" style="overflow-x:auto">
+      <div class="wf-graph-scroll" data-node-graph>${wfGraphHtml(cfg.phases, cfg.transitions)}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-h">
+      <span class="h-title">${esc(tr(String((cfg.phases || []).length) + ' 节点主干设计表（点击任意行弹窗编辑节点细节配置）'))}</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="btn tiny acc" data-node-add>${esc(tr('+ 添加节点'))}</button>
+        <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(tr('配置默认 OpenAIProvider (' + cfg.provider + ')'))}</button>
+      </div>
     </div>
     <div class="card-b" style="overflow-x:auto">
       <div class="small faint" style="margin-bottom:8px">
         ${esc(tr('入口 1（运行期日志/Bug/巡检事件）从节点 1 (Idle) 顺次流转；入口 2（对话修改设计文档或产出临时 BugDoc 触发 DocApplied）直接从节点 4 (Planning / Doc Apply) 切入，直走 developer-system → 验收 → deploy-system → 总结归档。点击任意 Provider 徽章可直接配置 OpenAIProvider 账号、Base 地址与模型分级。'))}
       </div>
       <table class="tbl">
-        <thead><tr><th>节点</th><th>相位</th><th>职责说明</th><th>执行单元</th><th>ConnectorOps / 算子</th><th>OpenAIProvider / 模型分级</th><th>引用 Global Rules</th></tr></thead>
-        <tbody>${designNodesHtml}</tbody>
+        <thead><tr><th>节点</th><th>相位</th><th>职责说明</th><th>执行单元</th><th>ConnectorOps / 算子</th><th>OpenAIProvider / 模型分级</th><th>ref 规则 / ref tag</th></tr></thead>
+        <tbody data-node-tbody>${designNodesHtml}</tbody>
       </table>
     </div>
   </div>
@@ -566,15 +716,6 @@ export function workflowStudioHtml(wf, usedName) {
         </div>
       </details>
 
-      <div class="card" style="margin-bottom:12px"><div class="card-b">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          <b>${esc(tr('G. 节点流转编辑（执行单元三型 connectops/agent/service；agent 点进即配——LLM/ref 文档/ref 规则/ref tag/tag 规则/工具；service=调目标系统且内部由其 agent 执行+上一轮详细上下文+权限 Role；节点可加删——如删验收节点）'))}</b>
-          <span class="small faint">${esc(tr('改动随「保存并 Apply」以 Workflow 文档对象落账'))}</span>
-        </div>
-        <div data-wf-node-list>${(cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join('')}</div>
-        <button type="button" class="btn tiny acc" data-node-add>${esc(tr('+ 添加节点'))}</button>
-      </div></div>
-
       <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn acc" data-wf-save>${esc(tr('保存并 Apply 工作流配置'))}</button>
         <button type="button" class="btn mute" data-wf-sync-yaml>${esc(tr('从上方表单重新生成 YAML'))}</button>
@@ -623,46 +764,8 @@ export function bindWorkflowStudio(el, ctx, wf, usedName, onSaved) {
       });
     });
     cfg.postActions = acts;
-    /* 节点表 → cfg.phases（DOM 顺序=节点序；unit 分型读字段——执行单元三型，2026-11-27） */
-    const nodeCards = studio.querySelectorAll('[data-node-card]');
-    if (nodeCards.length) {
-      const nodes = [];
-      nodeCards.forEach((card) => {
-        const get = (k) => card.querySelector(`[data-node="${k}"]`);
-        const lst = (k) => String(get(k) ? get(k).value : '').split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
-        const u = get('unit') ? get('unit').value : 'connectops';
-        const n = {
-          name: (get('name') && get('name').value.trim()) || ('node-' + (nodes.length + 1)),
-          phase: (get('phase') && get('phase').value.trim()) || 'Idle',
-          title: get('title') ? get('title').value : '',
-          unit: u,
-        };
-        if (u === 'agent') {
-          n.provider = get('provider') ? get('provider').value.trim() : cfg.provider;
-          n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'standard';
-          ['refDocs', 'refRules', 'refTags', 'tagRules', 'tools', 'entryEvents'].forEach((k) => { n[k] = lst(k); });
-        } else if (u === 'service') {
-          n.service = get('service') ? get('service').value.trim() : '';
-          n.op = get('op') ? get('op').value.trim() : '';
-          n.connector = get('connector') ? get('connector').value.trim() : '';
-          n.permissionRole = get('permissionRole') ? get('permissionRole').value.trim() : '';
-          n.contextPassing = {
-            previousRound: Boolean(get('ctxPrev') && get('ctxPrev').checked),
-            fields: lst('ctxFields'),
-          };
-        } else if (u === 'connectops') {
-          n.connector = get('connector') ? get('connector').value.trim() : '';
-          n.op = get('op') ? get('op').value.trim() : '';
-          n.provider = get('provider') ? get('provider').value.trim() : cfg.provider;
-          n.modelTier = get('modelTier') ? get('modelTier').value.trim() : 'low';
-          n.entryEvents = lst('entryEvents');
-        } else {
-          n.op = get('op') ? get('op').value.trim() : 'approval-check';
-        }
-        nodes.push(n);
-      });
-      cfg.phases = nodes;
-    }
+    /* 节点细节=弹窗编辑（2026-11-27 三次裁决：list 行点击弹窗，不再堆叠长卡）——
+     * 弹窗保存时直接写 cfg.phases[i]；此处不再从节点卡 DOM 收集。 */
   };
 
   const syncYamlBox = () => {
@@ -734,38 +837,76 @@ export function bindWorkflowStudio(el, ctx, wf, usedName, onSaved) {
 
   studio.querySelector('[data-wf-sync-yaml]')?.addEventListener('click', syncYamlBox);
 
-  /* 节点流转编辑绑定（加节点/删节点/unit 切换重渲染该卡字段组——agent 点进即配） */
-  const nodeList = studio.querySelector('[data-wf-node-list]');
-  const bindNodeEvents = () => {
-    if (!nodeList) return;
-    nodeList.querySelectorAll('[data-node-del]').forEach((btn) => {
-      btn.onclick = () => {
-        readFormIntoCfg();
-        cfg.phases.splice(Number(btn.getAttribute('data-node-del')), 1);
-        renderNodeList();
+  /* 节点编辑=list 行/相位链图节点盒点击 → 弹窗细节配置（2026-11-27 三次裁决：
+   * 「不能在 list 节点上弹窗让我编辑吗」——堆叠长卡退役；unit 切换原位重渲染字段组）。 */
+  const repaintNodeSurfaces = () => {
+    /* 设计表行集与相位链图重渲染（行/节点盒点击重新绑定） */
+    const tbl = el.querySelector('[data-node-tbody]');
+    if (tbl) tbl.innerHTML = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join('');
+    const graph = el.querySelector('[data-node-graph]');
+    if (graph) graph.innerHTML = wfGraphHtml(cfg.phases, cfg.transitions);
+    bindRowClicks();
+  };
+  const closeModal = () => { el.querySelectorAll('.chat-modal[data-nm-modal]').forEach((m) => m.remove()); };
+  const openNodeModal = (nameOrIdx) => {
+    readFormIntoCfg();
+    const idx = typeof nameOrIdx === 'number'
+      ? nameOrIdx
+      : cfg.phases.findIndex((n) => n.name === nameOrIdx);
+    if (idx < 0 || !cfg.phases[idx]) return;
+    closeModal();
+    const modal = document.createElement('div');
+    modal.className = 'chat-modal';
+    modal.setAttribute('data-nm-modal', '1');
+    const paint = (node) => {
+      modal.innerHTML = '<div class="chat-modal-mask"></div><div class="chat-modal-panel">' +
+        '<div class="chat-modal-head"><div class="chat-modal-title"><span class="chip ' + (UNIT_CHIP[node.unit] || 'mute') + ' tiny">' +
+        esc(node.unit === 'gate' ? tr('控制节点') : (node.unit || 'connectops')) + '</span> <b class="mono">' + esc(node.name || '') + '</b> · ' + esc(tr('节点细节配置')) + '</div>' +
+        '<div class="chat-modal-acts"><button type="button" class="btn tiny mute" data-nm-cancel>' + esc(tr('取消')) + '</button></div></div>' +
+        '<div class="chat-modal-body"><div data-nm-fields>' + nodeFieldsHtml(node, cfg.provider) + '</div>' +
+        '<div style="margin-top:14px;display:flex;gap:8px;align-items:center">' +
+        '<button type="button" class="btn acc sm" data-nm-save>' + esc(tr('保存节点')) + '</button>' +
+        '<button type="button" class="btn btn-ghost btn-danger sm" data-nm-del>' + esc(tr('删除节点')) + '</button>' +
+        '<span class="small faint">' + esc(tr('改动随「保存并 Apply 工作流配置」以 Workflow 文档对象落账')) + '</span></div></div></div>';
+      modal.querySelector('[data-nm-cancel]').addEventListener('click', closeModal);
+      modal.querySelector('.chat-modal-mask').addEventListener('click', closeModal);
+      modal.querySelector('[data-nm="unit"]').addEventListener('change', () => {
+        const draft = readNodeFields(modal, cfg.phases[idx]);
+        cfg.phases[idx] = draft;
+        paint(cfg.phases[idx]);
+      });
+      modal.querySelector('[data-nm-save]').addEventListener('click', () => {
+        cfg.phases[idx] = readNodeFields(modal, cfg.phases[idx]);
+        closeModal();
+        repaintNodeSurfaces();
         syncYamlBox();
-      };
+      });
+      modal.querySelector('[data-nm-del]').addEventListener('click', () => {
+        cfg.phases.splice(idx, 1);
+        closeModal();
+        repaintNodeSurfaces();
+        syncYamlBox();
+      });
+    };
+    paint(cfg.phases[idx]);
+    el.appendChild(modal);
+  };
+  const bindRowClicks = () => {
+    el.querySelectorAll('[data-node-edit]').forEach((row) => {
+      row.onclick = () => openNodeModal(row.getAttribute('data-node-edit') || '');
     });
-    nodeList.querySelectorAll('[data-node]').forEach((inp) => {
-      inp.onchange = () => {
-        readFormIntoCfg();
-        renderNodeList();
-        syncYamlBox();
-      };
+    el.querySelectorAll('[data-graph-node]').forEach((box) => {
+      box.onclick = () => openNodeModal(box.getAttribute('data-graph-node') || '');
     });
   };
-  const renderNodeList = () => {
-    if (!nodeList) return;
-    nodeList.innerHTML = (cfg.phases || []).map((n, i) => nodeCardHtml(n, i, cfg.provider)).join('');
-    bindNodeEvents();
-  };
-  studio.querySelector('[data-node-add]')?.addEventListener('click', () => {
+  el.querySelector('[data-node-add]')?.addEventListener('click', () => {
     readFormIntoCfg();
     cfg.phases.push({ name: 'node-' + (cfg.phases.length + 1), phase: 'Idle', title: '新节点', unit: 'connectops', provider: cfg.provider, modelTier: 'standard' });
-    renderNodeList();
+    repaintNodeSurfaces();
     syncYamlBox();
+    openNodeModal(cfg.phases.length - 1);
   });
-  bindNodeEvents();
+  bindRowClicks();
 
   // 拉出日志收集 ConnectorOps 代码开发/编辑任务
   studio.querySelector('[data-develop-collector]')?.addEventListener('click', async () => {
