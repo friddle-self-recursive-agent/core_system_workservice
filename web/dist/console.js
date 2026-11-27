@@ -14192,14 +14192,16 @@ ${text2}</tr>
     return '<div class="side-foot"><span class="small faint">Core Console</span></div>';
   }
   function crumbLabel(route) {
-    const bare = String(route || "").split("/")[0];
+    const pattern = String(route || "");
+    if (pattern.startsWith("wf/") && pattern.includes("/r/")) return t("\u8FD0\u884C\u8BE6\u60C5");
+    const bare = pattern.split("/")[0];
     for (const sec of NAV_TREE) {
       for (const [r, label] of sec.items) if (r.split("/")[0] === bare) return t(label);
       if (sec.sub) {
         for (const [r, label] of sec.sub.items) if (r.split("/")[0] === bare) return t(label);
       }
     }
-    const extra = { task: t("\u4EFB\u52A1\u8BE6\u60C5"), event: t("\u4E8B\u4EF6\u8BE6\u60C5"), doc: t("\u6587\u6863\u7F16\u8F91\u5668"), designdoc: t("\u8BBE\u8BA1\u6587\u6863"), wf: t("\u8FD0\u884C\u8BE6\u60C5"), session: t("\u4F1A\u8BDD"), service: t("Service \u5927\u5C4F"), s: t("\u7CFB\u7EDF\u8BE6\u60C5"), inbox: t("\u6536\u4EF6\u7BB1"), prop: t("\u9700\u6C42\u63D0\u6848"), tags: t("\u6807\u7B7E"), audit: t("\u4EE3\u7801\u5BA1\u6838") };
+    const extra = { task: t("\u4EFB\u52A1\u8BE6\u60C5"), event: t("\u4E8B\u4EF6\u8BE6\u60C5"), doc: t("\u6587\u6863\u7F16\u8F91\u5668"), designdoc: t("\u8BBE\u8BA1\u6587\u6863"), wf: t("\u5DE5\u4F5C\u6D41"), session: t("\u4F1A\u8BDD"), service: t("Service \u5927\u5C4F"), s: t("\u7CFB\u7EDF\u8BE6\u60C5"), inbox: t("\u6536\u4EF6\u7BB1"), prop: t("\u9700\u6C42\u63D0\u6848"), tags: t("\u6807\u7B7E"), audit: t("\u4EE3\u7801\u5BA1\u6838") };
     return extra[bare] || bare;
   }
   function shellHtml() {
@@ -14250,7 +14252,7 @@ ${text2}</tr>
       paintNav(router.current.route);
       try {
         const crumb = document.querySelector("[data-topbar-crumb]");
-        if (crumb) crumb.textContent = crumbLabel(router.current.route);
+        if (crumb) crumb.textContent = crumbLabel(router.current.pattern || router.current.route);
       } catch {
       }
     };

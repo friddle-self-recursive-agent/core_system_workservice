@@ -184,3 +184,19 @@
 .cc-app .wf-run .ex-body { padding: 0 4px 12px 22px; }
 .cc-app .wf-node-row { border-bottom: 1px solid var(--border); }
 .cc-app .wf-node-row:last-child { border-bottom: 0; }
+
+
+/* 工作流相位节点图（真实定义链；横向 pill + 连线，窄屏可换行） */
+.cc-app .pg-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cc-app .pg-node {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 34px;
+  padding: 6px 12px; cursor: pointer; user-select: none;
+}
+.cc-app .pg-node.done { border-color: var(--ok-border); background: var(--ok-dim); }
+.cc-app .pg-node.fail { border-color: var(--danger-border); background: var(--danger-dim); }
+.cc-app .pg-dot { width: 8px; height: 8px; border-radius: var(--rad-round); background: var(--text-3); flex: none; }
+.cc-app .pg-node.active .pg-dot { background: var(--accent); }
+.cc-app .pg-node.done .pg-dot { background: var(--ok); }
+.cc-app .pg-node.fail .pg-dot { background: var(--danger); }
+.cc-app .pg-name { font-size: var(--fs-small); font-weight: 600; white-space: nowrap; }
+.cc-app .pg-edge { color: var(--text-3); font-size: var(--fs-small); flex: none; }

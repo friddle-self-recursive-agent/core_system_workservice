@@ -2310,6 +2310,55 @@
 .cc-app .wf-node-row:last-child {
   border-bottom: 0;
 }
+.cc-app .pg-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cc-app .pg-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.cc-app .pg-node.done {
+  border-color: var(--ok-border);
+  background: var(--ok-dim);
+}
+.cc-app .pg-node.fail {
+  border-color: var(--danger-border);
+  background: var(--danger-dim);
+}
+.cc-app .pg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--rad-round);
+  background: var(--text-3);
+  flex: none;
+}
+.cc-app .pg-node.active .pg-dot {
+  background: var(--accent);
+}
+.cc-app .pg-node.done .pg-dot {
+  background: var(--ok);
+}
+.cc-app .pg-node.fail .pg-dot {
+  background: var(--danger);
+}
+.cc-app .pg-name {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cc-app .pg-edge {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  flex: none;
+}
 
 /* styles/chat.css */
 .cc-app .chat-screen {

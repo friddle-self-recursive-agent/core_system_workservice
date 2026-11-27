@@ -131,12 +131,14 @@ function sideFootHtml() {
 
 /* 路由→面包屑词形（NAV 树现译——§19 R5：裸 route 词「welcome」不给人看）。 */
 function crumbLabel(route) {
-  const bare = String(route || '').split('/')[0];
+  const pattern = String(route || '');
+  if (pattern.startsWith('wf/') && pattern.includes('/r/')) return tr('运行详情');
+  const bare = pattern.split('/')[0];
   for (const sec of NAV_TREE) {
     for (const [r, label] of sec.items) if (r.split('/')[0] === bare) return tr(label);
     if (sec.sub) for (const [r, label] of sec.sub.items) if (r.split('/')[0] === bare) return tr(label);
   }
-  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('运行详情'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱'), prop: tr('需求提案'), tags: tr('标签'), audit: tr('代码审核') };
+  const extra = { task: tr('任务详情'), event: tr('事件详情'), doc: tr('文档编辑器'), designdoc: tr('设计文档'), wf: tr('工作流'), session: tr('会话'), service: tr('Service 大屏'), s: tr('系统详情'), inbox: tr('收件箱'), prop: tr('需求提案'), tags: tr('标签'), audit: tr('代码审核') };
   return extra[bare] || bare;
 }
 
@@ -211,7 +213,7 @@ function screenOf(fn) {
     paintNav(router.current.route);
     try {
       const crumb = document.querySelector('[data-topbar-crumb]');
-      if (crumb) crumb.textContent = crumbLabel(router.current.route);
+      if (crumb) crumb.textContent = crumbLabel(router.current.pattern || router.current.route);
     } catch { /* 无 crumb 环境 */ }
   };
 }
