@@ -1,8 +1,8 @@
 /* main.js —— 入口：装配 store+ws+router，挂载 app。
- * bundle 形态：IIFE + window.CoreConsoleV2（dsh plugin 打包器消费——零模块加载器假设；避开宿主原生 app 的 CoreConsole 全局——四次裁决期黑屏定位）。
+ * bundle 形态：IIFE + window.CoreConsoleWeb（dsh plugin 打包器消费——零模块加载器假设；避开宿主原生 app 的 CoreConsole 全局——四次裁决期黑屏定位）。
  * 数据流（单向）：WS/轮询 → store → onChange → 当前屏整屏重绘（首版允许——编辑器
  * textarea 焦点态除外）；屏内异步注水以 location.hash 为 stamp，路由已变即丢弃。
- * 自动挂载：页面存在 [data-core-console] 或 #app 容器即引导；否则由宿主调 CoreConsoleV2.mount。 */
+ * 自动挂载：页面存在 [data-core-console] 或 #app 容器即引导；否则由宿主调 CoreConsoleWeb.mount。 */
 
 import '../styles/base.css';
 import '../styles/components.css';
@@ -30,7 +30,7 @@ import * as audit from './screens/audit.js';
 import { getLocale, onLocaleChange, setLocale, t as tr } from './core/i18n.js';
 
 /* 部署基路径注入（window.__CORE_CONSOLE_BASES__: api/ws/apply/drafts——直连同源部署缺省
- * 全空=内置词位不变；dsh 插件代理部署由 v2 壳页预置代理词位，见 plugin routes/console-v2.ts）。 */
+ * 全空=内置词位不变；dsh 插件代理部署由壳页预置代理词位，见 plugin routes/console-web.ts）。 */
 const BASES = (typeof window !== 'undefined' && window.__CORE_CONSOLE_BASES__) || {};
 const store = createStore();
 const api = createApi(BASES.api || '', { apply: BASES.apply, drafts: BASES.drafts });
@@ -356,7 +356,7 @@ if (typeof document !== 'undefined') {
   else boot();
 }
 
-/* 全局形态（IIFE——dsh plugin 面向 window.CoreConsole 装配）。 */
+/* 全局形态（IIFE——dsh plugin 面向 window.CoreConsoleWeb 装配；宿主原生 CoreConsole 名被占用）。 */
 if (typeof window !== 'undefined') {
-  window.CoreConsoleV2 = { mount, store, api, router, connectStream, wsUrlOf };
+  window.CoreConsoleWeb = { mount, store, api, router, connectStream, wsUrlOf };
 }

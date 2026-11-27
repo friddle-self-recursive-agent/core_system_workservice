@@ -1,4 +1,4 @@
-var CoreConsole = (() => {
+var CoreConsoleWeb = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -14014,7 +14014,7 @@ ${text2}</tr>
     else boot();
   }
   if (typeof window !== "undefined") {
-    window.CoreConsoleV2 = { mount, store, api, router, connectStream, wsUrlOf };
+    window.CoreConsoleWeb = { mount, store, api, router, connectStream, wsUrlOf };
   }
   return __toCommonJS(main_exports);
 })();
