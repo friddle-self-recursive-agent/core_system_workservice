@@ -417,6 +417,18 @@ func (s *Scheme) LLMRuntime() map[string]any {
 	return raw
 }
 
+// DshAgentRuntime 从 spec.runtime.dshAgent 读取 dsh agent 调用行为配置（default-dsh-agent/v1 契约；
+// 2026-11-27 用户裁定：scheme 作为配置修改 dsh-agent 行为——permissionMode/profile/approvalPolicy/allowedModes）。
+func (s *Scheme) DshAgentRuntime() map[string]any {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	raw, _ := s.Spec.Runtime["dshAgent"].(map[string]any)
+	return raw
+}
+
 // IsUndeletableWorkflow 判定给定 workflow 名称是否受内置不可删除保护（core-system-developer-loop / default-task）。
 func (s *Scheme) IsUndeletableWorkflow(name string) bool {
 	if name == "core-system-developer-loop" {
@@ -429,4 +441,3 @@ func (s *Scheme) IsUndeletableWorkflow(name string) bool {
 	}
 	return false
 }
-

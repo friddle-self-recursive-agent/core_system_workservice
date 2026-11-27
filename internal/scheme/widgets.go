@@ -18,8 +18,8 @@ type FieldDescriptor struct {
 	Path        string            `json:"path"`
 	Label       string            `json:"label"`
 	RawDecl     string            `json:"rawDecl,omitempty"`
-	Type        string            `json:"type"`                  // enum|string|text|list|ref|bool|map|number|object|duration|timestamp
-	Widget      string            `json:"widget"`                // selector|input|textarea|list|ref|switch|map|number|object
+	Type        string            `json:"type"`   // enum|string|text|list|ref|bool|map|number|object|duration|timestamp
+	Widget      string            `json:"widget"` // selector|input|textarea|list|ref|switch|map|number|object
 	Required    bool              `json:"required"`
 	Enum        []string          `json:"enum,omitempty"`        // widget=selector 时的合法闭合集
 	HasWildcard bool              `json:"hasWildcard,omitempty"` // 枚举含 <占位> 通配段

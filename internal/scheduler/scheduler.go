@@ -444,6 +444,29 @@ func (s *Scheduler) spawn(ctx context.Context, o *repository.Object, id string, 
 	s.publishState(id, PhaseRunning)
 	// 2) POST 宿主 spawn 桥。
 	spec, _, _ := Parse(o.Content)
+	// 权限档显式配置（2026-11-27 用户裁定）：Task.spec.permissionMode 覆写 > scheme runtime.dshAgent 缺省 >
+	// default-dsh-agent/v1 契约声明（宿主 fallback）。scheme 缺省白名单校验后回填任务文件。
+	if spec.PermissionMode == "" {
+		if cfg := s.sch.DshAgentRuntime(); cfg != nil {
+			if m, ok := cfg["permissionMode"].(string); ok && m != "" {
+				spec.PermissionMode = m
+			}
+		}
+	}
+	if modes, ok := s.sch.DshAgentRuntime()["allowedModes"].([]any); ok && len(modes) > 0 {
+		allowed := false
+		for _, m := range modes {
+			if ms, ok := m.(string); ok && ms == spec.PermissionMode {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			if def, ok := s.sch.DshAgentRuntime()["permissionMode"].(string); ok && def != "" {
+				spec.PermissionMode = def // 白名单外回落 scheme 缺省
+			}
+		}
+	}
 	taskPath, err := writeTaskFile(id, spec)
 	if err != nil {
 		s.spawnFail(ctx, o, id, "任务文件生成失败: "+err.Error(), now)
