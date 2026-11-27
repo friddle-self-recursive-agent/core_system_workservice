@@ -91,7 +91,7 @@ export function liveRowHtml(st) {
   const qd = Number(st.queueDepth) || 0;
   const sd = Number(st.steerDepth) || 0;
   const queue = qd ? ' <span class="chip acc tiny">' + esc(tr('排队 {n}').replace('{n}', String(qd))) + '</span>' : '';
-  const steer = sd ? ' <span class="chip llm tiny">' + esc(tr('插话 {n}').replace('{n}', String(sd))) + '</span>' : '';
+  const steer = sd ? ' <span class="chip llm tiny">' + esc(tr('追加 {n}').replace('{n}', String(sd))) + '</span>' : '';
   const body = tool
     ? tr('正在调用') + ' <span class="chat-live-tool">' + esc(tool) + '</span>… ' + dur
     : tr('深度求索中…');
@@ -167,18 +167,16 @@ function composerHtmlInner(can, running) {
   const mode = running ? 'steer' : 'queue';
   return '<div class="chat-comp">' +
     '<textarea class="chat-text" data-cc-text rows="1" placeholder="' +
-    esc(running ? tr('插话（立即注入运行中会话——steer）') : tr('提交需求／找文档／更新文档……')) + '"></textarea>' +
+    esc(tr('提交需求／找文档／更新文档……')) + '"></textarea>' +
     '<button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? '' : ' disabled') +
-    ' title="' + esc(running ? tr('停止（interrupt 运行中回合）') : tr('发送')) + '">' +
+    ' title="' + esc(running ? tr('停止') : tr('发送')) + '">' +
     '<span class="chat-send-ico">' + (running ? '■' : '↑') + '</span></button>' +
     '</div>' +
     '<div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(tr('附加图片（≤8MB）')) + '">🖼 ' + esc(tr('图片')) +
     '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label>' +
     '<span class="cc-img-previews" data-cc-img-previews></span></div>' +
     '<div class="chat-foot">' +
-    esc(running
-      ? tr('Enter 插话 · 「■」停止运行中回合 · 空闲即回 queue 落投')
-      : tr('Enter 发送 · Shift+Enter 换行 · 运行中变插话与停止')) +
+    esc(tr('Enter 发送 · Shift+Enter 换行')) +
     '</div>';
 }
 
@@ -356,20 +354,15 @@ function paintState(el) {
   } else if (live) {
     live.remove();
   }
-  // composer 词形随态换（发送↔插话/停止——焦点保真：只动按钮与 placeholder）
+  // composer 按钮随态换（发送↔停止——焦点保真：只动按钮；placeholder 恒一，注入机制静默）
   const btn = el.querySelector('[data-cc-send]');
-  const ta = el.querySelector('[data-cc-text]');
   const running = !!(st && st.running === true);
   if (btn && running !== (btn.dataset.mode === 'steer')) {
     btn.dataset.mode = running ? 'steer' : 'queue';
-    btn.title = running ? tr('停止（interrupt 运行中回合）') : tr('发送');
+    btn.title = running ? tr('停止') : tr('发送');
     const ico = btn.querySelector('.chat-send-ico');
     if (ico) ico.textContent = running ? '■' : '↑';
     btn.classList.toggle('stop', running);
-  }
-  if (ta) {
-    const ph = running ? tr('插话（立即注入运行中会话——steer）') : tr('提交需求／找文档／更新文档……');
-    if (ta.placeholder !== ph) ta.placeholder = ph;
   }
 }
 
@@ -379,18 +372,6 @@ async function refreshState(el, f) {
   if (r.status !== 200 || !r.data || typeof r.data !== 'object') { return; }
   CHAT.state = r.data;
   paintState(el);
-  paintSendModeNote(el);
-}
-
-/** 受理词形注记（C-01 纪律：运行中=steer/空闲=queue 两种受理词形如实区分）。 */
-function paintSendModeNote(el) {
-  const note = el.querySelector('[data-cc-note]');
-  if (!note) return;
-  const st = CHAT.state;
-  const running = !!(st && st.running === true);
-  note.textContent = running
-    ? tr('受理词形=steer（立即注入运行中会话）')
-    : tr('受理词形=queue（排队落投——agent 收尾即读）');
 }
 
 async function refreshTranscript(el, f) {

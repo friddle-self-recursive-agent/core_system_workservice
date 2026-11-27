@@ -220,7 +220,7 @@ test('liveRowHtml：非 running=空 ∧ running 带工具词形+耗时 ∧ queue
   assert.ok(live.includes('秒'), '耗时词形在册')
   assert.ok(live.includes('排队 2'), '队列深度 chip')
   const steer = liveRowHtml({ running: true, steerDepth: 1 })
-  assert.ok(steer.includes('插话 1'), 'steer 深度 chip')
+  assert.ok(steer.includes('追加 1'), 'steer 深度 chip（词形=追加，黑话「插话/steer」不上界面）')
   const bare = liveRowHtml({ running: true })
   assert.ok(bare.includes('深度求索中'), '无工具=深度求索中泛词形（D 批上游对齐）')
 })

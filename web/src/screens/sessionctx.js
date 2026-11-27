@@ -141,7 +141,7 @@ export function buildSavePayload(model, input) {
 
 function sessionRowHtml(m) {
   if (!m.session) {
-    return tr('<div class="small faint">会话不在活性账（无心跳行）——契约面仍可查看/编辑本会话上下文覆盖（不冒充在册）。</div>');
+    return tr('<div class="small faint">会话不在活性账（无心跳行）——仍可查看/编辑本会话上下文覆盖（不冒充在册）。</div>');
   }
   const s = m.session;
   const cls = s.state === 'suspected-stall' || s.state === 'escalated' ? 'esc' : s.state ? 'acc' : 'mute';
@@ -228,7 +228,7 @@ export function renderSessionCtx(m) {
       (m.override.note ? tr(' · 备注 ') + esc(trunc(m.override.note, 60)) : '') +
       (m.override.updatedAt ? ' · ' + esc(relAge(m.override.updatedAt) || '') : '') + '</div>'
     : tr('<div class="small faint" style="margin-top:6px">无覆盖（生效值=ContextPolicy 缺省——PUT 后此处现读覆盖行）。</div>');
-  return tr('<div class="card-h"><span class="h-title">上下文（ContextPack 契约面）</span><span class="h-right">') + headChips + '</span></div>' +
+  return tr('<div class="card-h"><span class="h-title">上下文</span><span class="h-right">') + headChips + '</span></div>' +
     '<div class="card-b">' +
     sessionRowHtml(m) +
     '<div style="margin-top:10px">' + kv([
