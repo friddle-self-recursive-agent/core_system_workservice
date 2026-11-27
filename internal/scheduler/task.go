@@ -79,6 +79,7 @@ type Spec struct {
 	Priority      string
 	Agent         string
 	Workspace     Workspace
+	PermissionMode string // 调用 dsh agent 的权限档声明（2026-11-27 用户裁定：显式配置非隐式默认全权；空=宿主缺省 danger-full-access）
 	MaxConcurrent int           // limits.maxConcurrent 单任务覆写（只收紧不放宽）
 	Timeout       time.Duration // limits.timeout 单任务覆写（只收紧租约）
 }
@@ -119,6 +120,7 @@ type taskDecl struct {
 			Base   string `yaml:"base"`
 			Branch string `yaml:"branch"`
 		} `yaml:"workspace"`
+		PermissionMode string `yaml:"permissionMode"`
 		Limits struct {
 			MaxConcurrent int    `yaml:"maxConcurrent"`
 			Timeout       string `yaml:"timeout"`
@@ -152,7 +154,8 @@ func Parse(content []byte) (Spec, Status, bool) {
 		SourceRef: refID(d.Spec.SourceRef), ScopeRef: refID(d.Spec.ScopeRef),
 		DependsOn: refIDs(d.Spec.DependsOn), Priority: strings.TrimSpace(d.Spec.Priority),
 		Agent:         refID(d.Spec.Agent),
-		Workspace:     Workspace{Mode: d.Spec.Workspace.Mode, Base: d.Spec.Workspace.Base, Branch: d.Spec.Workspace.Branch},
+		Workspace:      Workspace{Mode: d.Spec.Workspace.Mode, Base: d.Spec.Workspace.Base, Branch: d.Spec.Workspace.Branch},
+		PermissionMode: d.Spec.PermissionMode,
 		MaxConcurrent: d.Spec.Limits.MaxConcurrent,
 	}
 	for _, p := range d.Spec.Touches.Paths {

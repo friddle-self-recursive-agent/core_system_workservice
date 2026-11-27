@@ -569,6 +569,7 @@ func writeTaskFile(id string, spec Spec) (string, error) {
 		"workspace": map[string]any{
 			"mode": spec.Workspace.Mode, "base": spec.Workspace.Base, "branch": spec.Workspace.Branch,
 		},
+		"permissionMode": spec.PermissionMode, // default-dsh-agent/v1 契约 spawn-agent 参数覆写口（空=宿主按契约缺省 danger-full-access）
 		"agent":    spec.Agent,
 		"priority": spec.Priority,
 		"verify": "验证要求（R-TYPE-3）：完成前必须过 Verify——code 规则→connectops-code-audit；" +
