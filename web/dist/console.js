@@ -3054,7 +3054,23 @@ var CoreConsoleWeb = (() => {
       base = t("\uFF08\u9762\u73B0\u503C\u6682\u4E0D\u53EF\u8BFB\uFF1A") + String(faceR.error || faceR.status) + "\uFF09";
     }
     const stats = diffStats(diffLines2(base, working));
-    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + "</span></div>";
+    box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div><div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>";
+    try {
+      const ddName = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const ddR = await ctx2.api.object("DocumentDiff", "global", ddName);
+      const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
+      if (!vbox) return;
+      if (ddR.ok && ddR.data && ddR.data.content) {
+        const raw = String(ddR.data.content);
+        const vm = raw.match(/verdict:\s*\|\n([\s\S]*?)(?:\n  [a-zA-Z]|\n\w|$)/);
+        const cm = raw.match(/changed:\s*"?([^"\n]+)"?/);
+        const verdict = vm ? vm[1].trim() : raw;
+        vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' + esc(t("Diff \u5224\u51B3 \xB7 ops_core_inner_agent")) + '</span><span class="h-right">' + esc(cm ? cm[1] : "") + '</span></div><div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div><div class="small faint" style="margin-top:6px">' + esc(t("\u5BF9\u8C61 DocumentDiff/global/")) + esc(ddName) + "</div></div></div>";
+      } else {
+        vbox.innerHTML = '<div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/") + esc(ddName) + t(" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020")) + "</div></div>";
+      }
+    } catch (e) {
+    }
   }
   async function approve(ctx2, d, btn) {
     btn.disabled = true;

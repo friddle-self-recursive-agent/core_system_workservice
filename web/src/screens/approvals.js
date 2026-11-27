@@ -214,7 +214,29 @@ async function hydrateDiff(ctx, d) {
   const stats = diffStats(diffLines(base, working));
   box.innerHTML = renderDiff(diffLines(base, working), 26) +
     '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + tr(' · 稿 ') + working.length + tr('B vs 落库值 ') + base.length + tr('B（现读，不缓存） · ') +
-    '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div>';
+    '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div>' +
+    '<div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(tr('判决文档（ops_core_inner_agent）现读中…')) + '</div></div>';
+  // 判决文档注水（2026-11-28 用户裁定 ops_core_inner_agent：审批裁定走小内置 agent 整理
+  // DocumentDiff 生成 Diff 文档——引擎人审挂起即生成，同名幂等 docdiff-<kind>-<name>；
+  // 在册=渲染判决正文；缺席=诚实词形（生成中/未生成，不编造））。
+  try {
+    const ddName = 'docdiff-' + String(d.kind + '-' + d.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const ddR = await ctx.api.object('DocumentDiff', 'global', ddName);
+    const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
+    if (!vbox) return;
+    if (ddR.ok && ddR.data && ddR.data.content) {
+      const raw = String(ddR.data.content);
+      const vm = raw.match(/verdict:\s*\|\n([\s\S]*?)(?:\n  [a-zA-Z]|\n\w|$)/);
+      const cm = raw.match(/changed:\s*"?([^"\n]+)"?/);
+      const verdict = vm ? vm[1].trim() : raw;
+      vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' +
+        esc(tr('Diff 判决 · ops_core_inner_agent')) + '</span><span class="h-right">' + esc(cm ? cm[1] : '') + '</span></div>' +
+        '<div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div>' +
+        '<div class="small faint" style="margin-top:6px">' + esc(tr('对象 DocumentDiff/global/')) + esc(ddName) + '</div></div></div>';
+    } else {
+      vbox.innerHTML = '<div class="small faint">' + esc(tr('判决文档尚未生成（DocumentDiff/global/') + esc(ddName) + tr(' 缺席——引擎人审挂起即自动生成；缺席=未到生成窗口，不编造')) + '</div></div>';
+    }
+  } catch (e) { /* 判决注水失败不挡 diff 主面 */ }
 }
 
 /** 批准（两步：dry-run 预检 → 人确认 → fromDraft 落库，fieldManager=console:approve）。 */
