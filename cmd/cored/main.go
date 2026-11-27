@@ -692,8 +692,12 @@ func run() error {
 	// 退避重试不热循环）。租约回收/取消迁移/applyConflictGate 裁决两路同拍。配置=scheme
 	// runtime.taskScheduler 每拍热读（Apply 即时生效）；enabled=false 或未挂文档库=不启动。
 	schedCfg := scheduler.ConfigOf(sch)
-	schedState := "off（scheme runtime.taskScheduler.enabled=false 或未挂文档库）"
-	if schedCfg.Enabled && repo != nil {
+	// 调度器装配闸（loop-89：X 面破案随行——多代 cored 共享同一 docs WAL 易失层实证后，
+	// 零 apply 权限进程（执行会话自带 headless cored 等）一律不进调度写面：调度器 status 写
+	// 是权威写面动作，与 --allow-apply 同一权限语义；scheme runtime.taskScheduler.enabled
+	// 仍是第一开关（热读），本闸=部署面硬闸（第二开关））。
+	schedState := "off（scheme runtime.taskScheduler.enabled=false、未挂文档库、或进程无 --allow-apply）"
+	if schedCfg.Enabled && repo != nil && *allowApply {
 		sched := scheduler.New(repo, bus, sch, store, store, scheduler.Options{
 			SpawnAddr: strings.TrimSpace(os.Getenv(scheduler.EnvSpawnAddr)),
 			Sessions:  store, // 会话终结信号（G-08 done 判定——SessionEnded 词形→done+agentSession 回填）
