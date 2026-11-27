@@ -72,3 +72,21 @@ test('wfRealSession：同 Task 多次重跑按 startedAt 匹配最近真实会�
   assert.equal(wfRealSession({ involved: 'Task/dev/x', startedAt: '2026-11-27T00:00:01Z' }, null, rows), 'session-old')
   assert.equal(wfRealSession({ involved: 'Task/dev/x' }, null, []), '')
 })
+
+
+test('wfRealSession：Task 多会话但 run 时刻与候选差>10m=不猜', () => {
+  const run = { involved: 'Task/dev/x', startedAt: '2026-11-27T01:00:00Z' }
+  const rows = [
+    { taskId: 'dev/x', sessionId: 'session-old', startedAt: Date.parse('2026-11-26T23:00:00Z') },
+    { taskId: 'dev/x', sessionId: 'session-new', startedAt: Date.parse('2026-11-27T00:30:00Z') },
+  ]
+  assert.equal(wfRealSession(run, null, rows), '')
+})
+
+test('wfRunNodesHtml：未到达节点不挂 Task 会话', () => {
+  const run = { phase: 'Idle', phases: ['Idle', 'Executing'], involved: 'Task/dev/x', startedAt: '2026-11-27T00:00:00Z' }
+  const rows = [{ taskId: 'dev/x', sessionId: 'session-real', startedAt: Date.parse('2026-11-27T00:00:01Z') }]
+  const html = wfRunNodesHtml(run, null, rows)
+  assert.match(html, /无会话（未到达）/)
+  assert.equal((html.match(/data-go="session\/session-real"/g) || []).length, 1, '只有当前/已到节点挂会话深链')
+})

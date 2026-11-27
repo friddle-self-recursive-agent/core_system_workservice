@@ -3239,6 +3239,7 @@ var CoreConsoleWeb = (() => {
     const m = /^Task\/([^/]+)\/([^/]+)/.exec(String(involved || ""));
     return m ? m[1] + "/" + m[2] : "";
   }
+  var SESSION_MATCH_WINDOW_MS = 10 * 60 * 1e3;
   function wfSessionAnchor(run, task, sessionRows, hist = null) {
     const hs = String(hist && hist.sessionId || "");
     if (/^session[-_]/i.test(hs)) return { sid: hs, label: t("\u8282\u70B9\u4F1A\u8BDD") };
@@ -3248,13 +3249,15 @@ var CoreConsoleWeb = (() => {
     const candidates = (Array.isArray(sessionRows) ? sessionRows : []).filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || "")));
     if (!candidates.length) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
     const started = Date.parse(String(run && (run.startedAt || run.at || run.ts) || ""));
-    if (!Number.isFinite(started)) return { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
-    candidates.sort((a, b) => {
-      const da = Number.isFinite(Number(a.startedAt)) ? Math.abs(Number(a.startedAt) - started) : Number.POSITIVE_INFINITY;
-      const db = Number.isFinite(Number(b.startedAt)) ? Math.abs(Number(b.startedAt) - started) : Number.POSITIVE_INFINITY;
-      return da - db;
-    });
-    return { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    if (!Number.isFinite(started)) {
+      return candidates.length === 1 ? { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") } : { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    }
+    const ranked = candidates.map((x) => ({
+      x,
+      d: Number.isFinite(Number(x.startedAt)) ? Math.abs(Number(x.startedAt) - started) : Number.POSITIVE_INFINITY
+    })).sort((a, b) => a.d - b.d);
+    if (!ranked.length || ranked[0].d > SESSION_MATCH_WINDOW_MS) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    return { sid: String(ranked[0].x.sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
   }
   function wfRealSession(run, task, sessionRows) {
     return wfSessionAnchor(run, task, sessionRows).sid;
@@ -3327,7 +3330,8 @@ var CoreConsoleWeb = (() => {
       const h = byTo.get(p);
       const state = p === cur ? t("\u5F53\u524D") : h ? t("\u5DF2\u8D70\u8FC7") : t("\u672A\u5230\u8FBE");
       const anchor = wfSessionAnchor(run, task, sessionRows, h);
-      return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + "</b> " + chip(state, p === cur ? "acc" : h ? "ok" : "mute") + '</div><div class="mr-sub small mono">' + esc(h ? String(h.on || "") : "") + '</div></div><div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || "") + "</span>" : "") + "</div></div>";
+      const sessionHtml = p === cur || h ? wfSessionChip(anchor.sid, anchor.label) : '<span class="small faint">' + esc(t("\u65E0\u4F1A\u8BDD\uFF08\u672A\u5230\u8FBE\uFF09")) + "</span>";
+      return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + "</b> " + chip(state, p === cur ? "acc" : h ? "ok" : "mute") + '</div><div class="mr-sub small mono">' + esc(h ? String(h.on || "") : "") + '</div></div><div class="mr-side">' + sessionHtml + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || "") + "</span>" : "") + "</div></div>";
     }).join("");
     return '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u951A=history.sessionId \u2192 run.sessionId \u2192 Task journal \u53CD\u67E5\uFF08\u7A7A=\u672A\u8BB0\u5F55\uFF0C\u4E0D\u7F16\u9020\uFF1B\u65E7 task.agentSession=taskId \u4E0D\u5F53 session\uFF09\u3002")) + "</div>" + rows;
   }
@@ -3353,8 +3357,8 @@ var CoreConsoleWeb = (() => {
     return '<h2 class="sec-title">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div class="card">' + runs.map((r, i) => {
       const no = r.run != null ? r.run : r.no != null ? r.no : i + 1;
       const task = taskIdx.get(wfTaskKey(r.involved));
-      const sid = wfRealSession(r, task, sessionRows);
-      return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum"><span class="ex-chev">\u25B6</span><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</span><span class="wf-run-side">' + wfSessionChip(sid, "\u8FD0\u884C\u4F1A\u8BDD") + '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span>" + chipGo(t("\u8FD0\u884C\u8BE6\u60C5"), "wf/" + encodeURIComponent(String(r.workflow || "")) + "/r/" + encodeURIComponent(String(no)), "mute", true) + '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + "</div></details>";
+      const anchor = wfSessionAnchor(r, task, sessionRows);
+      return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum"><span class="ex-chev">\u25B6</span><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</span><span class="wf-run-side">' + wfSessionChip(anchor.sid, anchor.label) + '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span>" + chipGo(t("\u8FD0\u884C\u8BE6\u60C5"), "wf/" + encodeURIComponent(String(r.workflow || "")) + "/r/" + encodeURIComponent(String(no)), "mute", true) + '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + "</div></details>";
     }).join("") + "</div>";
   }
   function wfEditChips(wf, name) {

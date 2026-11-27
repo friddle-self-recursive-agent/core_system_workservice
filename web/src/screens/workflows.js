@@ -296,6 +296,8 @@ export function wfTaskKey(involved) {
   return m ? m[1] + '/' + m[2] : '';
 }
 
+const SESSION_MATCH_WINDOW_MS = 10 * 60 * 1000;
+
 /** 真实会话锚+来源：history 节点会话 → run 运行会话 → Task journal 任务会话。
  * 旧 task.agentSession=taskId 不当 session；时刻最近匹配避免多次重跑全挂最新会话。 */
 export function wfSessionAnchor(run, task, sessionRows, hist = null) {
@@ -308,13 +310,17 @@ export function wfSessionAnchor(run, task, sessionRows, hist = null) {
     .filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || '')));
   if (!candidates.length) return { sid: '', label: tr('任务会话') };
   const started = Date.parse(String((run && (run.startedAt || run.at || run.ts)) || ''));
-  if (!Number.isFinite(started)) return { sid: String(candidates[0].sessionId), label: tr('任务会话') };
-  candidates.sort((a, b) => {
-    const da = Number.isFinite(Number(a.startedAt)) ? Math.abs(Number(a.startedAt) - started) : Number.POSITIVE_INFINITY;
-    const db = Number.isFinite(Number(b.startedAt)) ? Math.abs(Number(b.startedAt) - started) : Number.POSITIVE_INFINITY;
-    return da - db;
-  });
-  return { sid: String(candidates[0].sessionId), label: tr('任务会话') };
+  if (!Number.isFinite(started)) {
+    // 无 run 时刻：仅当 Task 只有一个真实会话时可无歧义回退；多候选=不猜。
+    return candidates.length === 1 ? { sid: String(candidates[0].sessionId), label: tr('任务会话') } : { sid: '', label: tr('任务会话') };
+  }
+  const ranked = candidates.map((x) => ({
+    x,
+    d: Number.isFinite(Number(x.startedAt)) ? Math.abs(Number(x.startedAt) - started) : Number.POSITIVE_INFINITY,
+  })).sort((a, b) => a.d - b.d);
+  // 任务卡与 run 起始时刻超过 10m=不是该次运行的真实会话（宁缺勿滥，避免多次重跑全挂最新会话）。
+  if (!ranked.length || ranked[0].d > SESSION_MATCH_WINDOW_MS) return { sid: '', label: tr('任务会话') };
+  return { sid: String(ranked[0].x.sessionId), label: tr('任务会话') };
 }
 
 export function wfRealSession(run, task, sessionRows) {
@@ -413,10 +419,14 @@ export function wfRunNodesHtml(run, task, sessionRows = []) {
     const h = byTo.get(p);
     const state = p === cur ? tr('当前') : (h ? tr('已走过') : tr('未到达'));
     const anchor = wfSessionAnchor(run, task, sessionRows, h);
+    // 未到达节点没有会话；到了的节点优先 history/run，缺省才显示 Task 会话（节点未单独记录）。
+    const sessionHtml = (p === cur || h)
+      ? wfSessionChip(anchor.sid, anchor.label)
+      : '<span class="small faint">' + esc(tr('无会话（未到达）')) + '</span>';
     return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + '</b> ' +
       chip(state, p === cur ? 'acc' : (h ? 'ok' : 'mute')) + '</div>' +
       '<div class="mr-sub small mono">' + esc(h ? String(h.on || '') : '') + '</div></div>' +
-      '<div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || '') + '</span>' : '') + '</div></div>';
+      '<div class="mr-side">' + sessionHtml + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || '') + '</span>' : '') + '</div></div>';
   }).join('');
   return '<div class="small faint">' + esc(tr('节点会话锚=history.sessionId → run.sessionId → Task journal 反查（空=未记录，不编造；旧 task.agentSession=taskId 不当 session）。')) + '</div>' + rows;
 }
@@ -450,11 +460,11 @@ function wfRunsHtml(runs, taskIdx, sessionRows = []) {
   return '<h2 class="sec-title">' + esc(tr('运行记录')) + '</h2><div class="card">' + runs.map((r, i) => {
     const no = r.run != null ? r.run : (r.no != null ? r.no : i + 1);
     const task = taskIdx.get(wfTaskKey(r.involved));
-    const sid = wfRealSession(r, task, sessionRows);
+    const anchor = wfSessionAnchor(r, task, sessionRows);
     return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum">' +
       '<span class="ex-chev">▶</span><b class="mono">run #' + esc(String(no)) + '</b> ' + runChip(r) +
       '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || '') : String(r.involved || '—')) + '</span>' +
-      '<span class="wf-run-side">' + wfSessionChip(sid, '运行会话') +
+      '<span class="wf-run-side">' + wfSessionChip(anchor.sid, anchor.label) +
       '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || '—') + '</span>' +
       chipGo(tr('运行详情'), 'wf/' + encodeURIComponent(String(r.workflow || '')) + '/r/' + encodeURIComponent(String(no)), 'mute', true) +
       '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + '</div></details>';
