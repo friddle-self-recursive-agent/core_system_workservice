@@ -830,6 +830,7 @@ export const enEntries = [
   ["）", ")"],
   /* ── 2026-11-27 首页=对话（DeepSeek chat 模式）── */
   ["对话", "Chat"],
+  ["开始", "Start"],
   ["总览", "Overview"],
   ["回首页", "Back to home"],
   ["直接说需求——找文档、更新文档、提交变更；结论落到文档与流程。", "Just ask — find docs, update docs, submit changes; results land in docs and workflows."],

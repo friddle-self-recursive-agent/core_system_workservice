@@ -854,6 +854,7 @@ var CoreConsoleWeb = (() => {
     ["\uFF09", ")"],
     /* ── 2026-11-27 首页=对话（DeepSeek chat 模式）── */
     ["\u5BF9\u8BDD", "Chat"],
+    ["\u5F00\u59CB", "Start"],
     ["\u603B\u89C8", "Overview"],
     ["\u56DE\u9996\u9875", "Back to home"],
     ["\u76F4\u63A5\u8BF4\u9700\u6C42\u2014\u2014\u627E\u6587\u6863\u3001\u66F4\u65B0\u6587\u6863\u3001\u63D0\u4EA4\u53D8\u66F4\uFF1B\u7ED3\u8BBA\u843D\u5230\u6587\u6863\u4E0E\u6D41\u7A0B\u3002", "Just ask \u2014 find docs, update docs, submit changes; results land in docs and workflows."],
@@ -2718,14 +2719,12 @@ var CoreConsoleWeb = (() => {
       ""
     ) : "";
     const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).filter(inScope).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).filter((e) => !scope || String(e.involved || "").includes(scope)).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).filter((d) => !scope || String(d.scope || "global") === scope).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded" && (!scope || String(e.involved || "").includes(scope))).length, t("\u5F85\u5BA1\u660E\u7EC6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(taskPhaseOf(x))).filter(inScope).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
-    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + heroComposerHtml() + "</div>" : "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
+    return '<div class="view-inner">' + (opts.head || "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
   }
   function render2(el, ctx2) {
     el.innerHTML = dashLayout(ctx2, {
-      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>",
-      composer: true
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("\u603B\u89C8")) + '</h2><span class="small faint">' + esc(t("\u7CFB\u7EDF\u89C6\u89D2\u5927\u5C4F\u2014\u2014\u6B63\u5728\u8DD1\u7684\u4EFB\u52A1\u3001\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279\u3001\u6838\u5FC3 Agent \u4E00\u773C\u53EF\u8BFB")) + "</span></div>"
     });
-    bindHeroComposer(el, ctx2);
     hydrateLoop(el, ctx2);
     bindApprovalGates(el, ctx2);
     hydrateAgentLive(el, ctx2);
@@ -13892,7 +13891,7 @@ ${text2}</tr>
       label: "Core Console",
       icon: "\u25A3",
       items: [
-        ["home", "\u5BF9\u8BDD", "\u2727"],
+        ["home", "\u5F00\u59CB", "\u2727"],
         ["welcome", "\u603B\u89C8", "\u2302"],
         ["tasks", "\u5DE5\u4F5C\u4E0E\u6D41\u7A0B", "\u229E"],
         ["workflows", "\u6D41\u7A0B\u8FD0\u884C", "\u27F3"],

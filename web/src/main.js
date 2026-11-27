@@ -51,7 +51,7 @@ const NAV_TREE = [
   {
     level: 'sys', label: 'Core Console', icon: '▣',
     items: [
-      ['home', '对话', '✧'],
+      ['home', '开始', '✧'],
       ['welcome', '总览', '⌂'],
       ['tasks', '工作与流程', '⊞'],
       ['workflows', '流程运行', '⟳'],
