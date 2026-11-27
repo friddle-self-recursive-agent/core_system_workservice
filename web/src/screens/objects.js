@@ -10,7 +10,8 @@ import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, 
 import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
-/** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。 */
+/** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。
+ * F-08 ③：词表读 /v1/scheme/kinds 行（store.kinds 快照聚合缺席=空表降级——不再「暂不可达」）。 */
 export function tagVocabFromKinds(kinds) {
   const rows = Array.isArray(kinds) ? kinds : [];
   for (const k of rows) {
@@ -88,7 +89,9 @@ export function sectionCompletion(content, requiredSections) {
   });
 }
 
-/** 正文 yaml/frontmatter 中的 tags 现读（支持 md `---` frontmatter + 纯 yaml；支持字符串数组与 `{tag,tag_type}` 对）。 */
+/** 正文 yaml/frontmatter 中的 tags 现读（支持 md `---` frontmatter + 纯 yaml；支持字符串数组与 `{tag,tag_type}` 对）。
+ * F-08 ④：元数据路径=顶层 metadata.tags 优先（scheme 2026-11-26 统一口径），spec.metadata.tags
+ * 与 spec.tags 兜底——不再只读 spec.metadata 致「未声明 spec.metadata.tags」全屏假空态。 */
 export function tagsOfDoc(content) {
   const s = String(content || '');
   let yamlSrc = s;
@@ -99,8 +102,9 @@ export function tagsOfDoc(content) {
   const t = loadYaml(yamlSrc);
   if (t && typeof t === 'object') {
     const spec = t.spec && typeof t.spec === 'object' ? t.spec : {};
-    const meta = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : (t.metadata && typeof t.metadata === 'object' ? t.metadata : {});
-    const raw = meta.tags || spec.tags || t.tags;
+    const topMeta = t.metadata && typeof t.metadata === 'object' ? t.metadata : {};
+    const specMeta = spec.metadata && typeof spec.metadata === 'object' ? spec.metadata : {};
+    const raw = topMeta.tags || specMeta.tags || spec.tags || t.tags;
     if (Array.isArray(raw)) {
       return raw.map((x) => {
         if (x && typeof x === 'object' && x.tag) {
@@ -118,9 +122,12 @@ export function tagsOfDoc(content) {
   return [];
 }
 
-/** markdown 判据（语义移植旧 console isMarkdownDoc）。 */
+/** markdown 判据（语义移植旧 console isMarkdownDoc）。
+ * F-08 ②：Proposal/Task 声明载体=markdown-frontmatter（scheme 2026-11-26 显式）——
+ * `---` frontmatter + Markdown 正文双形态进 md 渲染管线（不再整篇当 yaml 致「空正文」）。 */
 export function isMarkdownDoc(kind, name) {
-  if (kind === 'Goal' || kind === 'Rule' || kind === 'Runbook' || kind === 'DriftReport') return true;
+  if (kind === 'Goal' || kind === 'Rule' || kind === 'Runbook' || kind === 'DriftReport' ||
+      kind === 'Proposal' || kind === 'Task' || kind === 'DesignDoc' || kind === 'DocReview' || kind === 'BugDoc') return true;
   return /(^|[-_])(README|design|report|notes)([-_.]|$)/i.test(String(name || ''));
 }
 
@@ -138,6 +145,7 @@ function tagPanel(groups) {
 function rulePanel(res) {
   if (res.degraded) return '<div class="ob-empty">' + esc(res.reason) + '</div>';
   if (!res.hits.length) {
+    // F-08 ①：无规则=诚实终态（不再「判定中…」永卡——hydrateRules null 缺席也落到本函数外的终态词）。
     return tr('<div class="ob-empty">无适用规则——按 kind/scope/tag/正文引用四路检查零命中（检查范围=') + res.scanned + tr(' 份规则文档）。</div>');
   }
   return res.hits.map((h, i) =>
@@ -180,6 +188,26 @@ function schemePanel(kindReg, content) {
     (cards ? '<div data-md-cards="1">' + cards + '</div>' : tr('<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>'));
 }
 
+/** F-08 ③：scheme 字段卡活体注水（store.kinds 快照聚合缺席时现读 /v1/scheme/kinds——
+ * 快照带 kinds 键零请求；缺键旧快照=拉真 Kind 定义渲染 scheme 字段卡，不再「暂不可达」）。 */
+function hydrateSchemePanel(el, ctx, kind) {
+  const box = el.querySelector('[data-panel-scheme]');
+  if (!box) return;
+  const paint = (kinds) => {
+    const k = (kinds || []).find((x) => x && x.name === kind);
+    if (!k) return; // 未注册 kind=保留快照词形（不编造定义）
+    box.innerHTML = schemePanel(k, '');
+  };
+  const snapKinds = ctx.store.kinds();
+  if (snapKinds.length) { paint(snapKinds); return; }
+  if (ctx.api && typeof ctx.api.kinds === 'function') {
+    ctx.api.kinds().then((r) => {
+      if (!el.isConnected) return;
+      if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint(r.data.kinds);
+    }).catch(() => { /* 快照词形保留 */ });
+  }
+}
+
 function contentPanel(kind, name, content) {
   if (!String(content || '').trim()) return tr('<div class="ob-empty">本文档暂无正文。</div>');
   if (isMarkdownDoc(kind, name)) {
@@ -202,11 +230,11 @@ async function hydrateDoc(el, ctx, ref) {
   return content;
 }
 
-/** 规则文档族懒取（Rule kind 在册=逐份现读上限 12；缺席=degraded 降级词形）。 */
+/** 规则文档族懒取（Rule kind 在册=逐份现读上限 12；缺席=degraded 降级词形——不再永卡「判定中」）。 */
 async function hydrateRules(el, ctx) {
   const stamp = typeof location !== 'undefined' ? location.hash : '';
   const ruleRefs = ctx.store.refs('Rule').slice(0, 12);
-  if (!ruleRefs.length) return null; // 索引缺席（诚实降级）
+  if (!ruleRefs.length) return { hits: [], degraded: false, reason: '', scanned: 0 }; // F-08 ①：无 Rule 在册=诚实「无适用规则」终态（非永卡判定中）
   const rules = [];
   for (const rr of ruleRefs) {
     let content = '';
@@ -238,6 +266,7 @@ function renderScreen(el, ctx, ref) {
   el.innerHTML = '<div class="view-inner">' +
     screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
+    (pickerHtml(el, ctx, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx, ref) + '</div>' : '') +
     '<div class="obj-grid">' +
     tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
@@ -246,8 +275,20 @@ function renderScreen(el, ctx, ref) {
     tr('<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">') + opsPanel(ref) + '</div></section>' +
     tr('<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
     '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
-    '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + '</div></section>' +
+    '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + '</div></section>' +
     '</div></div>';
+
+  // F-08 ⑤：切换器换选即深链（router data-go 不吃 select——change 事件直接 go）。
+  const picker = el.querySelector('[data-obj-picker]');
+  if (picker) {
+    picker.addEventListener('change', () => {
+      const v = String(picker.value || '');
+      if (v) ctx.go(v);
+    });
+  }
+
+  // F-08 ③：scheme 字段卡活体注水（快照 kinds 缺席=现读 /v1/scheme/kinds）。
+  hydrateSchemePanel(el, ctx, ref.kind);
 
   if (!cached) {
     hydrateDoc(el, ctx, ref).then((c) => {
@@ -263,8 +304,26 @@ function renderScreen(el, ctx, ref) {
       rulesPending.set(ref.kind + '|' + ref.name, res);
       const panel = el.querySelector('[data-panel="rules"]');
       if (panel) panel.innerHTML = rulePanel(res);
+    }).catch(() => {
+      // 现读失败=诚实终态（不永卡「判定中」——F-08 ①）。
+      const panel = el.querySelector('[data-panel="rules"]');
+      if (panel) panel.innerHTML = tr('<div class="ob-empty">规则命中判定暂不可读（现读失败）——重进本页即重判。</div>');
     });
   }
+}
+
+/** F-08 ⑤：对象快速切换器（顶栏 select——点进工作台不再盲开首个对象；换选即深链）。 */
+function pickerHtml(el, ctx, ref) {
+  const objs = ctx.store.objects();
+  if (!objs.length) return '';
+  const opts = objs.slice(0, 300).map((o) => {
+    const key = o.kind + '/' + (o.scope || 'global') + '/' + o.name;
+    const cur = ref && o.kind === ref.kind && o.name === ref.name && (o.scope || 'global') === (ref.scope || 'global');
+    return '<option value="' + esc(objRoute(o.kind, o.scope || 'global', o.name)) + '"' + (cur ? ' selected' : '') + '>' +
+      esc(o.kind + ' · ' + o.name) + '</option>';
+  }).join('');
+  return '<select class="inp" data-obj-picker style="max-width:280px" title="' + esc(tr('切换对象')) + '">' +
+    '<option value="">— ' + esc(tr('切换对象（') + objs.length + tr(' 在册）')) + ' —</option>' + opts + '</select>';
 }
 
 const rulesPending = new Map(); // 会话内规则命中结果（键 kind|name——换对象现判不跨对象复用）

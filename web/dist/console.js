@@ -11849,8 +11849,9 @@ ${text2}</tr>
     const t2 = loadYaml(yamlSrc);
     if (t2 && typeof t2 === "object") {
       const spec = t2.spec && typeof t2.spec === "object" ? t2.spec : {};
-      const meta = spec.metadata && typeof spec.metadata === "object" ? spec.metadata : t2.metadata && typeof t2.metadata === "object" ? t2.metadata : {};
-      const raw = meta.tags || spec.tags || t2.tags;
+      const topMeta = t2.metadata && typeof t2.metadata === "object" ? t2.metadata : {};
+      const specMeta = spec.metadata && typeof spec.metadata === "object" ? spec.metadata : {};
+      const raw = topMeta.tags || specMeta.tags || spec.tags || t2.tags;
       if (Array.isArray(raw)) {
         return raw.map((x) => {
           if (x && typeof x === "object" && x.tag) {
@@ -11867,7 +11868,7 @@ ${text2}</tr>
     return [];
   }
   function isMarkdownDoc(kind, name) {
-    if (kind === "Goal" || kind === "Rule" || kind === "Runbook" || kind === "DriftReport") return true;
+    if (kind === "Goal" || kind === "Rule" || kind === "Runbook" || kind === "DriftReport" || kind === "Proposal" || kind === "Task" || kind === "DesignDoc" || kind === "DocReview" || kind === "BugDoc") return true;
     return /(^|[-_])(README|design|report|notes)([-_.]|$)/i.test(String(name || ""));
   }
   function tagPanel(groups) {
@@ -11905,6 +11906,27 @@ ${text2}</tr>
     if (!cards && !comp) return "";
     return (comp ? '<div class="ob-seccomp">' + comp + "</div>" : "") + (cards ? '<div data-md-cards="1">' + cards + "</div>" : t('<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>'));
   }
+  function hydrateSchemePanel(el, ctx2, kind) {
+    const box = el.querySelector("[data-panel-scheme]");
+    if (!box) return;
+    const paint2 = (kinds) => {
+      const k = (kinds || []).find((x) => x && x.name === kind);
+      if (!k) return;
+      box.innerHTML = schemePanel(k, "");
+    };
+    const snapKinds = ctx2.store.kinds();
+    if (snapKinds.length) {
+      paint2(snapKinds);
+      return;
+    }
+    if (ctx2.api && typeof ctx2.api.kinds === "function") {
+      ctx2.api.kinds().then((r) => {
+        if (!el.isConnected) return;
+        if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint2(r.data.kinds);
+      }).catch(() => {
+      });
+    }
+  }
   function contentPanel(kind, name, content) {
     if (!String(content || "").trim()) return t('<div class="ob-empty">\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002</div>');
     if (isMarkdownDoc(kind, name)) {
@@ -11927,7 +11949,7 @@ ${text2}</tr>
   async function hydrateRules(el, ctx2) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const ruleRefs = ctx2.store.refs("Rule").slice(0, 12);
-    if (!ruleRefs.length) return null;
+    if (!ruleRefs.length) return { hits: [], degraded: false, reason: "", scanned: 0 };
     const rules = [];
     for (const rr of ruleRefs) {
       let content = "";
@@ -11957,7 +11979,15 @@ ${text2}</tr>
       ref.name,
       t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09"),
       kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute")
-    ) + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref) + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b">' + schemePanel(kindReg, content) + "</div></section></div></div>";
+    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + "</div>" : "") + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref) + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + "</div></section></div></div>";
+    const picker = el.querySelector("[data-obj-picker]");
+    if (picker) {
+      picker.addEventListener("change", () => {
+        const v = String(picker.value || "");
+        if (v) ctx2.go(v);
+      });
+    }
+    hydrateSchemePanel(el, ctx2, ref.kind);
     if (!cached) {
       hydrateDoc(el, ctx2, ref).then((c) => {
         if (c == null || !el.isConnected) return;
@@ -11972,8 +12002,21 @@ ${text2}</tr>
         rulesPending.set(ref.kind + "|" + ref.name, res);
         const panel = el.querySelector('[data-panel="rules"]');
         if (panel) panel.innerHTML = rulePanel(res);
+      }).catch(() => {
+        const panel = el.querySelector('[data-panel="rules"]');
+        if (panel) panel.innerHTML = t('<div class="ob-empty">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u6682\u4E0D\u53EF\u8BFB\uFF08\u73B0\u8BFB\u5931\u8D25\uFF09\u2014\u2014\u91CD\u8FDB\u672C\u9875\u5373\u91CD\u5224\u3002</div>');
       });
     }
+  }
+  function pickerHtml(el, ctx2, ref) {
+    const objs = ctx2.store.objects();
+    if (!objs.length) return "";
+    const opts = objs.slice(0, 300).map((o) => {
+      const key = o.kind + "/" + (o.scope || "global") + "/" + o.name;
+      const cur = ref && o.kind === ref.kind && o.name === ref.name && (o.scope || "global") === (ref.scope || "global");
+      return '<option value="' + esc(objRoute(o.kind, o.scope || "global", o.name)) + '"' + (cur ? " selected" : "") + ">" + esc(o.kind + " \xB7 " + o.name) + "</option>";
+    }).join("");
+    return '<select class="inp" data-obj-picker style="max-width:280px" title="' + esc(t("\u5207\u6362\u5BF9\u8C61")) + '"><option value="">\u2014 ' + esc(t("\u5207\u6362\u5BF9\u8C61\uFF08") + objs.length + t(" \u5728\u518C\uFF09")) + " \u2014</option>" + opts + "</select>";
   }
   var rulesPending = /* @__PURE__ */ new Map();
   function render6(el, ctx2) {
