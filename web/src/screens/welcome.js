@@ -156,14 +156,16 @@ function pendingRunRowHtml(x) {
   const btnAttrs = (t) =>
     ' data-appr-' + t + '="1" data-appr-wf="' + esc(x.wf) + '" data-appr-scope="' + esc(x.scope) +
     '" data-appr-run="' + esc(x.run) + '" data-appr-key="' + esc(x.key) + '"';
-  return '<div class="dash-row" data-appr-row>' +
+  /* L-02：审批行「上标题+状态、下操作按钮」双行结构——窄列（1100px）不再硬塞
+   * 5 个横向元素（core-workflow 断词/2h 折行/徽章挤压收口）。 */
+  return '<div class="dash-row appr-row" data-appr-row>' +
     '<div class="dr-main">' + chip(tr('待批'), 'warn') +
     '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b>' +
     '<span class="small faint">#' + esc(x.run) + '</span>' +
     chip(x.phase, 'warn') +
     (x.started ? '<span class="small faint">' + esc(x.started) + '</span>' : '') +
     '</div>' +
-    '<div class="dr-side">' +
+    '<div class="appr-acts">' +
     /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
      * 人批准前看不到 run 全貌）。 */
     (x.wf && x.run != null && x.run !== ''
@@ -254,7 +256,7 @@ function pendingApprovalsHtml(ctx, scope) {
       (x.t ? '<div class="dr-side"><span class="small faint">' + esc(relAge(x.t) || '') + '</span></div>' : '') +
       '</div>').join('');
   const rows = runRows.join('') + rest;
-  if (!rows) return '<div class="card"><div class="ob-empty">' + esc(tr('待审区为空（空态显式）')) + '</div></div>';
+  if (!rows) return '<div class="card"><div class="ob-empty">' + esc(tr('待审区为空')) + '</div></div>';
   return '<div class="card">' + rows + '</div>';
 }
 
@@ -341,7 +343,7 @@ function agentsHtml(ctx, filterAgents) {
       '</div>' +
       '</div>';
   }).join('');
-  if (!rows) return '<div class="card"><div class="ob-empty">' + esc(tr('快照暂无对象枚举')) + '</div></div>';
+  if (!rows) return '<div class="card"><div class="ob-empty">' + esc(tr('暂无对象')) + '</div></div>';
   return '<div class="card">' + rows + '</div>';
 }
 
@@ -362,7 +364,7 @@ function dashLayout(ctx, opts) {
   const stats =
     statCard(tr('在册对象'), (store.objects() || []).filter(inScope).length, tr('全部 kind 合计'), 'obj', '') +
     statCard(tr('事件'), (store.events() || []).filter((e) => !scope || String(e.involved || '').includes(scope)).length, tr('归档行'), 'events', '') +
-    statCard(tr('待审'), (store.drafts() || []).filter((d) => !scope || String(d.scope || 'global') === scope).length + (store.events() || []).filter((e) => e && e.type === 'ApprovalNeeded' && (!scope || String(e.involved || '').includes(scope))).length, tr('草稿∪待审事件'), 'approvals', 'warn') +
+    statCard(tr('待审'), (store.drafts() || []).filter((d) => !scope || String(d.scope || 'global') === scope).length + (store.events() || []).filter((e) => e && e.type === 'ApprovalNeeded' && (!scope || String(e.involved || '').includes(scope))).length, tr('待审明细'), 'approvals', 'warn') +
     inboxCard +
     statCard(tr('进行中任务'), (store.tasks() || []).filter((x) => ['running', 'verifying'].includes(taskPhaseOf(x))).filter(inScope).length, tr('任务中心'), 'tasks', '');
   return '<div class="view-inner">' + (opts.head || '') +

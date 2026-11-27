@@ -157,7 +157,7 @@ export function render(el, ctx) {
     if (!body) return;
     if (!rows.length) {
       body.innerHTML = '<div class="card"><div class="card-b">' +
-        emptyBox(tr('窗口内无在册 tag'), tr('三源聚合零命中（索引投影与预取窗口正文均未声明 tags——空态显式）。')) +
+        emptyBox(tr('暂无标签'), tr('三源聚合零命中（索引投影与预取窗口正文均未声明 tags）。')) +
         '</div></div>';
       return;
     }

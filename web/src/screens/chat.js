@@ -487,7 +487,7 @@ function ensureCtxBar(el, sessionId) {
     holder.innerHTML = '<details class="ex-block chat-ctx">' +
       '<summary class="ex-sum"><span class="ex-chev">▶</span>' + esc(tr('上下文（ContextPack 契约面）')) + '</summary>' +
       '<div class="ex-body"><div data-ctx-panel><div class="small faint">' +
-      esc(tr('上下文注水中…（GET /v1/sessions/')) + esc(encodeURIComponent(sessionId)) + '/context）</div></div></div></details>';
+      esc(tr('上下文加载中…（GET /v1/sessions/')) + esc(encodeURIComponent(sessionId)) + '/context）</div></div></div></details>';
     const ctx = (typeof window !== 'undefined' && window.__CC_CONSOLE_CTX__) || null;
     if (ctx) mountSessionCtx(el, ctx, sessionId);
   }
@@ -767,7 +767,7 @@ export function composerHtml(ctx, curSession) {
     '</div>' +
     '<div class="small faint">' +
     (canSend
-      ? esc(tr('Enter 发送 · queue 语义（送达 root agent 会话；结论由 agent 落文档后经状态徽与节点图可见）'))
+      ? esc(tr('Enter 发送 · 消息送达系统会话；处理结论以文档与流程状态呈现'))
       : esc(tr('对话通路未注入（chatfaces.js 缺席）——送达面显式缺席，不冒充已发送'))) +
     '</div></div>';
 }

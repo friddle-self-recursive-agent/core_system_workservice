@@ -39,37 +39,34 @@ const ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: ''
 
 /* 两级控制台（2026-11-26 用户裁决）：系统控制台=系统视角（总览大屏+操作面）；
  * 业务控制台=占位级（后续 ServiceAgent 登录的业务面，先不加东西）。
- * 连接/会话/系统树/文档/对象工作台收进二级「基础设施」折叠组。
- * 标签存源词形（中文原文）——locale 切换靠 sidebarHtml 渲染期 tr(label) 现译。 */
+ * Batch 3 IA 重构（2026-11-26 全页扫描——以人为本 4 主线 + 系统底层折叠）：
+ *   主线四入口按用户心智（首页/工作与流程/审批中心/文档与资产），研发钻取面收进
+ *   「系统底层」折叠组（默认收起）。标签存源词形（中文原文）——locale 切换靠
+ *   sidebarHtml 渲染期 tr(label) 现译。 */
 /* 三级菜单树（2026-11-26 四次裁决：学 dsh 原生侧栏——一级=分组头可折叠，二级=条目，
  * 三级=缩进子组；语言切换挪顶栏右上角）。标签存源词形；icon=单色 glyph。 */
 const NAV_TREE = [
   {
-    level: 'sys', label: '系统控制台', icon: '▣',
+    level: 'sys', label: 'Core Console', icon: '▣',
     items: [
-      ['welcome', '总览', '⌂'],
-      ['report', '关注报告', '≈'],
-      ['tasks', '任务中心', '⊞'],
-      ['workflows', 'Workflows', '⟳'],
-      ['events', '事件', '⚡'],
-      ['approvals', '审批', '✓'],
-      ['proposals', '需求提案', '✦'],
+      ['welcome', '首页', '⌂'],
+      ['tasks', '工作与流程', '⊞'],
+      ['workflows', '流程运行', '⟳'],
+      ['approvals', '审批中心', '✓'],
+      ['docs', '文档与资产', '▤'],
     ],
-    sub: { label: '基础设施', items: [
+    sub: { label: '系统底层', items: [
       ['chat/core-headless', '会话', '💬'],
       ['tree', '系统树', '⑃'],
-      ['docs', '文档库', '▤'],
       ['tags', '标签', '#'],
       ['designdoc', '设计文档', '✎'],
       ['obj', '对象工作台', '▭'],
       ['connectors', '连接', '⌁'],
+      ['events', '事件流', '⚡'],
+      ['proposals', '提案', '✦'],
+      ['report', '关注报告', '≈'],
       ['audit', '代码审核', '✓'],
     ] },
-  },
-  {
-    level: 'biz', label: '业务控制台', icon: '◆',
-    items: [['biz', '业务总览', '⌂']],
-    sub: null,
   },
 ];
 let curLevel = 'sys';
@@ -83,7 +80,7 @@ function langToggleHtml() {
 }
 
 /* 折叠态（section/子组两级） */
-const foldState = { '基础设施': false };
+const foldState = { '系统底层': false }; // Batch 3 IA：研发钻取组默认收起（主线四入口不被淹没）
 
 /* 审批徽标数（草稿 ∪ ApprovalNeeded——人一眼看到欠账）。 */
 function approvalBadge() {
@@ -121,8 +118,8 @@ function sidebarHtml() {
 }
 
 function sideFootHtml() {
-  return '<div class="side-foot"><span class="lamp off" data-conn-lamp></span>' +
-    '<span class="small faint" data-conn-label>' + esc(tr('连接中…')) + '</span></div>';
+  // L-01：侧栏底角状态灯退役（顶栏单灯保留——重复状态灯收口；底角留版本词形占位零状态位）。
+  return '<div class="side-foot"><span class="small faint">Core Console</span></div>';
 }
 
 /* 路由→面包屑词形（NAV 树现译——§19 R5：裸 route 词「welcome」不给人看）。 */
@@ -140,13 +137,14 @@ function shellHtml() {
   return '<div class="app">' +
     '<aside class="sidebar">' +
     '<div class="side-logo"><span class="logo-mark">C</span>' +
-    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('web 重构起点')) + '</span></span></div>' +
+    '<span><span class="logo-name">Core Console</span><br><span class="logo-sub">' + esc(tr('系统工作台')) + '</span></span></div>' +
     '<div data-nav-tree>' + sidebarHtml() + '</div>' +
     sideFootHtml() +
     '</aside>' +
     '<div class="main-wrap"><header class="topbar">' +
     '<span class="topbar-crumb" data-topbar-crumb></span>' +
     '<span class="topbar-right">' +
+    /* L-01：连接状态灯只保留顶栏一处（侧栏底角双灯退役——重复状态灯收口）。 */
     '<span class="lamp off" data-conn-lamp-top></span>' +
     '<span class="small faint" data-conn-label-top>' + esc(tr('连接中…')) + '</span>' +
     langToggleHtml() +
@@ -252,14 +250,21 @@ export function mount(root, opts = {}) {
   const view = root.querySelector('#view');
 
   // store → 当前屏重绘（合帧已由 store 保证；编辑态焦点保真由 editor 屏自管）
-  store.subscribe(() => { if (view.isConnected) router.render(); });
+  store.subscribe(() => {
+    if (view.isConnected) router.render();
+    // L-07 首屏徽标时机：审批徽标随状态帧刷新（首屏徽标不再等 locale 切换才出现）。
+    try {
+      const tree = root.querySelector('[data-nav-tree]');
+      if (tree) tree.innerHTML = sidebarHtml();
+    } catch { /* 无侧栏环境 */ }
+  });
 
   // 点击路由委托（data-go 全仓统一入口——chip/行/按钮共用）
   root.addEventListener('click', (ev) => {
     const lv = ev.target.closest('[data-level]');
     if (lv) { ev.preventDefault(); curLevel = lv.dataset.level; try { localStorage.setItem('cc.level', curLevel); } catch { /* ignore */ }
       const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml();
-      router.go(curLevel === 'biz' ? 'biz' : 'welcome'); return; }
+      router.go('welcome'); return; }
     const fold = ev.target.closest('[data-fold]');
     if (fold) { ev.preventDefault(); const g = fold.dataset.fold; foldState[g] = !foldState[g];
       const tree = root.querySelector('[data-nav-tree]'); if (tree) tree.innerHTML = sidebarHtml(); return; }
@@ -275,7 +280,7 @@ export function mount(root, opts = {}) {
     if (tree) tree.innerHTML = sidebarHtml();
     paintConn(lastConnState);
     if (view.isConnected) router.render();
-    try { document.title = getLocale() === 'en' ? 'Core Console v2' : 'Core Console v2（web 重构载体·并行验收面）'; } catch { /* 无 document 环境 */ }
+    try { document.title = 'Core Console'; } catch { /* 无 document 环境 */ }
   });
 
   router

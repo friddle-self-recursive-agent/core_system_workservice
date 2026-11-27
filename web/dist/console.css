@@ -1499,6 +1499,24 @@
     grid-template-columns: 1fr;
   }
 }
+.cc-app .appr-row {
+  display: block;
+}
+.cc-app .appr-row .dr-main {
+  margin-bottom: 8px;
+}
+.cc-app .appr-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cc-app .tree-box {
+  max-width: 860px;
+}
+.cc-app .tree-row.leaf {
+  max-width: 100%;
+}
 
 /* styles/screens.css */
 .cc-app .welcome {

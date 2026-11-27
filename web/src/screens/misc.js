@@ -74,7 +74,7 @@ function treeScreen(el, ctx) {
   }).join('');
   el.innerHTML = '<div class="view-inner">' +
     screenHead(tr('系统树'), tr('kinds → scope → 对象（快照聚合投影；对象名可点进工作台；≤3 对象的 kind 默认展开）')) +
-    (kinds.length ? '<div class="tree-box" style="min-width:min(680px,100%)">' + body + '</div>' : emptyBox(tr('快照暂无对象枚举'), tr('等待首个快照聚合。'))) +
+    (kinds.length ? '<div class="tree-box" style="min-width:min(680px,100%)">' + body + '</div>' : emptyBox(tr('暂无对象'), tr('等待首个快照聚合。'))) +
     '</div>';
   el.querySelectorAll('[data-tree-toggle]').forEach((row) => {
     row.addEventListener('click', () => {
@@ -157,7 +157,7 @@ function docsScreen(el, ctx) {
   }
   const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + '|' + (d.scope || 'global') + '|' + d.name));
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('文档库'), tr('在册对象全量清单（快照聚合投影）——tag/kind 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
+    screenHead(tr('文档库'), tr('全部文档与对象——按标签/类型过滤；点行进渲染视图'),
       chipGo(tr('标签聚合'), 'tags', 'mute', false)) +
     '<div class="card" style="margin-bottom:10px"><div class="card-b small">' +
     esc(tr('新建文档：对话提交需求（总览或会话屏）→ agent 起草 → Apply 落库——文档创建走对话+Apply，无独立表单。')) + ' ' +
@@ -192,7 +192,7 @@ function docsScreen(el, ctx) {
           '<div class="mr-sub" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' + tagChips + ' ' + imp + ' ' + sync + '</div></div>' +
           '<span class="ws-chip">' + chipGo(tr('打开'), docRoute(o.kind, scope, o.name), 'acc', true, tr('渲染视图')) + '</span></div>';
       }).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
-      : emptyBox(tr('窗口内无文档'), tr('过滤零命中或快照为空（空态显式）。'))) +
+      : emptyBox(tr('暂无文档'), tr('过滤零命中或快照为空。'))) +
     '<div class="small faint" style="margin-top:8px">' + esc(tr('tag 来自三源真实聚合（/v1/context/index ∪ 对象 tags ∪ 预取 24 篇缓存 frontmatter）；重要度来自缓存正文。')) + '</div>' +
     '</div>';
   const inp = el.querySelector('#docs-q');
@@ -258,7 +258,7 @@ function designDocScreen(el, ctx) {
     // F-07：/v1/design-docs 载荷键=docs（数组行 {repo,path}；旧词形 files/裸数组兼容读——
     // 不再读不存在的 r.data.files 致 107 份真实文档全显「文档为空」）。
     const files = Array.isArray(r.data) ? r.data : (Array.isArray(r.data && r.data.docs) ? r.data.docs : ((r.data && r.data.files) || []));
-    if (!files.length) { treeBox.innerHTML = tr('<div class="ob-empty">仓树为空（诚实空态）。</div>'); return; }
+    if (!files.length) { treeBox.innerHTML = tr('<div class="ob-empty">仓树为空。</div>'); return; }
     treeBox.innerHTML = files.map((f) => {
       const fr = f.repo || (r.data.repo || '');
       const fp = f.path || String(f);
@@ -325,7 +325,7 @@ function connectorsScreen(el, ctx) {
           '<div class="mr-main"><div><b class="mono">' + esc(o.name) + '</b></div>' +
           '<div class="mr-sub small mono">' + esc(o.scope) + ' · r' + esc(String(o.rv || 0)) + '</div></div>' +
           '<span class="ws-chip">' + chipGo(tr('工作台'), objRoute(kind, o.scope, o.name), 'mute', true) + '</span></div>').join('')
-        : tr('<div class="small faint">该 kind 暂无在册对象（空态显式）。</div>')) + '</div></section>';
+        : tr('<div class="small faint">该 kind 暂无在册对象。</div>')) + '</div></section>';
   }).join('');
   const snapDel = ctx.store.deliveries ? ctx.store.deliveries() : null;
   el.innerHTML = '<div class="view-inner">' +
@@ -399,9 +399,9 @@ function proposalsScreen(el, ctx) {
     const propLink = p && p.name ? 'prop/' + encodeURIComponent(String(p.name)) : '';
     return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : '') + '>' +
       '<div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
-      '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席——不编造</span>')) + '</div>' +
+      '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席</span>')) + '</div>' +
       (open
-        ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ''), 2000) || tr('summary 缺席——不编造')) + '</div>' +
+        ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ''), 2000) || tr('summary 缺席——详情见对象工作台')) + '</div>' +
           (extras ? '<div class="kv" style="margin-top:6px">' + extras + '</div>' : '') +
           '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
           (p && p.name ? chipGo(tr('对象工作台'), objRoute('Proposal', p.scope || 'global', p.name), 'mute', true) : '') +
@@ -417,7 +417,7 @@ function proposalsScreen(el, ctx) {
     screenHead(tr('需求提案'), tr('提案面（点卡片展开 summary 全文与要素；支持 #/prop/:name 直达）——批准/驳回走审批与 Apply（LLM 无 Apply 权）'),
       focusName ? chipGo(tr('全部提案'), 'proposals', 'mute', false) : '') +
     (rows.length ? '<div class="card">' + cards + '</div>'
-      : emptyBox(tr('暂无提案'), tr('快照 proposals 聚合为空（空态显式）。'))) +
+      : emptyBox(tr('暂无提案'), tr('快照 proposals 聚合为空。'))) +
     '</div>';
   el.querySelectorAll('[data-prop]').forEach((row) => {
     row.addEventListener('click', (ev) => {
@@ -469,9 +469,9 @@ function systemExtraBlocks(ctx, scope) {
       '<div class="mr-main"><div><b class="mono">' + esc(wf || '—') + '</b> ' + (no !== '' ? '<span class="small faint">#' + esc(String(no)) + '</span>' : '') + '</div>' +
       '<div class="mr-sub small mono">' + esc(trunc(String(r.involved || r.route || '—'), 56)) + '</div></div></div>';
   }).join('');
-  return sec(tr('相关任务'), taskHtml, tr('窗口内无本 scope 相关任务（空态显式）。')) +
-    sec(tr('草稿'), draftHtml, tr('窗口内无本 scope 草稿（空态显式）。')) +
-    sec(tr('运行记录'), runHtml, tr('窗口内无本 scope 运行记录（空态显式）。'));
+  return sec(tr('相关任务'), taskHtml, tr('暂无相关任务。')) +
+    sec(tr('草稿'), draftHtml, tr('暂无草稿。')) +
+    sec(tr('运行记录'), runHtml, tr('暂无运行记录。'));
 }
 
 /* ---------- 系统详情（#/s/:name——scope 视角的对象清单+摘要） ---------- */
@@ -493,7 +493,7 @@ function systemScreen(el, ctx) {
         '<div class="mini-row" data-go="' + esc(objRoute(o.kind, o.scope, o.name)) + '">' +
         '<div class="mr-main"><div><b>' + esc(o.name) + '</b> ' + kindBadge(o.kind) + '</div>' +
         '<div class="mr-sub small mono">r' + esc(String(o.rv || 0)) + '</div></div></div>').join('') + '</div>'
-      : emptyBox(tr('该 scope 暂无在册对象'), tr('不装假——scope 词形可能为实例桶（树内可见）。'))) +
+      : emptyBox(tr('该 scope 暂无在册对象'), tr('该 scope 下暂无对象。'))) +
     (evs.length ? tr('<h2 class="sec-title">最近相关事件</h2><div class="card">') + evs.map((e) =>
       '<div class="mini-row" data-go="event/' + encodeURIComponent(String(e.id ?? '')) + '">' +
       '<div class="mr-main"><div>' + esc(String(e.type || '')) + '</div>' +
@@ -521,7 +521,7 @@ export function renderBiz(el, ctx) {
     '<div class="biz-hero">' +
     '<div class="biz-hero-mark">B</div>' +
     '<h2 class="sec-title">' + esc(tr('业务控制台')) + '</h2>' +
-    '<div class="small faint">' + esc(tr('业务层未部署（设计稿在册）——后续 ServiceAgent 登录后在此承载业务大屏与操作面（当前零内容，显式占位不装假）。')) + '</div>' +
+    '<div class="small faint">' + esc(tr('业务层未接入——后续业务服务登录后在此承载业务大屏与操作面。')) + '</div>' +
     '<div style="margin-top:10px">' + chipGo(tr('查看业务设计稿'), 'designdoc/' + encodeURIComponent('core_design') + '/' + encodeURIComponent('concepts/business-system.md'), 'mute', true) + '</div>' +
     '</div></div>';
 }

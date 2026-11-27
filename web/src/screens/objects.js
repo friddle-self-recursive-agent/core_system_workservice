@@ -156,8 +156,8 @@ function rulePanel(res) {
 }
 
 function ctxPanel(rv) {
-  return '<div class="ob-ctx">' + chip(tr('已入快照'), 'ok') +
-    ' <span class="small">resourceVersion r' + esc(String(rv || 0)) + tr('（rv 未变不重读正文——降级轮询路径同样生效）</span>') +
+  return '<div class="ob-ctx">' + chip(tr('已同步'), 'ok') +
+    ' <span class="small">版本 r' + esc(String(rv || 0)) + tr('</span>') +
     ' ' + chipGo(tr('在文档库中打开'), 'docs', 'mute', true) + '</div>';
 }
 
@@ -343,7 +343,7 @@ export function render(el, ctx) {
   if (!ref) {
     const hint = p.kind ? 'kind「' + p.kind + '」' : tr('快照');
     el.innerHTML = '<div class="view-inner">' + screenHead(tr('对象工作台'), tr('六片固定：标签/规则/上下文/操作/内容/scheme')) +
-      emptyBox(hint + tr('暂无在册对象'), tr('快照 objects 聚合为空或该 kind 无对象（不装假）。')) + '</div>';
+      emptyBox(hint + tr('暂无在册对象'), tr('暂无在册对象。')) + '</div>';
     return;
   }
   renderScreen(el, ctx, ref);

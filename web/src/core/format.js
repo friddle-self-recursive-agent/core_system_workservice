@@ -2,6 +2,8 @@
  * 安全红线（全仓适用）：一切动态文本入 HTML 前必经 esc()；链接只接受 http(s) 与相对路径
  * （#/、/、./），零 javascript:/data: 通路。零 DOM 依赖——node 单测可机械直测。 */
 
+import { getLocale } from './i18n.js';
+
 /** HTML 转义（入 HTML 的唯一文本通道）。 */
 export function esc(s) {
   return String(s == null ? '' : s)
@@ -45,14 +47,17 @@ export function fmtAbs(v) {
 }
 
 /** 相对时间（N 秒/分/小时/天前——不可解析=空串，不冒充）。 */
+/** 相对时间（L-07 i18n：locale=en 时单位词形随语言——'2h ago' 而非 '2h 前'）。 */
 export function relAge(ts, nowMs) {
   const t = toDate(ts).getTime();
   if (isNaN(t)) return '';
   const d = Math.max(0, Math.round(((nowMs || Date.now()) - t) / 1000));
-  if (d < 60) return d + 's 前';
-  if (d < 3600) return Math.round(d / 60) + 'm 前';
-  if (d < 86400) return Math.round(d / 3600) + 'h 前';
-  return Math.round(d / 86400) + 'd 前';
+  const en = getLocale() === 'en';
+  const unit = (n, zh, e) => en ? n + e : n + zh;
+  if (d < 60) return unit(d, 's 前', 's ago');
+  if (d < 3600) return unit(Math.round(d / 60), 'm 前', 'm ago');
+  if (d < 86400) return unit(Math.round(d / 3600), 'h 前', 'h ago');
+  return unit(Math.round(d / 86400), 'd 前', 'd ago');
 }
 
 /** <time> 元素（datetime 属性=ISO，title=绝对时刻，正文=相对时间）。 */

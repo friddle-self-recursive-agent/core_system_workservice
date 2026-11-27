@@ -160,7 +160,7 @@ async function hydrateDiff(ctx, d) {
   }
   const dr = draftR.data && typeof draftR.data === 'object' ? draftR.data : {};
   const working = String(dr.content || '');
-  let base = tr('（对象不在册——apply 将创建通路）');
+  let base = tr('（对象尚未落库——批准即创建）');
   let baseNote = tr('基准=r?');
   if (faceR.ok) {
     const data = faceR.data && typeof faceR.data === 'object' ? faceR.data : {};
@@ -191,7 +191,7 @@ async function approve(ctx, d, btn) {
   }
   const cur = dry.data && dry.data.rv != null ? Number(dry.data.rv) : null;
   const expect = d.baseResourceVersion != null ? Number(d.baseResourceVersion) : null;
-  const lockNote = cur != null && expect != null ? (cur === expect ? tr('乐观锁对齐 r') + cur : tr('乐观锁漂移（现 r') + cur + tr(' vs 稿基 r') + expect + tr('——落库将被拒）')) : '';
+  const lockNote = cur != null && expect != null ? (cur === expect ? tr('版本对齐 r') + cur : tr('版本已变化（现 r') + cur + tr(' vs 编辑基线 r') + expect + tr('——落库前请先刷新）')) : '';
   if (!window.confirm(tr('确认批准（Apply）') + d.kind + '/' + d.name + tr('？dry-run 已过（rv=') + String(cur) + '）' + (lockNote ? '；' + lockNote : '') + '。')) return;
   btn.disabled = true;
   btn.textContent = tr('落库中…');
@@ -275,12 +275,12 @@ async function hydrateLedger(ctx) {
   const r = await ctx.api.approvals(20);
   if (!el__isConnected(slot) || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
   if (!r.ok) {
-    slot.innerHTML = tr('<div class="small faint">审批记录暂不可读（') + esc(String(r.error || r.status)) + tr('）——判定留痕暂只=apply_log。</div>');
+    slot.innerHTML = tr('<div class="small faint">审批记录暂不可读（') + esc(String(r.error || r.status)) + tr('）。</div>');
     return;
   }
   const rows = (r.data && Array.isArray(r.data.approvals)) ? r.data.approvals : [];
   if (!rows.length) {
-    slot.innerHTML = tr('<div class="small faint">已决记录暂无判定行（批准/驳回即决即见）。</div>');
+    slot.innerHTML = tr('<div class="small faint">暂无已决记录（批准/驳回后此处显示）。</div>');
     return;
   }
   slot.innerHTML = tr('<h2 class="sec-title">已决记录</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr>') +
@@ -300,10 +300,10 @@ function el__isConnected(x) { return !!(x && x.isConnected); }
  * 全显无字空白行；digest=服务端拼装摘要、at=时刻、link=#/ 深链路由）。 */
 function inboxHtml(ctx) {
   const inbox = ctx.store.inbox();
-  if (!inbox) return tr('<div class="card"><div class="card-b"><div class="small faint">收件箱投影缺席（快照未携带 /v1/inbox 聚合）——待你处理面显式缺席，不装假。</div></div></div>');
+  if (!inbox) return tr('<div class="card"><div class="card-b"><div class="small faint">收件箱暂不可用（投影缺席）。</div></div></div>');
   const items = Array.isArray(inbox.items) ? inbox.items : [];
   if (!items.length && !Number(inbox.total)) {
-    return tr('<div class="card"><div class="card-b"><div class="small faint">收件箱为空（零待办——空态显式）。</div></div></div>');
+    return tr('<div class="card"><div class="card-b"><div class="small faint">收件箱为空（零待办）。</div></div></div>');
   }
   return '<div class="card">' + items.slice(0, 50).map((x) => {
     const linkRaw = String((x && (x.link || x.ref || x.obj)) || '');
@@ -339,7 +339,7 @@ function approvalsScreen(el, ctx) {
     focusBanner +
     (items.length
       ? items.map((it, idx) => itemHtml(it, idx, !!focus && matchesApprovalFocus(it, focus))).join('')
-      : emptyBox(tr('待审区为空（草稿缓存与 ApprovalNeeded 归档均空）'), '', chipGo(tr('回 Welcome'), 'welcome', 'acc', false))) +
+      : emptyBox(tr('暂无待审事项'), '', chipGo(tr('回 Welcome'), 'welcome', 'acc', false))) +
     tr('<div data-ap-ledger style="margin-top:20px"><div class="small faint">已决记录现读中…</div></div>') +
     tr('<h2 class="sec-title">收件箱（待你处理）</h2>') + inboxHtml(ctx) +
     '</div>';

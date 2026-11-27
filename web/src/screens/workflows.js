@@ -37,7 +37,7 @@ function phaseGraphHtml(run, ctx) {
     ? phases.map((p, i) => nodeHtml(p, i)).join('<span class="pg-edge">→</span>')
     : '<div class="pg-node active"><div class="pg-dot"></div><div class="pg-name">' + esc(cur || tr('单节点（声明未投影相位）')) + '</div>' + runChip(run) + '</div>';
   return '<div class="pg-wrap">' + body + '</div>' +
-    '<div class="small faint">' + esc(tr('点击节点看该相位的事件链与涉及文档；推进由 patch 增量实时刷新。')) + '</div>' +
+    '<div class="small faint">' + esc(tr('点击节点查看该阶段的事件与涉及文档。')) + '</div>' +
     '<div data-pg-drawer style="margin-top:10px"></div>';
 }
 
@@ -60,7 +60,7 @@ function bindPhaseGraph(el, ctx, run) {
             '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 60)) + '</div></div>' +
             '<span class="small faint">' + esc(relAge(e.ts) || '') + '</span></div>';
         }).join('')
-        : '<div class="small faint">' + esc(tr('窗口内无该相位事件（诚实空态）。')) + '</div>';
+        : '<div class="small faint">' + esc(tr('窗口内无该相位事件。')) + '</div>';
       drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span></div><div class="card-b">' +
         (involved
           ? '<div class="mr-sub">' + esc(tr('涉及')) + '：' + involved.split(',').map((x) => {
@@ -123,7 +123,7 @@ export function templatesSectionHtml(ctx) {
   const tplBlock = tpls.length
     ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join('') + '</div>'
     : '<div class="card"><div class="card-b"><div class="small faint">' +
-      esc(tr('Template kind 暂无在册对象（GET /v1/objects/Template 零命中——静态假卡已退役，不冒充在册）。')) + ' ' +
+      esc(tr('暂无流程模板（Template 对象在册后此处显示）。')) + ' ' +
       chipGo(tr('设计见 workflow.md §9b'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) +
       '</div></div></div>';
   return bugBlock + tplBlock;
@@ -168,15 +168,15 @@ function listScreen(el, ctx) {
     const shown = (state.filter ? merged.filter((r) => String((r && (r.workflow || r.name)) || '') === state.filter) : merged).slice(0, 50);
     slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' +
       '<div style="margin-bottom:6px">' +
-      chip(merged.length + tr(' 条（runs 面全窗口+快照聚合，按 workflow+run 去重）'), 'mute') + ' ' +
+      chip(merged.length + tr(' 条运行记录'), 'mute') + ' ' +
       (state.filter ? chipGo(tr('清除过滤：') + state.filter, 'workflows', 'warn', true, tr('清除过滤并回全表')) : '') +
       '</div>' +
-      (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(tr('运行记录面暂不可读（')) + esc(state.err) + esc(tr('）——下表仅快照聚合行（不装假）。')) + '</div>' : '') +
+      (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(tr('运行记录暂不可读（')) + esc(state.err) + esc(tr('）——下表仅概览行。')) + '</div>' : '') +
       (shown.length
         ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(tr('工作流')) + '</th><th>' + esc(tr('相位')) + '</th><th>' + esc(tr('状态')) + '</th><th>' + esc(tr('开始')) + '</th><th>' + esc(tr('涉及')) + '</th></tr></thead><tbody>' +
           shown.map(runRowHtml).join('') + '</tbody></table>' +
           '<div class="small faint" style="margin-top:6px">' + esc(tr('行点击进运行详情；involved chip=对象工作台深链。')) + '</div>'
-        : '<div class="small faint">' + esc(state.filter ? tr('该 workflow 窗口内暂无运行行（诚实空态）。') : tr('窗口内暂无运行行（runs 面与快照聚合均空——诚实空态）。'))) +
+        : '<div class="small faint">' + esc(state.filter ? tr('该 workflow 窗口内暂无运行行。') : tr('暂无运行记录。'))) +
       '</div></div>';
   };
 
@@ -200,13 +200,13 @@ function listScreen(el, ctx) {
     const r = await ctx.api.workflows();
     if (!slot || !slot.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
     if (!r.ok) {
-      slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(tr('注册表暂不可读（')) + esc(String(r.error || r.status)) + esc(tr('）——不装假，刷新重试。')) + '</div></div></div>';
+      slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(tr('工作流清单暂不可读（')) + esc(String(r.error || r.status)) + esc(tr('），请刷新重试。')) + '</div></div></div>';
       return;
     }
     const data = r.data && typeof r.data === 'object' ? r.data : {};
     const rows = Array.isArray(data.workflows) ? data.workflows : [];
     if (!rows.length) {
-      slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(tr('注册表为空（诚实空态——当前无在册 Workflow）。')) + '</div></div></div>';
+      slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(tr('暂无在册工作流。')) + '</div></div></div>';
       return;
     }
     slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' +
@@ -263,7 +263,7 @@ function detailScreen(el, ctx, name) {
   const wf = wfs.find((w) => String(w && (w.name || w.workflow || '')) === String(name));
   const head = screenHead(tr('工作流详情'), 'name=' + String(name), chipGo(tr('← 工作流'), 'workflows', 'mute', false));
   if (!wf && !runs.length) {
-    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('工作流不在册'), tr('快照聚合无此 workflow（可能已下线或名有误）。')) + '</div>';
+    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('工作流不在册'), tr('暂无此工作流（可能已下线或名称有误）。')) + '</div>';
     return;
   }
   const rows = [];
@@ -295,7 +295,7 @@ function detailScreen(el, ctx, name) {
     tr('<h2 class="sec-title">节点图</h2><div class="card"><div class="card-b" data-pg-box>') +
     (phaseGraphHtml(run0, ctx)) + '</div></div>' +
     tr('<h2 class="sec-title">运行记录</h2>') +
-    (runRows ? '<div class="card">' + runRows + '</div>' : tr('<div class="small faint">该 workflow 暂无运行记录（空态显式）。</div>')) +
+    (runRows ? '<div class="card">' + runRows + '</div>' : tr('<div class="small faint">该 workflow 暂无运行记录。</div>')) +
     '</div>';
   bindPhaseGraph(el, ctx, run0);
 }
@@ -317,7 +317,7 @@ function runScreen(el, ctx, name, no) {
     el.innerHTML = '<div class="view-inner">' +
       '<div class="run-hero"><div class="rh-top">' + chipGo(tr('← ' + String(name)), 'wf/' + encodeURIComponent(String(name)), 'mute', false) + '</div>' +
       '<div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + '</span></div></div>' +
-      emptyBox(tr('运行记录不在册'), tr('快照 runs 聚合无此运行（可能已出窗）。')) + '</div>';
+      emptyBox(tr('运行记录不在册'), tr('暂无此运行记录（可能已归档）。')) + '</div>';
     return;
   }
   const st = String(run.status || '');
@@ -353,7 +353,7 @@ function runScreen(el, ctx, name, no) {
     '<div class="run-col"><div class="panel-h">' + esc(tr('当前相位')) + '</div><div data-run-now></div></div>' +
     '<div class="run-col"><div class="panel-h">' + esc(tr('事件时间线')) + '</div><div data-run-tl></div></div>' +
     '</div>' +
-    '<div class="foot-note">' + esc(tr('相位序列=Workflow 声明原样；推进由 patch 增量实时刷新；' + gateWord + '。')) + '</div>' +
+    '<div class="foot-note">' + esc(tr('流程按声明阶段推进；' + gateWord + '。')) + '</div>' +
     '</div>';
 
   /* stepper 渲染+选中态（phases 每次现读 run——注水后重绘全序列） */
@@ -407,7 +407,7 @@ function runScreen(el, ctx, name, no) {
     /* 相位迁移（runs face transitions——字段缺席=不画不编造）；下方仍为归档窗口事件链。 */
     const trans = Array.isArray(run.transitions) ? run.transitions.filter(Boolean) : [];
     const transHtml = trans.length
-      ? '<div class="small faint" style="margin-bottom:6px">' + esc(tr('相位迁移（runs 面现读）：')) + '</div><div class="tl" style="margin-bottom:10px">' +
+      ? '<div class="small faint" style="margin-bottom:6px">' + esc(tr('阶段推进记录：')) + '</div><div class="tl" style="margin-bottom:10px">' +
         trans.slice(0, 20).map((x) => {
           const at = String((x && (x.at || x.ts || x.time)) || '');
           const from = String((x && (x.from || x.fromPhase)) || '—');
@@ -428,7 +428,7 @@ function runScreen(el, ctx, name, no) {
           '<div class="mr-sub small mono">' + esc(trunc(String(e.involved || '—'), 56)) + '</div></div>' +
           '<div class="tl-time">' + esc(relAge(e.ts) || '') + '</div></div>';
       }).join('') + '</div>'
-      : '<div class="tl-empty">' + esc(tr('归档窗口内暂无事件——workflow 推进时此处实时落行。')) + '</div>');
+      : '<div class="tl-empty">' + esc(tr('暂无相关事件——流程推进时此处实时更新。')) + '</div>');
   };
   paintLine(); paintNow(); paintTl();
   /* runs face 现读重注水（phases/phase/status/involved/transitions——字段缺席=保留原值不编造） */

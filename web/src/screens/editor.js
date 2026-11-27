@@ -58,8 +58,8 @@ function resolveRef(ctx) {
   return null;
 }
 
-/** 注水：面正文（乐观锁基准）+ 草稿缓存（工作副本来源；无稿零请求）。
- * face 读失败=终态词形+重试按钮（§19.3——不再恒「注水中…」无终态）。 */
+/** 注水：面正文（版本基准）+ 草稿缓存（工作副本来源；无稿零请求）。
+ * face 读失败=终态词形+重试按钮（§19.3——不再恒「加载中…」无终态）。 */
 async function hydrate(ctx, key) {
   const { kind, scope, name, rv } = key.ref;
   const stamp = typeof location !== 'undefined' ? location.hash : '';
@@ -80,7 +80,7 @@ async function hydrate(ctx, key) {
   } else if (faceR.status === 404 && row) {
     faceAbsent = true; // 在册稿×面缺席=草稿基座窗（Apply=创建通路语义）
   } else {
-    faceFail = String(faceR.error || faceR.status); // 读失败=终态（乐观锁基准未知——编辑/Apply 停用，重试重跑注水）
+    faceFail = String(faceR.error || faceR.status); // 读失败=终态（版本基准未知——编辑/Apply 停用，重试重跑注水）
   }
   const working = draftR && draftR.ok && draftR.data && draftR.data.content != null ? String(draftR.data.content) : base;
   ED.set(key.key, {
@@ -109,7 +109,7 @@ function bindRetry(keyStr) {
       if (!cur || !screenCtx) return;
       ED.delete(keyStr);
       const body = document.querySelector('[data-ed-body]');
-      if (body) body.innerHTML = '<div class="small faint">' + esc(tr('注水中…')) + '</div>';
+      if (body) body.innerHTML = '<div class="small faint">' + esc(tr('加载中…')) + '</div>';
       paintMeta(keyStr);
       hydrate(screenCtx, { ref: cur.ref, key: keyStr });
     });
@@ -121,13 +121,13 @@ function paintMeta(keyStr) {
   const slot = document.querySelector('[data-ed-rv]');
   const ed = ED.get(keyStr);
   if (!slot) return;
-  if (!ed) slot.innerHTML = esc(tr('注水中…'));
+  if (!ed) slot.innerHTML = esc(tr('加载中…'));
   else if (ed.faceFail) {
     slot.innerHTML = '<span class="chip esc tiny">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</span> ' +
       '<button class="btn btn-secondary sm" data-ed-retry>' + esc(tr('重试')) + '</button>';
     bindRetry(keyStr);
   } else if (ed.faceAbsent) slot.innerHTML = esc(tr('文档缺席（在册稿基座——Apply=创建通路）'));
-  else slot.innerHTML = 'r' + ed.faceRV + esc(tr('（乐观锁基准）'));
+  else slot.innerHTML = 'r' + ed.faceRV + esc(tr('（版本基准）'));
 }
 
 /** 渲染正文绘制（markdown 文档类=markdown 渲染；对象正文(YAML spec)=结构化字段卡；
@@ -138,7 +138,7 @@ function paintBody(key) {
   if (!el || !ed) return;
   if (ed.faceFail) {
     el.innerHTML = '<div class="empty"><div class="e-title">' + esc(tr('正文拉取失败（') + ed.faceFail + tr('）')) + '</div>' +
-      '<div class="small faint">' + esc(tr('face 现读未成功——乐观锁基准未知，编辑/Apply 已停用（零装假）；点重试重跑注水。')) + '</div>' +
+      '<div class="small faint">' + esc(tr('face 现读未成功——版本基准未知，编辑/Apply 已停用（零装假）；点重试重跑注水。')) + '</div>' +
       '<div class="e-act"><button class="btn btn-secondary sm" data-ed-retry>' + esc(tr('重试')) + '</button></div></div>';
     bindRetry(key);
     return;
@@ -184,7 +184,7 @@ function paintBadges(key) {
 /** V-17：逐次正文历史账行渲染（纯函数——node 单测直测；数据=GET /v1/doc-history）。 */
 export function docHistoryRowsHtml(rows) {
   if (!Array.isArray(rows) || !rows.length) {
-    return '<div class="small faint">' + esc(tr('doc_history 暂无历史翻页行（新建对象首次落库前无旧版——空态显式）。')) + '</div>';
+    return '<div class="small faint">' + esc(tr('doc_history 暂无历史翻页行（新建对象首次落库前无旧版）。')) + '</div>';
   }
   return rows.slice(0, 40).map((h) => {
     const rev = h && h.rev != null ? String(h.rev) : '?';
@@ -287,7 +287,7 @@ function paintRail(key, ctx) {
     const f = aiFaces();
     const canAi = !!(f && typeof f.docFix === 'function');
     box.innerHTML = tr('<div class="card-h"><span class="h-title">AI 修文档</span></div><div class="card-b">') +
-      '<div class="small faint">' + esc(tr('流程：写修改意图 → AI 出全文建议 → 写入草稿 → 右下 Apply（乐观锁+预检照走——AI 无特权）。')) + '</div>' +
+      '<div class="small faint">' + esc(tr('流程：写修改意图 → AI 出全文建议 → 写入草稿 → 右下 Apply（版本校验+预检照走——AI 无特权）。')) + '</div>' +
       '<textarea class="inp" data-ai-prompt rows="3" style="width:100%;margin-top:8px" placeholder="' +
       esc(tr('修改意图，如：补充 X 节；修正 Y 处口径…')) + '"></textarea>' +
       '<button class="btn btn-chip ai-act" data-ai-ask' + (canAi ? '' : ' disabled') + '>' + esc(tr('请求 AI 建议')) + '</button>' +
@@ -316,7 +316,7 @@ function paintRail(key, ctx) {
           ed.working = text;
           paintBody(ed.ref.kind + '/' + (ed.ref.scope || 'global') + '/' + ed.ref.name);
           paintBadges(ed.ref.kind + '/' + (ed.ref.scope || 'global') + '/' + ed.ref.name);
-          out.innerHTML = '<div class="small faint">' + esc(tr('已写入草稿——右下 Apply 落库（乐观锁照走）。')) + '</div>';
+          out.innerHTML = '<div class="small faint">' + esc(tr('已写入草稿——右下 Apply 落库（版本校验照走）。')) + '</div>';
         });
       } catch (e) {
         out.innerHTML = '<div class="small faint">' + esc(tr('AI 建议失败（')) + esc(String((e && e.message) || e)) + '）</div>';
@@ -342,7 +342,7 @@ function paintRail(key, ctx) {
     chip('+' + stats.add, 'ok') + ' ' + chip('-' + stats.del, 'esc') + '</span></div><div class="card-b">' +
     (ed.draftFM ? tr('<div class="small faint" style="margin-bottom:6px">稿来源 fieldManager：') + esc(ed.draftFM) + '</div>' : '') +
     renderDiff(lines, 40) +
-    tr('<div class="small faint" style="margin-top:6px">基准=r') + ed.baseRV + tr('（乐观锁期望值——409 不静默重基）· 稿 ') + ed.working.length + tr('B vs 落库值 ') + ed.base.length + 'B</div>' +
+    tr('<div class="small faint" style="margin-top:6px">基准=r') + ed.baseRV + tr('（落库期望版本——版本变化时需刷新重试）· 稿 ') + ed.working.length + tr('B vs 落库值 ') + ed.base.length + 'B</div>' +
     '</div>';
 }
 
@@ -381,7 +381,7 @@ function editorScreen(el, ctx, key) {
     '<span class="chip click small' + (view === 'raw' ? ' acc' : ' mute') + tr('" data-ed-view-btn="raw">原文</span>') +
     '</div></div>' +
     '<div class="doc-meta-row">' + chip('scope', 'mute') + chipGo(key.ref.scope, 's/' + encodeURIComponent(key.ref.scope), 'mute') +
-    '<span class="mono small" data-ed-rv>' + (ed ? (ed.faceAbsent ? tr('文档缺席（在册稿基座——Apply=创建通路）') : 'r' + ed.faceRV + tr('（乐观锁基准）')) : tr('注水中…')) + '</span></div>' +
+    '<span class="mono small" data-ed-rv>' + (ed ? (ed.faceAbsent ? tr('文档缺席（在册稿基座——Apply=创建通路）') : 'r' + ed.faceRV + tr('（版本基准）')) : tr('加载中…')) + '</span></div>' +
     '<div data-ed-notice></div>' +
     '<div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === 'render' ? '' : ' hidden') + '></div>' +
     tr('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="原文编辑——变更即累积草稿"') + (view === 'raw' ? '' : ' hidden') + '></textarea>' +
@@ -443,7 +443,7 @@ function editorScreen(el, ctx, key) {
       const cur = ED.get(key.key);
       if (!cur || !hasDiff(cur)) return;
       const stats = diffStats(diffLines(cur.base, cur.working));
-      if (!window.confirm(tr('Apply 落库 ') + cur.ref.kind + '/' + cur.ref.name + '（+' + stats.add + '/-' + stats.del + tr('）？乐观锁基准 r') + cur.baseRV + '。')) return;
+      if (!window.confirm(tr('Apply 落库 ') + cur.ref.kind + '/' + cur.ref.name + '（+' + stats.add + '/-' + stats.del + tr('）？落库版本基准 r') + cur.baseRV + '。')) return;
       dock.disabled = true;
       const r = await ctx.api.apply({
         kind: cur.ref.kind, scope: cur.ref.scope, name: cur.ref.name,
@@ -452,7 +452,7 @@ function editorScreen(el, ctx, key) {
       });
       dock.disabled = false;
       if (!r.ok) {
-        notice = tr('Apply 失败（') + esc(String(r.error || r.status)) + '）' + (r.status === 409 ? tr('——乐观锁冲突：稿已保留，请对齐最新 rv 后重试') : '');
+        notice = tr('Apply 失败（') + esc(String(r.error || r.status)) + '）' + (r.status === 409 ? tr('——版本冲突：稿已保留，请对齐最新版本后重试') : '');
         paintNotice();
         return;
       }

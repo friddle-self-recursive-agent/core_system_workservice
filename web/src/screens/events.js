@@ -87,7 +87,7 @@ function listScreen(el, ctx) {
     fbar +
     (rows.length
       ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join('') + (rows.length > 300 ? tr('<div class="small faint" style="padding:8px 14px">…共 ') + rows.length + tr(' 行——用过滤收窄。</div>') : '') + '</div>'
-      : emptyBox(tr('窗口内无事件'), filter.q || filter.level ? tr('当前过滤零命中——放宽条件再试。') : tr('快照 events 聚合为空（不装假）。'))) +
+      : emptyBox(tr('暂无事件'), filter.q || filter.level ? tr('当前过滤零命中——放宽条件再试。') : tr('暂无事件。'))) +
     '</div>';
 
   const inp = el.querySelector('#ev-q');

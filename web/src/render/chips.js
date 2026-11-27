@@ -148,7 +148,8 @@ export function repoLinkChip(ref, label) {
 
 function truncTxt(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
-/* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running，否则 InSync）。
+/* 文档状态徽（2026-11-26 二次裁决：所属 workflow 动了=Running→「同步中」，否则「已同步」——
+ * 单一语义：同步中=该文档关联的工作流正在运行。
  * runs=snapshot.runs 聚合；匹配面=involved/target/route/workflow 词形包含对象名（窗口内可见事实）。
  * V-07：Running 徽可点——命中 run 可解析=运行详情深链 wf/:name/r/:n（不可解析=纯文本不冒充）。 */
 export function syncBadge(runs, name) {
@@ -159,13 +160,13 @@ export function syncBadge(runs, name) {
     try { hay = JSON.stringify([r.involved, r.target, r.route, r.workflow]); } catch { hay = ''; }
     return hay.includes(name);
   });
-  if (!active.length) return chip('InSync', 'ok');
+  if (!active.length) return chip('已同步', 'ok');
   const top = active[0];
   const wf = String((top && (top.workflow || top.name)) || '');
   const no = top && (top.run != null ? top.run : (top.no != null ? top.no : ''));
   if (wf && no !== '' && no != null) {
-    return chipGo('Running', 'wf/' + encSeg(wf) + '/r/' + encSeg(no), 'acc', true, 'Workflow ' + wf + ' #' + no);
+    return chipGo('同步中', 'wf/' + encSeg(wf) + '/r/' + encSeg(no), 'acc', true, 'Workflow ' + wf + ' #' + no);
   }
-  if (wf) return chipGo('Running', 'wf/' + encSeg(wf), 'acc', true, 'Workflow ' + wf);
-  return chip('Running', 'acc');
+  if (wf) return chipGo('同步中', 'wf/' + encSeg(wf), 'acc', true, 'Workflow ' + wf);
+  return chip('同步中', 'acc');
 }

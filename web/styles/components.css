@@ -418,3 +418,12 @@
 .cc-app .tl-empty { color: var(--text-3); font-size: var(--fs-small); padding: 12px 0 8px; }
 .cc-app .foot-note { color: var(--text-3); font-size: var(--fs-micro); margin-top: 12px; }
 @media (max-width: 1100px) { .cc-app .run-cols { grid-template-columns: 1fr; } }
+
+/* ── L-02 审批行双行结构（1100px 零硬塞——上标题+状态、下操作按钮） ── */
+.cc-app .appr-row { display: block; }
+.cc-app .appr-row .dr-main { margin-bottom: 8px; }
+.cc-app .appr-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── L-05 系统树行宽收口（rv 徽紧跟对象名——不推到 1000px 外） ── */
+.cc-app .tree-box { max-width: 860px; }
+.cc-app .tree-row.leaf { max-width: 100%; }

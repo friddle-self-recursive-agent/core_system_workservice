@@ -166,7 +166,7 @@ function taskRow(t) {
     '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
     '</div>' +
-    (unknown ? '<div class="task-sub small faint">' + esc(tr('调度器未见 status——状态未知（可取消或进详情核查）')) + '</div>' : '') +
+    (unknown ? '<div class="task-sub small faint">' + esc(tr('状态未知（可取消或进详情核查）')) + '</div>' : '') +
     '</div>' +
     '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') +
     cancelBtnHtml(t) + '</div>' +
@@ -180,7 +180,7 @@ function tasksScreen(el, ctx) {
   const body = GROUPS.map((grp) => {
     const rows = g[grp.id] || [];
     return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + '</span>' + chip(String(rows.length) + tr(' 项'), rows.length ? 'acc' : 'mute') + '</div>' +
-      (rows.length ? '<div class="card-b">' + rows.map(taskRow).join('') + '</div>' : '<div class="card-b small faint">' + esc(grp.label) + tr('：暂无（空态显式）。</div>')) +
+      (rows.length ? '<div class="card-b">' + rows.map(taskRow).join('') + '</div>' : '<div class="card-b small faint">' + esc(grp.label) + tr('：暂无。</div>')) +
       '</div>';
   }).join('');
   el.innerHTML = '<div class="view-inner">' +
@@ -221,7 +221,7 @@ function taskDetailScreen(el, ctx, id) {
   const t = tasks.find((x) => taskIdOf(x) === String(id));
   const head = screenHead(tr('任务详情'), 'id=' + String(id), chipGo(tr('← 任务中心'), 'tasks', 'mute', false));
   if (!t) {
-    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('任务不在册'), tr('快照任务清单无此 id（可能已完成出窗或 id 有误）。')) + '</div>';
+    el.innerHTML = '<div class="view-inner">' + head + emptyBox(tr('任务不在册'), tr('暂无此任务（可能已完成归档或 id 有误）。')) + '</div>';
     return;
   }
   const s = statusOf(t);
@@ -236,7 +236,7 @@ function taskDetailScreen(el, ctx, id) {
   if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
   if (s.lastAction) rows.push([tr('最近动作'), esc(trunc(String(s.lastAction), 200))]);
   if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
-  if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——状态未知（可取消或核查调度面日志）'))]);
+  if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('状态未知（可取消或核查调度日志）'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);
   if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);
@@ -303,8 +303,8 @@ export function reportFooter(body) {
   const missing = dq.missing;
   const missText = Array.isArray(missing) ? missing.map((m) => String(m)).join('、') : String(missing || '');
   const gb = String(b.generatedBy || '');
-  const gbLabel = gb === 'llm' ? tr('智能归纳') : gb === 'rules' ? tr('基础汇总') : (gb || tr('未注明生成方式'));
-  return tr('<div class="report-foot small faint">数据可信度：') + esc(gbLabel) +
+  const gbLabel = gb === 'llm' ? tr('智能归纳') : gb === 'rules' ? tr('基础汇总') : (gb || tr('生成方式未注明'));
+  return tr('<div class="report-foot small faint">报告说明：') + esc(gbLabel) +
     tr(' · 检查范围 ') + esc(String(b.scope || 'global')) +
     (b.asOf ? tr(' · 截至 ') + esc(String(b.asOf)) : '') +
     (missText ? tr(' · 缺席数据：') + esc(missText) : '') +
@@ -324,8 +324,8 @@ function reportScreen(el, ctx) {
       title: String(e.summary || e.type),
       evidence: e.involved ? [{ ref: String(e.involved) }] : [],
     }));
-    if (!evs.length) degradedNote = tr('<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合，事件归档亦无审批/升级行——本轮报告按在册事实收敛为零命中（不装假）。</div>');
-    else degradedNote = tr('<div class="small faint" style="margin-bottom:10px">快照未携带 attention 聚合——本卡由事件归档行（ApprovalNeeded/Escalate）投影生成。</div>');
+    if (!evs.length) degradedNote = tr('<div class="small faint" style="margin-bottom:10px">当前没有需要你关注的事项。</div>');
+    else degradedNote = tr('<div class="small faint" style="margin-bottom:10px">以下事项来自最近事件。</div>');
   }
   const sorted = sortAttention(att);
   el.innerHTML = '<div class="view-inner">' +
@@ -334,7 +334,7 @@ function reportScreen(el, ctx) {
     '<div data-loop-box="pending"></div>' +
     (sorted.length
       ? '<div class="att-list">' + sorted.map(attentionCard).join('') + '</div>'
-      : emptyBox(tr('本窗口无关注项'), tr('attention 聚合零命中（空态显式——不冒充有风险）。'))) +
+      : emptyBox(tr('本窗口无关注项'), tr('当前没有需要关注的风险项。'))) +
     reportFooter(st.get('attention') && st.get('attention').dataQuality) +
     '</div>';
   // 循环卡注水（复用 welcome 的现读通路——data-loop-box 同槽位约定）

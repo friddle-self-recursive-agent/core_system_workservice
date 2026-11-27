@@ -285,7 +285,7 @@ function wireSessionCtx(box, ctx, id) {
     saveBtn.disabled = false;
     if (!r.ok) {
       notice(tr('<div class="small faint">保存失败（') + esc(String(r.error || r.status)) + '）' +
-        (r.status === 409 ? tr('——乐观锁冲突：请重进面板对齐 revision 后重试（稿不覆盖，不静默重基）') : '') + '</div>');
+        (r.status === 409 ? tr('——版本冲突：请刷新面板对齐最新版本后重试（原稿不覆盖）') : '') + '</div>');
       return;
     }
     notice(tr('<div class="small faint">已保存（revision ') +

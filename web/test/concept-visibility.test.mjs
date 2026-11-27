@@ -69,12 +69,12 @@ test('V-03 依赖深链：depRoute/depChips 覆盖 Task/Workflow 大小写与简
   assert.ok(!html.includes('data-go="unknown'));
 });
 
-test('V-07 syncBadge：活跃 run 返回可点 wf/:name/r/:n；终态/空=InSync', () => {
+test('V-07 syncBadge：活跃 run 返回可点 wf/:name/r/:n；终态/空=已同步（R-UX-3 单一语义词形）', () => {
   const running = syncBadge([{ workflow: 'dev-delivery', run: 7, status: 'running', involved: 'Goal/global/g1' }], 'g1');
   assert.ok(running.includes('data-go="wf/dev-delivery/r/7"'));
-  assert.ok(running.includes('Running'));
+  assert.ok(running.includes('同步中'));
   const done = syncBadge([{ workflow: 'dev-delivery', run: 7, status: 'done', involved: 'Goal/global/g1' }], 'g1');
-  assert.ok(done.includes('InSync'));
+  assert.ok(done.includes('已同步'));
   assert.ok(!done.includes('data-go='));
 });
 
@@ -220,7 +220,7 @@ test('V-19/V-20 BugDoc 入 DOC_KINDS + Template 静态假卡退役为真对象�
   assert.ok(DOC_KINDS.includes('BugDoc'));
   const emptyCtx = { store: { refs: () => [], runs: () => [] } };
   const emptyHtml = templatesSectionHtml(emptyCtx);
-  assert.ok(emptyHtml.includes('静态假卡已退役'));
+  assert.ok(emptyHtml.includes('暂无流程模板')); // R-UX-3 黑话清零：假卡退役词形改人话
   assert.ok(!emptyHtml.includes('实例化'), '不得残留 disabled 假实例化按钮');
 
   const realCtx = {
