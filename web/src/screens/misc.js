@@ -86,7 +86,8 @@ function treeScreen(el, ctx) {
 }
 
 /* ---------- 文档库（#/docs 与 #/docs/tag/:tag） ---------- */
-// V-19：BugDoc 入 DOC_KINDS——bug 闭环临时文档可见（空 kind 自动缺席，不装假）。
+// V-19/F-06：文档族 kind 词表保留导出（tags 屏与机读判据消费）；文档库列表已改为在册
+// 全量对象枚举（不再按本表白名单过滤——F-06 18 对象失明缺口收口）。
 export const DOC_KINDS = ['Goal', 'Rule', 'Runbook', 'DesignDoc', 'DriftReport', 'DocReview', 'BugDoc', 'Agent', 'WorkService'];
 
 /* frontmatter 元数据小解析（tags 列表 + importance 数值）——数据源=docCache 缓存正文
@@ -125,11 +126,15 @@ function docsScreen(el, ctx) {
 
   let objs = ctx.store.objects();
   const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
-  const docKinds = DOC_KINDS.filter((k) => presentKinds.includes(k));
+  // F-06：文档库不再按 DOC_KINDS 白名单失明过滤——在册全量对象默认可见（kind chips=
+  // 在册 kind 动态枚举，随快照现势；文档族 kind 置前排序，工程对象族殿后）。
+  const DOC_FIRST = ['Goal', 'Rule', 'Runbook', 'DesignDoc', 'DriftReport', 'DocReview', 'BugDoc'];
+  const kindChips = presentKinds.slice().sort((a, b) => {
+    const ia = DOC_FIRST.indexOf(a), ib = DOC_FIRST.indexOf(b);
+    return (ia < 0 ? DOC_FIRST.length + 1 : ia) - (ib < 0 ? DOC_FIRST.length + 1 : ib) || (a < b ? -1 : 1);
+  });
   // 按 tag 过滤且未指定 kind 时跨全量对象命中（确保与 #/tags 三源聚合计数一致）
-  const pool = (docFilter.tag && !docFilter.kind)
-    ? objs
-    : (docKinds.length ? objs.filter((o) => docKinds.includes(o.kind)) : objs);
+  const pool = objs;
   let rows = pool;
   if (docFilter.kind) rows = rows.filter((o) => o.kind === docFilter.kind);
   if (docFilter.q) {
@@ -152,8 +157,8 @@ function docsScreen(el, ctx) {
   }
   const draftSet = new Set(ctx.store.drafts().map((d) => d.kind + '|' + (d.scope || 'global') + '|' + d.name));
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(tr('文档库'), tr('目录树式文档清单——tag 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
-      chipGo(tr('标签聚合'), 'tags', 'mute', false) + (docKinds.length ? '' : ' ' + chip(tr('未注册声明 kind——全量枚举兜底'), 'mute'))) +
+    screenHead(tr('文档库'), tr('在册对象全量清单（快照聚合投影）——tag/kind 过滤+版本/重要度列；点行进渲染视图与 AI 修文档'),
+      chipGo(tr('标签聚合'), 'tags', 'mute', false)) +
     '<div class="card" style="margin-bottom:10px"><div class="card-b small">' +
     esc(tr('新建文档：对话提交需求（总览或会话屏）→ agent 起草 → Apply 落库——文档创建走对话+Apply，无独立表单。')) + ' ' +
     chipGo(tr('打开对话'), 'chat/core-headless', 'acc', true, tr('在会话屏提交需求——agent 起草后 Apply 落库')) +
@@ -164,7 +169,7 @@ function docsScreen(el, ctx) {
     tr('<input class="inp" id="docs-q" placeholder="按 kind/scope/name 过滤…" value="') + esc(docFilter.q) + '">' +
     tr('<input class="inp" id="docs-tag" placeholder="tag 过滤（三源聚合现匹配）…" value="') + esc(docFilter.tag || '') + '" style="max-width:220px">' +
     '<span class="fchip' + (!docFilter.kind ? ' on' : '') + tr('" data-docs-kind="">全部</span>') +
-    docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? ' on' : '') + '" data-docs-kind="' + esc(k) + '">' + esc(k) + '</span>').join('') +
+    kindChips.map((k) => '<span class="fchip' + (docFilter.kind === k ? ' on' : '') + '" data-docs-kind="' + esc(k) + '">' + esc(k) + '</span>').join('') +
     '</div>' +
     (rows.length
       ? '<div class="card">' + rows.slice(0, 300).map((o) => {
@@ -250,7 +255,9 @@ function designDocScreen(el, ctx) {
       return;
     }
     dd.tree = r.data;
-    const files = Array.isArray(r.data) ? r.data : (r.data && r.data.files) || [];
+    // F-07：/v1/design-docs 载荷键=docs（数组行 {repo,path}；旧词形 files/裸数组兼容读——
+    // 不再读不存在的 r.data.files 致 107 份真实文档全显「文档为空」）。
+    const files = Array.isArray(r.data) ? r.data : (Array.isArray(r.data && r.data.docs) ? r.data.docs : ((r.data && r.data.files) || []));
     if (!files.length) { treeBox.innerHTML = tr('<div class="ob-empty">仓树为空（诚实空态）。</div>'); return; }
     treeBox.innerHTML = files.map((f) => {
       const fr = f.repo || (r.data.repo || '');

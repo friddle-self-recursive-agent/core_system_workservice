@@ -53,12 +53,14 @@ import (
 )
 
 // run 状态词汇（v0.15 起点 triggered；v0.23 相位推进器首段扩枚举 running；v0.24 挂起-恢复
-// 首段扩枚举 suspended/failed——闸锚挂起与终态迁移的 status 词形）。
+// 首段扩枚举 suspended/failed——闸锚挂起与终态迁移的 status 词形；2026-11-26 F-04 扩枚举
+// converged——正向序列末步收束态，workflow.md §1 单次 run 状态闭合集第六值）。
 const (
 	RunTriggered = "triggered" // 触发已受理（相位未投影 run 的稳态——零投影口径不稀释）
 	RunRunning   = "running"   // 引擎已把 run 从声明首相位沿序列推进一步（首步进行中；非执行完毕）
 	RunSuspended = "suspended" // 闸锚挂起（相位机等待外部审批信号——非终态非执行完毕）
-	RunFailed    = "failed"    // 驳回终态（相位=声明终点锚；迁移终点，非引擎失败语义）
+	RunFailed    = "failed"    // 驳回终态（相位=侧轨终点锚 Failed；仅经 ApprovalRejected 边可达）
+	RunConverged = "converged" // 正常收束（相位停驻正向序列末步——Reporting 完成即收束；非引擎失败语义）
 )
 
 // 审批信号族（v0.24 挂起-恢复首段，event.md 规则 11/workflows 规则 13）：类型注册表
@@ -123,6 +125,15 @@ func transitionRows(ts []Transition) []TransitionRow {
 	return out
 }
 
+// HistoryRow 运行轨迹一行（F-04——真实迁移留痕：静态表 transitions 的运行期对应行；
+// UI 按本行集标绿已走过节点与时间线，静态表不再当时间线展示）。
+type HistoryRow struct {
+	From string `json:"from"` // 迁移源相位
+	To   string `json:"to"`   // 迁移目标相位
+	On   string `json:"on"`   // 迁移事件（advance/ApprovalGranted/ApprovalRejected/converged）
+	At   string `json:"at"`   // 迁移时刻（RFC3339Nano）
+}
+
 // ReconcileWorkflow 对账锚的循环本体锚（owner 对账 workflow → core-workflow）。
 // 依据：concepts/workflow.md——core-workflow=系统级循环（触发→整理→处理→回归），
 // 即「收到事件的反应=触发一次 Workflow 对账」的那个对账循环。
@@ -131,30 +142,34 @@ const ReconcileWorkflow = "core-workflow"
 // RunRecord 一条对账 run 投影（触发面→workflow 域的执行留痕；观测面非账本，
 // 账本=event_log 归档，ops-log.md §2）。
 type RunRecord struct {
-	Run         int64           // run 序号（本 sink 进程内单调递增，1 起）
-	Workflow    string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
-	SpecSource  string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
-	Phases      []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
-	Transitions []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
-	ApprovalMode string         // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
-	Phase       string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
-	Status      string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
-	Brakes      BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
-	TriggerSeq  int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
-	EventID     string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
-	Type        string          // 事件类型
-	DedupKey    string          // 与发布方回执同源
-	Route       string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
-	Owner       string          // owner 解析值（对账锚的 owner 维度在此承载）
-	Target      string          // 执行面锚点投影（=ExecutorBinding.Target）
-	Involved    string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
+	Run          int64           // run 序号（本 sink 进程内单调递增，1 起）
+	Workflow     string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
+	SpecSource   string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
+	Phases       []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
+	Transitions  []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
+	ApprovalMode string          // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
+	Phase        string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
+	Status       string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
+	Brakes       BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
+	TriggerSeq   int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
+	EventID      string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
+	Type         string          // 事件类型
+	DedupKey     string          // 与发布方回执同源
+	Route        string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
+	Owner        string          // owner 解析值（对账锚的 owner 维度在此承载）
+	Target       string          // 执行面锚点投影（=ExecutorBinding.Target）
+	Involved     string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
 	//                             v0.37 console 读面第二段新增载荷键=代际判别器：运行抽屉「涉及文档」
 	//                             直接取本字段落对象链接，无前端拼凑）
 	SessionID string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执经 AttachSessionID 回填，
 	//                         export.go LoopSession 读面消费；空=未回填不冒充已拉起）
 	Verify *VerifyVerdict // Verify 相位硬 gate 判定投影（G-09/G-12：离开 Verifying 相位先过 gate——
 	//                         判定随 run 留痕写穿透，恢复取最新词形；nil=未审。新载荷键=代际判别器）
-	StartedAt time.Time // run 起始时刻（收到留痕同刻）
+	// History 运行期实际轨迹（2026-11-26 F-04——workflow.md 规则 14：静态迁移规则表
+	// transitions 与运行轨迹 history 分离；UI 节点图按 history 标绿已走过的真实节点，
+	// 不按数组下标盲标）。行=每次真实迁移追加（受理首步/推进/批准/驳回/收束同口径）。
+	History   []HistoryRow `json:"history,omitempty"`
+	StartedAt time.Time    `json:"startedAt"` // run 起始时刻（收到留痕同刻）
 }
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
@@ -330,12 +345,14 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	}
 	phase := ""
 	status := RunTriggered
+	var hist []HistoryRow
 	if len(phases) > 0 {
 		phase = string(phases[0]) // 受理投影=声明首相位（起点词先落，迁移判定在其上判）
 		// 相位推进器首段（v0.23）+显式迁移表首段（v0.25）：受理即启动信号——引擎单步迁移
 		// 判定，按声明表查推进行（from=首相位 on=advance）并把状态词翻转为 running
 		//（stepByTable 纯查表，判定口径见包注释——序列前进=表的特例）。
 		if next, ok := stepByTable(trans, phase, EdgeAdvance); ok {
+			hist = append(hist, HistoryRow{From: phase, To: next, On: EdgeAdvance, At: stampNano(rec.ReceivedAt)})
 			phase, status = next, RunRunning
 		}
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
@@ -354,7 +371,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	r.ring = append(r.ring, RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
 		ApprovalMode: approvalMode,
-		Phase: phase, Status: status, Brakes: brk,
+		Phase:        phase, Status: status, Brakes: brk, History: hist,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
 	})
@@ -401,6 +418,7 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 				!containsPhase(run.Phases, string(AwaitingApproval)) {
 				return
 			}
+			histAppend(run, run.Phase, string(AwaitingApproval), SignalSuspend)
 			run.Phase, run.Status = string(AwaitingApproval), RunSuspended
 		case "resume": // 批准：查表命中审批边（闸锚 on=ApprovalGranted）沿表续行（非挂起态=继续扫描更旧 run——同锚最新 run 已终态时不挡旧挂起 run 的恢复；表无批准边=零动作防御）
 			if run.Status != RunSuspended || Phase(run.Phase) != AwaitingApproval {
@@ -410,12 +428,13 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			if !ok {
 				return
 			}
+			histAppend(run, run.Phase, next, SignalResume)
 			run.Phase = next
 			run.Status = RunRunning // 闸锚续行落点非闸锚（序列无连续闸锚防御：若落闸锚再挂起）
 			if Phase(next) == AwaitingApproval {
 				run.Status = RunSuspended
 			}
-		case "reject": // 驳回：查表命中驳回边（闸锚 on=ApprovalRejected → 终点锚 Failed，表的首处非相邻行）终态（非挂起态=继续扫描更旧 run——同 resume 口径；表无驳回边=零动作）
+		case "reject": // 驳回：查表命中驳回边（闸锚 on=ApprovalRejected → 侧轨终点锚 Failed——表的首处非相邻行）终态（非挂起态=继续扫描更旧 run——同 resume 口径；表无驳回边=零动作）
 			if run.Status != RunSuspended {
 				continue
 			}
@@ -423,6 +442,7 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			if !ok {
 				return
 			}
+			histAppend(run, run.Phase, to, SignalReject)
 			run.Phase, run.Status = to, RunFailed
 		}
 		// 写穿透（R-ENG §1）：审批信号迁移同步 upsert（可演化投影——恢复取迁移后词形）。
@@ -441,6 +461,16 @@ func containsPhase(phases []string, p string) bool {
 		}
 	}
 	return false
+}
+
+// histAppend 运行轨迹追加（F-04——真实迁移留痕；Phase 改写前调用，from=改写前词形。
+// 上限 64 行防长 run 无界增长——轨迹属投影面非账本，环挤出即随之消失）。
+func histAppend(run *RunRecord, from, to, on string) {
+	const histMax = 64
+	if len(run.History) >= histMax {
+		run.History = run.History[len(run.History)-histMax+1:]
+	}
+	run.History = append(run.History, HistoryRow{From: from, To: to, On: on, At: stampNano(time.Now())})
 }
 
 // State 查询快照（拷贝返回，调用方可安全持有；runs 旧→新）。

@@ -24,12 +24,12 @@ func TestResolveRunAnchor(t *testing.T) {
 		source string
 		nPha   int
 	}{
-		{"owner-workflow", "core-workflow", SpecBuiltin, 8},                           // 对账锚→对账循环锚（8 相位）
-		{"owner-instance-workflow", "core-workflow", SpecBuiltin, 8},                  // 同族词汇同锚
+		{"owner-workflow", "core-workflow", SpecBuiltin, 7},                           // 对账锚→对账循环锚（7 正向相位）
+		{"owner-instance-workflow", "core-workflow", SpecBuiltin, 7},                  // 同族词汇同锚
 		{"workflows/watch-only", "watch-only", SpecBuiltin, 3},                        // 直接引用 builtin 命中
-		{"workflows/core-workflow", "core-workflow", SpecBuiltin, 8},                  // 直接引用对账循环本体
-		{"workflows/dev-delivery", "dev-delivery", SpecBuiltin, 9},                    // v0.19 注册表六项对齐：交付态机 9 相位（含 Deploying）
-		{"workflows/apply-workflow", "apply-workflow", SpecBuiltin, 8},                // 落地 agent 任务态机=default-task 词汇全量复用
+		{"workflows/core-workflow", "core-workflow", SpecBuiltin, 7},                  // 直接引用对账循环本体
+		{"workflows/dev-delivery", "dev-delivery", SpecBuiltin, 8},                    // v0.19 注册表对齐：交付态机 8 正向相位（含 Deploying；F-04 尾=Reporting）
+		{"workflows/apply-workflow", "apply-workflow", SpecBuiltin, 7},                // 落地 agent 任务态机=default-task 词汇全量复用
 		{"workflows/deploy-system-workflow", "deploy-system-workflow", SpecObject, 0}, // 未命中=平台对象引用（注册表外不收编，锚保留）
 		{"workflows/builtin-root", "builtin-root", SpecObject, 0},                     // 同上（权威表词汇）
 		{"root-agent", "", "", 0},                                                     // 非 workflow 家族=空锚（不到达；防御性）
@@ -74,13 +74,17 @@ func TestIsBuiltin(t *testing.T) {
 // TestBuiltinSequences 六项声明相位序列机械锚（concepts/workflow.md §1 映射表的代码同源面）：
 // 序列、首尾相位、dev-delivery 的 Deploying 锚位、apply-workflow 与 default-task 同族全等。
 func TestBuiltinSequences(t *testing.T) {
+	// F-04（2026-11-26 状态机纠偏，workflow.md §1/规则 14）：声明序列=正向业务步序——
+	// 侧轨终态 Failed 不再列线性尾（Reporting 完成即 converged 收束；Failed 仅经
+	// ApprovalRejected 驳回边可达）。bug-lifecycle（§9a 缺陷闭环）随注册表七项入锚。
 	want := map[string][]Phase{
-		"core-workflow":  {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
-		"default-task":   {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
+		"core-workflow":  {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting},
+		"default-task":   {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting},
 		"simple-shot":    {Idle, Executing, Reporting},
 		"watch-only":     {Idle, Analyzing, Reporting},
-		"dev-delivery":   {Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting, Failed},
-		"apply-workflow": {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed},
+		"dev-delivery":   {Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting},
+		"apply-workflow": {Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting},
+		"bug-lifecycle":  {Idle, Analyzing, AwaitingApproval, Executing, Verifying, Reporting},
 	}
 	for name, seq := range want {
 		got := Builtin(name)
@@ -93,9 +97,13 @@ func TestBuiltinSequences(t *testing.T) {
 			}
 		}
 	}
-	// 声明面锚点：dev-delivery 的 Deploying=交付相位（§1.1 Deploy 步），序列尾恒 Failed。
+	// 声明面锚点：dev-delivery 的 Deploying=交付相位（§1.1 Deploy 步）；正向序列尾=Reporting
+	//（F-04：Reporting 完成即 converged——侧轨 Failed 不在声明序列）。
 	if Builtin("dev-delivery").Phases[6] != Deploying {
 		t.Fatalf("dev-delivery 相位锚位 6 应为 Deploying: %v", Builtin("dev-delivery").Phases)
+	}
+	if tail := Builtin("dev-delivery").Phases[len(Builtin("dev-delivery").Phases)-1]; tail != Reporting {
+		t.Fatalf("dev-delivery 正向序列尾应为 Reporting（F-04 侧轨纠偏）: %v", Builtin("dev-delivery").Phases)
 	}
 	// apply-workflow 任务态机=default-task 词汇全量复用（不另立词汇——解耦口径）。
 	a, d := Builtin("apply-workflow").Phases, Builtin("default-task").Phases
@@ -159,8 +167,13 @@ func TestRunStartProjection(t *testing.T) {
 	if r.TriggerSeq != 7 || r.Owner != "global" || r.Target != "owner" || r.Route != "owner-workflow" {
 		t.Fatalf("run 溯源字段不符: %+v", r)
 	}
-	if len(r.Phases) == 0 || r.Phases[len(r.Phases)-1] != string(Failed) {
-		t.Fatalf("相位序列应携声明全序列（尾=Failed）: %v", r.Phases)
+	// F-04：声明序列=正向业务步序（尾=Reporting；侧轨 Failed 已摘除线性尾）。
+	if len(r.Phases) == 0 || r.Phases[len(r.Phases)-1] != string(Reporting) {
+		t.Fatalf("相位序列应携正向全序列（尾=Reporting，侧轨 Failed 不在线性尾）: %v", r.Phases)
+	}
+	// F-04 受理轨迹：首步 advance 行随 run 留痕（history 与静态表分离——轨迹非下标盲标源）。
+	if len(r.History) != 1 || r.History[0].From != string(Idle) || r.History[0].To != string(Analyzing) || r.History[0].On != EdgeAdvance {
+		t.Fatalf("受理轨迹应恰一行 {Idle,advance,Analyzing}: %+v", r.History)
 	}
 	// 声明表随 run 投影（v0.25 显式迁移表首段）：物化表非空、首行=受理查表的推进行
 	//（Idle,advance,Analyzing）、审批边在表（新载荷键=代际判别器的代码同源面）。
@@ -211,10 +224,11 @@ func TestObjectRunPhasesEmptyArray(t *testing.T) {
 // +审批边表行先例（含闸锚序列：批准边+驳回边；无闸锚序列=无审批边）；驳回边
 // （AwaitingApproval→Failed）=表的首处**非相邻**迁移行（机械判别器）。
 func TestBuiltinTransitionTable(t *testing.T) {
-	// core-workflow：8 相位 → 7 相邻行 + 批准边 + 驳回边 = 9 行。
+	// core-workflow：7 正向相位 → 6 相邻行 + 批准边 + 驳回边 = 8 行
+	//（F-04：Failed 不在声明序列——驳回边仍无条件物化（侧轨可达面），advance 相邻边止于 Reporting）。
 	cw := Builtin("core-workflow")
-	if got := len(cw.Transitions); got != 9 {
-		t.Fatalf("core-workflow 物化表应 9 行（7 相邻+批准+驳回），得 %d: %+v", got, cw.Transitions)
+	if got := len(cw.Transitions); got != 8 {
+		t.Fatalf("core-workflow 物化表应 8 行（6 相邻+批准+驳回），得 %d: %+v", got, cw.Transitions)
 	}
 	for i := 0; i+1 < len(cw.Phases); i++ {
 		row := cw.Transitions[i]

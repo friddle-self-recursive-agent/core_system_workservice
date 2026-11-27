@@ -84,21 +84,25 @@ func Builtin(name string) *Spec {
 		return builtinSpec(name, []Phase{Idle, Executing, Reporting})
 	case "watch-only":
 		return builtinSpec(name, []Phase{Idle, Analyzing, Reporting})
+	case "bug-lifecycle":
+		// §9a 缺陷闭环（2026-11-26 F-04 随行落注册表：scheme builtinSet 七项同源——
+		// BugReport→临时 BugDoc→验证→关闭；闸锚=人工确认修复方案）。
+		return builtinSpec(name, []Phase{Idle, Analyzing, AwaitingApproval, Executing, Verifying, Reporting})
 	case "dev-delivery":
 		return builtinSpec(name, []Phase{ // §1.1 步锚映射：Analyze→Gate→Plan→Execute→Verify→Deploy→Report
-			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting, Failed,
+			Idle, Analyzing, AwaitingApproval, Planning, Executing, Verifying, Deploying, Reporting,
 		})
 	case "apply-workflow":
 		return builtinSpec(name, []Phase{ // §1.2 落地 agent 任务态机=default-task 词汇全量复用（不另立词汇）
-			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
+			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting,
 		})
 	case "core-workflow":
 		return builtinSpec(name, []Phase{ // 系统级循环（A41；A67 core-loop→core-workflow）
-			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
+			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting,
 		})
 	default: // default-task
 		return builtinSpec("default-task", []Phase{
-			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting, Failed,
+			Idle, Analyzing, Planning, AwaitingApproval, Executing, Verifying, Reporting,
 		})
 	}
 }
@@ -120,8 +124,10 @@ const EdgeAdvance = "advance"
 //     on=ApprovalRejected to=终点锚 Failed——**表的首处非相邻迁移行**（机械判别器：
 //     非相邻迁移按表命中）。
 //
-// 声明无闸锚/无终点锚的序列=无对应审批边（无挂起面/驳回零迁移的表侧落点——零动作面在
-// 表物化即收口，判定器无需特判）。
+// 2026-11-26 F-04 纠偏：驳回边**无条件物化**（不再要求 Failed 在声明序列内——正向序列
+// 不再携带侧轨 Failed，`Failed` 是侧轨终态：仅经 ApprovalRejected 边可达；声明序列带不带
+// Failed 词形均同表）。声明无闸锚的序列=无对应审批边（无挂起面/驳回零迁移的表侧落点——
+// 零动作面在表物化即收口，判定器无需特判）。
 func MaterializeTransitions(seq []Phase) []Transition {
 	rows := make([]Transition, 0, len(seq)+2)
 	for i := 0; i+1 < len(seq); i++ {
@@ -134,9 +140,7 @@ func MaterializeTransitions(seq []Phase) []Transition {
 		if i+1 < len(seq) {
 			rows = append(rows, Transition{From: p, On: SignalResume, To: seq[i+1]})
 		}
-		if containsPhase(phaseNames(seq), string(Failed)) {
-			rows = append(rows, Transition{From: p, On: SignalReject, To: Failed})
-		}
+		rows = append(rows, Transition{From: p, On: SignalReject, To: Failed})
 	}
 	return rows
 }
@@ -153,8 +157,10 @@ func (s *Spec) Can(from Phase, on string) (Phase, bool) {
 }
 
 // builtinSet 内置 workflow 注册表（判定用；与 Builtin 构造的已声明相位集合同源——
-// scheme.yaml runtime.workflows.builtin 六项全量对齐（v0.19：dev-delivery/apply-workflow
-// 相位词汇映射已落设计，concepts/workflow.md §1 映射表——声明先行、注册表随后，不即兴发明）。
+// scheme.yaml runtime.workflows.builtin 七项全量对齐（v0.19：dev-delivery/apply-workflow
+// 相位词汇映射已落设计，concepts/workflow.md §1 映射表——声明先行、注册表随后，不即兴发明；
+// 2026-11-26 F-04 纠偏：声明序列=正向业务步序，Failed 不再列线性尾——侧轨语义随
+// MaterializeTransitions 驳回边保留，见 workflow.go §Failed 侧轨注）。
 var builtinSet = map[string]bool{
 	"core-workflow":  true,
 	"default-task":   true,
@@ -162,6 +168,7 @@ var builtinSet = map[string]bool{
 	"watch-only":     true,
 	"dev-delivery":   true,
 	"apply-workflow": true,
+	"bug-lifecycle":  true,
 }
 
 // IsBuiltin 名是否命中内置 workflow 注册表（run 锚解析的 SpecBuiltin/SpecObject 判据）。

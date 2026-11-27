@@ -372,3 +372,40 @@ func TestDiagnosisLongTaskPath(t *testing.T) {
 		t.Fatalf("长任务路重复停滞判定（SessionStalled=%d）", h.count(TypeSessionStalled))
 	}
 }
+
+// F09-WD-01 会话终态退出（2026-11-26 扫描整改——attention.md watchdog 终态退出规则）：
+// state=ended 的终态会话即使心跳陈旧也不合成 SessionStalled/不升级/不续报——
+// level-triggered 口径（已决/终态退出待办，append-only 历史不重复计数当待办）。
+func TestEndedSessionExitsWatchdog(t *testing.T) {
+	h := newHarness(t, time.Minute, 10*time.Minute)
+	// 终态行：state=ended，心跳早已陈旧（updated_at 远早于 threshold 窗）。
+	if err := h.reg.UpsertSessionHeartbeat(opslog.SessionHeartbeat{
+		SessionID: "sess-ended", Ts: h.now.Add(-time.Hour), UpdatedAt: h.now.Add(-time.Hour),
+		State: opslog.SessionStateEnded,
+	}); err != nil {
+		t.Fatalf("seed ended row: %v", err)
+	}
+	h.advance(20 * time.Minute)
+	h.w.SweepOnce()
+	if h.count(TypeSessionStalled) != 0 {
+		t.Fatalf("终态会话不应合成 SessionStalled（终态退出——零新增事件）: %d", h.count(TypeSessionStalled))
+	}
+	if h.emitted("Escalate") {
+		t.Fatal("终态会话不应升级（Escalate 零新增）")
+	}
+	// 行态不被改写（ended 仍 ended——终态词形不回写停滞态）。
+	if hb, _ := h.reg.get("sess-ended"); hb.State != opslog.SessionStateEnded {
+		t.Fatalf("终态行态应保持 ended: %s", hb.State)
+	}
+	// 对照组：同窗 live 行照常判定（终态退出只摘终态——活体判定面零翻转）。
+	if err := h.reg.UpsertSessionHeartbeat(opslog.SessionHeartbeat{
+		SessionID: "sess-live", Ts: h.now.Add(-time.Hour), UpdatedAt: h.now.Add(-time.Hour),
+		State: opslog.SessionStateLive,
+	}); err != nil {
+		t.Fatalf("seed live row: %v", err)
+	}
+	h.w.SweepOnce()
+	if h.count(TypeSessionStalled) != 1 {
+		t.Fatalf("live 行照常判定 SessionStalled: %d", h.count(TypeSessionStalled))
+	}
+}

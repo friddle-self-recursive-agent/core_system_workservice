@@ -29,8 +29,8 @@ func seedAdvance(t *testing.T, runs *RunLog, route, wf string, phase Phase, stat
 func runAt(runs *RunLog, n int) RunRecord { return runs.State().Runs[n] }
 
 // TestAdvanceSingleStep 序列尾前单步推进：查表命中 advance 行→前进一步（status 保持 running）；
-// 序列尾（watch-only Reporting 无 advance 出行）零动作停——status 保持 running
-// （诚实投影不冒充执行完毕，「run 出现≠对账执行完毕」口径）。
+// 序列尾（watch-only Reporting 无 advance 出行）首拍落 converged（F-04 正常收束——
+// workflow.md §1：到达 Reporting 完成即正常收束），其后零动作停（终态不迁移）。
 func TestAdvanceSingleStep(t *testing.T) {
 	runs := NewRunLog(nil)
 	seedAdvance(t, runs, "workflows/watch-only", "watch-only", Analyzing, RunRunning)
@@ -40,12 +40,17 @@ func TestAdvanceSingleStep(t *testing.T) {
 	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunRunning {
 		t.Fatalf("推进后应 {Reporting, running}: {phase=%s, status=%s}", r.Phase, r.Status)
 	}
-	// 序列尾：Reporting 无 advance 出行——零动作停（不冒充执行完毕，无 done 词形）。
+	// 序列尾：Reporting 无 advance 出行——本拍即落 converged（正向末步收束，F-04）。
 	if n := runs.Advance(); n != 0 {
-		t.Fatalf("序列尾推进应零动作，得 %d", n)
+		t.Fatalf("序列尾收束拍应零迁移计数，得 %d", n)
 	}
-	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunRunning {
-		t.Fatalf("序列尾应原样保留 {Reporting, running}: {phase=%s, status=%s}", r.Phase, r.Status)
+	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunConverged {
+		t.Fatalf("序列尾应落 {Reporting, converged}（F-04 正常收束）: {phase=%s, status=%s}", r.Phase, r.Status)
+	}
+	// 收束轨迹随行：{Reporting,converged,on=converged} 一行（history 与静态表分离）。
+	hist := runAt(runs, 0).History
+	if len(hist) == 0 || hist[len(hist)-1].On != "converged" || hist[len(hist)-1].To != string(Reporting) {
+		t.Fatalf("收束轨迹应落 converged 行: %+v", hist)
 	}
 	if st := runs.State(); st.Advances != 1 {
 		t.Fatalf("advances 累计应=1，得 %d", st.Advances)
@@ -71,16 +76,18 @@ func TestAdvanceGateLanding(t *testing.T) {
 	}
 }
 
-// TestAdvanceTerminalLanding 落终点锚=终态（RunFailed=迁移终点语义，非引擎失败语义）：
-// dev-delivery Reporting→（advance 相邻行）→Failed → status=failed 且停（终态不迁移）。
-func TestAdvanceTerminalLanding(t *testing.T) {
+// TestAdvanceConvergedLanding 正向末步收束（F-04——Reporting→converged，非 Failed）：
+// dev-delivery Reporting 处 advance 零动作停（侧轨 Failed 已摘除线性尾，advance 边止于
+// Reporting）→ 正向末步落 converged（终态不迁移）。
+func TestAdvanceConvergedLanding(t *testing.T) {
 	runs := NewRunLog(nil)
 	seedAdvance(t, runs, "workflows/dev-delivery", "dev-delivery", Reporting, RunRunning)
-	if n := runs.Advance(); n != 1 {
-		t.Fatalf("落终点锚推进应计入，得 %d", n)
+	// Reporting 已是正向末步：无 advance 出行——零迁移计数，status 落 converged。
+	if n := runs.Advance(); n != 0 {
+		t.Fatalf("正向末步收束拍应零迁移计数，得 %d", n)
 	}
-	if r := runAt(runs, 0); r.Phase != string(Failed) || r.Status != RunFailed {
-		t.Fatalf("落终点锚应 {Failed, failed}: {phase=%s, status=%s}", r.Phase, r.Status)
+	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunConverged {
+		t.Fatalf("正向末步应 {Reporting, converged}（F-04 收束——绝不 Reporting→Failed）: {phase=%s, status=%s}", r.Phase, r.Status)
 	}
 	if n := runs.Advance(); n != 0 {
 		t.Fatalf("终态推进应零动作，得 %d", n)
@@ -123,7 +130,7 @@ func TestAdvanceMultiRun(t *testing.T) {
 	}
 	rs := runs.State().Runs
 	if rs[0].Phase != string(Reporting) || rs[0].Status != RunRunning {
-		t.Fatalf("watch-only 应 {Reporting, running}: %+v", rs[0])
+		t.Fatalf("watch-only 应 {Reporting, running}（收束=下一拍序列尾判定——一步一迁移）: %+v", rs[0])
 	}
 	if rs[1].Phase != string(Planning) || rs[1].Status != RunRunning {
 		t.Fatalf("core-workflow 应 {Planning, running}: %+v", rs[1])
@@ -176,19 +183,19 @@ func TestAdvanceConcurrent(t *testing.T) {
 		go func() { defer wg.Done(); _ = runs.State() }()
 	}
 	wg.Wait()
-	// watch-only 序列尾前只有一步可走：其余拍全零动作；相位/状态终值确定。
-	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunRunning {
-		t.Fatalf("并发推进后终值应 {Reporting, running}: {phase=%s, status=%s}", r.Phase, r.Status)
+	// watch-only 只一步可走+并发拍序列尾收束（F-04 converged）：相位/状态终值确定。
+	if r := runAt(runs, 0); r.Phase != string(Reporting) || r.Status != RunConverged {
+		t.Fatalf("并发推进后终值应 {Reporting, converged}: {phase=%s, status=%s}", r.Phase, r.Status)
 	}
 	if st := runs.State(); st.Advances != 1 {
-		t.Fatalf("并发推进累计应=1（序列尾零动作不计），得 %d", st.Advances)
+		t.Fatalf("并发推进累计应=1（迁移计数；收束零迁移计数），得 %d", st.Advances)
 	}
 }
 
 // TestAdvanceFullPhasePath G-13 相位表全路径锚：core-workflow run 自受理首步起随拍走完
 // 声明序列（Analyzing→Planning→AwaitingApproval 挂起→批准恢复→Executing→Verifying→gate
-// 放行→Reporting→Failed 终态），advances 随 tick 单调增长、落闸锚挂起面不前进、恢复续行、
-// 终点锚终态即停（「相位机走过 Analyzing→…→终态」判据的全路径覆盖）。
+// 放行→Reporting→converged 正常收束——F-04 状态机纠偏：正向末步收束绝不落 Failed），
+// advances 随 tick 单调增长、落闸锚挂起面不前进、恢复续行、收束即停。
 func TestAdvanceFullPhasePath(t *testing.T) {
 	runs := NewRunLog(&RunOptions{VerifyGate: VerifyGateFunc(func(run RunRecord) VerifyVerdict {
 		return VerifyVerdict{OK: true, AuditID: "audit-full", Note: "audit ok"}
@@ -227,20 +234,76 @@ func TestAdvanceFullPhasePath(t *testing.T) {
 	}
 	tick(Verifying, RunRunning)
 	tick(Reporting, RunRunning) // gate 放行拍（Verifying→Reporting 过审）
-	tick(Failed, RunFailed)     // 序列尾前最后相邻行：Reporting→Failed=终点锚终态
-	// 终态不迁移：failed 后续拍零动作（终态制）。
+	// F-04：Reporting=正向末步（侧轨 Failed 已摘除线性尾）——下一拍序列尾收束（零迁移计数）。
+	if n := runs.Advance(); n != 0 {
+		t.Fatalf("收束拍应零迁移计数，得 %d", n)
+	}
+	// 终态不迁移：converged 后续拍零动作（终态制）。
 	if n := runs.Advance(); n != 0 {
 		t.Fatalf("终态后续拍应零动作，得 %d", n)
 	}
 	st := runs.State()
-	if st.Advances != 5 { // Planning/AwaitingApproval/Verifying/Reporting(gate 放行)/Failed 五拍步（挂起拍零动作、恢复走审批信号不计推进）
-		t.Fatalf("advances 累计应=5，得 %d", st.Advances)
+	if st.Advances != 4 { // Planning/AwaitingApproval/Verifying/Reporting(gate 放行) 四拍步（挂起拍零动作、恢复走审批信号、收束零迁移计数——F-04）
+		t.Fatalf("advances 累计应=4，得 %d", st.Advances)
 	}
 	r := runAt(runs, 0)
-	if r.Status != RunFailed || r.Phase != string(Failed) {
-		t.Fatalf("终态词形应 {Failed, failed}: %+v", r)
+	if r.Status != RunConverged || r.Phase != string(Reporting) {
+		t.Fatalf("终态词形应 {Reporting, converged}（F-04 正向末步收束）: %+v", r)
 	}
 	if r.Verify == nil || !r.Verify.OK {
 		t.Fatalf("Verify 放行判定应随 run 留痕：%+v", r.Verify)
+	}
+}
+
+// F04-HIST-01 运行轨迹留痕（2026-11-26 F-04——静态 transitions 与运行轨迹 history 分离）：
+// 走完 Analyzing→Reporting 全路径的 run 携带逐拍真实迁移行（from/to/on/at 全量词形），
+// 收束行 on=converged；UI 按 history 标绿已走节点，静态表不再当事件时间线。
+func TestRunHistoryTrajectory(t *testing.T) {
+	runs := NewRunLog(&RunOptions{VerifyGate: VerifyGateFunc(func(run RunRecord) VerifyVerdict {
+		return VerifyVerdict{OK: true, AuditID: "audit-hist"}
+	})})
+	runs.StartRun(TriggerRecord{Seq: 1, Type: "DocApplied", DedupKey: "apply:hist:1",
+		ReceivedAt: time.Now(), Route: "workflows/watch-only", Owner: "global"},
+		ExecutorBinding{Executor: ExecWorkflow, Target: "watch-only"})
+	if n := runs.Advance(); n != 1 { // Analyzing→Reporting
+		t.Fatalf("单步推进: %d", n)
+	}
+	if n := runs.Advance(); n != 0 { // 序列尾收束
+		t.Fatalf("收束拍零迁移: %d", n)
+	}
+	r := runAt(runs, 0)
+	if len(r.History) != 3 {
+		t.Fatalf("轨迹应 3 行（受理首步+推进+收束）: %+v", r.History)
+	}
+	want := [][3]string{{string(Idle), string(Analyzing), EdgeAdvance}, {string(Analyzing), string(Reporting), EdgeAdvance}, {string(Reporting), string(Reporting), "converged"}}
+	for i, w := range want {
+		h := r.History[i]
+		if h.From != w[0] || h.To != w[1] || h.On != w[2] || h.At == "" {
+			t.Fatalf("轨迹行 %d 应 %+v: %+v", i, w, h)
+		}
+	}
+}
+
+// F04-CONV-01 驳回仍达侧轨 Failed（纠偏后的负向通路锚）：声明序列不带 Failed，
+// ApprovalRejected 边仍物化（MaterializeTransitions 无条件物化）——驳回查表命中
+// AwaitingApproval→Failed 终态迁移（侧轨语义与正向收敛并存）。
+func TestRejectSideTrackUnchanged(t *testing.T) {
+	runs := NewRunLog(nil)
+	runs.StartRun(TriggerRecord{Seq: 1, Type: "DocApplied", DedupKey: "apply:rj:1",
+		ReceivedAt: time.Now(), Route: "workflows/dev-delivery", Owner: "global"},
+		ExecutorBinding{Executor: ExecWorkflow, Target: "dev-delivery"})
+	sig := func(typ string) {
+		runs.ResumeSignal(TriggerRecord{Seq: 100, Type: typ, Involved: "Workflow/builtin/dev-delivery", ReceivedAt: time.Now()})
+	}
+	sig(SignalSuspend)
+	sig(SignalReject)
+	r := runAt(runs, 0)
+	if r.Phase != string(Failed) || r.Status != RunFailed {
+		t.Fatalf("驳回应 {Failed, failed}（侧轨终点锚）: {phase=%s, status=%s}", r.Phase, r.Status)
+	}
+	// 轨迹含驳回行（on=ApprovalRejected）——侧轨迁移与推进迁移同口径留痕。
+	last := r.History[len(r.History)-1]
+	if last.On != SignalReject || last.To != string(Failed) {
+		t.Fatalf("轨迹尾应驳回行: %+v", last)
 	}
 }

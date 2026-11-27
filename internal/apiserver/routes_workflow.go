@@ -311,6 +311,11 @@ func runsPayload(st workflow.RunState) map[string]any {
 			// 审批策略投影（2026-11-26「Workflow 可设置 Agent 节点是否自动级别」）：
 			// "auto"=闸锚自动通过；空=human 缺省（闸锚挂起等人）。新载荷键=代际判别器。
 			"approvalMode": r.ApprovalMode,
+			// F-04 运行轨迹投影（2026-11-26：静态迁移规则表 transitions 与运行轨迹 history
+			// 分离——UI 节点图按 history 标绿已走过的真实节点，静态表不再当事件时间线展示。
+			// 零轨迹=nil 词形缺席语义）。新载荷键=代际判别器。
+			"history": historyRowsPayload(r.History),
+			// Verify 判定随行（G-09/G-12 已在留痕——nil=未审不投影键）。
 		})
 	}
 	return map[string]any{
@@ -321,6 +326,18 @@ func runsPayload(st workflow.RunState) map[string]any {
 		"disabled": st.Disabled, // v0.58b enabled honoring：累计 enabled=false 锚拦阻触发数（新载荷键=代际判别器）
 		"runs":     items,
 	}
+}
+
+// historyRowsPayload 运行轨迹行投影（F-04——nil=零轨迹不投影空数组占位；行字段直投）。
+func historyRowsPayload(rows []workflow.HistoryRow) []map[string]any {
+	if len(rows) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, h := range rows {
+		out = append(out, map[string]any{"from": h.From, "to": h.To, "on": h.On, "at": h.At})
+	}
+	return out
 }
 
 // deliveriesPayload GET /v1/notifications/deliveries 载荷构造器（原 handler 内联体原样上提）。

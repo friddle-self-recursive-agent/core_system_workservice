@@ -82,6 +82,7 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 		PhasesJSON: mustJSON(run.Phases), TransitionsJSON: mustJSON(run.Transitions),
 		Phase: run.Phase, Status: run.Status, BrakesJSON: mustJSON(run.Brakes),
 		SpecJSON: mustJSON(map[string]string{"approvalMode": run.ApprovalMode}),
+		HistoryJSON: mustJSON(run.History), // F-04 运行轨迹写穿透（空轨迹=null 词形）
 		TriggerSeq: run.TriggerSeq, EventID: run.EventID, Type: run.Type,
 		DedupKey: run.DedupKey, Route: run.Route, Owner: run.Owner, Target: run.Target,
 		Involved: run.Involved, StartedAt: stampNano(run.StartedAt),
@@ -103,6 +104,7 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 	_ = json.Unmarshal([]byte(r.PhasesJSON), &run.Phases)
 	_ = json.Unmarshal([]byte(r.TransitionsJSON), &run.Transitions)
 	_ = json.Unmarshal([]byte(r.BrakesJSON), &run.Brakes)
+	_ = json.Unmarshal([]byte(r.HistoryJSON), &run.History) // F-04 轨迹恢复（空/损坏列=零轨迹——诚实降级）
 	return run
 }
 

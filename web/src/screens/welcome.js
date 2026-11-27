@@ -18,6 +18,12 @@ import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
 import { composerHtml, bindComposer } from './chat.js';
 import { t as tr } from '../core/i18n.js';
 
+/* ── F-05：任务相位读取兼容扁平词形（/v1/tasks 简表 t.phase 与详情 t.status.phase 双词形）── */
+function taskPhaseOf(x) {
+  const s = x && x.status;
+  return String((s && (s.phase || s)) || (x && x.phase) || '');
+}
+
 /* ── 摘要统计卡（点击深链） ── */
 function statCard(label, num, sub, route, cls) {
   return '<div class="stat ' + esc(cls || '') + '" data-go="' + esc(route) + '" role="link">' +
@@ -100,9 +106,14 @@ function zoneHead(label, route) {
     (route ? chipGo(tr('全部'), route, 'mute', false) : '') + '</div>';
 }
 
-/* ── 区一：正在跑的 Workflows（snapshot.runs 活体；空态显式） ── */
-function runningWorkflowsHtml(ctx) {
+/* ── 区一：正在跑的 Workflows（snapshot.runs 活体；空态显式；scope 收窄——F-10） ── */
+function runningWorkflowsHtml(ctx, scope) {
   const runs = ctx.store.runs().filter((r) => {
+    if (scope) {
+      let hay = '';
+      try { hay = JSON.stringify([r && r.scope, r && r.ownerScope, r && r.involved, r && r.route, r && r.workflow]); } catch { hay = ''; }
+      if (!hay.includes(scope)) return false;
+    }
     const st = String((r && (r.status || r.state)) || '');
     return st && st !== 'done' && st !== 'failed' && st !== 'canceled';
   }).slice(0, 8);
@@ -160,7 +171,6 @@ function pendingRunRowHtml(x) {
     '<button class="btn btn-chip sm"' + btnAttrs('grant') + '>' + esc(tr('批准继续')) + '</button>' +
     '<button class="btn btn-ghost btn-danger sm"' + btnAttrs('reject') + '>' + esc(tr('驳回终止')) + '</button>' +
     '</div></div>';
-    '</div></div>';
 }
 
 /* 就地批闸（confirm→eventPub→行消隐+快照重基；失败=alert 显式词形）。 */
@@ -205,10 +215,14 @@ function bindApprovalGates(el, ctx) {
     btn.addEventListener('click', (ev) => { ev.stopPropagation(); act(btn, 'ApprovalRejected'); }));
 }
 
-function pendingApprovalsHtml(ctx) {
+function pendingApprovalsHtml(ctx, scope) {
   const runRows = pendingRunsOf(ctx).slice(0, 8).map((r) => {
     const wf = String(r.workflow || r.wf || '');
     if (!wf) return '';
+    if (scope) {
+      const sc = runOwnerScope(r);
+      if (sc !== scope) return '';
+    }
     const run = String(r.run != null ? r.run : '');
     const key = (r.eventId != null && r.eventId !== '') ? String(r.eventId) : run;
     return pendingRunRowHtml({
@@ -218,13 +232,16 @@ function pendingApprovalsHtml(ctx) {
       started: r.startedAt ? (relAge(r.startedAt) || '') : '',
     });
   }).filter(Boolean);
+  // L-03 修复随行：pendingRunRowHtml 原模板尾部多余 '</div></div>' 已在行内闭合——无残留标签。
   const drafts = ctx.store.drafts()
     .filter((d) => d && d.kind && d.name)
+    .filter((d) => !scope || String(d.scope || 'global') === scope)
     .map((d) => ({ src: 'draft', t: d.updatedAt || d.ts || null,
       go: 'doc/' + encodeURIComponent(d.kind) + '/' + encodeURIComponent(d.scope || 'global') + '/' + encodeURIComponent(d.name),
       title: d.kind + '/' + (d.scope || 'global') + '/' + d.name, tag: tr('稿') }));
   const evs = ctx.store.events()
     .filter((e) => e && (e.type === 'ApprovalNeeded' || e.type === 'Escalate'))
+    .filter((e) => !scope || String(e.involved || '').includes(scope))
     .slice(0, 8)
     .map((e) => ({ src: 'ev', t: e.ts || null, go: 'event/' + encodeURIComponent(String(e.id ?? '')),
       title: e.type + ' · ' + String(e.involved || ''), tag: e.type === 'ApprovalNeeded' ? tr('待审') : tr('升级') }));
@@ -331,19 +348,23 @@ function agentsHtml(ctx, filterAgents) {
 /* ── 大屏骨架（系统视角与 Service 视角共用布局——同构换数据源） ── */
 function dashLayout(ctx, opts) {
   const store = ctx.store;
+  const scope = opts.scope || ''; // F-10：Service 视角 scope 收窄（空=系统视角全量）
+  const inScope = (o) => !scope || String((o && (o.scope || (o.raw && o.raw.scope))) || '') === scope;
   /* 收件箱卡：快照缺席（null/undefined）=整卡不渲染（§19.3——不显示「—」像坏了）。 */
   const inbox = store.inbox();
+  const inboxItems = inbox ? ((Array.isArray(inbox) ? inbox : ((inbox && inbox.items) || [])) || []) : [];
+  const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
   const inboxCard = inbox
     ? statCard(tr('收件箱'),
-      Array.isArray(inbox) ? inbox.length : ((inbox && inbox.items && inbox.items.length) || 0),
+      inboxScoped.length,
       tr('待你处理'), 'inbox', '')
     : '';
   const stats =
-    statCard(tr('在册对象'), (store.objects() || []).length, tr('全部 kind 合计'), 'obj', '') +
-    statCard(tr('事件'), (store.events() || []).length, tr('归档行'), 'events', '') +
-    statCard(tr('待审'), (store.drafts() || []).length + (store.events() || []).filter((e) => e && e.type === 'ApprovalNeeded').length, tr('稿∪待审事件'), 'approvals', 'warn') +
+    statCard(tr('在册对象'), (store.objects() || []).filter(inScope).length, tr('全部 kind 合计'), 'obj', '') +
+    statCard(tr('事件'), (store.events() || []).filter((e) => !scope || String(e.involved || '').includes(scope)).length, tr('归档行'), 'events', '') +
+    statCard(tr('待审'), (store.drafts() || []).filter((d) => !scope || String(d.scope || 'global') === scope).length + (store.events() || []).filter((e) => e && e.type === 'ApprovalNeeded' && (!scope || String(e.involved || '').includes(scope))).length, tr('草稿∪待审事件'), 'approvals', 'warn') +
     inboxCard +
-    statCard(tr('进行中任务'), (store.tasks() || []).filter((x) => ['running', 'verifying'].includes(String((x && x.status && (x.status.phase || x.status)) || ''))).length, tr('任务中心'), 'tasks', '');
+    statCard(tr('进行中任务'), (store.tasks() || []).filter((x) => ['running', 'verifying'].includes(taskPhaseOf(x))).filter(inScope).length, tr('任务中心'), 'tasks', '');
   return '<div class="view-inner">' + (opts.head || '') +
     (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx, '') +
       '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(tr('打开对话线程')) + '</span></div></div>' : '') +
@@ -352,14 +373,11 @@ function dashLayout(ctx, opts) {
     '<div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(tr('当前循环'), 'mute') +
     tr('<span class="small faint">循环状态现读中…</span>') + '</div></div></div></div>' +
     '<div class="dash-grid">' +
-    '<div class="dash-zone">' + zoneHead(tr('正在跑的 Workflows'), 'workflows') + runningWorkflowsHtml(ctx) + '</div>' +
-    '<div class="dash-zone">' + zoneHead(tr('最近需要的审批'), 'approvals') + pendingApprovalsHtml(ctx) + '</div>' +
+    '<div class="dash-zone">' + zoneHead(tr('正在跑的 Workflows'), 'workflows') + runningWorkflowsHtml(ctx, scope) + '</div>' +
+    '<div class="dash-zone">' + zoneHead(tr('最近需要的审批'), 'approvals') + pendingApprovalsHtml(ctx, scope) + '</div>' +
     '<div class="dash-zone">' + zoneHead(tr('核心 Agent'), 'tree') + agentsHtml(ctx, opts.coreAgents) + '</div>' +
     '</div>' +
     (opts.foot || '') +
-    '<div class="w-foot small faint">' +
-    tr('<div class="w-foot small faint">数据面：GET /v1/snapshot 基线 + /v1/stream patch 增量（WS 断线自动降级轮询）；') +
-    tr('（rv 未变不重读正文——降级轮询路径同样生效）</span>') +
     '</div>';
 }
 
@@ -376,25 +394,47 @@ export function render(el, ctx) {
   hydrateAgentLive(el, ctx);
 }
 
-/* ── #/service/:name（Service 视角——同布局换数据源；ServiceAgent 登录后即此视图） ── */
+/* ── #/service/:name（Service 视角——同布局换数据源+scope 收窄；ServiceAgent 登录后即此视图） ──
+ * F-10 修复：① 全部统计/区卡按 scope=<name> 过滤（dashLayout opts.scope）；② agents 解析
+ * 不再读对象 refs 上不存在的 sd.content——走 docCache/api.object 现读 ServiceDesc 正文
+ * （refs 行=快照聚合仅 kind/scope/name/rv，正文在 rv 缓存或现读）；读失败=诚实注记。 */
 export function renderService(el, ctx) {
   const name = String(ctx.params.name || '');
   const sd = ctx.store.objects().find((o) => o.kind === 'ServiceDesc' && o.name === name);
-  let agents = [];
-  if (sd && typeof sd.content === 'string') {
-    agents = [...String(sd.content).matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
-  }
   el.innerHTML = dashLayout(ctx, {
+    scope: name,
     head: '<div class="dash-head"><h2 class="page-title">' + esc(tr('Service')) + ' · ' + esc(name) + '</h2>' +
-      '<span class="small faint">' + esc(tr('Service 视角大屏（与系统大屏同构布局——后续 ServiceAgent 登录即落此视图）')) + '</span></div>',
-    coreAgents: agents.length ? agents : null,
-    foot: '<div class="card"><div class="card-b"><div class="small faint">' +
-      (sd
-        ? esc(tr('ServiceDesc 在册——agents=')) + esc(agents.join(', ') || '—')
-        : esc(tr('ServiceDesc 对象不在册（词形投影自快照——不冒充在册）'))) +
+      '<span class="small faint">' + esc(tr('Service 视角大屏（scope=' + name + ' 收窄投影——与系统大屏同构布局）')) + '</span></div>',
+    coreAgents: null,
+    foot: '<div class="card"><div class="card-b"><div class="small faint" data-sd-note>' +
+      esc(tr('ServiceDesc 正文现读中…（声明 agents=agent://<name> 词形解析）')) +
       '</div></div></div>',
   });
   hydrateLoop(el, ctx);
   bindApprovalGates(el, ctx);
   hydrateAgentLive(el, ctx);
+  // ServiceDesc 正文现读（缓存命中=零请求；rv 缓存语义与对象工作台同源）。
+  (async () => {
+    const note = el.querySelector('[data-sd-note]');
+    if (!note) return;
+    let content = '';
+    const cached = sd && ctx.store.cachedDoc ? ctx.store.cachedDoc('ServiceDesc', (sd && sd.scope) || 'global', name, sd && sd.rv) : null;
+    if (cached && typeof cached.content === 'string') {
+      content = cached.content;
+    } else if (ctx.api && typeof ctx.api.object === 'function') {
+      const r = await ctx.api.object('ServiceDesc', (sd && sd.scope) || 'global', name);
+      if (!el.isConnected) return;
+      if (r && r.ok) {
+        const data = r.data && typeof r.data === 'object' ? r.data : {};
+        content = data.content != null ? String(data.content) : '';
+        if (sd && ctx.store.cacheDoc) ctx.store.cacheDoc('ServiceDesc', (sd && sd.scope) || 'global', name, sd && sd.rv, content);
+      }
+    }
+    const agents = [...content.matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
+    note.textContent = sd
+      ? (content
+        ? tr('ServiceDesc 在册——agents=') + (agents.join(', ') || '—')
+        : tr('ServiceDesc 在册——正文暂不可读（agents 解析缺席，不冒充）'))
+      : tr('ServiceDesc 对象不在册（词形投影自快照——不冒充在册）');
+  })().catch(() => { /* 注记词形保持现读中——失败不装成功 */ });
 }

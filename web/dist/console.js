@@ -10758,6 +10758,10 @@ ${text2}</tr>
   }
 
   // src/screens/welcome.js
+  function taskPhaseOf(x) {
+    const s = x && x.status;
+    return String(s && (s.phase || s) || x && x.phase || "");
+  }
   function statCard(label, num, sub, route, cls) {
     return '<div class="stat ' + esc(cls || "") + '" data-go="' + esc(route) + '" role="link"><div class="st-num">' + esc(fmtNum(num)) + '</div><div class="st-label">' + esc(label) + '<span class="small faint">' + esc(sub || "") + "</span></div></div>";
   }
@@ -10821,8 +10825,17 @@ ${text2}</tr>
   function zoneHead(label, route) {
     return '<div class="zone-h"><span class="zone-t">' + esc(label) + "</span>" + (route ? chipGo(t("\u5168\u90E8"), route, "mute", false) : "") + "</div>";
   }
-  function runningWorkflowsHtml(ctx2) {
+  function runningWorkflowsHtml(ctx2, scope) {
     const runs = ctx2.store.runs().filter((r) => {
+      if (scope) {
+        let hay = "";
+        try {
+          hay = JSON.stringify([r && r.scope, r && r.ownerScope, r && r.involved, r && r.route, r && r.workflow]);
+        } catch {
+          hay = "";
+        }
+        if (!hay.includes(scope)) return false;
+      }
       const st = String(r && (r.status || r.state) || "");
       return st && st !== "done" && st !== "failed" && st !== "canceled";
     }).slice(0, 8);
@@ -10850,7 +10863,6 @@ ${text2}</tr>
     return '<div class="dash-row" data-appr-row><div class="dr-main">' + chip(t("\u5F85\u6279"), "warn") + '<b class="mono">' + esc(trunc(x.wf, 22)) + '</b><span class="small faint">#' + esc(x.run) + "</span>" + chip(x.phase, "warn") + (x.started ? '<span class="small faint">' + esc(x.started) + "</span>" : "") + '</div><div class="dr-side">' + /* V-04（2026-11-26 概念可见性批）：待批行加「运行详情」→ wf/:name/r/:n（此前泛链 absent——
      * 人批准前看不到 run 全貌）。 */
     (x.wf && x.run != null && x.run !== "" ? '<button class="btn btn-ghost sm" data-go="wf/' + encodeURIComponent(String(x.wf)) + "/r/" + encodeURIComponent(String(x.run)) + '">' + esc(t("\u8FD0\u884C\u8BE6\u60C5")) + "</button>" : "") + '<button class="btn btn-chip sm"' + btnAttrs("grant") + ">" + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button><button class="btn btn-ghost btn-danger sm"' + btnAttrs("reject") + ">" + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div>";
-    "</div></div>";
   }
   function bindApprovalGates(el, ctx2) {
     const act = async (btn, type2) => {
@@ -10891,10 +10903,14 @@ ${text2}</tr>
       act(btn, "ApprovalRejected");
     }));
   }
-  function pendingApprovalsHtml(ctx2) {
+  function pendingApprovalsHtml(ctx2, scope) {
     const runRows = pendingRunsOf(ctx2).slice(0, 8).map((r) => {
       const wf = String(r.workflow || r.wf || "");
       if (!wf) return "";
+      if (scope) {
+        const sc = runOwnerScope(r);
+        if (sc !== scope) return "";
+      }
       const run = String(r.run != null ? r.run : "");
       const key = r.eventId != null && r.eventId !== "" ? String(r.eventId) : run;
       return pendingRunRowHtml({
@@ -10906,14 +10922,14 @@ ${text2}</tr>
         started: r.startedAt ? relAge(r.startedAt) || "" : ""
       });
     }).filter(Boolean);
-    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).filter((d) => !scope || String(d.scope || "global") === scope).map((d) => ({
       src: "draft",
       t: d.updatedAt || d.ts || null,
       go: "doc/" + encodeURIComponent(d.kind) + "/" + encodeURIComponent(d.scope || "global") + "/" + encodeURIComponent(d.name),
       title: d.kind + "/" + (d.scope || "global") + "/" + d.name,
       tag: t("\u7A3F")
     }));
-    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).slice(0, 8).map((e) => ({
+    const evs = ctx2.store.events().filter((e) => e && (e.type === "ApprovalNeeded" || e.type === "Escalate")).filter((e) => !scope || String(e.involved || "").includes(scope)).slice(0, 8).map((e) => ({
       src: "ev",
       t: e.ts || null,
       go: "event/" + encodeURIComponent(String(e.id ?? "")),
@@ -10996,16 +11012,20 @@ ${text2}</tr>
   }
   function dashLayout(ctx2, opts) {
     const store2 = ctx2.store;
+    const scope = opts.scope || "";
+    const inScope = (o) => !scope || String(o && (o.scope || o.raw && o.raw.scope) || "") === scope;
     const inbox = store2.inbox();
+    const inboxItems = inbox ? (Array.isArray(inbox) ? inbox : inbox && inbox.items || []) || [] : [];
+    const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
     const inboxCard = inbox ? statCard(
       t("\u6536\u4EF6\u7BB1"),
-      Array.isArray(inbox) ? inbox.length : inbox && inbox.items && inbox.items.length || 0,
+      inboxScoped.length,
       t("\u5F85\u4F60\u5904\u7406"),
       "inbox",
       ""
     ) : "";
-    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded").length, t("\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(String(x && x.status && (x.status.phase || x.status) || ""))).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
-    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + '<div class="w-foot small faint">' + t('<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B') + t("\uFF08rv \u672A\u53D8\u4E0D\u91CD\u8BFB\u6B63\u6587\u2014\u2014\u964D\u7EA7\u8F6E\u8BE2\u8DEF\u5F84\u540C\u6837\u751F\u6548\uFF09</span>") + "</div>";
+    const stats = statCard(t("\u5728\u518C\u5BF9\u8C61"), (store2.objects() || []).filter(inScope).length, t("\u5168\u90E8 kind \u5408\u8BA1"), "obj", "") + statCard(t("\u4E8B\u4EF6"), (store2.events() || []).filter((e) => !scope || String(e.involved || "").includes(scope)).length, t("\u5F52\u6863\u884C"), "events", "") + statCard(t("\u5F85\u5BA1"), (store2.drafts() || []).filter((d) => !scope || String(d.scope || "global") === scope).length + (store2.events() || []).filter((e) => e && e.type === "ApprovalNeeded" && (!scope || String(e.involved || "").includes(scope))).length, t("\u8349\u7A3F\u222A\u5F85\u5BA1\u4E8B\u4EF6"), "approvals", "warn") + inboxCard + statCard(t("\u8FDB\u884C\u4E2D\u4EFB\u52A1"), (store2.tasks() || []).filter((x) => ["running", "verifying"].includes(taskPhaseOf(x))).filter(inScope).length, t("\u4EFB\u52A1\u4E2D\u5FC3"), "tasks", "");
+    return '<div class="view-inner">' + (opts.head || "") + (opts.composer ? '<div class="dash-composer">' + composerHtml(ctx2, "") + '<div class="small faint"><span class="ref-chip" data-go="chat/core-headless">' + esc(t("\u6253\u5F00\u5BF9\u8BDD\u7EBF\u7A0B")) + "</span></div></div>" : "") + '<div class="dash-stats' + (inboxCard ? "" : " cols-4") + '">' + stats + '</div><div data-loop-box><div class="card report-loop"><div class="card-b"><div class="report-loop-top">' + chip(t("\u5F53\u524D\u5FAA\u73AF"), "mute") + t('<span class="small faint">\u5FAA\u73AF\u72B6\u6001\u73B0\u8BFB\u4E2D\u2026</span>') + '</div></div></div></div><div class="dash-grid"><div class="dash-zone">' + zoneHead(t("\u6B63\u5728\u8DD1\u7684 Workflows"), "workflows") + runningWorkflowsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6700\u8FD1\u9700\u8981\u7684\u5BA1\u6279"), "approvals") + pendingApprovalsHtml(ctx2, scope) + '</div><div class="dash-zone">' + zoneHead(t("\u6838\u5FC3 Agent"), "tree") + agentsHtml(ctx2, opts.coreAgents) + "</div></div>" + (opts.foot || "") + "</div>";
   }
   function render2(el, ctx2) {
     el.innerHTML = dashLayout(ctx2, {
@@ -11020,18 +11040,35 @@ ${text2}</tr>
   function renderService(el, ctx2) {
     const name = String(ctx2.params.name || "");
     const sd = ctx2.store.objects().find((o) => o.kind === "ServiceDesc" && o.name === name);
-    let agents = [];
-    if (sd && typeof sd.content === "string") {
-      agents = [...String(sd.content).matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
-    }
     el.innerHTML = dashLayout(ctx2, {
-      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\u2014\u2014\u540E\u7EED ServiceAgent \u767B\u5F55\u5373\u843D\u6B64\u89C6\u56FE\uFF09")) + "</span></div>",
-      coreAgents: agents.length ? agents : null,
-      foot: '<div class="card"><div class="card-b"><div class="small faint">' + (sd ? esc(t("ServiceDesc \u5728\u518C\u2014\u2014agents=")) + esc(agents.join(", ") || "\u2014") : esc(t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09"))) + "</div></div></div>"
+      scope: name,
+      head: '<div class="dash-head"><h2 class="page-title">' + esc(t("Service")) + " \xB7 " + esc(name) + '</h2><span class="small faint">' + esc(t("Service \u89C6\u89D2\u5927\u5C4F\uFF08scope=" + name + " \u6536\u7A84\u6295\u5F71\u2014\u2014\u4E0E\u7CFB\u7EDF\u5927\u5C4F\u540C\u6784\u5E03\u5C40\uFF09")) + "</span></div>",
+      coreAgents: null,
+      foot: '<div class="card"><div class="card-b"><div class="small faint" data-sd-note>' + esc(t("ServiceDesc \u6B63\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u58F0\u660E agents=agent://<name> \u8BCD\u5F62\u89E3\u6790\uFF09")) + "</div></div></div>"
     });
     hydrateLoop(el, ctx2);
     bindApprovalGates(el, ctx2);
     hydrateAgentLive(el, ctx2);
+    (async () => {
+      const note = el.querySelector("[data-sd-note]");
+      if (!note) return;
+      let content = "";
+      const cached = sd && ctx2.store.cachedDoc ? ctx2.store.cachedDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv) : null;
+      if (cached && typeof cached.content === "string") {
+        content = cached.content;
+      } else if (ctx2.api && typeof ctx2.api.object === "function") {
+        const r = await ctx2.api.object("ServiceDesc", sd && sd.scope || "global", name);
+        if (!el.isConnected) return;
+        if (r && r.ok) {
+          const data = r.data && typeof r.data === "object" ? r.data : {};
+          content = data.content != null ? String(data.content) : "";
+          if (sd && ctx2.store.cacheDoc) ctx2.store.cacheDoc("ServiceDesc", sd && sd.scope || "global", name, sd && sd.rv, content);
+        }
+      }
+      const agents = [...content.matchAll(/agent:\/\/([A-Za-z0-9_.-]+)/g)].map((m) => m[1]);
+      note.textContent = sd ? content ? t("ServiceDesc \u5728\u518C\u2014\u2014agents=") + (agents.join(", ") || "\u2014") : t("ServiceDesc \u5728\u518C\u2014\u2014\u6B63\u6587\u6682\u4E0D\u53EF\u8BFB\uFF08agents \u89E3\u6790\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\uFF09") : t("ServiceDesc \u5BF9\u8C61\u4E0D\u5728\u518C\uFF08\u8BCD\u5F62\u6295\u5F71\u81EA\u5FEB\u7167\u2014\u2014\u4E0D\u5192\u5145\u5728\u518C\uFF09");
+    })().catch(() => {
+    });
   }
 
   // src/screens/tasks.js
@@ -11047,7 +11084,18 @@ ${text2}</tr>
     canceled: { label: t("\u5DF2\u53D6\u6D88"), chip: "mute" }
   };
   function statusOf(t2) {
-    return t2 && t2.status || {};
+    const s = t2 && t2.status || {};
+    const flat = (k) => s[k] != null ? s[k] : t2 ? t2[k] : void 0;
+    return {
+      phase: flat("phase"),
+      attempts: flat("attempts"),
+      agentSession: flat("agentSession"),
+      sessionId: flat("sessionId"),
+      agent: flat("agent"),
+      lastAction: flat("lastAction"),
+      lastError: flat("lastError"),
+      dependsOn: s.dependsOn != null ? s.dependsOn : t2 && t2.dependsOn
+    };
   }
   function specOf(t2) {
     return t2 && t2.spec || {};
@@ -11161,7 +11209,7 @@ ${text2}</tr>
     const sess = String(s.agentSession || s.sessionId || "").trim();
     const last = String(s.lastAction || "").trim();
     const unknown = !String(s.phase || "");
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u5DF2\u77E5\u6D3B\u4F53 bug\uFF08BUG \u53F0\u8D26\uFF1A\u7A7A status \u4E0D\u8C03\u5EA6\uFF09\uFF1B\u53EF\u7528\u53D6\u6D88\u52A8\u4F5C\u9003\u751F")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
+    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
   }
   function tasksScreen(el, ctx2) {
     const tasks = ctx2.store.tasks();
@@ -11216,7 +11264,7 @@ ${text2}</tr>
     if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
     if (s.lastAction) rows.push([t("\u6700\u8FD1\u52A8\u4F5C"), esc(trunc(String(s.lastAction), 200))]);
     if (s.lastError) rows.push([t("\u6700\u8FD1\u9519\u8BEF"), chip(trunc(String(s.lastError), 120), "esc")]);
-    if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u5DF2\u77E5\u6D3B\u4F53 bug\uFF08BUG \u53F0\u8D26\uFF1A\u7A7A status \u4E0D\u8C03\u5EA6\uFF09\uFF1B\u53EF\u7528\u53D6\u6D88\u52A8\u4F5C\u9003\u751F"))]);
+    if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u8C03\u5EA6\u5668\u672A\u89C1 status\u2014\u2014\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u9762\u65E5\u5FD7\uFF09"))]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
     if (cancelReq.has(taskIdOf(t2))) rows.push([t("\u53D6\u6D88"), chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn")]);
@@ -12626,8 +12674,10 @@ ${text2}</tr>
   var ignored = /* @__PURE__ */ new Set();
   function pendingItems(ctx2) {
     const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
+    const runs = ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).map((r) => ({ kind: "run", key: "run|" + String(r.workflow || "") + "#" + String(r.run != null ? r.run : ""), run: r }));
+    const props = ctx2.store.proposals().filter((p) => p && p.name && String(p.status || "submitted") === "submitted").map((p) => ({ kind: "proposal", key: "proposal|" + String(p.scope || "global") + "|" + String(p.name), proposal: p }));
     const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
-    return drafts.filter((x) => !ignored.has(x.key)).concat(evs);
+    return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
   }
   function apKeyOf(d) {
     return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
@@ -12644,6 +12694,14 @@ ${text2}</tr>
       const key = d.kind + "/" + (d.scope || "global") + "/" + d.name;
       return apKeyOf(d) === f || key === f || String(d.name) === f;
     }
+    if (it.kind === "run" && it.run) {
+      const r = it.run;
+      return String(r.workflow || "") === f || "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "") === f || String(r.run) === f;
+    }
+    if (it.kind === "proposal" && it.proposal) {
+      const p = it.proposal;
+      return String(p.name) === f || "Proposal/" + String(p.scope || "global") + "/" + String(p.name) === f;
+    }
     if (it.kind === "event" && it.ev) {
       const e = it.ev;
       return String(e.involved || "").includes(f) || String(e.summary || "").includes(f) || String(e.dedupKey || "").includes(f);
@@ -12653,6 +12711,17 @@ ${text2}</tr>
   function itemHtml(it, idx, focused = false) {
     const approveCls = idx === 0 ? "btn btn-primary sm" : "btn btn-secondary sm";
     const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : "";
+    if (it.kind === "run") {
+      const r = it.run;
+      const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
+      const no = String(r.run != null ? r.run : "");
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+    }
+    if (it.kind === "proposal") {
+      const p = it.proposal;
+      const anchor = "Proposal/" + String(p.scope || "global") + "/" + String(p.name);
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title">' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + '</span><span class="h-right">' + chip(String(p.status || "submitted"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(p.summary || ""), 200) || t("\uFF08summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF09")) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "obj/Proposal/" + encodeURIComponent(String(p.scope || "global")) + "/" + encodeURIComponent(String(p.name)), "mute", true, t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="approve">' + esc(t("\u6279\u51C6\uFF08= Apply\uFF09")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-prop="' + esc(it.key) + '" data-ap-prop-anchor="' + esc(anchor) + '" data-ap-prop-decision="reject">' + esc(t("\u9A73\u56DE")) + "</button></div></div></div>";
+    }
     if (it.kind === "event") {
       const e = it.ev;
       const involved = String(e.involved || "");
@@ -12749,6 +12818,7 @@ ${text2}</tr>
     btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
     const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor };
     if (evId) payload.dedupKey = "console-" + evId;
+    else payload.dedupKey = "console-appr-" + key + "-" + Date.now();
     const r = await ctx2.api.eventPub(payload);
     if (!r.ok) {
       btn.disabled = false;
@@ -12757,6 +12827,33 @@ ${text2}</tr>
       return;
     }
     ignored.add(key);
+    const card = btn.closest(".ap-item");
+    if (card) card.remove();
+    ctx2.api.snapshot().then((s) => {
+      if (s.ok) ctx2.store.init(s.data);
+    });
+  }
+  async function proposalDecision(ctx2, p, decision, btn) {
+    const isApprove = decision === "approve";
+    const fm = isApprove ? "console:approve" : "console:reject";
+    if (!window.confirm((isApprove ? t("\u786E\u8BA4\u6279\u51C6\u63D0\u6848\uFF08Apply console:approve\uFF09") : t("\u786E\u8BA4\u9A73\u56DE\u63D0\u6848\uFF08Apply console:reject\uFF09")) + " " + String(p.name) + "\uFF1F")) return;
+    btn.disabled = true;
+    btn.textContent = t("\u5224\u5B9A\u4E2D\u2026");
+    const r = await ctx2.api.apply({
+      kind: "Proposal",
+      scope: p.scope || "global",
+      name: p.name,
+      fromDraft: true,
+      fieldManager: fm,
+      reasonRef: "console:" + decision + ":" + String(p.name || "")
+    });
+    btn.disabled = false;
+    btn.textContent = isApprove ? t("\u6279\u51C6\uFF08= Apply\uFF09") : t("\u9A73\u56DE");
+    if (!r || !r.ok) {
+      window.alert(t("\u63D0\u6848\u5224\u5B9A\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09\u2014\u2014\u63D0\u6848\u72B6\u6001\u672A\u7FFB\u8F6C\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+      return;
+    }
+    ignored.add("proposal|" + (p.scope || "global") + "|" + String(p.name));
     const card = btn.closest(".ap-item");
     if (card) card.remove();
     ctx2.api.snapshot().then((s) => {
@@ -12791,9 +12888,13 @@ ${text2}</tr>
       return t('<div class="card"><div class="card-b"><div class="small faint">\u6536\u4EF6\u7BB1\u4E3A\u7A7A\uFF08\u96F6\u5F85\u529E\u2014\u2014\u7A7A\u6001\u663E\u5F0F\uFF09\u3002</div></div></div>');
     }
     return '<div class="card">' + items.slice(0, 50).map((x) => {
-      const route = involvedRoute(x && (x.link || x.ref || x.obj));
-      const main = String(x && (x.title || x.summary || x.kind) || "");
-      return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(String(x && x.class || x && x.kind || ""), "mute") + '</div><div class="mr-sub small">' + esc(trunc(String(x && (x.note || x.detail) || ""), 90)) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo(t("\u53BB\u5904\u7406"), route, "acc", true) + "</span>" : "") + "</div>";
+      const linkRaw = String(x && (x.link || x.ref || x.obj) || "");
+      const link2 = linkRaw.replace(/^#\//, "");
+      const route = link2 ? involvedRoute(link2) || link2 : "";
+      const main = String(x && (x.digest || x.title || x.summary || x.kind) || "\u2014");
+      const cls = String(x && x.class || x && x.kind || "");
+      const at = relAge(String(x && x.at || "")) || "";
+      return '<div class="mini-row"><div class="mr-main"><div>' + esc(trunc(main, 80)) + " " + chip(cls, "mute") + '</div><div class="mr-sub small faint">' + esc(at) + "</div></div>" + (route ? '<span class="ws-chip">' + chipGo(t("\u53BB\u5904\u7406"), route, "acc", true) + "</span>" : "") + "</div>";
     }).join("") + "</div>";
   }
   function approvalsScreen(el, ctx2) {
@@ -12825,6 +12926,13 @@ ${text2}</tr>
     });
     el.querySelectorAll("[data-ap-reject]").forEach((btn) => {
       btn.addEventListener("click", () => pubGateDecision(ctx2, btn, false));
+    });
+    const propById = new Map((ctx2.store.proposals() || []).filter((p) => p && p.name).map((p) => ["proposal|" + String(p.scope || "global") + "|" + String(p.name), p]));
+    el.querySelectorAll("[data-ap-prop]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const p = propById.get(btn.getAttribute("data-ap-prop") || "");
+        if (p) proposalDecision(ctx2, p, String(btn.getAttribute("data-ap-prop-decision") || "approve"), btn);
+      });
     });
     el.querySelectorAll("[data-ap-ignore]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -13057,7 +13165,6 @@ ${text2}</tr>
       });
     });
   }
-  var DOC_KINDS = ["Goal", "Rule", "Runbook", "DesignDoc", "DriftReport", "DocReview", "BugDoc", "Agent", "WorkService"];
   function fmMeta(content) {
     if (typeof content !== "string") return null;
     const tags = frontmatterTags(content);
@@ -13089,8 +13196,12 @@ ${text2}</tr>
     }
     let objs = ctx2.store.objects();
     const presentKinds = Array.from(new Set(objs.map((o) => o.kind)));
-    const docKinds = DOC_KINDS.filter((k) => presentKinds.includes(k));
-    const pool = docFilter.tag && !docFilter.kind ? objs : docKinds.length ? objs.filter((o) => docKinds.includes(o.kind)) : objs;
+    const DOC_FIRST = ["Goal", "Rule", "Runbook", "DesignDoc", "DriftReport", "DocReview", "BugDoc"];
+    const kindChips = presentKinds.slice().sort((a, b) => {
+      const ia = DOC_FIRST.indexOf(a), ib = DOC_FIRST.indexOf(b);
+      return (ia < 0 ? DOC_FIRST.length + 1 : ia) - (ib < 0 ? DOC_FIRST.length + 1 : ib) || (a < b ? -1 : 1);
+    });
+    const pool = objs;
     let rows = pool;
     if (docFilter.kind) rows = rows.filter((o) => o.kind === docFilter.kind);
     if (docFilter.q) {
@@ -13116,9 +13227,9 @@ ${text2}</tr>
     const draftSet = new Set(ctx2.store.drafts().map((d) => d.kind + "|" + (d.scope || "global") + "|" + d.name));
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u6587\u6863\u5E93"),
-      t("\u76EE\u5F55\u6811\u5F0F\u6587\u6863\u6E05\u5355\u2014\u2014tag \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863"),
-      chipGo(t("\u6807\u7B7E\u805A\u5408"), "tags", "mute", false) + (docKinds.length ? "" : " " + chip(t("\u672A\u6CE8\u518C\u58F0\u660E kind\u2014\u2014\u5168\u91CF\u679A\u4E3E\u515C\u5E95"), "mute"))
-    ) + '<div class="card" style="margin-bottom:10px"><div class="card-b small">' + esc(t("\u65B0\u5EFA\u6587\u6863\uFF1A\u5BF9\u8BDD\u63D0\u4EA4\u9700\u6C42\uFF08\u603B\u89C8\u6216\u4F1A\u8BDD\u5C4F\uFF09\u2192 agent \u8D77\u8349 \u2192 Apply \u843D\u5E93\u2014\u2014\u6587\u6863\u521B\u5EFA\u8D70\u5BF9\u8BDD+Apply\uFF0C\u65E0\u72EC\u7ACB\u8868\u5355\u3002")) + " " + chipGo(t("\u6253\u5F00\u5BF9\u8BDD"), "chat/core-headless", "acc", true, t("\u5728\u4F1A\u8BDD\u5C4F\u63D0\u4EA4\u9700\u6C42\u2014\u2014agent \u8D77\u8349\u540E Apply \u843D\u5E93")) + (docFilter.tag ? ' <span class="chip warn tiny click" data-clear-tag="1" title="' + esc(t("\u6E05\u9664 tag \u8FC7\u6EE4")) + '">' + esc(t("\u6E05\u9664 tag\uFF1A")) + esc(docFilter.tag) + " \xD7</span>" : "") + (routeTag ? '<div class="small faint" style="margin-top:6px">' + esc(t("\u5F53\u524D URL \u76F4\u94FE tag \u8FC7\u6EE4\uFF08#/docs/tag/")) + esc(routeTag) + esc(t("\uFF09\u2014\u2014\u4E09\u6E90\u771F\u5B9E\u547D\u4E2D\uFF0C\u53EF\u5237\u65B0\u6062\u590D\u3002")) + "</div>" : "") + '</div></div><div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u4E09\u6E90\u805A\u5408\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + docKinds.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
+      t("\u5728\u518C\u5BF9\u8C61\u5168\u91CF\u6E05\u5355\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09\u2014\u2014tag/kind \u8FC7\u6EE4+\u7248\u672C/\u91CD\u8981\u5EA6\u5217\uFF1B\u70B9\u884C\u8FDB\u6E32\u67D3\u89C6\u56FE\u4E0E AI \u4FEE\u6587\u6863"),
+      chipGo(t("\u6807\u7B7E\u805A\u5408"), "tags", "mute", false)
+    ) + '<div class="card" style="margin-bottom:10px"><div class="card-b small">' + esc(t("\u65B0\u5EFA\u6587\u6863\uFF1A\u5BF9\u8BDD\u63D0\u4EA4\u9700\u6C42\uFF08\u603B\u89C8\u6216\u4F1A\u8BDD\u5C4F\uFF09\u2192 agent \u8D77\u8349 \u2192 Apply \u843D\u5E93\u2014\u2014\u6587\u6863\u521B\u5EFA\u8D70\u5BF9\u8BDD+Apply\uFF0C\u65E0\u72EC\u7ACB\u8868\u5355\u3002")) + " " + chipGo(t("\u6253\u5F00\u5BF9\u8BDD"), "chat/core-headless", "acc", true, t("\u5728\u4F1A\u8BDD\u5C4F\u63D0\u4EA4\u9700\u6C42\u2014\u2014agent \u8D77\u8349\u540E Apply \u843D\u5E93")) + (docFilter.tag ? ' <span class="chip warn tiny click" data-clear-tag="1" title="' + esc(t("\u6E05\u9664 tag \u8FC7\u6EE4")) + '">' + esc(t("\u6E05\u9664 tag\uFF1A")) + esc(docFilter.tag) + " \xD7</span>" : "") + (routeTag ? '<div class="small faint" style="margin-top:6px">' + esc(t("\u5F53\u524D URL \u76F4\u94FE tag \u8FC7\u6EE4\uFF08#/docs/tag/")) + esc(routeTag) + esc(t("\uFF09\u2014\u2014\u4E09\u6E90\u771F\u5B9E\u547D\u4E2D\uFF0C\u53EF\u5237\u65B0\u6062\u590D\u3002")) + "</div>" : "") + '</div></div><div class="filter-bar">' + t('<input class="inp" id="docs-q" placeholder="\u6309 kind/scope/name \u8FC7\u6EE4\u2026" value="') + esc(docFilter.q) + '">' + t('<input class="inp" id="docs-tag" placeholder="tag \u8FC7\u6EE4\uFF08\u4E09\u6E90\u805A\u5408\u73B0\u5339\u914D\uFF09\u2026" value="') + esc(docFilter.tag || "") + '" style="max-width:220px"><span class="fchip' + (!docFilter.kind ? " on" : "") + t('" data-docs-kind="">\u5168\u90E8</span>') + kindChips.map((k) => '<span class="fchip' + (docFilter.kind === k ? " on" : "") + '" data-docs-kind="' + esc(k) + '">' + esc(k) + "</span>").join("") + "</div>" + (rows.length ? '<div class="card">' + rows.slice(0, 300).map((o) => {
       const c = ctx2.store.cachedDoc(o.kind, o.scope || "global", o.name, o.rv);
       const meta = c ? fmMeta(c.content) : null;
       const allTags = objectTagsOf(ctx2, o);
@@ -13197,7 +13308,7 @@ ${text2}</tr>
         return;
       }
       dd.tree = r.data;
-      const files = Array.isArray(r.data) ? r.data : r.data && r.data.files || [];
+      const files = Array.isArray(r.data) ? r.data : Array.isArray(r.data && r.data.docs) ? r.data.docs : r.data && r.data.files || [];
       if (!files.length) {
         treeBox.innerHTML = t('<div class="ob-empty">\u4ED3\u6811\u4E3A\u7A7A\uFF08\u8BDA\u5B9E\u7A7A\u6001\uFF09\u3002</div>');
         return;
@@ -13550,7 +13661,22 @@ ${text2}</tr>
     return (el, params) => {
       ctx.params = params;
       ctx.route = router.current.route;
-      fn(el, ctx);
+      try {
+        fn(el, ctx);
+      } catch (err) {
+        try {
+          const msg = String(err && err.message || err || "unknown");
+          el.innerHTML = '<div class="view-inner"><div class="dh"><div class="dh-main"><div class="dh-title"><h1>Screen Error</h1></div><div class="dh-sub">\u8BE5\u5C4F\u6E32\u67D3\u5931\u8D25\u2014\u2014\u9519\u8BEF\u5DF2\u663E\u5F0F\u5448\u73B0\uFF08\u4E0D\u9759\u9ED8\u5361\u52A0\u8F7D\uFF1B\u8FD4\u56DE\u6216\u6362\u5C4F\u5373\u6062\u590D\uFF09\u3002</div></div></div><div class="card"><div class="card-b"><div class="small faint mono" style="white-space:pre-wrap">' + String(msg).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]) + '</div><div style="margin-top:10px"><button class="btn btn-secondary sm" data-go="welcome">\u56DE\u603B\u89C8</button> <button class="btn btn-ghost sm" data-retry-screen="1">\u91CD\u8BD5\u672C\u5C4F</button></div></div></div></div>';
+          const retry = el.querySelector("[data-retry-screen]");
+          if (retry) retry.addEventListener("click", () => {
+            try {
+              fn(el, ctx);
+            } catch {
+            }
+          });
+        } catch {
+        }
+      }
       paintNav(router.current.route);
       try {
         const crumb = document.querySelector("[data-topbar-crumb]");

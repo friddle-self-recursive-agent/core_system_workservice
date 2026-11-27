@@ -473,8 +473,8 @@ func TestWorkflowRunsFace(t *testing.T) {
 		t.Fatalf("run 应携来源留痕 seq=1: %v", r)
 	}
 	phases, ok := r["phases"].([]any)
-	if !ok || len(phases) != 8 || phases[0] != "Idle" {
-		t.Fatalf("run 应携声明相位序列: %v", r["phases"])
+	if !ok || len(phases) != 7 || phases[0] != "Idle" || phases[6] != "Reporting" {
+		t.Fatalf("run 应携正向相位序列（F-04 尾=Reporting）: %v", r["phases"])
 	}
 }
 

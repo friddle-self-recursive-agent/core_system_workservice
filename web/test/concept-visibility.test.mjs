@@ -20,7 +20,7 @@ import { createApi } from '../src/core/api.js';
 import { setLocale, t as tr } from '../src/core/i18n.js';
 import { tagRoute, syncBadge } from '../src/render/chips.js';
 import * as refsMod from '../src/render/refs.js';
-import { depRoute, depChips, phaseChip, groupOf } from '../src/screens/tasks.js';
+import { depRoute, depChips, phaseChip, groupOf, statusOf } from '../src/screens/tasks.js';
 import { tagGroups, tagVocabFromKinds, tagsOfDoc } from '../src/screens/objects.js';
 import { frontmatterTags, tagsOfRef, aggregateTags, groupByType } from '../src/screens/tags.js';
 import { sessBacklinksHtml } from '../src/screens/chat.js';
@@ -90,6 +90,21 @@ test('V-09 PHASE_VIEW：pending 人话词形=等待拉起 且归排队组', () =
   const html = phaseChip({ status: { phase: 'pending' } });
   assert.ok(html.includes('等待拉起'));
   assert.equal(groupOf({ status: { phase: 'pending' } }), 'queued');
+});
+
+test('F-05 任务扁平字段：statusOf 兼容 /v1/tasks 简表 t.phase 顶层词形', () => {
+  const flat = { scope: 'self-recursive-core', name: 'console-audit-20261126', phase: 'running', lastAction: '拉起中（spawn）', attempts: 2 };
+  assert.equal(statusOf(flat).phase, 'running');
+  assert.equal(statusOf(flat).lastAction, '拉起中（spawn）');
+  assert.equal(groupOf(flat), 'doing');
+  assert.ok(phaseChip(flat).includes('正在做'));
+  // 混合词形：t.status 存在但缺 phase 键 → 顶层 phase 兜底
+  const hybrid = { name: 'x', status: { lastAction: '写面' }, phase: 'verifying' };
+  assert.equal(statusOf(hybrid).phase, 'verifying');
+  assert.equal(statusOf(hybrid).lastAction, '写面');
+  // 空守卫：null/undefined 不抛
+  assert.equal(statusOf(null).phase, undefined);
+  assert.equal(groupOf([]), 'queued');
 });
 
 test('V-10 sessBacklinksHtml：按 agentSession 反向回链 Task/Event + 无关联诚实空态', () => {

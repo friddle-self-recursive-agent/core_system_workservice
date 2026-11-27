@@ -246,13 +246,14 @@ func TestObjectRunJudgmentWired(t *testing.T) {
 	if r.Phase != string(Executing) || r.Status != RunRunning {
 		t.Fatalf("批准应沿声明表续行到 Executing: %+v", r)
 	}
-	// 序列尾（Executing 无 advance 行命中）=零动作停（不冒充执行完毕）。
+	// 序列尾（Executing 无 advance 行命中）=落 converged（F-04 正向末步收束——
+	// object 源声明表与 builtin 同一判定器：advance 边止于末步即收束，不冒充仍在执行）。
 	if n := runs.Advance(); n != 0 {
-		t.Fatalf("序列尾应零动作停: %d", n)
+		t.Fatalf("序列尾收束拍应零迁移计数: %d", n)
 	}
 	r = snap()
-	if r.Phase != string(Executing) || r.Status != RunRunning {
-		t.Fatalf("序列尾口径不变: %+v", r)
+	if r.Phase != string(Executing) || r.Status != RunConverged {
+		t.Fatalf("序列尾应落 {Executing, converged}（F-04）: %+v", r)
 	}
 	if runs.State().Advances != 1 {
 		t.Fatalf("累计推进计数应=1: %d", runs.State().Advances)

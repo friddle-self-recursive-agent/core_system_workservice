@@ -325,15 +325,27 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 	})
 }
 
+// inboxNeedsHumanWindow NeedsHuman 类活体收敛窗（F-09 ④/2026-11-26 扫描整改——append-only
+// 归档历史不等于待办：收件箱行集按 level-triggered 口径只投影窗内行，窗外陈旧 Escalate/
+// NeedsHuman 不再以 64 条无字行注水待办面；窗口缺省 72h=同因聚合 dedup 窗（10m）的量级
+// 上界，覆盖「人一个工作周期」的注意力半径，window 用尽=该因由已过活体注意期）。
+const inboxNeedsHumanWindow = 72 * time.Hour
+
 // inboxPayload GET /v1/inbox 载荷构造器（原 handler 内联体原样上提——snapshot 面与路由
 // 共用同一构造器零双源，R-ENG-7 拆分注记；face 缺席由调用方先行判 nil）。
 func inboxPayload(objects ObjectSource, drafts DraftStaging, face InboxFace, eventLog EventLogFace) map[string]any {
 	var evs []opslog.EventLog
 	if eventLog != nil {
 		// 三类人注意事件各拉一窗（type 精确过滤——归档窗 DocApplied 刷屏不挤占人注意行；
-		// 半开窗语义=QueryEvents 既有 limit 口径）。
+		// 半开窗语义=QueryEvents 既有 limit 口径）。NeedsHuman 族活体收敛：since=now-窗
+		// （level-triggered 口径，2026-11-26 F-09——窗外陈旧行不再注水收件箱）。
+		humanSince := time.Now().Add(-inboxNeedsHumanWindow)
 		for _, typ := range []string{"NeedsHuman", "Escalate", "ApprovalNeeded"} {
-			if rows, err := eventLog.QueryEvents(opslog.EventQuery{Type: typ, Limit: 100}); err == nil {
+			q := opslog.EventQuery{Type: typ, Limit: 100}
+			if typ != "ApprovalNeeded" { // 审批行有 flowbind 挂起投影兜底——历史行保窗内口径同族
+				q.Since = humanSince
+			}
+			if rows, err := eventLog.QueryEvents(q); err == nil {
 				evs = append(evs, rows...)
 			}
 		}

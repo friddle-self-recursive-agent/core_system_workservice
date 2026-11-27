@@ -61,7 +61,18 @@ func (r *RunLog) Advance() int {
 		}
 		next, ok := stepByTable(run.Transitions, run.Phase, EdgeAdvance)
 		if !ok {
-			continue // 序列尾（无 advance 行命中）=零动作停（不冒充执行完毕；不占变更上限额）
+			// F-04 正向末步收束（2026-11-26，workflow.md §1：Reporting 完成即 converged，
+			// 绝不从 Reporting 经 advance 自动落 Failed）：序列尾（无 advance 行命中）且仍在
+			// running 的 run 落 converged——phase 停驻正向末步原样，history 落收束行（零迁移
+			// 计数——收束是状态词翻转非相位迁移，不占刹车变更额）。
+			if Phase(run.Phase) != AwaitingApproval && (run.Phase != string(Failed)) {
+				run.Status = RunConverged
+				run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: "converged", At: stampNano(time.Now())})
+				if r.opts.Store != nil {
+					persistAppend("run 收束", r.opts.Store.AppendRun(runToRow(*run)))
+				}
+			}
+			continue
 		}
 		if r.opts.VerifyGate != nil && Phase(run.Phase) == Verifying {
 			// Verify 硬 gate 候选：离开 Verifying 相位先过审（审核锁外——不持 run 锁）。
@@ -143,15 +154,20 @@ func (r *RunLog) Advance() int {
 }
 
 // applyAdvanceLocked 单步迁移落环（调用方持 r.mu——阶段①/③共用同一落点语义：落闸锚挂起/
-// 落终点锚终态；其余相位 running 续行）。
+// 落侧轨终点锚 Failed 终态；其余相位 running 续行）。
+// F-04（2026-11-26 状态机纠偏）：正向序列止于 Reporting（声明面已摘除线性尾 Failed）——
+// 落正向末步本拍仍 running（迁移判定=相位步进）；收束=下一拍序列尾判定（Advance 序列尾
+// 分支落 converged——一步一迁移口径不变，Reporting 完成即正常收束）。
 func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
+	at := stampNano(time.Now())
+	run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: EdgeAdvance, At: at})
 	run.Phase = next
 	switch Phase(next) {
 	case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
 		if run.ApprovalMode != "auto" { // auto=闸锚自动通过（spec.approval.mode——Agent 节点自动级别；直续行不挂起）
 			run.Status = RunSuspended
 		}
-	case Failed: // 落终点锚=终态（迁移终点语义——非引擎失败语义）
+	case Failed: // 落侧轨终点锚=终态（仅声明仍携带 Failed 词形的旧对象 spec 可达——非引擎失败语义）
 		run.Status = RunFailed
 	}
 }

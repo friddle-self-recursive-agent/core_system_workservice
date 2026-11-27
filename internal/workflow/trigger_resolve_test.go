@@ -207,8 +207,8 @@ func TestWorkflowFaceWiring(t *testing.T) {
 		r.Owner != rec.Owner || r.Target != "owner" || r.EventID != rec.EventID {
 		t.Fatalf("对账锚 run 投影不符（v0.23 迁移判定首段：受理即启动 running/Analyzing）: %+v vs 留痕 %+v", r, rec)
 	}
-	if len(r.Phases) != 8 || r.Phases[0] != string(Idle) || r.Phases[7] != string(Failed) {
-		t.Fatalf("run 应携声明相位全序列: %v", r.Phases)
+	if len(r.Phases) != 7 || r.Phases[0] != string(Idle) || r.Phases[6] != string(Reporting) {
+		t.Fatalf("run 应携正向相位全序列（F-04 尾=Reporting）: %v", r.Phases)
 	}
 
 	// 直接引用：builtin 命中=按名；未命中=平台对象引用（锚保留、相位空——缺口/对象面可见）。

@@ -177,12 +177,28 @@ function paintNav(route) {
   });
 }
 
-/* 屏包装（params 注入+当前 route 记录+导航高亮；crumb=NAV 现译词形）。 */
+/* 屏包装（params 注入+当前 route 记录+导航高亮；crumb=NAV 现译词形）。
+ * F-02 错误边界：屏渲染抛错=显式错误卡（屏名+错误词形），导航照常 paintNav——
+ * 不再静默卡 loading/整屏崩溃导航残留在上一页（loop-87 审计 F-02 收口）。 */
 function screenOf(fn) {
   return (el, params) => {
     ctx.params = params;
     ctx.route = router.current.route;
-    fn(el, ctx);
+    try {
+      fn(el, ctx);
+    } catch (err) {
+      try {
+        const msg = String((err && err.message) || err || 'unknown');
+        el.innerHTML = '<div class="view-inner"><div class="dh"><div class="dh-main"><div class="dh-title"><h1>Screen Error</h1></div>' +
+          '<div class="dh-sub">该屏渲染失败——错误已显式呈现（不静默卡加载；返回或换屏即恢复）。</div></div></div>' +
+          '<div class="card"><div class="card-b"><div class="small faint mono" style="white-space:pre-wrap">' +
+          String(msg).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) +
+          '</div><div style="margin-top:10px"><button class="btn btn-secondary sm" data-go="welcome">回总览</button> ' +
+          '<button class="btn btn-ghost sm" data-retry-screen="1">重试本屏</button></div></div></div></div>';
+        const retry = el.querySelector('[data-retry-screen]');
+        if (retry) retry.addEventListener('click', () => { try { fn(el, ctx); } catch { /* 二次失败保持错误卡 */ } });
+      } catch { /* 错误卡也失败=保留原 DOM */ }
+    }
     paintNav(router.current.route);
     try {
       const crumb = document.querySelector('[data-topbar-crumb]');

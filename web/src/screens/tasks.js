@@ -22,7 +22,18 @@ const PHASE_VIEW = {
   done: { label: tr('已完成'), chip: 'ok' },
   canceled: { label: tr('已取消'), chip: 'mute' },
 };
-export function statusOf(t) { return (t && t.status) || {}; }
+export function statusOf(t) {
+  const s = (t && t.status) || {};
+  // 扁平顶层字段兜底（F-05——/v1/tasks 简表与快照 tasks 行是扁平 phase/attempts/…投影，
+  // 无 status 包裹）：t.status 缺席键时逐键回退顶层字段——两词形同屏兼容，不编造缺省值。
+  const flat = (k) => (s[k] != null ? s[k] : (t ? t[k] : undefined));
+  return {
+    phase: flat('phase'), attempts: flat('attempts'),
+    agentSession: flat('agentSession'), sessionId: flat('sessionId'),
+    agent: flat('agent'), lastAction: flat('lastAction'), lastError: flat('lastError'),
+    dependsOn: s.dependsOn != null ? s.dependsOn : (t && t.dependsOn),
+  };
+}
 export function specOf(t) { return (t && t.spec) || {}; }
 
 export function phaseChip(t) {
@@ -73,7 +84,7 @@ export function taskTitle(t) {
 /* ---------- 取消通路（§19.3）：发布 TaskCancelRequested——调度器归档面消费 ---------- */
 const cancelReq = new Set(); // 本页会话内已发布取消请求的任务 id（内存反馈态——权威投影仍以快照为准）
 
-/** 可取消判定：status 缺席（状态未知=已知活体 bug 空 status 不调度）或 phase ∈ queued/pending。 */
+/** 可取消判定：status 缺席（状态未知=调度器未写 status 或简表投影——诚实词形）或 phase ∈ queued/pending。 */
 function cancellable(t) {
   const phase = String(statusOf(t).phase || '');
   return !phase || phase === 'queued' || phase === 'pending';
@@ -155,7 +166,7 @@ function taskRow(t) {
     '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
     '</div>' +
-    (unknown ? '<div class="task-sub small faint">' + esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生')) + '</div>' : '') +
+    (unknown ? '<div class="task-sub small faint">' + esc(tr('调度器未见 status——状态未知（可取消或进详情核查）')) + '</div>' : '') +
     '</div>' +
     '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') +
     cancelBtnHtml(t) + '</div>' +
@@ -225,7 +236,7 @@ function taskDetailScreen(el, ctx, id) {
   if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
   if (s.lastAction) rows.push([tr('最近动作'), esc(trunc(String(s.lastAction), 200))]);
   if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
-  if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——已知活体 bug（BUG 台账：空 status 不调度）；可用取消动作逃生'))]);
+  if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('调度器未见 status——状态未知（可取消或核查调度面日志）'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);
   if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);

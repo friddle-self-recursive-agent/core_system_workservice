@@ -438,6 +438,13 @@ func (w *Watchdog) handleStale(h opslog.SessionHeartbeat, now time.Time) {
 		w.emitLongTask(h, stalledFor)
 		return
 	}
+	// 终态退出（2026-11-26 F-09/attention.md 口径——watchdog 会话终态退出规则）：会话已终结
+	// （state=ended，调度器 done 判定与 agentSession 回填源）即退出停滞处置——终态会话不再
+	// 合成 SessionStalled/不再升级不再续报（level-triggered：已决/终态退出待办，不拿
+	// append-only 历史重复计数当待办）。留痕=行态已终，事件面零新增（下拍扫描自然出池）。
+	if h.State == opslog.SessionStateEnded {
+		return
+	}
 	switch h.State {
 	case opslog.SessionStateLive:
 		// 第一拍判定：live→suspected-stall，合成 SessionStalled（事件词；判定态=SuspectedStall）。
