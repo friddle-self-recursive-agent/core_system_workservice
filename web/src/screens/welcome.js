@@ -188,10 +188,12 @@ function bindApprovalGates(el, ctx) {
       : tr('确认驳回终止？run 将进入终态 Failed（不可恢复）：');
     if (!window.confirm(ask + wf + ' #' + run)) return;
     btn.disabled = true;
+    const runNo = Number(run) || 0;
     const r = await ctx.api.eventPub({
       type,
       involved: 'Workflow/' + (scope || 'global') + '/' + wf,
       dedupKey: 'console-' + key,
+      ...(runNo > 0 ? { run: runNo } : {}),
     });
     if (r && r.ok) {
       const row = btn.closest('[data-appr-row]');

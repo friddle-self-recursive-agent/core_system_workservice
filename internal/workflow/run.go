@@ -404,8 +404,14 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// 定向 run（TargetRun>0，console 批闸行携带）：只作用该序号 run——per-run 批准/驳回
+	// 不再落到「同锚最新挂起 run」（多 run 同锚挂起时 UI 行与事件目标必须一致）。
+	target := rec.TargetRun
 	for i := len(r.ring) - 1; i >= 0; i-- {
 		run := &r.ring[i]
+		if target > 0 && run.Run != target {
+			continue
+		}
 		if run.Workflow != name || len(run.Phases) == 0 {
 			continue // 锚不符 / 相位未投影（未声明 phases 的 object 源）无从迁移
 		}

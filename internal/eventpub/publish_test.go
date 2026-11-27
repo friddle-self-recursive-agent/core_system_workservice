@@ -185,3 +185,24 @@ func TestPublishNilPermFailClosed(t *testing.T) {
 		t.Errorf("nil Perm 注入 err=%v, 要 ErrDenied（宁拒不降级）", err)
 	}
 }
+
+func TestPublishCarriesRunTarget(t *testing.T) {
+	bus, sch, ch, cancel := pubTestBus(t)
+	defer cancel()
+	p := &Publisher{Sch: sch, Bus: bus}
+	ev, err := p.Publish(Request{Type: "Escalate", Involved: "Workflow/global/w", Run: 11}, adminSub())
+	if err != nil {
+		t.Fatalf("发布失败: %v", err)
+	}
+	if ev.Run != 11 {
+		t.Fatalf("回执应携带 run target=11，得 %d", ev.Run)
+	}
+	select {
+	case got := <-ch:
+		if got.Run != 11 {
+			t.Fatalf("总线事件应携带 run target=11，得 %d", got.Run)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("订阅者未收到事件")
+	}
+}

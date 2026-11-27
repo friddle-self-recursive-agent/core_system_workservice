@@ -2565,10 +2565,12 @@ var CoreConsoleWeb = (() => {
       const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
       if (!window.confirm(ask + wf + " #" + run)) return;
       btn.disabled = true;
+      const runNo = Number(run) || 0;
       const r = await ctx2.api.eventPub({
         type: type2,
         involved: "Workflow/" + (scope || "global") + "/" + wf,
-        dedupKey: "console-" + key
+        dedupKey: "console-" + key,
+        ...runNo > 0 ? { run: runNo } : {}
       });
       if (r && r.ok) {
         const row = btn.closest("[data-appr-row]");
@@ -3330,7 +3332,8 @@ var CoreConsoleWeb = (() => {
         if (!confirmed) return;
         btn.disabled = true;
         btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
-        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor });
+        const runNo = Number(no) || 0;
+        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor, ...runNo > 0 ? { run: runNo } : {} });
         if (!r.ok) {
           btn.disabled = false;
           btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
@@ -13040,7 +13043,7 @@ ${text2}</tr>
       const r = it.run;
       const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
       const no = String(r.run != null ? r.run : "");
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
     }
     if (it.kind === "proposal") {
       const p = it.proposal;
@@ -13141,7 +13144,8 @@ ${text2}</tr>
     if (!confirmed) return;
     btn.disabled = true;
     btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
-    const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor };
+    const runNo = Number(btn.getAttribute("data-ap-run") || 0) || 0;
+    const payload = { type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: anchor, ...runNo > 0 ? { run: runNo } : {} };
     if (evId) payload.dedupKey = "console-" + evId;
     else payload.dedupKey = "console-appr-" + key + "-" + Date.now();
     const r = await ctx2.api.eventPub(payload);

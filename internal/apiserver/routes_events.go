@@ -58,7 +58,7 @@ func registerEventRoutes(d *deps, mux *http.ServeMux) {
 		}
 		ev, err := publisher.Publish(eventpub.Request{
 			Type: req.Type, Involved: req.Involved, Level: req.Level, DedupKey: req.DedupKey,
-			Scope: req.Scope,
+			Scope: req.Scope, Run: req.Run,
 		}, subjectFrom(r, req.Subject))
 		if err != nil {
 			writePublishErr(w, err)
@@ -430,6 +430,7 @@ type eventsRequest struct {
 	Level    string          `json:"level"`
 	DedupKey string          `json:"dedupKey"`
 	Scope    string          `json:"scope"`  // 可选：metadata.scope 四层词显式声明（BUG-010；越词 400，缺席按 involved 推导）
+	Run      int64           `json:"run"`    // 可选：审批信号目标 run 序号（0=按锚最新挂起 run；>0=定向 run）
 	Source   string          `json:"source"` // 载荷声明不采纳：非 human 值直接拒绝（来源=服务侧判定）
 	Subject  *subjectRequest `json:"subject"`
 }

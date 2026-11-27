@@ -473,7 +473,8 @@ function runScreen(el, ctx, name, no) {
       if (!confirmed) return;
       btn.disabled = true;
       btn.textContent = tr('发布中…');
-      const r = await ctx.api.eventPub({ type: grant ? 'ApprovalGranted' : 'ApprovalRejected', involved: gateAnchor });
+      const runNo = Number(no) || 0;
+      const r = await ctx.api.eventPub({ type: grant ? 'ApprovalGranted' : 'ApprovalRejected', involved: gateAnchor, ...(runNo > 0 ? { run: runNo } : {}) });
       if (!r.ok) {
         btn.disabled = false;
         btn.textContent = grant ? tr('批准继续') : tr('驳回终止');

@@ -51,6 +51,7 @@ type Request struct {
 	Scope    string // 可缺省：metadata.scope 四层词显式声明（BUG-010，event.md 规则 19）；
 	// 空=按 involved 所属 scope 服务侧推导回填（FromInvolved——派生不出合法词=兜底 global）；
 	// 显式给出但越出四层词汇=拒绝（ErrScope，400）
+	Run int64 // 可缺省：审批信号目标 run 序号（0=按锚最新挂起 run；>0=定向 run——console 批闸行携带）
 }
 
 // Publisher 事件发布面引擎（进程内单例，cored 装配；测试零值注入假总线）。
@@ -100,7 +101,7 @@ func (p *Publisher) Publish(req Request, sub *permission.Subject) (*eventbus.Eve
 	e := &eventbus.Event{
 		Type: req.Type, Source: SourceHuman, Involved: req.Involved,
 		Level: level, DedupKey: req.DedupKey,
-		Scope: req.Scope,
+		Scope: req.Scope, Run: req.Run,
 	}
 	if e.Scope == "" {
 		e.Scope = eventscope.FromInvolved(e.Involved)

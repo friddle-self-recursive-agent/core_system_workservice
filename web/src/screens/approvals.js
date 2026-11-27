@@ -87,8 +87,8 @@ function itemHtml(it, idx, focused = false) {
       chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(String(r.workflow || '')) + (no ? '/r/' + encodeURIComponent(no) : ''), 'acc', true, tr('运行详情——批闸锚')) +
       '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' +
-      '<button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('批准继续')) + '</button> ' +
-      '<button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '">' + esc(tr('驳回终止')) + '</button>' +
+      '<button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(tr('批准继续')) + '</button> ' +
+      '<button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(tr('驳回终止')) + '</button>' +
       '</div></div></div>';
   }
   if (it.kind === 'proposal') {
@@ -225,7 +225,8 @@ async function pubGateDecision(ctx, btn, grant) {
   if (!confirmed) return;
   btn.disabled = true;
   btn.textContent = tr('发布中…');
-  const payload = { type: grant ? 'ApprovalGranted' : 'ApprovalRejected', involved: anchor };
+  const runNo = Number(btn.getAttribute('data-ap-run') || 0) || 0;
+  const payload = { type: grant ? 'ApprovalGranted' : 'ApprovalRejected', involved: anchor, ...(runNo > 0 ? { run: runNo } : {}) };
   if (evId) payload.dedupKey = 'console-' + evId;
   else payload.dedupKey = 'console-appr-' + key + '-' + Date.now(); // run/proposal 行无事件锚——会话内唯一 dedup 键（不冒充幂等）
   const r = await ctx.api.eventPub(payload);
