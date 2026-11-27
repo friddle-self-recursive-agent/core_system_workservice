@@ -14,6 +14,7 @@
  * 现读（缺席/失败=诚实降级词形，不冒充无循环）。 */
 
 import { esc, relAge, fmtNum, trunc } from '../core/format.js';
+import { confirmModal, toast } from './modal.js';
 import { runApprovalInfoOf, runApprovalInfoHtml } from './approvals.js';
 import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
@@ -183,7 +184,8 @@ function pendingRunRowHtml(x, infoHtml = '') {
     '</div></div>';
 }
 
-/* 就地批闸（confirm→eventPub→行消隐+快照重基；失败=alert 显式词形）。 */
+/* 就地批闸（confirmModal→eventPub→行消隐+快照重基；失败=toast 显式词形——2026-11-28 弹窗裁决，
+ * style.md §3.3：原生 confirm/alert 禁用）。 */
 function bindApprovalGates(el, ctx) {
   const act = async (btn, type) => {
     if (btn.disabled) return;
@@ -191,10 +193,17 @@ function bindApprovalGates(el, ctx) {
     const scope = btn.getAttribute('data-appr-scope') || 'global';
     const run = btn.getAttribute('data-appr-run') || '';
     const key = btn.getAttribute('data-appr-key') || run;
-    const ask = type === 'ApprovalGranted'
-      ? tr('确认批准继续？run 将沿 Workflow 声明相位序列续行：')
-      : tr('确认驳回终止？run 将进入终态 Failed（不可恢复）：');
-    if (!window.confirm(ask + wf + ' #' + run)) return;
+    const grant = type === 'ApprovalGranted';
+    const ok = await confirmModal({
+      title: grant ? tr('批准继续') : tr('驳回终止'),
+      body: esc(grant
+        ? tr('确认批准继续？run 将沿 Workflow 声明相位序列续行：')
+        : tr('确认驳回终止？run 将进入终态 Failed（不可恢复）：')) +
+        ' <b class="mono">' + esc(wf) + ' #' + esc(run) + '</b>',
+      confirmText: grant ? tr('批准') : tr('驳回'),
+      danger: !grant,
+    });
+    if (!ok) return;
     btn.disabled = true;
     const runNo = Number(run) || 0;
     const r = await ctx.api.eventPub({
@@ -207,7 +216,6 @@ function bindApprovalGates(el, ctx) {
       const row = btn.closest('[data-appr-row]');
       // V-15：就地批闸后显示结果与已决台账指引（不静默消失）
       if (row) {
-        const grant = type === 'ApprovalGranted';
         row.innerHTML = '<div class="dr-main">' +
           chip(grant ? tr('已批准（ApprovalGranted 已发布）') : tr('已驳回（ApprovalRejected 已发布）'), 'ok') +
           '<span class="small faint">' + esc(tr('判定已落审批台账——快照重基后行集刷新。')) + '</span></div>' +
@@ -217,8 +225,8 @@ function bindApprovalGates(el, ctx) {
     } else {
       btn.disabled = false;
       const verb = type === 'ApprovalGranted' ? tr('批准失败') : tr('驳回失败');
-      window.alert(verb + tr('（') + String((r && r.status) || '—') +
-        ((r && r.error) ? ' ' + String(r.error) : '') + tr('）——run 仍在等审批，可重试。'));
+      toast(esc(verb + tr('（') + String((r && r.status) || '—') +
+        ((r && r.error) ? ' ' + String(r.error) : '') + tr('）——run 仍在等审批，可重试。')), 'error');
     }
   };
   el.querySelectorAll('[data-appr-grant]').forEach((btn) =>

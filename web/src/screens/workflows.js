@@ -2,6 +2,7 @@
 import { esc, trunc, timeHtml, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoLinkChip, objRoute, docRoute } from '../render/chips.js';
 import { depChips } from './tasks.js';
+import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
 
@@ -751,13 +752,19 @@ function runScreen(el, ctx, name, no) {
     paintLine(); paintNow(); paintTl();
   });
   refreshFace();
-  /* 批闸动作（hero 按钮——confirm 写明副作用；失败=显式 alert 不装成功；成功=runs 面重注水+快照重读） */
+  /* 批闸动作（hero 按钮——confirmModal 写明副作用；失败=显式 toast 不装成功；成功=runs 面重注水+快照重读。
+   * 2026-11-28 弹窗裁决——style.md §3.3：原生 confirm/alert 禁用） */
   el.querySelectorAll('[data-gate-act]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const grant = btn.getAttribute('data-gate-act') === 'grant';
-      const confirmed = grant
-        ? window.confirm(tr('确认批准继续？发布 ApprovalGranted（') + gateAnchor + tr('）——run 沿声明相位序列续行。'))
-        : window.confirm(tr('确认驳回终止？发布 ApprovalRejected（') + gateAnchor + tr('）——run 将进入终态 Failed（不可恢复）。'));
+      const confirmed = await confirmModal({
+        title: grant ? tr('批准继续') : tr('驳回终止'),
+        body: esc(grant
+          ? tr('确认批准继续？发布 ApprovalGranted（') + gateAnchor + tr('）——run 沿声明相位序列续行。')
+          : tr('确认驳回终止？发布 ApprovalRejected（') + gateAnchor + tr('）——run 将进入终态 Failed（不可恢复）。')),
+        confirmText: grant ? tr('批准') : tr('驳回'),
+        danger: !grant,
+      });
       if (!confirmed) return;
       btn.disabled = true;
       btn.textContent = tr('发布中…');
@@ -766,7 +773,7 @@ function runScreen(el, ctx, name, no) {
       if (!r.ok) {
         btn.disabled = false;
         btn.textContent = grant ? tr('批准继续') : tr('驳回终止');
-        window.alert(tr('事件发布失败（') + String(r.error || r.status) + tr('）——run 仍挂原相位，未装成功。'));
+        toast(esc(tr('事件发布失败（') + String(r.error || r.status) + tr('）——run 仍挂原相位，未装成功。')), 'error');
         return;
       }
       refreshFace();

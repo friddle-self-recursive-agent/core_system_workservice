@@ -8,6 +8,7 @@
  * 依赖——node 单测机械直测口径；样式只用 styles/ 三件既有体系类，零新 CSS。 */
 
 import { esc, trunc, relAge, fmtNum } from '../core/format.js';
+import { confirmModal } from './modal.js';
 import { chip, chipGo, kv, objRoute, docRoute, tagRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -295,7 +296,13 @@ function wireSessionCtx(box, ctx, id) {
   });
   const revertBtn = q('[data-ctx-revert]');
   if (revertBtn) revertBtn.addEventListener('click', async () => {
-    if (!window.confirm(tr('撤销最近一次上下文分叉（恢复服务端写前快照）？'))) return;
+    const okRevert = await confirmModal({
+      title: tr('撤销上下文分叉'),
+      body: esc(tr('撤销最近一次上下文分叉（恢复服务端写前快照）？')),
+      confirmText: tr('撤销'),
+      danger: true,
+    });
+    if (!okRevert) return;
     revertBtn.disabled = true;
     const r = await ctx.api.revertSessionContext(id);
     revertBtn.disabled = false;

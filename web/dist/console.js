@@ -2519,6 +2519,49 @@ var CoreConsoleWeb = (() => {
     loadRecent(el);
   }
 
+  // src/screens/modal.js
+  function confirmModal(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+      const modal = document.createElement("div");
+      modal.className = "chat-modal";
+      modal.setAttribute("data-cc-modal", "1");
+      const confirmCls = o.danger ? "btn btn-ghost btn-danger" : "btn btn-primary";
+      modal.innerHTML = '<div class="chat-modal-mask" data-cc-modal-mask></div><div class="chat-modal-panel" style="width:420px;max-width:calc(100vw - 48px)"><div class="chat-modal-head"><div class="chat-modal-title">' + esc(t(o.title || t("\u786E\u8BA4\u64CD\u4F5C"))) + '</div></div><div class="chat-modal-body"><div class="small" style="line-height:1.6">' + (o.body || "") + '</div></div><div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px 16px"><button type="button" class="btn btn-secondary sm" data-cc-modal-cancel>' + esc(t(o.cancelText || "\u53D6\u6D88")) + '</button><button type="button" class="' + confirmCls + ' sm" data-cc-modal-ok>' + esc(t(o.confirmText || "\u786E\u5B9A")) + "</button></div></div>";
+      const done = (v) => {
+        modal.remove();
+        document.removeEventListener("keydown", onKey, true);
+        resolve(v);
+      };
+      const onKey = (e) => {
+        if (e.key === "Escape") done(false);
+      };
+      modal.querySelector("[data-cc-modal-ok]").addEventListener("click", () => done(true));
+      modal.querySelector("[data-cc-modal-cancel]").addEventListener("click", () => done(false));
+      modal.querySelector("[data-cc-modal-mask]").addEventListener("click", () => done(false));
+      document.addEventListener("keydown", onKey, true);
+      document.body.appendChild(modal);
+      const ok = modal.querySelector("[data-cc-modal-ok]");
+      if (ok) ok.focus();
+    });
+  }
+  function toast(message, kind) {
+    let wrap = document.querySelector(".chat-toast-wrap");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.className = "chat-toast-wrap";
+      document.body.appendChild(wrap);
+    }
+    const t2 = document.createElement("div");
+    t2.className = "chat-toast" + (kind === "accent" ? " is-accent" : " is-error");
+    t2.innerHTML = message;
+    wrap.appendChild(t2);
+    setTimeout(() => {
+      t2.classList.add("is-leaving");
+      setTimeout(() => t2.remove(), 260);
+    }, 3500);
+  }
+
   // src/render/chips.js
   function chip(label, cls = "mute", tiny = true, attrs = "") {
     return '<span class="chip ' + esc(cls) + (tiny ? " tiny" : "") + '"' + (attrs ? " " + attrs : "") + ">" + esc(label) + "</span>";
@@ -3091,13 +3134,18 @@ var CoreConsoleWeb = (() => {
     btn.disabled = false;
     btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
     if (!dry.ok) {
-      if (typeof window !== "undefined") window.alert(t("dry-run \u9884\u68C0\u672A\u8FC7\uFF08") + String(dry.error || dry.status) + t("\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002"));
+      toast(esc(t("dry-run \u9884\u68C0\u672A\u8FC7\uFF08") + String(dry.error || dry.status) + t("\uFF09\u2014\u2014\u96F6\u526F\u4F5C\u7528\uFF0C\u7A3F\u5DF2\u4FDD\u7559\u3002")), "error");
       return;
     }
     const cur = dry.data && dry.data.rv != null ? Number(dry.data.rv) : null;
     const expect = d.baseResourceVersion != null ? Number(d.baseResourceVersion) : null;
     const lockNote = cur != null && expect != null ? cur === expect ? t("\u7248\u672C\u5BF9\u9F50 r") + cur : t("\u7248\u672C\u5DF2\u53D8\u5316\uFF08\u73B0 r") + cur + t(" vs \u7F16\u8F91\u57FA\u7EBF r") + expect + t("\u2014\u2014\u843D\u5E93\u524D\u8BF7\u5148\u5237\u65B0\uFF09") : "";
-    if (!window.confirm(t("\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09") + d.kind + "/" + d.name + t("\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=") + String(cur) + "\uFF09" + (lockNote ? "\uFF1B" + lockNote : "") + "\u3002")) return;
+    const approved = await confirmModal({
+      title: t("\u6279\u51C6\uFF08= Apply\uFF09"),
+      body: esc(t("\u786E\u8BA4\u6279\u51C6\uFF08Apply\uFF09") + d.kind + "/" + d.name + t("\uFF1Fdry-run \u5DF2\u8FC7\uFF08rv=") + String(cur) + "\uFF09" + (lockNote ? "\uFF1B" + lockNote : "") + "\u3002"),
+      confirmText: t("\u6279\u51C6")
+    });
+    if (!approved) return;
     btn.disabled = true;
     btn.textContent = t("\u843D\u5E93\u4E2D\u2026");
     const r = await ctx2.api.apply({
@@ -3111,7 +3159,7 @@ var CoreConsoleWeb = (() => {
     btn.disabled = false;
     btn.textContent = t("\u6279\u51C6\uFF08= Apply\uFF09");
     if (!r.ok) {
-      window.alert(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002"));
+      toast(esc(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002")), "error");
       return;
     }
     ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
@@ -3126,7 +3174,12 @@ var CoreConsoleWeb = (() => {
     const key = btn.getAttribute(grant ? "data-ap-grant" : "data-ap-reject") || "";
     const evId = btn.getAttribute("data-ap-ev") || "";
     if (!anchor || !key) return;
-    const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalGranted \u540E run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F") + anchor + t("\uFF1A\u53D1\u5E03 ApprovalRejected \u540E run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+    const confirmed = await confirmModal({
+      title: grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62"),
+      body: esc(grant ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F")) + ' <b class="mono">' + esc(anchor) + "</b>" + esc(grant ? t("\uFF1A\u53D1\u5E03 ApprovalGranted \u540E run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002") : t("\uFF1A\u53D1\u5E03 ApprovalRejected \u540E run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002")),
+      confirmText: grant ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
+      danger: !grant
+    });
     if (!confirmed) return;
     btn.disabled = true;
     btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
@@ -3138,7 +3191,7 @@ var CoreConsoleWeb = (() => {
     if (!r.ok) {
       btn.disabled = false;
       btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
-      window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+      toast(esc(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002")), "error");
       return;
     }
     ignored.add(key);
@@ -3151,7 +3204,13 @@ var CoreConsoleWeb = (() => {
   async function proposalDecision(ctx2, p, decision, btn) {
     const isApprove = decision === "approve";
     const fm = isApprove ? "console:approve" : "console:reject";
-    if (!window.confirm((isApprove ? t("\u786E\u8BA4\u6279\u51C6\u63D0\u6848\uFF08Apply console:approve\uFF09") : t("\u786E\u8BA4\u9A73\u56DE\u63D0\u6848\uFF08Apply console:reject\uFF09")) + " " + String(p.name) + "\uFF1F")) return;
+    const confirmed = await confirmModal({
+      title: isApprove ? t("\u6279\u51C6\u63D0\u6848") : t("\u9A73\u56DE\u63D0\u6848"),
+      body: esc((isApprove ? t("\u786E\u8BA4\u6279\u51C6\u63D0\u6848\uFF08Apply console:approve\uFF09") : t("\u786E\u8BA4\u9A73\u56DE\u63D0\u6848\uFF08Apply console:reject\uFF09")) + " " + String(p.name) + "\uFF1F"),
+      confirmText: isApprove ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
+      danger: !isApprove
+    });
+    if (!confirmed) return;
     btn.disabled = true;
     btn.textContent = t("\u5224\u5B9A\u4E2D\u2026");
     const r = await ctx2.api.apply({
@@ -3165,7 +3224,7 @@ var CoreConsoleWeb = (() => {
     btn.disabled = false;
     btn.textContent = isApprove ? t("\u6279\u51C6\uFF08= Apply\uFF09") : t("\u9A73\u56DE");
     if (!r || !r.ok) {
-      window.alert(t("\u63D0\u6848\u5224\u5B9A\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09\u2014\u2014\u63D0\u6848\u72B6\u6001\u672A\u7FFB\u8F6C\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+      toast(esc(t("\u63D0\u6848\u5224\u5B9A\u5931\u8D25\uFF08") + String(r && (r.error || r.status) || t("\u7F51\u7EDC")) + t("\uFF09\u2014\u2014\u63D0\u6848\u72B6\u6001\u672A\u7FFB\u8F6C\uFF0C\u53EF\u91CD\u8BD5\u3002")), "error");
       return;
     }
     ignored.add("proposal|" + (p.scope || "global") + "|" + String(p.name));
@@ -3384,8 +3443,14 @@ var CoreConsoleWeb = (() => {
       const scope = btn.getAttribute("data-appr-scope") || "global";
       const run = btn.getAttribute("data-appr-run") || "";
       const key = btn.getAttribute("data-appr-key") || run;
-      const ask = type2 === "ApprovalGranted" ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A");
-      if (!window.confirm(ask + wf + " #" + run)) return;
+      const grant = type2 === "ApprovalGranted";
+      const ok = await confirmModal({
+        title: grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62"),
+        body: esc(grant ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1Frun \u5C06\u6CBF Workflow \u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\uFF1A") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1Frun \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\uFF1A")) + ' <b class="mono">' + esc(wf) + " #" + esc(run) + "</b>",
+        confirmText: grant ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
+        danger: !grant
+      });
+      if (!ok) return;
       btn.disabled = true;
       const runNo = Number(run) || 0;
       const r = await ctx2.api.eventPub({
@@ -3397,7 +3462,6 @@ var CoreConsoleWeb = (() => {
       if (r && r.ok) {
         const row = btn.closest("[data-appr-row]");
         if (row) {
-          const grant = type2 === "ApprovalGranted";
           row.innerHTML = '<div class="dr-main">' + chip(grant ? t("\u5DF2\u6279\u51C6\uFF08ApprovalGranted \u5DF2\u53D1\u5E03\uFF09") : t("\u5DF2\u9A73\u56DE\uFF08ApprovalRejected \u5DF2\u53D1\u5E03\uFF09"), "ok") + '<span class="small faint">' + esc(t("\u5224\u5B9A\u5DF2\u843D\u5BA1\u6279\u53F0\u8D26\u2014\u2014\u5FEB\u7167\u91CD\u57FA\u540E\u884C\u96C6\u5237\u65B0\u3002")) + '</span></div><div class="dr-side">' + chipGo(t("\u67E5\u770B\u5DF2\u51B3\u53F0\u8D26 \u2192"), "approvals", "acc", true, t("\u5BA1\u6279\u9875\u5DF2\u51B3\u53F0\u8D26")) + "</div>";
         }
         ctx2.api.snapshot().then((s) => {
@@ -3406,7 +3470,7 @@ var CoreConsoleWeb = (() => {
       } else {
         btn.disabled = false;
         const verb = type2 === "ApprovalGranted" ? t("\u6279\u51C6\u5931\u8D25") : t("\u9A73\u56DE\u5931\u8D25");
-        window.alert(verb + t("\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014run \u4ECD\u5728\u7B49\u5BA1\u6279\uFF0C\u53EF\u91CD\u8BD5\u3002"));
+        toast(esc(verb + t("\uFF08") + String(r && r.status || "\u2014") + (r && r.error ? " " + String(r.error) : "") + t("\uFF09\u2014\u2014run \u4ECD\u5728\u7B49\u5BA1\u6279\uFF0C\u53EF\u91CD\u8BD5\u3002")), "error");
       }
     };
     el.querySelectorAll("[data-appr-grant]").forEach((btn) => btn.addEventListener("click", (ev) => {
@@ -3664,20 +3728,26 @@ var CoreConsoleWeb = (() => {
     if (!cancellable(t2)) return "";
     return '<button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(id) + '">' + esc(t("\u53D6\u6D88")) + "</button>";
   }
-  function requestCancel(el, ctx2, t2) {
+  async function requestCancel(el, ctx2, t2) {
     const name = String(t2 && t2.name || "");
     const scope = String(t2 && t2.scope || "global") || "global";
     if (!name) {
-      alert(t("\u4EFB\u52A1\u7F3A name\u2014\u2014\u65E0\u6CD5\u6784\u9020 Task/<scope>/<name> \u8BCD\u5F62\uFF0C\u53D6\u6D88\u672A\u53D1\u5E03"));
+      toast(esc(t("\u4EFB\u52A1\u7F3A name\u2014\u2014\u65E0\u6CD5\u6784\u9020 Task/<scope>/<name> \u8BCD\u5F62\uFF0C\u53D6\u6D88\u672A\u53D1\u5E03")), "error");
       return;
     }
-    const ok = confirm(t("\u53D6\u6D88\u4EFB\u52A1 ") + name + t("\uFF1F\u53D1\u5E03 TaskCancelRequested\uFF08\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39\u2014\u2014\u4E0D\u4FDD\u8BC1\u5DF2\u5728\u8DD1\u7684\u8FDB\u7A0B\u7ACB\u523B\u7EC8\u6B62\uFF09"));
+    const ok = await confirmModal({
+      title: t("\u53D6\u6D88\u4EFB\u52A1"),
+      body: esc(t("\u53D6\u6D88\u4EFB\u52A1 ") + name + t("\uFF1F\u53D1\u5E03 TaskCancelRequested\uFF08\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39\u2014\u2014\u4E0D\u4FDD\u8BC1\u5DF2\u5728\u8DD1\u7684\u8FDB\u7A0B\u7ACB\u523B\u7EC8\u6B62\uFF09")),
+      confirmText: t("\u53D6\u6D88\u4EFB\u52A1"),
+      danger: true
+    });
     if (!ok) return;
-    ctx2.api.eventPub({
-      type: "TaskCancelRequested",
-      involved: "Task/" + scope + "/" + name,
-      dedupKey: "console-cancel-" + name + "-" + Date.now()
-    }).then((r) => {
+    try {
+      const r = await ctx2.api.eventPub({
+        type: "TaskCancelRequested",
+        involved: "Task/" + scope + "/" + name,
+        dedupKey: "console-cancel-" + name + "-" + Date.now()
+      });
       if (r && r.ok) {
         cancelReq.add(taskIdOf(t2));
         ctx2.api.snapshot().then((s) => {
@@ -3686,11 +3756,11 @@ var CoreConsoleWeb = (() => {
         });
         if (el.isConnected) render4(el, ctx2);
       } else {
-        alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38")));
+        toast(esc(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38"))), "error");
       }
-    }).catch((err) => {
-      alert(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(err && err.message || err || t("\u7F51\u7EDC\u5F02\u5E38")));
-    });
+    } catch (err) {
+      toast(esc(t("\u53D6\u6D88\u8BF7\u6C42\u53D1\u5E03\u5931\u8D25\uFF1A") + String(err && err.message || err || t("\u7F51\u7EDC\u5F02\u5E38"))), "error");
+    }
   }
   function depRoute(d, defaultKind = "") {
     const s = String(d || "").trim();
@@ -5329,7 +5399,12 @@ spec:
     el.querySelectorAll("[data-gate-act]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const grant = btn.getAttribute("data-gate-act") === "grant";
-        const confirmed = grant ? window.confirm(t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002")) : window.confirm(t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002"));
+        const confirmed = await confirmModal({
+          title: grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62"),
+          body: esc(grant ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002")),
+          confirmText: grant ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
+          danger: !grant
+        });
         if (!confirmed) return;
         btn.disabled = true;
         btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
@@ -5338,7 +5413,7 @@ spec:
         if (!r.ok) {
           btn.disabled = false;
           btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
-          window.alert(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002"));
+          toast(esc(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002")), "error");
           return;
         }
         refreshFace();
@@ -13799,7 +13874,12 @@ ${text2}</tr>
         const cur = ED.get(key.key);
         if (!cur || !hasDiff(cur)) return;
         const stats = diffStats(diffLines2(cur.base, cur.working));
-        if (!window.confirm(t("Apply \u843D\u5E93 ") + cur.ref.kind + "/" + cur.ref.name + "\uFF08+" + stats.add + "/-" + stats.del + t("\uFF09\uFF1F\u843D\u5E93\u7248\u672C\u57FA\u51C6 r") + cur.baseRV + "\u3002")) return;
+        const okApply = await confirmModal({
+          title: t("Apply \u843D\u5E93"),
+          body: esc(t("Apply \u843D\u5E93 ") + cur.ref.kind + "/" + cur.ref.name + "\uFF08+" + stats.add + "/-" + stats.del + t("\uFF09\uFF1F\u843D\u5E93\u7248\u672C\u57FA\u51C6 r") + cur.baseRV + "\u3002"),
+          confirmText: t("Apply")
+        });
+        if (!okApply) return;
         dock.disabled = true;
         const r = await ctx2.api.apply({
           kind: cur.ref.kind,
@@ -14086,7 +14166,13 @@ ${text2}</tr>
     });
     const revertBtn = q("[data-ctx-revert]");
     if (revertBtn) revertBtn.addEventListener("click", async () => {
-      if (!window.confirm(t("\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F"))) return;
+      const okRevert = await confirmModal({
+        title: t("\u64A4\u9500\u4E0A\u4E0B\u6587\u5206\u53C9"),
+        body: esc(t("\u64A4\u9500\u6700\u8FD1\u4E00\u6B21\u4E0A\u4E0B\u6587\u5206\u53C9\uFF08\u6062\u590D\u670D\u52A1\u7AEF\u5199\u524D\u5FEB\u7167\uFF09\uFF1F")),
+        confirmText: t("\u64A4\u9500"),
+        danger: true
+      });
+      if (!okRevert) return;
       revertBtn.disabled = true;
       const r = await ctx2.api.revertSessionContext(id);
       revertBtn.disabled = false;

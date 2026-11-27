@@ -6,6 +6,7 @@
  *   ③ 数据纪律：零前端自建状态；读取失败=显式降级词形（零命中不装假）。 */
 
 import { esc, trunc } from '../core/format.js';
+import { confirmModal, toast } from './modal.js';
 import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute } from '../render/chips.js';
 import { hydrateLoop } from './welcome.js';
 import { t as tr } from '../core/i18n.js';
@@ -98,28 +99,35 @@ function cancelBtnHtml(t) {
   return '<button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(id) + '">' + esc(tr('取消')) + '</button>';
 }
 
-/** 发布 TaskCancelRequested → 成功=行尾 chip + 快照重读（store 权威投影跟进）；失败=alert 显式词形。 */
-function requestCancel(el, ctx, t) {
+/** 发布 TaskCancelRequested → 成功=行尾 chip + 快照重读（store 权威投影跟进）；失败=toast 显式词形
+ * （2026-11-28 弹窗裁决——style.md §3.3：原生 confirm/alert 禁用）。 */
+async function requestCancel(el, ctx, t) {
   const name = String((t && t.name) || '');
   const scope = String((t && t.scope) || 'global') || 'global';
-  if (!name) { alert(tr('任务缺 name——无法构造 Task/<scope>/<name> 词形，取消未发布')); return; }
-  const ok = confirm(tr('取消任务 ') + name + tr('？发布 TaskCancelRequested（调度器归档面消费——不保证已在跑的进程立刻终止）'));
+  if (!name) { toast(esc(tr('任务缺 name——无法构造 Task/<scope>/<name> 词形，取消未发布')), 'error'); return; }
+  const ok = await confirmModal({
+    title: tr('取消任务'),
+    body: esc(tr('取消任务 ') + name + tr('？发布 TaskCancelRequested（调度器归档面消费——不保证已在跑的进程立刻终止）')),
+    confirmText: tr('取消任务'),
+    danger: true,
+  });
   if (!ok) return;
-  ctx.api.eventPub({
-    type: 'TaskCancelRequested',
-    involved: 'Task/' + scope + '/' + name,
-    dedupKey: 'console-cancel-' + name + '-' + Date.now(),
-  }).then((r) => {
+  try {
+    const r = await ctx.api.eventPub({
+      type: 'TaskCancelRequested',
+      involved: 'Task/' + scope + '/' + name,
+      dedupKey: 'console-cancel-' + name + '-' + Date.now(),
+    });
     if (r && r.ok) {
       cancelReq.add(taskIdOf(t));
       ctx.api.snapshot().then((s) => { if (s && s.ok) ctx.store.init(s.data); }).catch(() => { /* 快照重读失败=保留现投影与 chip 反馈 */ });
       if (el.isConnected) render(el, ctx); // 本屏立即重绘——行尾出现「取消请求已发布」
     } else {
-      alert(tr('取消请求发布失败：') + String((r && (r.error || r.status)) || tr('网络异常')));
+      toast(esc(tr('取消请求发布失败：') + String((r && (r.error || r.status)) || tr('网络异常'))), 'error');
     }
-  }).catch((err) => {
-    alert(tr('取消请求发布失败：') + String((err && err.message) || err || tr('网络异常')));
-  });
+  } catch (err) {
+    toast(esc(tr('取消请求发布失败：') + String((err && err.message) || err || tr('网络异常'))), 'error');
+  }
 }
 
 /* ---------- 依赖深链（V-03）：Task/task/<scope>/<name>→task/:id；Workflow/workflow/<scope>/<name>→wf/:name；

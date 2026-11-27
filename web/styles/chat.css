@@ -403,3 +403,15 @@
   background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px;
   white-space: nowrap; z-index: 1;
 }
+
+/* toast 非阻断提示（2026-11-28 弹窗裁决——style.md §3.3：原生 alert 禁用，结果/错误=右上浮层，
+ * DeepSeek token 体系：panel 底+shadow+语义色左条，3.5s 自动消散）。 */
+.cc-app .chat-toast-wrap { position: fixed; top: 18px; right: 18px; z-index: 70; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.cc-app .chat-toast {
+  min-width: 220px; max-width: 380px; padding: 10px 14px; font-size: var(--fs-small); color: var(--text);
+  background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--danger, #d64545);
+  border-radius: var(--rad, 10px); box-shadow: var(--shadow, 0 6px 24px rgba(0,0,0,.12));
+  opacity: 1; transition: opacity .24s ease, transform .24s ease;
+}
+.cc-app .chat-toast.is-accent { border-left-color: var(--accent); }
+.cc-app .chat-toast.is-leaving { opacity: 0; transform: translateY(-6px); }

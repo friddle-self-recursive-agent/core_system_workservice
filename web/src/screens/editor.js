@@ -21,6 +21,7 @@ function aiFaces() {
   return (typeof window !== 'undefined' && window.__CC && window.__CC.chatFaces) || null;
 }
 import { isMarkdownDoc } from './objects.js';
+import { confirmModal } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 
 /* 工作副本（key='kind|scope|name' → {working, base, loaded, faceRV, baseRV, faceAbsent, faceFail, view, tab}）。 */
@@ -432,7 +433,12 @@ function editorScreen(el, ctx, key) {
       const cur = ED.get(key.key);
       if (!cur || !hasDiff(cur)) return;
       const stats = diffStats(diffLines(cur.base, cur.working));
-      if (!window.confirm(tr('Apply 落库 ') + cur.ref.kind + '/' + cur.ref.name + '（+' + stats.add + '/-' + stats.del + tr('）？落库版本基准 r') + cur.baseRV + '。')) return;
+      const okApply = await confirmModal({
+        title: tr('Apply 落库'),
+        body: esc(tr('Apply 落库 ') + cur.ref.kind + '/' + cur.ref.name + '（+' + stats.add + '/-' + stats.del + tr('）？落库版本基准 r') + cur.baseRV + '。'),
+        confirmText: tr('Apply'),
+      });
+      if (!okApply) return;
       dock.disabled = true;
       const r = await ctx.api.apply({
         kind: cur.ref.kind, scope: cur.ref.scope, name: cur.ref.name,

@@ -6,6 +6,7 @@
  * 收件箱=快照 inbox 投影（四类汇总+计数+深链）。 */
 
 import { esc, trunc, relAge } from '../core/format.js';
+import { confirmModal, toast } from './modal.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute, involvedRoute, objRoute } from '../render/chips.js';
 import { diffLines, renderDiff, diffStats } from '../render/diff.js';
 import { t as tr } from '../core/i18n.js';
@@ -255,13 +256,18 @@ async function approve(ctx, d, btn) {
   btn.disabled = false;
   btn.textContent = tr('批准（= Apply）');
   if (!dry.ok) {
-    if (typeof window !== 'undefined') window.alert(tr('dry-run 预检未过（') + String(dry.error || dry.status) + tr('）——零副作用，稿已保留。'));
+    toast(esc(tr('dry-run 预检未过（') + String(dry.error || dry.status) + tr('）——零副作用，稿已保留。')), 'error');
     return;
   }
   const cur = dry.data && dry.data.rv != null ? Number(dry.data.rv) : null;
   const expect = d.baseResourceVersion != null ? Number(d.baseResourceVersion) : null;
   const lockNote = cur != null && expect != null ? (cur === expect ? tr('版本对齐 r') + cur : tr('版本已变化（现 r') + cur + tr(' vs 编辑基线 r') + expect + tr('——落库前请先刷新）')) : '';
-  if (!window.confirm(tr('确认批准（Apply）') + d.kind + '/' + d.name + tr('？dry-run 已过（rv=') + String(cur) + '）' + (lockNote ? '；' + lockNote : '') + '。')) return;
+  const approved = await confirmModal({
+    title: tr('批准（= Apply）'),
+    body: esc(tr('确认批准（Apply）') + d.kind + '/' + d.name + tr('？dry-run 已过（rv=') + String(cur) + '）' + (lockNote ? '；' + lockNote : '') + '。'),
+    confirmText: tr('批准'),
+  });
+  if (!approved) return;
   btn.disabled = true;
   btn.textContent = tr('落库中…');
   const r = await ctx.api.apply({
@@ -271,7 +277,7 @@ async function approve(ctx, d, btn) {
   btn.disabled = false;
   btn.textContent = tr('批准（= Apply）');
   if (!r.ok) {
-    window.alert(tr('Apply 失败（') + String(r.error || r.status) + tr('）——稿保留语义，未落库。'));
+    toast(esc(tr('Apply 失败（') + String(r.error || r.status) + tr('）——稿保留语义，未落库。')), 'error');
     return;
   }
   ignored.add('draft|' + d.kind + '|' + (d.scope || 'global') + '|' + d.name);
@@ -282,15 +288,24 @@ async function approve(ctx, d, btn) {
 
 /** 批闸事件发布（§19 R3——run 在 AwaitingApproval 闸锚挂起后恢复的唯一人工通路：
  * 发布 ApprovalGranted（run 沿声明相位序列续行）/ ApprovalRejected（run 终态 Failed）。
- * involved=事件携带的 Workflow 锚；dedupKey=console-<eventId>；失败=显式 alert 不装成功）。 */
+ * involved=事件携带的 Workflow 锚；dedupKey=console-<eventId>；失败=显式 toast 不装成功
+ * （2026-11-28 弹窗裁决——style.md §3.3）。 */
 async function pubGateDecision(ctx, btn, grant) {
   const anchor = btn.getAttribute('data-ap-anchor') || '';
   const key = btn.getAttribute(grant ? 'data-ap-grant' : 'data-ap-reject') || '';
   const evId = btn.getAttribute('data-ap-ev') || '';
   if (!anchor || !key) return;
-  const confirmed = grant
-    ? window.confirm(tr('确认批准继续？') + anchor + tr('：发布 ApprovalGranted 后 run 沿声明相位序列续行。'))
-    : window.confirm(tr('确认驳回终止？') + anchor + tr('：发布 ApprovalRejected 后 run 将进入终态 Failed（不可恢复）。'));
+  const confirmed = await confirmModal({
+    title: grant ? tr('批准继续') : tr('驳回终止'),
+    body: esc(grant
+      ? tr('确认批准继续？')
+      : tr('确认驳回终止？')) + ' <b class="mono">' + esc(anchor) + '</b>' +
+      esc(grant
+        ? tr('：发布 ApprovalGranted 后 run 沿声明相位序列续行。')
+        : tr('：发布 ApprovalRejected 后 run 将进入终态 Failed（不可恢复）。')),
+    confirmText: grant ? tr('批准') : tr('驳回'),
+    danger: !grant,
+  });
   if (!confirmed) return;
   btn.disabled = true;
   btn.textContent = tr('发布中…');
@@ -302,7 +317,7 @@ async function pubGateDecision(ctx, btn, grant) {
   if (!r.ok) {
     btn.disabled = false;
     btn.textContent = grant ? tr('批准继续') : tr('驳回终止');
-    window.alert(tr('事件发布失败（') + String(r.error || r.status) + tr('）——run 仍挂原相位，未装成功。'));
+    toast(esc(tr('事件发布失败（') + String(r.error || r.status) + tr('）——run 仍挂原相位，未装成功。')), 'error');
     return;
   }
   ignored.add(key);
@@ -317,8 +332,14 @@ async function pubGateDecision(ctx, btn, grant) {
 async function proposalDecision(ctx, p, decision, btn) {
   const isApprove = decision === 'approve';
   const fm = isApprove ? 'console:approve' : 'console:reject';
-  if (!window.confirm((isApprove ? tr('确认批准提案（Apply console:approve）') : tr('确认驳回提案（Apply console:reject）')) +
-    ' ' + String(p.name) + '？')) return;
+  const confirmed = await confirmModal({
+    title: isApprove ? tr('批准提案') : tr('驳回提案'),
+    body: esc((isApprove ? tr('确认批准提案（Apply console:approve）') : tr('确认驳回提案（Apply console:reject）')) +
+      ' ' + String(p.name) + '？'),
+    confirmText: isApprove ? tr('批准') : tr('驳回'),
+    danger: !isApprove,
+  });
+  if (!confirmed) return;
   btn.disabled = true;
   btn.textContent = tr('判定中…');
   const r = await ctx.api.apply({
@@ -328,7 +349,7 @@ async function proposalDecision(ctx, p, decision, btn) {
   btn.disabled = false;
   btn.textContent = isApprove ? tr('批准（= Apply）') : tr('驳回');
   if (!r || !r.ok) {
-    window.alert(tr('提案判定失败（') + String((r && (r.error || r.status)) || tr('网络')) + tr('）——提案状态未翻转，可重试。'));
+    toast(esc(tr('提案判定失败（') + String((r && (r.error || r.status)) || tr('网络')) + tr('）——提案状态未翻转，可重试。')), 'error');
     return;
   }
   ignored.add('proposal|' + (p.scope || 'global') + '|' + String(p.name));
