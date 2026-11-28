@@ -421,7 +421,6 @@ var CoreConsoleWeb = (() => {
     ["\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF", "No loop in progress"],
     ["\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002", "Filter has zero hits \u2014 relax the conditions and retry."],
     ["\u5F85\u542F\u52A8", "pending start"],
-    ["\u5F85\u5B9A", "pending"],
     ["\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002", "Pending = draft cache (DocReview same source) \u222A ApprovalNeeded archive rows (approved ones drop out). Approve/reject are human clicks; diff = draft vs live document, read fresh."],
     ["\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879", "Pending is empty (both draft cache and ApprovalNeeded archive are empty)"],
     ["\u5FAA\u73AF\u5524\u9192 #", "Loop wake #"],
@@ -677,7 +676,7 @@ var CoreConsoleWeb = (() => {
     ["\u9700\u6C42\u63D0\u6848", "Proposals"],
     ["\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09", "Proposal face (list + live elements) \u2014 approve/reject go through approvals and Apply (LLM has no Apply right)"],
     ["\u672A\u547D\u540D\u63D0\u6848", "Unnamed proposal"],
-    ["\u5F85\u5B9A", "Pending"],
+    ["\u672A\u58F0\u660E", "Undeclared"],
     ["\u6682\u65E0\u63D0\u6848", "No proposals"],
     ["\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\u3002", "Snapshot proposals aggregate is empty (explicit empty state)."],
     [" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", "\u2019s objects and events (snapshot projection)"],
@@ -16884,11 +16883,12 @@ spec:
       const open = propOpen.has(key);
       const isFocus = !!focusName && key === focusName;
       const known = ["title", "summary", "status", "proposer", "createdAt", "scope", "name"];
-      const sub = known.filter((k) => p[k] != null && k !== "title").map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
+      const has = (v) => v != null && String(v).trim() !== "";
+      const sub = known.filter((k) => k !== "title" && has(p[k])).map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
       const extras = keys.filter((k) => !known.includes(k) && k !== "summary" && p[k] != null && p[k] !== "").map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + "</span>").join("");
       const approveRoute = p && p.name ? "approvals/" + encodeURIComponent(String(p.name)) : "approvals";
       const propLink = p && p.name ? "prop/" + encodeURIComponent(String(p.name)) : "";
-      return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : "") + '><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(String(p.status || t("\u5F85\u5B9A")), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D</span>')) + "</div>" + (open ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ""), 2e3) || t("summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + "</div>" + (extras ? '<div class="kv" style="margin-top:6px">' + extras + "</div>" : "") + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + (p && p.name ? chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Proposal", p.scope || "global", p.name), "mute", true) : "") + (propLink ? chipGo(t("\u76F4\u8FBE\u94FE\u63A5"), propLink, "mute", true) : "") + '</div><div class="small faint" style="margin-top:4px">' + esc(t("\u518D\u70B9\u4E00\u6B21\u5361\u7247\u6536\u8D77\u3002")) + "</div>" : "") + '</div><span class="ws-chip">' + chipGo(t("\u53BB\u5BA1\u6279"), approveRoute, "acc", true, t("\u5B9A\u4F4D\u81F3\u5BA1\u6279\u9875\u8BE5\u63D0\u6848")) + "</span></div>";
+      return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : "") + '><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(has(p.status) ? String(p.status) : t("\u672A\u58F0\u660E"), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D</span>')) + "</div>" + (open ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(has(p.summary) ? trunc(String(p.summary), 2e3) : t("summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + "</div>" + (extras ? '<div class="kv" style="margin-top:6px">' + extras + "</div>" : "") + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + (p && p.name ? chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Proposal", p.scope || "global", p.name), "mute", true) : "") + (propLink ? chipGo(t("\u76F4\u8FBE\u94FE\u63A5"), propLink, "mute", true) : "") + '</div><div class="small faint" style="margin-top:4px">' + esc(t("\u518D\u70B9\u4E00\u6B21\u5361\u7247\u6536\u8D77\u3002")) + "</div>" : "") + '</div><span class="ws-chip">' + chipGo(t("\u53BB\u5BA1\u6279"), approveRoute, "acc", true, t("\u5B9A\u4F4D\u81F3\u5BA1\u6279\u9875\u8BE5\u63D0\u6848")) + "</span></div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u9700\u6C42\u63D0\u6848"),
