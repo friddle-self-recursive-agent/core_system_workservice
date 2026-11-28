@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -76,13 +77,13 @@ func (g *Generator) JudgeApproval(run workflow.RunRecord, policy workflow.Approv
 }
 
 // readSubject 被审物读取（2026-11-28 用户裁定「原始 issue 是什么。我怎么没看到」）：判决与
-// 人审兜底共用同一份「被审物」文本——Repository/<repo>#<n> 词形（issue 目标）走 GitHub 公共
-// REST 拉原始 title+body（零凭据、gh CLI 缺席也可用）；其余对象词形走对象库现值（readBase）。
-// 两路都空=显式「（被审物不可读）」占位，不冒充空串。
+// 人审兜底共用同一份「被审物」文本——Repository/<name>#<n> 词形（issue 目标）走 GitHub 公共
+// REST 拉原始 title+body（零凭据可用；org 从 connectops-gh 对象 config.owner 解析，零硬编码）；
+// 其余对象词形走对象库现值（readBase）。两路都空=显式「（被审物不可读）」占位，不冒充空串。
 func (g *Generator) readSubject(ctx context.Context, objKey string) string {
 	kind, scope, name := splitKind(objKey), splitScope(objKey), splitName(objKey)
 	if kind == "Repository" && strings.Contains(name, "#") {
-		if s := ghIssueSubject(name); s != "" {
+		if s := g.ghIssueSubject(ctx, name); s != "" {
 			return s
 		}
 	}
@@ -94,15 +95,48 @@ func (g *Generator) readSubject(ctx context.Context, objKey string) string {
 	return "（被审物不可读——对象库无现值且非可拉取的 issue 词形）"
 }
 
-// ghIssueSubject GitHub 公共 REST 拉 issue 原文（title+labels+body）——repo#n 词形专用。
-func ghIssueSubject(name string) string {
+// ghOwner org 前缀解析：ConnectorOps/global/connectops-gh 的 config.owner（行级读，零 yaml
+// 依赖——involved 名只带仓不带 org，前缀由此声明面补全）。
+func (g *Generator) ghOwner(ctx context.Context) string {
+	if g.Repo == nil {
+		return ""
+	}
+	o, err := g.Repo.Get(ctx, "ConnectorOps", "global", "connectops-gh")
+	if err != nil || o == nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(o.Content), "\n") {
+		s := strings.TrimSpace(line)
+		if strings.HasPrefix(s, "owner:") {
+			return strings.TrimSpace(strings.TrimPrefix(s, "owner:"))
+		}
+	}
+	return ""
+}
+
+// ghIssueSubject GitHub REST 拉 issue 原文（title+labels+body）——name#n 词形专用；仓无 org
+// 前缀时以 ghOwner 补全（10s 超时；GH_TOKEN 存在则带认证头防限流）。
+func (g *Generator) ghIssueSubject(ctx context.Context, name string) string {
 	p := strings.SplitN(name, "#", 2)
 	if len(p) != 2 || p[0] == "" || p[1] == "" {
 		return ""
 	}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%s", p[0], p[1])
+	repo := p[0]
+	if !strings.Contains(repo, "/") {
+		if owner := g.ghOwner(ctx); owner != "" {
+			repo = owner + "/" + repo
+		}
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%s", repo, p[1])
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ""
+	}
+	if tok := strings.TrimSpace(os.Getenv("GH_TOKEN")); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}

@@ -56,11 +56,11 @@ func TestParseVerdictDocIdempotentRead(t *testing.T) {
 }
 
 func TestGhIssueSubjectAndReadSubject(t *testing.T) {
-	// repo#n 词形解析：合法词形返回非占位（公共仓真实拉取走网络，单测只验词形分派与占位兜底）。
-	if s := ghIssueSubject("bad-format"); s != "" {
-		t.Fatalf("非 repo#n 词形应返回空串走 readBase/占位: %q", s)
-	}
+	// repo#n 词形解析：非法词形返回空串走 readBase/占位（真实拉取走网络，单测只验词形分派与占位兜底）。
 	g := &Generator{}
+	if s := g.ghIssueSubject(context.Background(), "bad-format"); s != "" {
+		t.Fatalf("非 name#n 词形应返回空串走 readBase/占位: %q", s)
+	}
 	// 非对象、非 issue 词形 → 占位词形（不冒充空串——2026-11-28「待批内容为空」缺陷锚）。
 	if s := g.readSubject(context.Background(), "NoSuch/none/x"); s == "" {
 		t.Fatal("被审物不可读应有显式占位")
