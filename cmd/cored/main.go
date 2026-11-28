@@ -23,6 +23,7 @@ import (
 	_ "github.com/friddle-self-recursive-agent/connectops-gh/gh" // connectops-gh 注册（init 自注册——2026-11-28 opsrun.go 执行面消费）
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors/docsdocs"
+	_ "github.com/friddle-self-recursive-agent/core_system_workservice/connectors/jev" // connectops-jev 注册（2026-11-28 用户裁定判定域缺省词形——judge 经 connectops 到 jev）
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/approvaldiff"
@@ -691,6 +692,10 @@ func run() error {
 			Subject: permission.Subject{User: "cored:local", Roles: []string{permission.DefaultAdmin}},
 		}
 		applier = engine
+		// 声明语义准入（2026-11-28 用户令「apply 文档的时候 validate scheme 了吗？没有就实现下」
+		// ——admit 闸 ③b 注册制）：Workflow 五面一致性（phases 起点/transitions 引用/节点 unit
+		// 词汇与声明完备性/entryPoints/triggers 事件注册/approval 词——run127 卡 triggered 实证）。
+		engine.SetSpecSemantics("Workflow", workflow.ValidateDecl)
 		// workflow 执行模型绑定面（v0.49 R-7，workflow-runtime.md §11.1——apply 即实现骨架）：
 		// 写面开启时装配（绑定物化=一次普通 apply，同闸门同审计零旁路）。存量枚举=初值
 		// （metrics 阈值桥 v0.47 同款范式）+ DocApplied×Workflow 订阅热路径（积压合并一次
