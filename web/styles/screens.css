@@ -200,3 +200,12 @@
 .cc-app .pg-node.fail .pg-dot { background: var(--danger); }
 .cc-app .pg-name { font-size: var(--fs-small); font-weight: 600; white-space: nowrap; }
 .cc-app .pg-edge { color: var(--text-3); font-size: var(--fs-small); flex: none; }
+
+/* ── 元数据 header（2026-11-28 用户裁决：metadatainfo 侧车上屏公用组件 render/meta-header.js）──
+ * DeepSeek token 纪律（style.md）：边框 alpha 阶梯/既有档位，零裸色值新增。 */
+.cc-app .meta-header { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin-bottom: 2px;
+  background: var(--ds-bg-subtle, rgba(0, 0, 0, 0.02)); border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 10px; }
+.cc-app .meta-header .mh-ident { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.cc-app .meta-header .mh-ledger { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cc-app .meta-header .mh-dot { opacity: 0.5; }
+.cc-app .meta-header .mh-tags, .cc-app .meta-header .mh-refs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }

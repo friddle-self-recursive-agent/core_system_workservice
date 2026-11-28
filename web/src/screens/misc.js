@@ -6,6 +6,7 @@
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, involvedRoute, syncBadge, tagRoute } from '../render/chips.js';
 import { renderMarkdown, rawDisclosure, splitFrontmatter } from '../render/md.js';
+import { paintMetaHeader } from '../render/meta-header.js';
 import { frontmatterTags, tagsOfRef, loadContextIndexDocs, cachedIndexTagsOf, hasCachedIndex } from './tags.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -233,7 +234,12 @@ async function hydrateDesignDoc(el, ctx, repo, path) {
   const content = data.content != null ? String(data.content) : (typeof res.data === 'string' ? res.data : '');
   const { body } = splitFrontmatter(content);
   // R-UX-10：正文先行——frontmatter 不再占首屏（原文折叠可查）。
-  box.innerHTML = '<div data-md-render="1">' + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
+  // 元数据 header（2026-11-28 用户裁决）：metadatainfo 侧车上屏公用组件（HEAD 文档账=sha 诚实）。
+  box.innerHTML = '<div data-meta-header-slot style="margin-bottom:8px"></div><div data-dd-bodywrap></div>';
+  paintMetaHeader(box.querySelector('[data-meta-header-slot]'), ctx,
+    { kind: 'DesignDoc', scope: repo, name: path }, content, { head: true, headSha: String(data.sha || '') });
+  box.querySelector('[data-dd-bodywrap]').innerHTML =
+    '<div data-md-render="1">' + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
     '<div class="small faint" style="margin-top:6px">' + (data.sha ? 'HEAD ' + esc(String(data.sha).slice(0, 8)) : 'HEAD') +
     tr('（git 权威零缓存） · 草稿/Apply 通路经编辑器屏（doc/…）。</div>');
 }

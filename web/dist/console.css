@@ -2359,6 +2359,38 @@
   font-size: var(--fs-small);
   flex: none;
 }
+.cc-app .meta-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  background: var(--ds-bg-subtle, rgba(0, 0, 0, 0.02));
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+.cc-app .meta-header .mh-ident {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cc-app .meta-header .mh-ledger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.cc-app .meta-header .mh-dot {
+  opacity: 0.5;
+}
+.cc-app .meta-header .mh-tags,
+.cc-app .meta-header .mh-refs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 /* styles/chat.css */
 .cc-app .chat-screen {

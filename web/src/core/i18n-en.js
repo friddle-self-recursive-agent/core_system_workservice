@@ -1078,4 +1078,10 @@ export const enEntries = [
   ["默认 Provider: ", "Default provider: "],
   ["修改绑定", "Edit binding"],
   ["修改 Provider 绑定 · ", "Edit provider binding · "],
+  /* ── 元数据 header 公用组件（2026-11-28）── */
+  ["创建 ", "Created "],
+  ["最近提交 ", "Last applied "],
+  ["重要度 ", "Importance "],
+  ["归属：", "Owners: "],
+  ["归属对象", "Owning object"],
 ];

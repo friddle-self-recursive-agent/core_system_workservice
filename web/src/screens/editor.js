@@ -11,6 +11,7 @@
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute } from '../render/chips.js';
 import { renderMarkdown, yamlToCards, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
+import { paintMetaHeader } from '../render/meta-header.js';
 import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
 
 /* AI 修文档通道契约（2026-11-26 用户裁决：文档不再手编——对话框经 LLM 修文档然后 Apply）：
@@ -115,7 +116,7 @@ function bindRetry(keyStr) {
   });
 }
 
-/** 基准位（meta 行 rv 词形原位更新——faceFail=终态词形+重试按钮）。 */
+/** 基准位（meta 行 rv 词形原位更新——faceFail=终态词形+重试按钮）+元数据 header 上屏。 */
 function paintMeta(keyStr) {
   const slot = document.querySelector('[data-ed-rv]');
   const ed = ED.get(keyStr);
@@ -127,6 +128,9 @@ function paintMeta(keyStr) {
     bindRetry(keyStr);
   } else if (ed.faceAbsent) slot.innerHTML = esc(tr('文档缺席（在册稿基座——Apply=创建通路）'));
   else slot.innerHTML = 'r' + ed.faceRV + esc(tr('（版本基准）'));
+  // 元数据 header（2026-11-28 用户裁决：metadatainfo 侧车上屏——公用组件，rv/账随 face 词形）。
+  paintMetaHeader(document.querySelector('[data-ed-meta-header]'), screenCtx,
+    ed ? ed.ref : null, ed ? ed.working : '');
 }
 
 /** 渲染正文绘制（markdown 文档类=markdown 渲染；对象正文(YAML spec)=结构化字段卡；
@@ -379,6 +383,7 @@ function editorScreen(el, ctx, key) {
     '</div></div>' +
     '<div class="doc-meta-row">' + chip('scope', 'mute') + chipGo(key.ref.scope, 's/' + encodeURIComponent(key.ref.scope), 'mute') +
     '<span class="mono small" data-ed-rv>' + (ed ? (ed.faceAbsent ? tr('文档缺席（在册稿基座——Apply=创建通路）') : 'r' + ed.faceRV + tr('（版本基准）')) : tr('加载中…')) + '</span></div>' +
+    '<div data-ed-meta-header></div>' +
     '<div data-ed-notice></div>' +
     '<div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === 'render' ? '' : ' hidden') + '></div>' +
     tr('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="原文编辑——变更即累积草稿"') + (view === 'raw' ? '' : ' hidden') + '></textarea>' +

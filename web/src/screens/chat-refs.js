@@ -10,6 +10,7 @@
 import { esc, trunc } from '../core/format.js';
 import { REF_KINDS, refRoute } from '../render/refs.js';
 import { renderMarkdown, splitFrontmatter, rawDisclosure } from '../render/md.js';
+import { metaHeaderHtml, frontMetaOf } from '../render/meta-header.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ---------- B1：引用抽取（纯函数） ---------- */
@@ -197,10 +198,13 @@ async function fetchFileContent(ctxc, ref, tree) {
   return { ok: true, content, repo: hit.repo, path: hit.path };
 }
 
-function renderDocBody(content) {
+function renderDocBody(content, metaRef) {
   // R-UX-10：正文先行——frontmatter 不占首屏（原文折叠可查；scheme=对话修改通路）。
-  const { body } = splitFrontmatter(content);
-  return '<div data-md-render="1">' + renderMarkdown(body) + '</div>' +
+  // 元数据 header（2026-11-28）：metadatainfo 侧车上屏（弹窗内点击走全仓 data-go 委托）。
+  const meta = (metaRef && metaRef.kind) || (metaRef && metaRef.scope != null) || (metaRef && metaRef.name)
+    ? frontMetaOf(content, metaRef && metaRef.kind, metaRef && metaRef.scope, metaRef && metaRef.name) : frontMetaOf(content);
+  return metaHeaderHtml(meta, {}) +
+    '<div data-md-render="1">' + renderMarkdown(splitFrontmatter(content).body) + '</div>' +
     rawDisclosure(tr('原文'), content);
 }
 
@@ -231,7 +235,7 @@ export function mountRefs(el, ctxc) {
         : await fetchObjContent(ctxc, ref);
       if (modal.hidden) return; // 已关=丢弃过期注水
       if (res.ok) {
-        body.innerHTML = renderDocBody(res.content);
+        body.innerHTML = renderDocBody(res.content, ref.type === 'obj' ? { kind: ref.kind, scope: ref.scope, name: ref.name } : null);
         if (res.repo && res.path) goBtn.dataset.ccGo = 'designdoc/' + encodeURIComponent(res.repo) + '/' + encodeURIComponent(res.path);
         else if (ref.type === 'obj') goBtn.dataset.ccGo = refRoute(ref.kind, ref.scope, ref.name);
         else goBtn.dataset.ccGo = '';

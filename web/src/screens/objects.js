@@ -9,6 +9,7 @@
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
 import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips, yamlTextView, dumpYaml } from '../render/md.js';
+import { paintMetaHeader } from '../render/meta-header.js';
 import { htmlModal } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -362,7 +363,8 @@ function renderScreen(el, ctx, ref) {
     (ref.kind === 'Agent' ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(tr('Provider 绑定现读中…')) + '</div></div>' : '') +
     tr('<section class="card obj-content" style="margin-bottom:12px"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') +
     chip('scope: ' + ref.scope, 'mute') + ' ' + chipGo(tr('编辑器'), docRoute(ref.kind, ref.scope, ref.name), 'mute', true) + '</span></div>' +
-    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
+    '<div class="card-b"><div data-meta-header-slot style="margin-bottom:8px">' + (cached ? '' : '') + '</div>' +
+    '<div data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></div></section>' +
     tr('<section class="card" style="margin-bottom:12px"><div class="card-h"><span class="h-title">相关任务与会话</span><span class="h-right">') +
     chipGo(tr('所属 scope'), 's/' + encodeURIComponent(ref.scope), 'mute', true) + '</span></div>' +
     '<div class="card-b">' + related + '</div></section>' +
@@ -386,6 +388,8 @@ function renderScreen(el, ctx, ref) {
 
   // R-UX-10：scheme=按钮弹窗按需；对话修改=主通路预填跳会话屏。
   bindSchemeModal(el, ctx, ref.kind, cached ? content : '');
+  // 元数据 header（2026-11-28 用户裁决：metadatainfo 侧车上屏——tag/创建/提交人/refs 公用组件）。
+  paintMetaHeader(el.querySelector('[data-meta-header-slot]'), ctx, ref, cached ? content : '');
   const chatBtn = el.querySelector('[data-obj-chatfix]');
   if (chatBtn) chatBtn.addEventListener('click', () => {
     window.__CC_CHAT_PREFILL__ = tr('请修改对象 ') + ref.kind + '/' + ref.scope + '/' + ref.name +
