@@ -1242,7 +1242,7 @@ var CoreConsoleWeb = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -1256,7 +1256,7 @@ var CoreConsoleWeb = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -1383,7 +1383,7 @@ var CoreConsoleWeb = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -1703,7 +1703,7 @@ var CoreConsoleWeb = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -1873,7 +1873,7 @@ var CoreConsoleWeb = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -2180,6 +2180,17 @@ var CoreConsoleWeb = (() => {
   }
 
   // src/core/router.js
+  var PARAM_EXITS = {
+    chat: { go: "chat/core-headless", label: "\u8FDB\u5165\u4F1A\u8BDD\uFF08\u9ED8\u8BA4 agent\uFF09" },
+    session: { go: "chat/core-headless", label: "\u56DE\u4F1A\u8BDD\u5217\u8868" },
+    task: { go: "tasks", label: "\u56DE\u5DE5\u4F5C\u4E0E\u6D41\u7A0B" },
+    event: { go: "events", label: "\u56DE\u4E8B\u4EF6\u6D41" },
+    doc: { go: "docs", label: "\u56DE\u6587\u6863\u4E0E\u8D44\u4EA7" },
+    wf: { go: "workflows", label: "\u56DE\u6D41\u7A0B\u8FD0\u884C" },
+    prop: { go: "proposals", label: "\u56DE\u63D0\u6848" },
+    s: { go: "home", label: "\u56DE\u9996\u9875" },
+    service: { go: "welcome", label: "\u56DE\u603B\u89C8" }
+  };
   function parseHash(hash) {
     let h = String(hash || "").replace(/^#\/?/, "");
     h = h.split("?")[0];
@@ -2215,8 +2226,30 @@ var CoreConsoleWeb = (() => {
       }
       return null;
     }
-    function notFoundHtml(segs) {
-      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + segs.map((s) => s).join("/") + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE\u9996\u9875\u5BF9\u8BDD\u8FDB\u5165\u3002</div><div class="e-act"><button class="btn btn-primary" data-go="home">\u56DE\u9996\u9875</button></div></div></div>';
+    function missingParamOf(segs) {
+      for (const r of routes) {
+        const ps = r.pattern.split("/");
+        if (ps.length <= segs.length) continue;
+        let prefix = true;
+        for (let i = 0; i < segs.length; i++) {
+          if (ps[i].charAt(0) === ":" || ps[i] !== segs[i]) {
+            prefix = false;
+            break;
+          }
+        }
+        if (prefix && ps[segs.length].charAt(0) === ":") {
+          return ps.slice(segs.length).filter((p) => p.charAt(0) === ":").map((p) => p.slice(1));
+        }
+      }
+      return null;
+    }
+    function notFoundHtml(segs, missing) {
+      const exit = missing && PARAM_EXITS[segs[0]];
+      const act = (exit ? '<button class="btn btn-primary" data-go="' + esc(exit.go) + '">' + esc(exit.label) + "</button> " : "") + '<button class="btn' + (exit ? " btn-secondary" : " btn-primary") + '" data-go="home">\u56DE\u9996\u9875</button>';
+      if (missing) {
+        return '<div class="view-inner"><div class="empty"><div class="e-title">\u7F3A\u53C2\u6570\uFF1A' + missing.map((p) => "<code>" + esc(p) + "</code>").join("\u3001") + '</div><div class="small faint">\u8FD9\u4E2A\u5730\u5740\u5C11\u4E86\u53C2\u6570\u2014\u2014\u4E0D\u7528\u624B\u62FC\uFF0C\u70B9\u4E0B\u9762\u5165\u53E3\u8FDB\u3002</div><div class="e-act">' + act + "</div></div></div>";
+      }
+      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + esc(segs.join("/")) + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE\u9996\u9875\u5BF9\u8BDD\u8FDB\u5165\u3002</div><div class="e-act">' + act + "</div></div></div>";
     }
     const api2 = {
       /** 注册屏（pattern 如 'wf/:name/r/:n'；fn(viewEl, params, ctx)）。 */
@@ -2252,7 +2285,7 @@ var CoreConsoleWeb = (() => {
         const hit = resolve(segs);
         if (!hit) {
           current = { route: "404", pattern: "", segs, params: {} };
-          viewEl.innerHTML = notFoundHtml(segs);
+          viewEl.innerHTML = notFoundHtml(segs, missingParamOf(segs));
           return null;
         }
         current = { route: hit.r.pattern.split("/")[0], pattern: hit.r.pattern, segs, params: hit.params };
@@ -2797,7 +2830,7 @@ var CoreConsoleWeb = (() => {
     return chip("\u540C\u6B65\u4E2D", "acc");
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -2999,7 +3032,7 @@ var CoreConsoleWeb = (() => {
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -4120,7 +4153,7 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -6256,7 +6289,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -8405,7 +8438,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -16948,6 +16981,7 @@ spec:
   var router = createRouter({ defaultRoute: "home" });
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
   if (typeof window !== "undefined") window.__CC_CONSOLE_CTX__ = ctx;
+  var DEFAULT_CHAT_AGENT = "core-headless";
   var NAV_TREE = [
     {
       level: "sys",
@@ -16962,7 +16996,7 @@ spec:
         ["docs", "\u6587\u6863\u4E0E\u8D44\u4EA7", "\u25A4"]
       ],
       sub: { label: "\u7CFB\u7EDF\u5E95\u5C42", items: [
-        ["chat/core-headless", "\u4F1A\u8BDD", "\u{1F4AC}"],
+        ["chat/" + DEFAULT_CHAT_AGENT, "\u4F1A\u8BDD", "\u{1F4AC}"],
         ["tree", "\u7CFB\u7EDF\u6811", "\u2443"],
         ["tags", "\u6807\u7B7E", "#"],
         ["designdoc", "\u8BBE\u8BA1\u6587\u6863", "\u270E"],
@@ -17184,7 +17218,7 @@ spec:
       } catch {
       }
     });
-    router.route("home", screenOf(render)).route("welcome", screenOf(render3)).route("obj", screenOf(render7)).route("obj/:kind", screenOf(render7)).route("obj/:kind/:scope/:name", screenOf(render7)).route("events", screenOf(render6)).route("event/:id", screenOf(render6)).route("tasks", screenOf(render4)).route("task/:id", screenOf(render4)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render8)).route("doc/:kind/:scope/:name", screenOf(render8)).route("chat/:agent", screenOf(render9)).route("session/:id", screenOf(render9)).route("approvals", screenOf(render2)).route("approvals/:focus", screenOf(render2)).route("inbox", screenOf(render2)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render5)).route("wf/:name", screenOf(render5)).route("wf/:name/r/:n", screenOf(render5)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
+    router.route("home", screenOf(render)).route("welcome", screenOf(render3)).route("obj", screenOf(render7)).route("obj/:kind", screenOf(render7)).route("obj/:kind/:scope/:name", screenOf(render7)).route("events", screenOf(render6)).route("event/:id", screenOf(render6)).route("tasks", screenOf(render4)).route("task/:id", screenOf(render4)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render8)).route("doc/:kind/:scope/:name", screenOf(render8)).route("chat", () => router.go("chat/" + DEFAULT_CHAT_AGENT)).route("chat/:agent", screenOf(render9)).route("session/:id", screenOf(render9)).route("approvals", screenOf(render2)).route("approvals/:focus", screenOf(render2)).route("inbox", screenOf(render2)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render5)).route("wf/:name", screenOf(render5)).route("wf/:name/r/:n", screenOf(render5)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
     router.mount(view);
     const stream = connectStream({
       url: BASES.ws || wsUrlOf(opts.location || (typeof location !== "undefined" ? location : null)),

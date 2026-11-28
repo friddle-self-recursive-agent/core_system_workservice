@@ -50,6 +50,9 @@ if (typeof window !== 'undefined') window.__CC_CONSOLE_CTX__ = ctx;
  *   sidebarHtml 渲染期 tr(label) 现译。 */
 /* 三级菜单树（2026-11-26 四次裁决：学 dsh 原生侧栏——一级=分组头可折叠，二级=条目，
  * 三级=缩进子组；语言切换挪顶栏右上角）。标签存源词形；icon=单色 glyph。 */
+/* #22（2026-11-28）：#/chat 裸路径的默认落点——与首页/侧栏「会话」入口同一 agent，
+ * 人手输 #/chat 不再落「未知路径」死胡同（R-UX-3 同族）。 */
+const DEFAULT_CHAT_AGENT = 'core-headless';
 const NAV_TREE = [
   {
     level: 'sys', label: 'Core Console', icon: '▣',
@@ -62,7 +65,7 @@ const NAV_TREE = [
       ['docs', '文档与资产', '▤'],
     ],
     sub: { label: '系统底层', items: [
-      ['chat/core-headless', '会话', '💬'],
+      ['chat/' + DEFAULT_CHAT_AGENT, '会话', '💬'],
       ['tree', '系统树', '⑃'],
       ['tags', '标签', '#'],
       ['designdoc', '设计文档', '✎'],
@@ -315,6 +318,9 @@ export function mount(root, opts = {}) {
     .route('report', screenOf(tasks.renderReport))
     .route('doc/:name', screenOf(editor.render))
     .route('doc/:kind/:scope/:name', screenOf(editor.render))
+    /* #22：#/chat 裸路径 → 默认 agent 对话（重定向到可分享的 #/chat/core-headless，
+     * 不把 :agent 参数拼写甩给人）；真实对话仍走 chat/:agent 屏。 */
+    .route('chat', () => router.go('chat/' + DEFAULT_CHAT_AGENT))
     .route('chat/:agent', screenOf(chat.render))
     .route('session/:id', screenOf(chat.render))
     .route('approvals', screenOf(approvals.render))
