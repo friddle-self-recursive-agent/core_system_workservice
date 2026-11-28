@@ -357,6 +357,35 @@ func (s *Set) Read(repoName, path string) (*Doc, error) {
 	return s.read(r, path)
 }
 
+// ReadSidecar 侧车只读（R-DOC-6 `<md路径>.metadatainfo`——2026-11-28 用户裁决 metadatainfo
+// 上屏：console 元数据 header 组件数据源）。白名单面只收 .md，侧车走本口面：
+// 仅 `*.md.metadatainfo` 单一后缀放行（仓注册+路径穿越+.git 拒绝同 validatePath 口径），
+// 零写路径（read 只读 HEAD）。
+func (s *Set) ReadSidecar(repoName, path string) (*Doc, error) {
+	if !strings.HasSuffix(path, ".md.metadatainfo") {
+		return nil, fmt.Errorf("%w: 侧车口面只收 <md>.metadatainfo（实得 %q）", ErrForbidden, path)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.repo(repoName)
+	if !ok {
+		return nil, ErrNoRepo
+	}
+	if err := validateSidecarPath(repoName, path); err != nil {
+		return nil, err
+	}
+	return s.read(r, path)
+}
+
+// validateSidecarPath 侧车路径校验（<md>.metadatainfo：剥离后缀后必须过 .md 白名单校验）。
+func validateSidecarPath(repoName, path string) error {
+	base := strings.TrimSuffix(path, ".metadatainfo")
+	if base == path {
+		return fmt.Errorf("%w: 侧车路径缺 .metadatainfo 后缀 %q", ErrForbidden, path)
+	}
+	return validatePath(repoName, base+".md")
+}
+
 func (s *Set) read(r *Repo, path string) (*Doc, error) {
 	sha, err := r0git(r.Root, "rev-parse", "HEAD:"+path)
 	if err != nil {

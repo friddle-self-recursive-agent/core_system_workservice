@@ -23,6 +23,8 @@ import (
 type DesignDocs interface {
 	List() ([]docrepo.File, error)
 	Read(repo, path string) (*docrepo.Doc, error)
+	// ReadSidecar 侧车只读（R-DOC-6 `<md>.metadatainfo`——metadatainfo 上屏数据源）。
+	ReadSidecar(repo, path string) (*docrepo.Doc, error)
 	Apply(ctx context.Context, req docrepo.ApplyRequest) (*docrepo.Result, error)
 	// WriteEnabled 写面就绪态（引擎装配=--design-repo ∧ --allow-apply；未就绪=写路由 405）。
 	WriteEnabled() bool
@@ -190,7 +192,7 @@ func registerDesignDocRoutes(mux *http.ServeMux, designDocs DesignDocs, drafts D
 		}
 		// 侧车元数据投影（2026-11-28 用户裁决：metadatainfo 上屏）——`<path>.metadatainfo`
 		// HEAD 现读（tags/importance）；缺席=不带 meta 键零编造。
-		if side, serr := designDocs.Read(repo, path+".metadatainfo"); serr == nil {
+		if side, serr := designDocs.ReadSidecar(repo, path+".metadatainfo"); serr == nil {
 			if tags, imp, ok := repository.ParseSidecarMeta(side.ContentStr); ok {
 				metaMap := map[string]any{"importance": imp}
 				if tags != nil {
