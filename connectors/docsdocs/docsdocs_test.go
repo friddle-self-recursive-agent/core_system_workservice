@@ -6,8 +6,13 @@ package docsdocs
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
@@ -94,19 +99,83 @@ func TestReleasePublishGhAbsentFailsExplicit(t *testing.T) {
 	}
 }
 
-func TestReleasePublishTagAbsentSkips(t *testing.T) {
+// fakeGH 日 tag 策略测试替身（connectops-gh 词形——release-list 在册/release-create 记账）。
+type fakeGH struct {
+	existing []string
+	created  []string
+}
+
+func (f *fakeGH) Type() string                    { return "connectops-gh" }
+func (f *fakeGH) Version() string                 { return "test" }
+func (f *fakeGH) Ops() []string                   { return []string{"release-list", "release-create"} }
+func (f *fakeGH) Probe(ctx context.Context) error { return nil }
+func (f *fakeGH) Invoke(ctx context.Context, op string, params []byte) ([]byte, error) {
+	var q struct {
+		Tag string `json:"tag"`
+	}
+	_ = json.Unmarshal(params, &q)
+	switch op {
+	case "release-list":
+		out := make([]map[string]any, 0, len(f.existing))
+		for _, t := range f.existing {
+			out = append(out, map[string]any{"tag_name": t})
+		}
+		return json.Marshal(out)
+	case "release-create":
+		f.created = append(f.created, q.Tag)
+		return json.Marshal(map[string]any{"tag_name": q.Tag})
+	}
+	return nil, fmt.Errorf("op %s 未路由", op)
+}
+
+// 日 tag 策略（2026-11-28 用户裁决「默认1天做多1个」）：tag 缺席派生 v<UTC 日期>——
+// 当日已在册=skipped 不冒充新发版；不在册=release-create 真发（派生 tag 回填）。
+func TestReleasePublishDailyTagPolicy(t *testing.T) {
+	ctx := context.Background()
+	sch := mustSch(t)
+	today := "v" + time.Now().UTC().Format("2006.01.02")
+	// ①当日已在册 → skipped。
+	f1 := &fakeGH{existing: []string{today, "v0.1.0"}}
+	connectors.RegisterOpsConnector(f1)
+	c1 := New(newRepo(t, sch), sch)
+	if err := c1.ApplyConfig([]byte(`{"dir": "` + t.TempDir() + `"}`)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := c1.Invoke(ctx, "release-publish", []byte(`{"owner":"o","repo":"r"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(res), `"skipped"`) || !strings.Contains(string(res), today) {
+		t.Fatalf("当日已发应 skipped 注记含当日 tag: %s", res)
+	}
+	if len(f1.created) != 0 {
+		t.Fatalf("当日已发不应 create: %v", f1.created)
+	}
+	// ②当日未发 → 派生 tag 真发。
+	f2 := &fakeGH{existing: []string{"v0.1.0"}}
+	connectors.RegisterOpsConnector(f2)
+	c2 := New(newRepo(t, sch), sch)
+	if err := c2.ApplyConfig([]byte(`{"dir": "` + t.TempDir() + `"}`)); err != nil {
+		t.Fatal(err)
+	}
+	res2, err := c2.Invoke(ctx, "release-publish", []byte(`{"owner":"o","repo":"r"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(res2), today) || len(f2.created) != 1 || f2.created[0] != today {
+		t.Fatalf("当日未发应派生 tag 真发: res=%s created=%v", res2, f2.created)
+	}
+}
+
+// gh 委托缺席 + tag 缺席 → 显式失败（日检查与发版都不可执行——不静默不编造）。
+func TestReleasePublishTagAbsentWithoutGhFailsExplicit(t *testing.T) {
 	ctx := context.Background()
 	sch := mustSch(t)
 	c := New(newRepo(t, sch), sch)
 	if err := c.ApplyConfig([]byte(`{"dir": "` + t.TempDir() + `"}`)); err != nil {
 		t.Fatal(err)
 	}
-	// tag 未声明=release 跳过（docs push 照走、显式注记不冒充——不调用 gh 委托）。
-	res, err := c.Invoke(ctx, "release-publish", []byte(`{"repo":"core_system_workservice"}`))
-	if err != nil {
-		t.Fatalf("tag 缺席应跳过而非失败: %v", err)
-	}
-	if !strings.Contains(string(res), `"skipped"`) {
-		t.Fatalf("skip 注记缺席: %s", res)
+	if _, err := c.Invoke(ctx, "release-publish", []byte(`{"repo":"core_system_workservice"}`)); err == nil {
+		t.Fatal("gh 委托缺席应显式失败")
 	}
 }
