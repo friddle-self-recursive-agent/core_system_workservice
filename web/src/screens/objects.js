@@ -7,34 +7,55 @@
  * 安全红线：一切动态文本 esc/或经 md 渲染管线；零原文直插。 */
 
 import { esc, trunc } from '../core/format.js';
-import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute, sessionTargetOf } from '../render/chips.js';
+export { sessionTargetOf }; // #16 会话词形路由共享入口（tasks.js 同口径，避免跨屏 import 偏序）
 import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, yamlTextView, dumpYaml } from '../render/md.js';
 import { paintMetaHeader } from '../render/meta-header.js';
 import { htmlModal } from './modal.js';
 import { openDocChat } from './doc-chat.js';
 import { t as tr } from '../core/i18n.js';
 
-/* ---------- 相关任务与会话（R-UX-10 2026-11-28 用户裁决：内容优先+周边信息直达） ----------
- * 确定性纯函数（机械直测）：对象名在任务字段（name/spec.title/summary/source/sourceRef）提及
- * 即命中；run 的 involved 提及即命中。状态人话、session 可点直达。零编造——不在册=诚实空态。 */
+/* ---------- 相关任务与会话（#16 五处断链修复：数据全在，匹配规则断裂） ----------
+ * 确定性纯函数（机械直测），按优先级多路命中：
+ *   ① spec.agent == objKey（最强关联字段——此前被 taskRow 投影丢弃）
+ *   ② ownerRefs 反查 / 任务键 agentSession hint（<scope>/<task>——非 sessionId 词形）
+ *   ③ 事件 involved == objKey 反查（involved 锚被涉对象，执行者不在其中——并查 run.agent）
+ *   ④ Agent.status.currentSession → 会话卡（读对象自身 status）
+ *   ⑤ 文本兜底（spec.title/summary/source/sourceRef 已回投——此前全 undefined）。
+ * 零编造——不在册=诚实空态；sessionId 词形判别决定 chip 路由（hint 链任务、真会话链 session）。 */
 
-/** 相关任务行匹配（纯函数）：Task 对象同名精确 + 他类对象字段提及；行=可点任务+可点会话。
- * 任务行双词形兼容（F-05 同口径）：快照扁平行（phase/agentSession 顶层）∪ API 嵌套行（status/spec 包裹）。 */
+/** 任务键 hint（非 session-* 且含 /）提及 objKey——大小写不敏感，整串/末段双口径。 */
+function taskHintMentions(sess, low) {
+  const s = String(sess || '').trim().toLowerCase();
+  if (!s || s.length < 4 || !s.includes('/') || /^session[-_]/i.test(s)) return false;
+  return s === low || s.endsWith('/' + low) || s.includes(low);
+}
+
+/** 相关任务行匹配（纯函数）：五路命中任一即入列；行=可点任务 + 按词形路由的会话/任务 chip。 */
 export function relatedTasksOf(name, tasks) {
-  const n = String(name || '');
+  const n = String(name || '').trim();
   if (!n) return [];
+  const low = n.toLowerCase();
   const out = [];
   (tasks || []).forEach((t) => {
     if (!t) return;
     const spec = t.spec || {};
     const st = t.status || t; // 嵌套缺席=扁平行兜底
     const id = (t.scope || 'global') + '/' + String(t.name || '');
+    const sess = String(st.agentSession || st.sessionId || '').trim();
+    const isSelf = String(t.name || '') === n;
+    const agent = String(spec.agent || t.agent || '').trim().toLowerCase();
+    const owners = (spec.ownerRefs || t.ownerRefs || []).map((x) => String(x || '').trim().toLowerCase());
+    // ① spec.agent 精确（最强关联字段）
+    const byAgent = !!agent && agent === low;
+    // ② ownerRefs / 任务键 agentSession hint
+    const byOwner = owners.some((r) => r === low || r.endsWith('/' + low));
+    const byHint = taskHintMentions(sess, low);
+    // ⑤ 文本兜底（spec 四字段回投后 hay 恢复完整）
     const hay = [t.name, spec.title, spec.summary, spec.source, spec.sourceRef, t.title]
       .map((x) => String(x || '').toLowerCase()).join(' \n');
-    const isSelf = String(t.name || '') === n;
-    const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
-    if (!isSelf && !mentioned) return;
-    const sess = String(st.agentSession || st.sessionId || '').trim();
+    const byText = !isSelf && low.length >= 4 && hay.includes(low);
+    if (!isSelf && !byAgent && !byOwner && !byHint && !byText) return;
     out.push({
       id, self: isSelf,
       title: String(spec.title || t.title || t.name || id),
@@ -47,17 +68,52 @@ export function relatedTasksOf(name, tasks) {
   return out.sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)).slice(0, 8);
 }
 
-/** 相关 run 行匹配（纯函数）：run.involved 提及对象名即命中；行=可点 workflow run。 */
+/** 相关 run 行匹配（纯函数）：#16 ③ involved 被涉对象 ∪ agent 执行者（执行者词形此前缺席）。 */
 export function relatedRunsOf(name, runs) {
   const n = String(name || '').toLowerCase();
   if (!n || n.length < 4) return [];
-  return (runs || []).filter((r) => String((r && r.involved) || '').toLowerCase().includes(n))
-    .slice(0, 8).map((r) => ({
-      workflow: String((r && (r.workflow || r.name)) || ''),
-      run: r && (r.run != null ? r.run : (r.no != null ? r.no : '')),
-      phase: String((r && r.phase) || ''),
-      status: String((r && r.status) || ''),
-    }));
+  return (runs || []).filter((r) => {
+    if (!r) return false;
+    const a = String(r.agent || '').trim().toLowerCase();
+    if (a && (a === n || a.endsWith('/' + n))) return true; // 执行者（与 involved 正交）
+    return String(r.involved || '').toLowerCase().includes(n); // 被涉对象
+  }).slice(0, 8).map((r) => ({
+    workflow: String((r && (r.workflow || r.name)) || ''),
+    run: r && (r.run != null ? r.run : (r.no != null ? r.no : '')),
+    phase: String((r && r.phase) || ''),
+    status: String((r && r.status) || ''),
+  }));
+}
+
+/** 相关事件行匹配（纯函数）：#16 ③ 事件 involved==objKey 反查（实测 2 条——run 侧无执行者时兜底）。 */
+export function relatedEventsOf(name, events) {
+  const n = String(name || '').toLowerCase();
+  if (!n || n.length < 4) return [];
+  return (events || []).filter((e) => {
+    if (!e) return false;
+    const inv = String(e.involved || '').toLowerCase();
+    const who = String(e.agent || e.owner || '').trim().toLowerCase();
+    return inv.includes(n) || (!!who && (who === n || who.endsWith('/' + n)));
+  }).slice(0, 8).map((e) => ({
+    type: String(e.type || ''),
+    eventId: String(e.eventId || e.id || ''),
+    at: String(e.ts || e.at || ''),
+  }));
+}
+
+/** 对象自身 status.currentSession.id（#16 ④——Agent 执行体挂着真实 session id，此前会话卡不读对象自身）。 */
+export function currentSessionOf(content) {
+  let src = String(content || '');
+  if (!src.trim()) return '';
+  if (src.startsWith('---')) {
+    const end = src.indexOf('\n---', 3);
+    if (end > 3) src = src.slice(3, end);
+  }
+  const d = loadYaml(src);
+  const cur = (d && d.status && d.status.currentSession) || (d && d.currentSession);
+  if (!cur) return '';
+  const id = typeof cur === 'string' ? cur : (cur.id || cur.sessionId || cur.session || '');
+  return String(id || '').trim();
 }
 
 const PHASE_CHIP = {
@@ -72,9 +128,18 @@ function phaseChipText(p) {
   return v ? chip(v[0], v[1]) : chip(String(p || tr('状态未知')), 'mute');
 }
 
-function relatedPanelHtml(tasks, runs) {
-  if (!tasks.length && !runs.length) {
-    return tr('<div class="ob-empty">无相关任务与工作流运行（快照任务/运行记录提及本对象名零命中——不编造）。</div>');
+/** agentSession chip：真实 sessionId→session 屏；任务键 hint（<scope>/<task>）→任务详情（#16 路由防断）。 */
+function sessionChipHtml(sess) {
+  const target = sessionTargetOf(sess);
+  if (!target) return '';
+  const isTask = target.startsWith('task/');
+  return chipGo(isTask ? tr('看任务') : tr('看会话'), target, 'acc', true,
+    isTask ? tr('任务键会话提示——链任务详情') : tr('查看执行会话'));
+}
+
+function relatedPanelHtml(tasks, runs, currentSess, events) {
+  if (!tasks.length && !runs.length && !currentSess && !events.length) {
+    return tr('<div class="ob-empty">无相关任务/会话/运行/事件（快照零命中——不编造）。</div>');
   }
   const taskRows = tasks.map((x) =>
     '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + ' <b>' + esc(trunc(x.title, 44)) + '</b> ' +
@@ -82,16 +147,28 @@ function relatedPanelHtml(tasks, runs) {
     '<div class="mr-sub small mono">' + esc(trunc(x.id, 48)) +
     (x.lastAction ? ' · ' + esc(trunc(x.lastAction, 60)) : '') + '</div></div>' +
     '<span class="w-ev-time">' +
-    (x.session ? chipGo(tr('看会话'), 'session/' + encodeURIComponent(x.session), 'acc', true, tr('查看执行会话')) : '') + ' ' +
+    (x.session ? sessionChipHtml(x.session) : '') + ' ' +
     chipGo(tr('任务详情'), 'task/' + encodeURIComponent(x.id), 'mute', true) + '</span></div>'
   ).join('');
+  // #16 ④：对象自身 status.currentSession（Agent 执行体真 session id）——独立会话卡可点。
+  const sessHtml = currentSess ? '<div class="mini-row"><div class="mr-main"><div>' + chip(tr('当前会话'), 'acc') +
+    ' <span class="mono">' + esc(trunc(currentSess, 56)) + '</span></div></div><span class="w-ev-time">' +
+    sessionChipHtml(currentSess) + '</span></div>' : '';
   const runRows = runs.map((x) =>
     '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase || x.status) + ' <b>' +
     esc(x.workflow) + '</b> ' + chip('run #' + String(x.run != null ? x.run : '?'), 'mono') + '</div></div>' +
     '<span class="w-ev-time">' + chipGo(tr('看运行'), 'wf/' + encodeURIComponent(x.workflow) + '/r/' + encodeURIComponent(String(x.run != null ? x.run : '')), 'mute', true) + '</span></div>'
   ).join('');
+  // #16 ③：事件 involved 反查（被涉对象侧的真实关联——run.agent 缺席时兜底）。
+  const eventRows = events.map((x) =>
+    '<div class="mini-row"><div class="mr-main"><div>' + chip(tr('事件'), 'mute') + ' <b>' + esc(trunc(x.type, 44)) + '</b> ' +
+    (x.eventId ? chip('#' + String(x.eventId), 'mono') : '') + '</div></div>' +
+    '<span class="w-ev-time">' + esc(trunc(x.at, 20)) + '</span></div>'
+  ).join('');
   return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(tr('相关任务')) + '</div>' + taskRows : '') +
-    (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(tr('相关工作流运行')) + '</div>' + runRows : '');
+    (sessHtml ? '<div class="small faint" style="margin:8px 0 4px">' + esc(tr('当前会话')) + '</div>' + sessHtml : '') +
+    (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(tr('相关工作流运行')) + '</div>' + runRows : '') +
+    (eventRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(tr('相关事件')) + '</div>' + eventRows : '');
 }
 
 /** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。
@@ -350,7 +427,9 @@ function renderScreen(el, ctx, ref) {
   const ruleState = rulesPending.get(ref.kind + '|' + ref.name) || null;
   const related = relatedPanelHtml(
     relatedTasksOf(ref.name, ctx.store.tasks()),
-    relatedRunsOf(ref.name, ctx.store.runs()));
+    relatedRunsOf(ref.name, ctx.store.runs()),
+    currentSessionOf(content), // #16 ④ 对象自身 status.currentSession
+    relatedEventsOf(ref.name, ctx.store.events())); // #16 ③ 事件 involved 反查
 
   el.innerHTML = '<div class="view-inner">' +
     screenHead(ref.name, tr('内容优先：正文与相关任务会话直达；scheme 经按钮按需查看'),

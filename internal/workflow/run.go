@@ -179,6 +179,9 @@ type RunRecord struct {
 	Involved       string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
 	//                             v0.37 console 读面第二段新增载荷键=代际判别器：运行抽屉「涉及文档」
 	//                             直接取本字段落对象链接，无前端拼凑）
+	// #16 执行 agent 锚（与 involved 正交：involved=被涉对象，agent=执行者——
+	// workflow 对象 spec.agent / spec.services 解析；Agent 对象页 run 反查的锚）。
+	Agent     string
 	SessionID string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执经 AttachSessionID 回填，
 	//                         export.go LoopSession 读面消费；空=未回填不冒充已拉起）
 	Verify *VerifyVerdict // Verify 相位硬 gate 判定投影（G-09/G-12：离开 Verifying 相位先过 gate——
@@ -404,6 +407,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	approvalMode := "" // 空=human 缺省（审批策略声明走对象 spec）
 	var approvalPolicy ApprovalPolicy
 	var nodes []NodeView
+	agent := "" // #16 执行 agent 锚（对象 spec 解析；空=未声明——诚实缺席）
 	if r.opts.Specs != nil {
 		view := r.opts.Specs.ResolveSpec(wf)
 		if source == SpecObject {
@@ -419,6 +423,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		// docs 权威种子的富节点 unit:service 声明仍供拉起面——纯 builtin 无文档对象=零投影
 		// 零翻转；文档词形与 builtin 相位词汇分歧时 serviceNodeOf 查不中=天然零动作防御）。
 		nodes = view.Nodes
+		agent = view.Agent // #16 执行者随 run 投影落载荷（与 involved 被涉对象正交）
 		approvalPolicy = view.Approval
 		if view.ApprovalMode != "" {
 			approvalMode = view.ApprovalMode // spec.approval.mode=auto|agent 投影（Agent 节点自动判断/自动级别）
@@ -520,7 +525,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		ApprovalMode: approvalMode, ApprovalPolicy: approvalPolicy, Nodes: nodes,
 		Phase: phase, Status: status, Brakes: brk, History: hist,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
-		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
+		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, Agent: agent, StartedAt: rec.ReceivedAt,
 		ParentRun: rec.ParentRun,
 	}
 	if nr.Status == RunSuspended && Phase(nr.Phase) == AwaitingApproval && r.selfApproveMode(nr.ApprovalMode) {

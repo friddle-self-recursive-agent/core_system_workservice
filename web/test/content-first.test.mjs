@@ -2,7 +2,7 @@
 // 对象页相关任务/会话/运行匹配纯函数 + 会话背景卡 + scheme 弹窗形态 + 正文先行。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { relatedTasksOf, relatedRunsOf, contentPanel } from '../src/screens/objects.js'
+import { relatedTasksOf, relatedRunsOf, relatedEventsOf, currentSessionOf, sessionTargetOf, contentPanel } from '../src/screens/objects.js'
 import { sessionTasksOf, sessBacklinksHtml } from '../src/screens/chat-links.js'
 
 const store = {
@@ -73,4 +73,52 @@ test('defaultSideOpen：#/session/:id 深链=清单默认收起；#/chat 入口=
   assert.equal(defaultSideOpen('session-9bc0'), false, '具体会话深链=收起')
   assert.equal(defaultSideOpen(''), true, 'agent 入口=展开')
   assert.equal(defaultSideOpen(undefined), true)
+})
+
+/* #16 对象页五处断链：关联数据在场但投影/词形/匹配规则断裂 */
+test('#16 ①spec.agent 精确命中（最强关联字段——文本零巧合也命中）', () => {
+  const tasks = [
+    { scope: 'global', name: 'impl-issue-16', spec: { title: '实现修复', agent: 'core-headless' }, status: { phase: 'canceled', agentSession: 'self-recursive-core/impl-issue-16' } },
+    { scope: 'global', name: 'unrelated', spec: { title: '别的活', agent: 'other-agent' } },
+  ]
+  const rows = relatedTasksOf('core-headless', tasks)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, 'global/impl-issue-16')
+  assert.equal(rows[0].agent, 'core-headless')
+  assert.equal(rows[0].phase, 'canceled', '含 canceled 实现任务')
+})
+
+test('#16 ②任务键 agentSession hint / ownerRefs 命中', () => {
+  const tasks = [
+    { scope: 'self-recursive-core', name: 't-1', status: { agentSession: 'self-recursive-core/align-core-headless-docs' } },
+  ]
+  assert.equal(relatedTasksOf('core-headless', tasks).length, 1, 'hint 末段命中')
+  const owned = [{ scope: 'global', name: 't-2', spec: { ownerRefs: ['Agent/global/core-headless'] } }]
+  assert.equal(relatedTasksOf('core-headless', owned).length, 1, 'ownerRefs 反查命中')
+})
+
+test('#16 ③run.agent 执行者 + 事件 involved 反查（involved 锚被涉对象不含执行者）', () => {
+  const runs = [
+    { workflow: 'gh-issue-trigger', run: 7, agent: 'core-headless' },
+    { workflow: 'other', run: 8, involved: 'Proposal/other' },
+  ]
+  const rows = relatedRunsOf('core-headless', runs)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].run, 7, 'run.agent 命中')
+  const events = [
+    { type: 'ServiceStateChanged', eventId: 'e1', involved: 'Agent/global/core-headless' },
+    { type: 'Other', eventId: 'e2', involved: 'Proposal/x' },
+  ]
+  const er = relatedEventsOf('core-headless', events)
+  assert.equal(er.length, 1)
+  assert.equal(er[0].eventId, 'e1')
+})
+
+test('#16 ④对象自身 status.currentSession → 会话卡；⑤session 词形路由防断', () => {
+  const yaml = 'apiVersion: core/v1\nkind: Agent\nmetadata: {name: core-headless}\nstatus:\n  currentSession:\n    id: session-bdfd7679\n'
+  assert.equal(currentSessionOf(yaml), 'session-bdfd7679')
+  assert.equal(currentSessionOf('---\nstatus: {currentSession: {id: session-x}}\n---\nbody'), 'session-x')
+  assert.equal(currentSessionOf(''), '')
+  assert.equal(sessionTargetOf('session-bdfd7679'), 'session/session-bdfd7679', '真 session 走会话屏')
+  assert.equal(sessionTargetOf('self-recursive-core/impl-issue-16'), 'task/self-recursive-core%2Fimpl-issue-16', '任务键 hint 走任务详情')
 })

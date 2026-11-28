@@ -14,6 +14,7 @@
 package workflow
 
 import (
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -83,6 +84,7 @@ type SpecView struct {
 	BugDocPolicy string           // 临时 BugDoc 收尾策略投影（invalidate|delete|keep）
 	PostActions  []PostActionView // 解释器通用收尾动作清单
 	Nodes        []NodeView       // 节点声明投影（富节点 unit/service/op/role——service session 拉起面消费）
+	Agent        string           // #16 执行 agent 锚（spec.agent / spec.services.agent / spec.services.involved 归一——对象页 run 反查；空=未声明）
 }
 
 // SpecResolver 对象 spec 解析面（对象声明表解析 v0.27 首段+相位投影 v0.28，workflows
@@ -126,12 +128,40 @@ type docsSpecDecl struct {
 			Agent    string `yaml:"agent"`
 			Provider string `yaml:"provider"`
 		} `yaml:"approvalDiff"`
+		Agent    string `yaml:"agent"` // #16 执行 agent 锚（与 services 二选一）
+		Services struct {
+			Agent    string `yaml:"agent"`
+			Involved []any  `yaml:"involved"`
+		} `yaml:"services"`
 		Regression struct {
 			BugDocPolicy    string           `yaml:"bugDocPolicy"` // invalidate|delete|keep
 			CleanTempBugDoc *bool            `yaml:"cleanTempBugDoc"`
 			PostActions     []PostActionView `yaml:"postActions"`
 		} `yaml:"regression"`
 	} `yaml:"spec"`
+}
+
+// agentRefName 归一 spec.services.involved 引用 → agent 名（容忍 "Agent/global/<name>"、
+// "<scope>/<name>"、裸名、"agent:<name>" 等词形——取末段去 kind/协议前缀；无字符串=空）。
+// #16：仅作 run.agent 反查锚，归一失败=空（不把引用原串当 agent 名冒充）。
+func agentRefName(v any) string {
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, "/")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		name = strings.TrimSpace(name[i+1:])
+	}
+	if name == "" || name == "global" || name == "builtin" {
+		return ""
+	}
+	return name
 }
 
 // parsePhaseNode 解析单条相位节点（标量字符串或富节点 map）→ NodeView（ok=false=不可投影）。
@@ -230,6 +260,21 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 	}
 	if doc.Spec.ApprovalDiff.Provider != "" {
 		view.Approval.DiffProvider = doc.Spec.ApprovalDiff.Provider
+	}
+	// #16 执行 agent 锚（run 投影随行——Agent 对象页按 agent 反查相关运行）：
+	// spec.agent 优先 → spec.services.agent → spec.services.involved 首个可归一引用。
+	// 全缺席=空（诚实缺席，不把 workflow 名/Owner 冒充 agent）。
+	view.Agent = strings.TrimSpace(doc.Spec.Agent)
+	if view.Agent == "" {
+		view.Agent = strings.TrimSpace(doc.Spec.Services.Agent)
+	}
+	if view.Agent == "" {
+		for _, ref := range doc.Spec.Services.Involved {
+			if a := agentRefName(ref); a != "" {
+				view.Agent = a
+				break
+			}
+		}
 	}
 	nodeToPhase := map[string]string{}
 	type entryBinding struct {

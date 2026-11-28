@@ -7,7 +7,7 @@
 
 import { esc, relAge, trunc } from '../core/format.js';
 import { confirmModal, toast } from './modal.js';
-import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute, objRoute, sessionTargetOf } from '../render/chips.js';
 import { hydrateLoop } from './welcome.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -279,9 +279,19 @@ function taskDetailScreen(el, ctx, id) {
     [tr('标题'), esc(taskTitle(t))],
     ['id', esc(taskIdOf(t))],
   ];
-  if (spec.agent || s.agent) rows.push([tr('负责'), esc(String(s.agent || spec.agent))]);
+  // #16 双向可达：负责 agent → Agent 对象页（对象页 spec.agent 反查任务详情的另一半）。
+  if (spec.agent || s.agent) {
+    const ag = String(s.agent || spec.agent).trim();
+    const seg = ag.split('/');
+    const scope = seg.length > 1 ? seg[0] : 'global';
+    const name = seg.length > 1 ? seg.slice(1).join('/') : ag;
+    rows.push([tr('负责'), chipGo(ag, objRoute('Agent', scope, name), 'mute', true, tr('打开 Agent 对象页'))]);
+  }
   const sessId = String(s.agentSession || s.sessionId || '').trim();
-  if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
+  if (sessId) {
+    const sessTarget = sessionTargetOf(sessId); // #16 任务键 hint 不冒充 session 深链
+    rows.push([tr('会话'), chipGo(trunc(sessId, 24), sessTarget, 'acc', true, tr('关联会话'))]);
+  }
   if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('状态未知（可取消或核查调度日志）'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);

@@ -78,6 +78,7 @@ type Spec struct {
 	Touches        Touches
 	Priority       string
 	Agent          string
+	OwnerRefs      []string // 归属对象引用（metadata.ownerRefs/spec.ownerRefs——对象页相关任务反查）
 	Workspace      Workspace
 	PermissionMode string        // 调用 dsh agent 的权限档声明（2026-11-27 用户裁定：显式配置非隐式默认全权；空=宿主缺省 danger-full-access）
 	MaxConcurrent  int           // limits.maxConcurrent 单任务覆写（只收紧不放宽）
@@ -97,8 +98,9 @@ type Status struct {
 // taskDecl 解析宿主（宽松；refs 容忍字符串/映射两种词形——scheme 声明 ref 但既有文档两栖）。
 type taskDecl struct {
 	Metadata struct {
-		Name  string `yaml:"name"`
-		Scope string `yaml:"scope"`
+		Name      string `yaml:"name"`
+		Scope     string `yaml:"scope"`
+		OwnerRefs []any  `yaml:"ownerRefs"`
 	} `yaml:"metadata"`
 	Spec struct {
 		Title     string `yaml:"title"`
@@ -106,6 +108,7 @@ type taskDecl struct {
 		Source    string `yaml:"source"`
 		SourceRef any    `yaml:"sourceRef"`
 		ScopeRef  any    `yaml:"scopeRef"`
+		OwnerRefs []any  `yaml:"ownerRefs"`
 		DependsOn []any  `yaml:"dependsOn"`
 		Touches   struct {
 			Repos     []any    `yaml:"repos"`
@@ -154,6 +157,7 @@ func Parse(content []byte) (Spec, Status, bool) {
 		SourceRef: refID(d.Spec.SourceRef), ScopeRef: refID(d.Spec.ScopeRef),
 		DependsOn: refIDs(d.Spec.DependsOn), Priority: strings.TrimSpace(d.Spec.Priority),
 		Agent:          refID(d.Spec.Agent),
+		OwnerRefs:      nonEmpty(append(refIDs(d.Metadata.OwnerRefs), refIDs(d.Spec.OwnerRefs)...)),
 		Workspace:      Workspace{Mode: d.Spec.Workspace.Mode, Base: d.Spec.Workspace.Base, Branch: d.Spec.Workspace.Branch},
 		PermissionMode: d.Spec.PermissionMode,
 		MaxConcurrent:  d.Spec.Limits.MaxConcurrent,
