@@ -93,3 +93,20 @@ func TestReleasePublishGhAbsentFailsExplicit(t *testing.T) {
 		t.Fatal("gh 委托缺席应显式失败")
 	}
 }
+
+func TestReleasePublishTagAbsentSkips(t *testing.T) {
+	ctx := context.Background()
+	sch := mustSch(t)
+	c := New(newRepo(t, sch), sch)
+	if err := c.ApplyConfig([]byte(`{"dir": "` + t.TempDir() + `"}`)); err != nil {
+		t.Fatal(err)
+	}
+	// tag 未声明=release 跳过（docs push 照走、显式注记不冒充——不调用 gh 委托）。
+	res, err := c.Invoke(ctx, "release-publish", []byte(`{"repo":"core_system_workservice"}`))
+	if err != nil {
+		t.Fatalf("tag 缺席应跳过而非失败: %v", err)
+	}
+	if !strings.Contains(string(res), `"skipped"`) {
+		t.Fatalf("skip 注记缺席: %s", res)
+	}
+}

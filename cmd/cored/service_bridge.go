@@ -2,16 +2,17 @@
 // 的 agent 可以用 session 来解决。突破下限制」——workflow.md §1.3 / console-ui.md §19.8.9）。
 //
 // 链路（wake 桥同族——固定载荷零 shell 拼接、loopback、超时 5s）：
-//  ① run 推进落 unit=service 节点 → RunLog.landAfterAdvanceLocked 挂起（suspendWhy=service）
-//     + 拉起请求 → 本桥 SpawnFromRun：解析 service 的 agent（ServiceDesc.instances.agentRefs
-//     文档库现读；未命中=诚实缺席注记不编造）→ 拉起投影落账（ServiceSpawnLog.Dispatch 写穿透）
-//     → 异步 POST 宿主 /service/spawn 桥（CORE_SYSTEM_SERVICE_SPAWN_ADDR）；
-//  ② 宿主回执 {status, pid, sessionId} → 会话锚回填（AttachSession——sessionId 优先，缺席=
-//     pid:<n> 降级锚，G-08 同词形）；
-//  ③ 完成面：部署侧 session 退出后经事件注入面发布 ServiceSessionCompleted（scheme 注册类型）
-//     → hub 转发本桥 ServiceSignal：定位该 run 的在途拉起投影翻终态词形（completed；error/fatal
-//     级=failed——失败不续行，run 保持挂起缺口可见）→ 转交 RunLog.ServiceSignal 续行（携带
-//     会话锚——续行 history 行回填真实会话锚）。
+//
+//	① run 推进落 unit=service 节点 → RunLog.landAfterAdvanceLocked 挂起（suspendWhy=service）
+//	   + 拉起请求 → 本桥 SpawnFromRun：解析 service 的 agent（ServiceDesc.instances.agentRefs
+//	   文档库现读；未命中=诚实缺席注记不编造）→ 拉起投影落账（ServiceSpawnLog.Dispatch 写穿透）
+//	   → 异步 POST 宿主 /service/spawn 桥（CORE_SYSTEM_SERVICE_SPAWN_ADDR）；
+//	② 宿主回执 {status, pid, sessionId} → 会话锚回填（AttachSession——sessionId 优先，缺席=
+//	   pid:<n> 降级锚，G-08 同词形）；
+//	③ 完成面：部署侧 session 退出后经事件注入面发布 ServiceSessionCompleted（scheme 注册类型）
+//	   → hub 转发本桥 ServiceSignal：定位该 run 的在途拉起投影翻终态词形（completed；error/fatal
+//	   级=failed——失败不续行，run 保持挂起缺口可见）→ 转交 RunLog.ServiceSignal 续行（携带
+//	   会话锚——续行 history 行回填真实会话锚）。
 //
 // 边界：只在 CORE_SYSTEM_SERVICE_SPAWN_ADDR 显式配置时挂接（runOpts.ServiceSpawns 非零才
 // 有挂起面——缺席=零翻转口径，service 节点照旧纯查表推进）；HTTP 失败只 stderr 注记不翻转
@@ -85,6 +86,7 @@ func (b *serviceSpawnBridge) SpawnFromRun(run workflow.RunRecord, node workflow.
 		"spawnSeq": rec.Seq, "workflow": rec.Workflow, "run": rec.Run,
 		"node": rec.Node, "phase": rec.Phase, "service": rec.Service, "op": rec.Op,
 		"agent": rec.Agent, "role": rec.Role, "context": rec.Context,
+		"involved": run.Involved, // 溯源锚随载荷（2026-11-28 sybran-release-update——派发会话须知道「什么到了货」：GhReleaseEvent involved=Repository/<repo>）
 	}
 	go func() {
 		body, err := json.Marshal(payload)

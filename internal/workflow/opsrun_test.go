@@ -119,3 +119,35 @@ type fakeOpsRunner struct{ seen []spawnReq }
 func (f *fakeOpsRunner) RunOp(run RunRecord, node NodeView) {
 	f.seen = append(f.seen, spawnReq{run: run, node: node})
 }
+
+// service 首步落点（2026-11-28 sybran-release-update 用户自有 workflow——首步直落 unit=service
+// 且 ServiceSpawner 挂接 → 挂起+派发；缺口与 ops 钩子同源同修）。
+func TestServiceNodeFirstStepSuspend(t *testing.T) {
+	spec := SpecView{
+		Phases: []string{"Idle", "Reporting"},
+		Transitions: []TransitionRow{
+			{From: "Idle", On: "advance", To: "Reporting"},
+		},
+		Nodes: []NodeView{
+			{Name: "dispatch-update", Phase: "Reporting", Unit: "service", Service: "sybran-test-agent", Op: "update-on-release"},
+		},
+	}
+	spawner := &fakeSpawner{}
+	runs := NewRunLog(&RunOptions{Specs: SpecFunc(func(string) SpecView { return spec }), ServiceSpawns: spawner})
+	runs.StartRun(serviceRunRec(), ExecutorBinding{Executor: ExecWorkflow, Target: "workflows/dev-loop"})
+	st := runs.State()
+	last := st.Runs[len(st.Runs)-1]
+	if last.Phase != "Reporting" || last.Status != RunSuspended || last.SuspendWhy != SuspendService {
+		t.Fatalf("service 首步落点相位/状态/因由=%s/%s/%s，欲 Reporting/suspended/service", last.Phase, last.Status, last.SuspendWhy)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for len(spawner.seen) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("拉起面未派发（2s 超时）")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if spawner.seen[0].node.Service != "sybran-test-agent" {
+		t.Fatalf("拉起未按 service 声明派发：%+v", spawner.seen[0].node)
+	}
+}

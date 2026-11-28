@@ -401,7 +401,7 @@ func run() error {
 		connectors.RegisterOpsConnector(docsdocs.New(repo, sch))
 		applyConnectorConfigs(repo)
 		if os.Getenv("CORE_SYSTEM_CONNECTOPS_RUN") == "on" {
-			opsBridge = &opsRunBridge{logf: func(f string, a ...any) {
+			opsBridge = &opsRunBridge{bus: bus, logf: func(f string, a ...any) {
 				fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
 			}}
 			runOpts.ConnectOpsRunner = opsBridge

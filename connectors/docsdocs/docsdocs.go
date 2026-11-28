@@ -88,6 +88,8 @@ func (c *Connector) ApplyConfig(raw []byte) error {
 
 // Invoke 执行一次 op（调用即效果）：git-push=一拍导出；release-publish=git-push+委托
 // connectops-gh release-create（params 原样透传——owner/repo/tag/title/body 随节点声明）。
+// params.tag 未声明=release 跳过（docs push 照走、release 显式注记不冒充——tag 是发版锚，
+// 不猜不编；动态 tag 来源=judge→params 通路待接）。
 func (c *Connector) Invoke(ctx context.Context, op string, params []byte) ([]byte, error) {
 	if !c.hasOp(op) {
 		return nil, fmt.Errorf("op %s 不在 %s 声明集 %v", op, TypeName, c.Ops())
@@ -100,6 +102,14 @@ func (c *Connector) Invoke(ctx context.Context, op string, params []byte) ([]byt
 		return mustJSON(map[string]any{"op": op, "docs": docs}), nil
 	}
 	// release-publish 第二跳：connectops-gh release-create（晚期绑定——注册表缺席=显式失败）。
+	var req struct {
+		Tag string `json:"tag"`
+	}
+	_ = json.Unmarshal(params, &req)
+	if strings.TrimSpace(req.Tag) == "" {
+		return mustJSON(map[string]any{"op": op, "docs": docs,
+			"release": map[string]any{"skipped": "params.tag 未声明（发版锚不猜不编——声明 tag 或接 judge→params 动态通路后重跑）"}}), nil
+	}
 	gh, ok := connectors.LookupOpsConnector("connectops-gh")
 	if !ok {
 		return nil, fmt.Errorf("release-publish 委托缺席：connectops-gh 未注册（驱动包未导入/装配缺席——发布第二跳不可执行，显式失败不静默）")

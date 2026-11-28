@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/eventbus"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/workflow"
 	"gopkg.in/yaml.v3"
@@ -33,6 +34,7 @@ import (
 // RunOptions.ConnectOpsRunner）。
 type opsRunBridge struct {
 	runs *workflow.RunLog // 回执续行面（构造后注入——runOpts 需桥、桥需 runs 的解环同款）
+	bus  *eventbus.Bus    // release 完成上报面（GhReleaseEvent 自产——2026-11-28 用户裁定「有Release最新版本[Report的Event]→触发更新」的产源半边；nil=只续行不发布）
 	logf func(string, ...any)
 }
 
@@ -86,7 +88,43 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 		return
 	}
 	logf("ops 桥 %s/%s 完成（workflow=%s run=%d bytes=%d）", node.Connector, node.Op, run.Workflow, run.Run, len(res))
+	if node.Op == "release-publish" {
+		b.reportRelease(run, node, params, res)
+	}
 	b.done(run, truncateNote(string(res)), true)
+}
+
+// reportRelease release-publish 成功后的 GhReleaseEvent 自产（2026-11-28 用户裁定产源半边）：
+// 仅当 release 跳真发（result.release.tag_name 在场——tag 未声明=跳过不发，无版可报不编造）。
+// 事件：source=connector（gh-release 节点经连接器产版），involved=Repository/global/<repo>，
+// dedup=gh-release:<repo>:<tag>（同 tag 聚合防重复触发）。发布失败=stderr 注记不回滚续行
+// （版已成事实；订阅方丢拍可由 release-list 对账兜底）。
+func (b *opsRunBridge) reportRelease(run workflow.RunRecord, node workflow.NodeView, params map[string]any, res []byte) {
+	if b.bus == nil {
+		return
+	}
+	var parsed struct {
+		Release struct {
+			TagName string `json:"tag_name"`
+		} `json:"release"`
+	}
+	if err := json.Unmarshal(res, &parsed); err != nil || parsed.Release.TagName == "" {
+		return // 跳过/不可解析=无版可报（诚实缺席——不编造事件）
+	}
+	repo, _ := params["repo"].(string)
+	if repo == "" {
+		repo = run.Involved
+	}
+	evt := eventbus.Event{
+		Type:     "GhReleaseEvent",
+		Source:   "connector",
+		Involved: "Repository/global/" + repo,
+		DedupKey: "gh-release:" + repo + ":" + parsed.Release.TagName,
+		Level:    "info",
+	}
+	if err := b.bus.Publish(&evt); err != nil {
+		b.logf("ops 桥 GhReleaseEvent 发布失败（release=%s 已成事实，订阅方丢拍走 release-list 对账兜底）: %v", parsed.Release.TagName, err)
+	}
 }
 
 // done 回执续行（runs 缺席=装配序缺口——留挂起显式注记，不静默不崩溃）。

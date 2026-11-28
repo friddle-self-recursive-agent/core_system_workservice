@@ -159,24 +159,24 @@ const ReconcileWorkflow = "core-workflow"
 // RunRecord 一条对账 run 投影（触发面→workflow 域的执行留痕；观测面非账本，
 // 账本=event_log 归档，ops-log.md §2）。
 type RunRecord struct {
-	Run          int64           // run 序号（本 sink 进程内单调递增，1 起）
-	Workflow     string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
-	SpecSource   string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
-	Phases       []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
-	Transitions  []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
-	ApprovalMode string          // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
-	ApprovalPolicy ApprovalPolicy // 审批策略全投影（autoCriteria/maxRiskLevel/approvalDiff——2026-11-28 自审批真判消费；零值=未声明）
-	Phase        string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
-	Status       string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
-	Brakes       BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
-	TriggerSeq   int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
-	EventID      string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
-	Type         string          // 事件类型
-	DedupKey     string          // 与发布方回执同源
-	Route        string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
-	Owner        string          // owner 解析值（对账锚的 owner 维度在此承载）
-	Target       string          // 执行面锚点投影（=ExecutorBinding.Target）
-	Involved     string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
+	Run            int64           // run 序号（本 sink 进程内单调递增，1 起）
+	Workflow       string          // workflow 锚（对账锚解析=core-workflow；直接引用=按名）
+	SpecSource     string          // 锚的声明来源（builtin=内置注册表命中；object=平台对象引用；空=未解析）
+	Phases         []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
+	Transitions    []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
+	ApprovalMode   string          // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
+	ApprovalPolicy ApprovalPolicy  // 审批策略全投影（autoCriteria/maxRiskLevel/approvalDiff——2026-11-28 自审批真判消费；零值=未声明）
+	Phase          string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
+	Status         string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
+	Brakes         BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
+	TriggerSeq     int64           // 来源触发留痕 seq（可回指 GET /v1/triggers records）
+	EventID        string          // 与发布方回执同源（apply 响应 event.id / event_log.event_id）
+	Type           string          // 事件类型
+	DedupKey       string          // 与发布方回执同源
+	Route          string          // 命中行 route 原文（owner-workflow / workflows/<name> 等锚的出处）
+	Owner          string          // owner 解析值（对账锚的 owner 维度在此承载）
+	Target         string          // 执行面锚点投影（=ExecutorBinding.Target）
+	Involved       string          // 来源留痕 involved 投影（kind/scope/name——run 涉及对象链的第一跳；
 	//                             v0.37 console 读面第二段新增载荷键=代际判别器：运行抽屉「涉及文档」
 	//                             直接取本字段落对象链接，无前端拼凑）
 	SessionID string // 会话锚（G-08：loop 会话关联——唤醒桥受理回执经 AttachSessionID 回填，
@@ -186,11 +186,11 @@ type RunRecord struct {
 	// History 运行期实际轨迹（2026-11-26 F-04——workflow.md 规则 14：静态迁移规则表
 	// transitions 与运行轨迹 history 分离；UI 节点图按 history 标绿已走过的真实节点，
 	// 不按数组下标盲标）。行=每次真实迁移追加（受理首步/推进/批准/驳回/收束同口径）。
-	FanoutPlan   string          `json:"fanoutPlan,omitempty"` // 执行计划文档锚（batch-judge 产物；观测面）
-	ParentRun    int64           `json:"parentRun,omitempty"`  // 子 run 的父 run 序号（0=非子 run；2026-11-28 #6）
-	SubRuns      []SubRunRef     `json:"subRuns,omitempty"`    // 父 run 扇出的子 run 行集（join 判据）
-	History   []HistoryRow `json:"history,omitempty"`
-	StartedAt time.Time    `json:"startedAt"` // run 起始时刻（收到留痕同刻）
+	FanoutPlan string       `json:"fanoutPlan,omitempty"` // 执行计划文档锚（batch-judge 产物；观测面）
+	ParentRun  int64        `json:"parentRun,omitempty"`  // 子 run 的父 run 序号（0=非子 run；2026-11-28 #6）
+	SubRuns    []SubRunRef  `json:"subRuns,omitempty"`    // 父 run 扇出的子 run 行集（join 判据）
+	History    []HistoryRow `json:"history,omitempty"`
+	StartedAt  time.Time    `json:"startedAt"` // run 起始时刻（收到留痕同刻）
 	// Nodes 节点声明投影快照（2026-11-27 service session 裁决——新载荷键=代际判别器）：
 	// 受理时随对象 spec 一次解析随行（运行期零文件 IO——Advance 落点判定纯内存查投影；
 	// 恢复面 NewRunLog 重解析回填）。builtin 源恒空（内置注册表无节点细节——service 面
@@ -205,15 +205,15 @@ type RunRecord struct {
 
 // RunState 查询快照（RunLog.State() 返回值；apiserver GET /v1/workflows/runs 载荷来源）。
 type RunState struct {
-	Started  int64       // 累计 start（含已被环挤出的）
-	Dropped  int64       // 环溢出丢弃计数（可观测）
-	Advances int64       // 累计异步推进的 run·步计数（v0.26 异步推进首段——新载荷键=代际判别器）
-	Braked   int64       // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
-	Capped   int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
-	Disabled int64       // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
-	Gated    int64       // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
-	SelfApproved int64   // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
-	Runs     []RunRecord // 环内 run 投影（旧→新）
+	Started      int64       // 累计 start（含已被环挤出的）
+	Dropped      int64       // 环溢出丢弃计数（可观测）
+	Advances     int64       // 累计异步推进的 run·步计数（v0.26 异步推进首段——新载荷键=代际判别器）
+	Braked       int64       // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
+	Capped       int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
+	Disabled     int64       // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
+	Gated        int64       // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
+	SelfApproved int64       // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
+	Runs         []RunRecord // 环内 run 投影（旧→新）
 }
 
 // RunSink workflow 触发面的 run 投影落点（引擎主体第三段 v0.15）。
@@ -330,19 +330,19 @@ type DiffSummarizer interface {
 type RunLog struct {
 	opts RunOptions
 
-	mu           sync.Mutex
-	seq          int64
-	ring         []RunRecord
-	started      int64
-	dropped      int64
-	advances     int64                // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
-	braked       int64                // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
-	capped       int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
-	disabled     int64                // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
-	gated        int64                // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
-	selfApproved int64                // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
-	selfApproveInFlight map[int64]bool // 自审批判决在途防重（同 run 重复挂起/重启不重复调 LLM）
-	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
+	mu                  sync.Mutex
+	seq                 int64
+	ring                []RunRecord
+	started             int64
+	dropped             int64
+	advances            int64                // 累计异步推进 run·步数（v0.26 异步推进入口 Advance 累加；advance.go）
+	braked              int64                // 累计冷却门拦阻触发数（v0.32 刹车首段——新载荷键=代际判别器）
+	capped              int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
+	disabled            int64                // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
+	gated               int64                // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
+	selfApproved        int64                // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
+	selfApproveInFlight map[int64]bool       // 自审批判决在途防重（同 run 重复挂起/重启不重复调 LLM）
+	lastAccepted        map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
 // NewRunLog 构建 run 投影落点。挂有 Store 时先做启动恢复（R-ENG §1——装载历史行填环内
@@ -520,6 +520,17 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			nr.Status = RunSuspended
 			nr.SuspendWhy = SuspendOps
 			judgeQ = append(judgeQ, spawnReq{kind: spawnKindOps, run: nr, node: node})
+		}
+	}
+	// service 落点钩子（2026-11-28 sybran-release-update 用户自有 workflow 首条真派发——
+	// 与 ops 钩子同缺口同修法：受理首步直落 unit=service 且 ServiceSpawner 已挂接 → 挂起+
+	// 拉起派发；既有 spec 的 service 节点均在相位链中后段（经 Advance 落点）不受影响）。
+	if nr.Status == RunRunning && r.opts.ServiceSpawns != nil && Phase(nr.Phase) != AwaitingApproval {
+		if node, ok := serviceNodeOf(nr.Nodes, nr.Phase); ok {
+			nr.History = append(nr.History, HistoryRow{From: nr.Phase, To: nr.Phase, On: EdgeServiceSpawn, At: stampNano(rec.ReceivedAt)})
+			nr.Status = RunSuspended
+			nr.SuspendWhy = SuspendService
+			judgeQ = append(judgeQ, spawnReq{kind: spawnKindService, run: nr, node: node})
 		}
 	}
 	r.ring = append(r.ring, nr)
