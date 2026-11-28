@@ -58,7 +58,7 @@ func TestOpsNodeSuspendResume(t *testing.T) {
 		t.Fatalf("执行面未按节点 Connector/Op 派发：%+v", runner.seen)
 	}
 
-	runs.OpsSignal(last.Run, last.Workflow, "docs committed abc1234", true)
+	runs.OpsSignal(last.Run, last.Workflow, "docs committed abc1234", true, "")
 	st = runs.State()
 	last = st.Runs[len(st.Runs)-1]
 	if last.Status != RunRunning || last.SuspendWhy != "" {
@@ -88,7 +88,7 @@ func TestOpsNodeFailureStaysSuspended(t *testing.T) {
 	st := runs.State()
 	last := st.Runs[len(st.Runs)-1]
 
-	runs.OpsSignal(last.Run, last.Workflow, "op 执行失败: 连接器 connectops-docs 未注册", false)
+	runs.OpsSignal(last.Run, last.Workflow, "op 执行失败: 连接器 connectops-docs 未注册", false, "")
 	st = runs.State()
 	last = st.Runs[len(st.Runs)-1]
 	if last.Status != RunSuspended || last.SuspendWhy != SuspendOps {
@@ -149,5 +149,85 @@ func TestServiceNodeFirstStepSuspend(t *testing.T) {
 	}
 	if spawner.seen[0].node.Service != "sybran-test-agent" {
 		t.Fatalf("拉起未按 service 声明派发：%+v", spawner.seen[0].node)
+	}
+}
+
+// 判断分叉（2026-11-28 用户裁决「workflow做分叉」）：service 完成回执携带 decision 词 →
+// 查表命中判断边立即走（history on=release）→ 落点钩子/机械推进照常。
+func TestServiceDecisionBranch(t *testing.T) {
+	spec := SpecView{
+		Phases: []string{"Idle", "Verifying", "Released", "Reporting"},
+		Transitions: []TransitionRow{
+			{From: "Idle", On: "advance", To: "Verifying"},
+			{From: "Verifying", On: "advance", To: "Reporting"}, // 默认：跳过发版
+			{From: "Verifying", On: "release", To: "Released"},  // 判断边
+			{From: "Released", On: "advance", To: "Reporting"},
+		},
+		Nodes: []NodeView{
+			{Name: "verify", Phase: "Verifying", Unit: "service", Service: "developer-system", Op: "acceptance"},
+		},
+	}
+	spawner := &fakeSpawner{}
+	runs := NewRunLog(&RunOptions{Specs: SpecFunc(func(string) SpecView { return spec }), ServiceSpawns: spawner})
+	runs.StartRun(serviceRunRec(), ExecutorBinding{Executor: ExecWorkflow, Target: "workflows/dev-loop"})
+	st := runs.State()
+	last := st.Runs[len(st.Runs)-1]
+
+	runs.ServiceSignal(TriggerRecord{
+		Type: SignalServiceDone, Involved: "Workflow/global/dev-loop", TargetRun: last.Run,
+		Decision: "release", At: time.Now(), ReceivedAt: time.Now(),
+	}, "sess-1")
+	st = runs.State()
+	last = st.Runs[len(st.Runs)-1]
+	if last.Phase != "Released" || last.Status != RunRunning {
+		t.Fatalf("decision=release 应沿判断边走 Released/running，得 %s/%s", last.Phase, last.Status)
+	}
+	var branchRow *HistoryRow
+	for i := range last.History {
+		if last.History[i].On == "release" {
+			branchRow = &last.History[i]
+		}
+	}
+	if branchRow == nil || branchRow.From != "Verifying" || branchRow.To != "Released" {
+		t.Fatalf("判断边迁移行缺席或端点错： %+v", last.History)
+	}
+	runs.Advance() // Released→Reporting
+	runs.Advance() // 无出边 → converged
+	st = runs.State()
+	last = st.Runs[len(st.Runs)-1]
+	if last.Status != RunConverged {
+		t.Fatalf("分叉后应收束，得 %s", last.Status)
+	}
+}
+
+// 未携带 decision=机械 advance 兜底（默认路径不动——advance 边=默认跳过发版词形）。
+func TestServiceNoDecisionDefaultAdvance(t *testing.T) {
+	spec := SpecView{
+		Phases: []string{"Idle", "Verifying", "Released", "Reporting"},
+		Transitions: []TransitionRow{
+			{From: "Idle", On: "advance", To: "Verifying"},
+			{From: "Verifying", On: "advance", To: "Reporting"},
+			{From: "Verifying", On: "release", To: "Released"},
+			{From: "Released", On: "advance", To: "Reporting"},
+		},
+		Nodes: []NodeView{
+			{Name: "verify", Phase: "Verifying", Unit: "service", Service: "developer-system", Op: "acceptance"},
+		},
+	}
+	spawner := &fakeSpawner{}
+	runs := NewRunLog(&RunOptions{Specs: SpecFunc(func(string) SpecView { return spec }), ServiceSpawns: spawner})
+	runs.StartRun(serviceRunRec(), ExecutorBinding{Executor: ExecWorkflow, Target: "workflows/dev-loop"})
+	st := runs.State()
+	last := st.Runs[len(st.Runs)-1]
+
+	runs.ServiceSignal(TriggerRecord{
+		Type: SignalServiceDone, Involved: "Workflow/global/dev-loop", TargetRun: last.Run,
+		At: time.Now(), ReceivedAt: time.Now(),
+	}, "sess-1")
+	runs.Advance()
+	st = runs.State()
+	last = st.Runs[len(st.Runs)-1]
+	if last.Phase != "Reporting" {
+		t.Fatalf("无 decision 应机械 advance 落 Reporting（默认跳过发版），得 %s", last.Phase)
 	}
 }

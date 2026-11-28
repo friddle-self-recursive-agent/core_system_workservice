@@ -648,8 +648,16 @@ func (r *RunLog) ServiceSignal(rec TriggerRecord, session string) {
 	if !ok {
 		return
 	}
+	// 判断分叉派发队列（锁内收集出锁派发——decision 边落点=service/ops 节点时与 Advance
+	// 同一挂起-派发落面；2026-11-28 用户裁决「跳过这一步可以在workflow做分叉」）。
+	var forkQ []spawnReq
+	defer func() {
+		r.mu.Unlock()
+		for _, sp := range forkQ {
+			r.dispatchSpawnReq(sp)
+		}
+	}()
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	target := rec.TargetRun
 	for i := len(r.ring) - 1; i >= 0; i-- {
 		run := &r.ring[i]
@@ -668,6 +676,19 @@ func (r *RunLog) ServiceSignal(rec TriggerRecord, session string) {
 		}
 		run.Status = RunRunning
 		run.SuspendWhy = ""
+		// 判断分叉（2026-11-28 用户裁决）：回执携带 decision 词且当前相位有该判断边 →
+		// 立即沿判断边走（迁移行 on=<判断词>——与机械 advance 行分词可对账）；落点=执行
+		// 单元节点则同一挂起-派发落面（forkQ 出锁派发）。未命中/未携带=纯续行（机械
+		// advance 兜底——默认路径不动）。
+		if d := rec.Decision; d != "" {
+			if next, ok := stepByTable(run.Transitions, run.Phase, d); ok && next != run.Phase {
+				run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: d, At: stampNano(time.Now())})
+				run.Phase = next
+				if sp := r.landAfterAdvanceLocked(run, next); sp != nil {
+					forkQ = append(forkQ, *sp)
+				}
+			}
+		}
 		// 写穿透（R-ENG §1）：续行同步 upsert（可演化投影——恢复取续行后词形）。
 		if r.opts.Store != nil {
 			persistAppend("run service 续行", r.opts.Store.AppendRun(runToRow(*run)))
@@ -680,7 +701,8 @@ func (r *RunLog) ServiceSignal(rec TriggerRecord, session string) {
 // 完成源与引擎同进程，service 完成源在宿主进程故走事件注入，两路径各自的诚实边界）。
 // ok=true → 续行（history 行 on=connectops-resume，Note=结果摘要）；ok=false → 保持挂起
 // （history 行 on=connectops-error，Note=显式错误——缺口可见不静默，service 失败同口径）。
-func (r *RunLog) OpsSignal(run int64, workflowName, note string, ok bool) {
+// decision 判断词（2026-11-28 分叉裁决——op 结果 JSON decision 字段；语义同 ServiceSignal）。
+func (r *RunLog) OpsSignal(run int64, workflowName, note string, ok bool, decision string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := len(r.ring) - 1; i >= 0; i-- {
@@ -703,6 +725,16 @@ func (r *RunLog) OpsSignal(run int64, workflowName, note string, ok bool) {
 		if ok {
 			rg.Status = RunRunning
 			rg.SuspendWhy = ""
+			// 判断分叉（同 ServiceSignal——op 结果 decision 字段；命中判断边立即走+落点钩子）。
+			if d := decision; d != "" {
+				if next, ok2 := stepByTable(rg.Transitions, rg.Phase, d); ok2 && next != rg.Phase {
+					rg.History = append(rg.History, HistoryRow{From: rg.Phase, To: next, On: d, At: stampNano(time.Now())})
+					rg.Phase = next
+					if sp := r.landAfterAdvanceLocked(rg, next); sp != nil {
+						r.dispatchSpawnReq(*sp) // OpsSignal 调用方=桥 goroutine（非锁路径）——同步派发安全
+					}
+				}
+			}
 		}
 		// 写穿透（R-ENG §1）：回执同步 upsert（可演化投影——恢复取回执后词形；失败态同样留账）。
 		if r.opts.Store != nil {

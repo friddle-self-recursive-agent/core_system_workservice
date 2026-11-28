@@ -110,6 +110,7 @@ type TriggerRecord struct {
 	Scope     string          // metadata.scope 四层词（BUG-010，event.md 规则 19——总线侧强制回填的派发闸判据）
 	TargetRun int64           // 审批信号目标 run 序号（0=按锚最新挂起 run；>0=定向 run——console 批闸行携带）
 	ParentRun int64           // 子 run 的父 run 序号（0=非子 run；2026-11-28 #6 fanout 接线）
+	Decision  string          // 判断词（2026-11-28 workflow 分叉裁决——完成回执携带的分叉边词；进程内 handoff 面不落留痕行：判定在 resume 时同步消费）
 }
 
 // ScopeGate 事件→Agent 投递的 scope 闸（BUG-010，event.md 规则 19③ 派发闸——
@@ -315,7 +316,7 @@ func (h *TriggerHub) record(e eventbus.Event) {
 		Source: e.Source, Involved: e.Involved, Level: e.Level,
 		At: e.At, ReceivedAt: time.Now(),
 		Route: d.Route, CC: d.CC, For: d.For, Owner: d.Owner,
-		Exec: d.Exec, CCExec: d.CCExec, Scope: e.Scope, TargetRun: e.Run,
+		Exec: d.Exec, CCExec: d.CCExec, Scope: e.Scope, TargetRun: e.Run, Decision: e.Decision,
 	}
 	h.ring = append(h.ring, rec)
 	// 写穿透（R-ENG §1）：留痕同步 Append 至挂接的 Store（幂等——同 seq 重放 noop；

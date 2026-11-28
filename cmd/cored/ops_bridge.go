@@ -54,11 +54,11 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 	}
 	c, ok := connectors.LookupOpsConnector(node.Connector)
 	if !ok {
-		b.done(run, fmt.Sprintf("连接器 %s 未注册（驱动包未导入/装配缺席）", node.Connector), false)
+		b.done(run, fmt.Sprintf("连接器 %s 未注册（驱动包未导入/装配缺席）", node.Connector), false, "")
 		return
 	}
 	if !connectors.HasOp(c, node.Op) {
-		b.done(run, fmt.Sprintf("op %s 不在 %s 声明集", node.Op, node.Connector), false)
+		b.done(run, fmt.Sprintf("op %s 不在 %s 声明集", node.Op, node.Connector), false, "")
 		return
 	}
 	// params=node.Params 静态声明 ∪ involved 溯源派生（声明值优先——缺席键才补）。
@@ -76,7 +76,7 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 	}
 	raw, err := json.Marshal(params)
 	if err != nil {
-		b.done(run, "params 编码失败: "+err.Error(), false)
+		b.done(run, "params 编码失败: "+err.Error(), false, "")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), opsInvokeTimeout)
@@ -84,14 +84,26 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 	res, err := c.Invoke(ctx, node.Op, raw)
 	if err != nil {
 		logf("ops 桥 %s/%s 失败（workflow=%s run=%d）: %v", node.Connector, node.Op, run.Workflow, run.Run, err)
-		b.done(run, truncateNote("op 执行失败: "+err.Error()), false)
+		b.done(run, truncateNote("op 执行失败: "+err.Error()), false, "")
 		return
 	}
 	logf("ops 桥 %s/%s 完成（workflow=%s run=%d bytes=%d）", node.Connector, node.Op, run.Workflow, run.Run, len(res))
 	if node.Op == "release-publish" {
 		b.reportRelease(run, node, params, res)
 	}
-	b.done(run, truncateNote(string(res)), true)
+	b.done(run, truncateNote(string(res)), true, opsDecision(res))
+}
+
+// opsDecision op 结果 JSON 的判断词提取（2026-11-28 分叉裁决——实现侧可在 result 声明
+// decision 词驱动 workflow 分叉边；缺席/不可解析=空=机械 advance 兜底）。
+func opsDecision(res []byte) string {
+	var parsed struct {
+		Decision string `json:"decision"`
+	}
+	if err := json.Unmarshal(res, &parsed); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Decision)
 }
 
 // reportRelease release-publish 成功后的 GhReleaseEvent 自产（2026-11-28 用户裁定产源半边）：
@@ -128,12 +140,12 @@ func (b *opsRunBridge) reportRelease(run workflow.RunRecord, node workflow.NodeV
 }
 
 // done 回执续行（runs 缺席=装配序缺口——留挂起显式注记，不静默不崩溃）。
-func (b *opsRunBridge) done(run workflow.RunRecord, note string, ok bool) {
+func (b *opsRunBridge) done(run workflow.RunRecord, note string, ok bool, decision string) {
 	if b.runs == nil {
 		fmt.Fprintf(os.Stderr, "cored: ops 桥回执缺席 runs（装配序缺口——run=%d 留挂起）: %s\n", run.Run, note)
 		return
 	}
-	b.runs.OpsSignal(run.Run, run.Workflow, note, ok)
+	b.runs.OpsSignal(run.Run, run.Workflow, note, ok, decision)
 }
 
 // involvedRepoIssue run.Involved 溯源派生（Repository/global/<repo>#<n> 词形——issue 域 op

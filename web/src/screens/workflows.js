@@ -4,10 +4,11 @@ import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoL
 import { depChips } from './tasks.js';
 import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
-import { yamlTextView } from '../render/md.js';
+import { loadYaml, yamlTextView } from '../render/md.js';
+import { workflowStudioHtml, bindWorkflowStudio, wfGraphHtml } from './workflow-config.js';
 import { htmlModal } from './modal.js';
 import { openDocChat } from './doc-chat.js';
-import { workflowStudioHtml, bindWorkflowStudio } from './workflow-config.js';
+
 
 export function wfAnchorOfRoute(route) {
   const r = String(route || '');
@@ -327,12 +328,34 @@ function wfNodeStats(runs, phases) {
   return stats;
 }
 
-/** 节点图（定义相位链 + 失败侧轨；点击看到达节点的人/任务/会话）。 */
+/** 节点图（2026-11-28 用户裁决「workflow 页面展示一致强调的是图。因为肯定有交叉出口」：
+ * 线性链退役——声明原文可解析即走 wfGraphHtml 真图（分叉边带判断词标签——advance/判断词
+ * 交叉出口一图可见）；rawYaml 缺席（纯 builtin 无原文）回退线性链。 */
 export function wfNodeGraphHtml(wf, runs) {
   const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
   const failed = runs.filter((r) => String(r.status || '') === 'failed').length;
   const list = phases.concat(failed && !phases.includes('Failed') ? ['Failed'] : []);
   if (!list.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>';
+  // 分叉图优先（声明原文=transitions 真相源——rawYaml 在场才可解析）。
+  const raw = String(wf && wf.rawYaml || '');
+  if (raw) {
+    try {
+      const doc = loadYaml(raw) || {};
+      const phasesRaw = Array.isArray(doc && doc.spec && doc.spec.phases) ? doc.spec.phases : [];
+      const transitions = Array.isArray(doc && doc.spec && doc.spec.transitions) ? doc.spec.transitions : [];
+      if (transitions.length) {
+        const phasesRich = phasesRaw.map((n) => (typeof n === 'string' ? { name: n, phase: n } : n))
+          .filter((n) => n && (n.phase || n.name));
+        const graph = wfGraphHtml(phasesRich, transitions);
+        if (graph) {
+          return '<div class="small faint" style="margin-bottom:6px">' + esc(tr('相位图——交叉出口=判断分叉边（边上词形=判断词；judge 会话 [decision:词] 标记或判定域 connectops-jev 回传点火，未命中=advance 兜底）。')) + '</div>' +
+            graph +
+            '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
+            '<div data-wf-node-drawer class="wf-node-drawer"></div>';
+        }
+      }
+    } catch (e) { /* 原文不可解析=回退线性链（诚实降级不冒充图） */ }
+  }
   const stats = wfNodeStats(runs, list);
   const body = list.map((p) => {
     const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
@@ -349,9 +372,9 @@ export function wfNodeGraphHtml(wf, runs) {
 }
 
 function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
-  el.querySelectorAll('[data-wf-node]').forEach((n) => {
+  el.querySelectorAll('[data-wf-node],[data-graph-node]').forEach((n) => {
     n.addEventListener('click', () => {
-      const ph = String(n.getAttribute('data-wf-node') || '');
+      const ph = String(n.getAttribute('data-wf-node') || n.getAttribute('data-graph-node') || '');
       const drawer = el.querySelector('[data-wf-node-drawer]');
       if (!drawer) return;
       const hits = runs.filter((r) => String(r.phase || '') === ph ||

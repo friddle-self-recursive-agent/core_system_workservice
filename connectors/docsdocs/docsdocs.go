@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/repository"
@@ -102,19 +103,40 @@ func (c *Connector) Invoke(ctx context.Context, op string, params []byte) ([]byt
 		return mustJSON(map[string]any{"op": op, "docs": docs}), nil
 	}
 	// release-publish 第二跳：connectops-gh release-create（晚期绑定——注册表缺席=显式失败）。
-	var req struct {
-		Tag string `json:"tag"`
-	}
-	_ = json.Unmarshal(params, &req)
-	if strings.TrimSpace(req.Tag) == "" {
-		return mustJSON(map[string]any{"op": op, "docs": docs,
-			"release": map[string]any{"skipped": "params.tag 未声明（发版锚不猜不编——声明 tag 或接 judge→params 动态通路后重跑）"}}), nil
-	}
+	// tag 来源（2026-11-28 用户裁决「默认1天做多1个」）：params.tag 显式声明优先；缺席=日 tag
+	// 派生 v<UTC 日期>（一天至多一个——同日重发=release-list 查得当日 tag 已在 → skipped 注记
+	// 不冒充新发版）。派生与在册检查都不可得=显式失败不静默。
 	gh, ok := connectors.LookupOpsConnector("connectops-gh")
 	if !ok {
 		return nil, fmt.Errorf("release-publish 委托缺席：connectops-gh 未注册（驱动包未导入/装配缺席——发布第二跳不可执行，显式失败不静默）")
 	}
-	rel, err := gh.Invoke(ctx, "release-create", params)
+	var req struct {
+		Tag   string `json:"tag"`
+		Owner string `json:"owner"`
+		Repo  string `json:"repo"`
+	}
+	_ = json.Unmarshal(params, &req)
+	tag := strings.TrimSpace(req.Tag)
+	if tag == "" {
+		tag = dailyTag()
+		exists, err := releaseExists(ctx, gh, req.Owner, req.Repo, tag)
+		if err != nil {
+			return nil, fmt.Errorf("release-publish 日 tag 在册检查失败（tag=%s 派生自 UTC 日期——当天已有版与否不可知，不猜不编）: %w", tag, err)
+		}
+		if exists {
+			return mustJSON(map[string]any{"op": op, "docs": docs,
+				"release": map[string]any{"skipped": "当日 release 已在册（tag=" + tag + "——一天至多一个，docs push 照走）"}}), nil
+		}
+	}
+	relParams := params
+	if strings.TrimSpace(req.Tag) == "" {
+		// 派生 tag 回填 params（gh 侧 owner/repo 缺省单点应用不动）。
+		m := map[string]any{}
+		_ = json.Unmarshal(params, &m)
+		m["tag"] = tag
+		relParams, _ = json.Marshal(m)
+	}
+	rel, err := gh.Invoke(ctx, "release-create", relParams)
 	if err != nil {
 		return nil, fmt.Errorf("release-publish 第二跳 release-create 失败（docs push 已完成 commit=%s）: %w", docs.Commit, err)
 	}
@@ -140,6 +162,36 @@ func (c *Connector) push(ctx context.Context) (repository.ExportResult, error) {
 		return repository.ExportResult{}, fmt.Errorf("connectops-docs: 导出目标未声明（ConnectorOps spec.config.dir 缺席——诚实缺口不猜测）")
 	}
 	return exp.Export(ctx)
+}
+
+// dailyTag 日 tag 派生（2026-11-28 用户裁决「默认1天做多1个」——v<UTC YYYY.MM.DD>；同日
+// 幂等由 releaseExists 在册检查承担，一天至多一个真发版）。
+func dailyTag() string {
+	return "v" + time.Now().UTC().Format("2006.01.02")
+}
+
+// releaseExists 当日 tag 在册检查（gh release-list 真查——owner/repo 缺席=显式错误不猜）。
+func releaseExists(ctx context.Context, gh connectors.OpsConnector, owner, repo, tag string) (bool, error) {
+	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
+		return false, fmt.Errorf("release-publish 缺 owner/repo（params 或 config.owner——日 tag 在册检查需要）")
+	}
+	q, _ := json.Marshal(map[string]any{"owner": owner, "repo": repo})
+	out, err := gh.Invoke(ctx, "release-list", q)
+	if err != nil {
+		return false, err
+	}
+	var rels []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(out, &rels); err != nil {
+		return false, fmt.Errorf("release-list 结果不可解析: %w", err)
+	}
+	for _, r := range rels {
+		if r.TagName == tag {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *Connector) hasOp(op string) bool {

@@ -24,6 +24,7 @@ type Event struct {
 	Level    string // debug/info/warn/error/fatal（A42，rule 1b 强制）
 	Scope    string // metadata.scope 四层词（BUG-010，event.md 规则 19——总线侧强制回填，空=按 involved 派生兜底）
 	Run      int64  // 审批信号目标 run 序号（可选：0=按锚最新挂起 run；>0=定向 run——console 批闸行携带）
+	Decision string // 判断词（可选——2026-11-28 workflow 分叉裁决「跳过这一步可以在workflow做分叉」：完成回执携带的分叉边词——resume 时查表 (phase, decision) 命中即沿判断边走，未命中=纯续行机械 advance 兜底；词须在该 workflow 迁移表声明）
 }
 
 // Options 总线可调项（零值可用；测试注入小窗口/假 ops store）。

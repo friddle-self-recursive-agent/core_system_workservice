@@ -71,6 +71,23 @@ type Engine struct {
 	// Drafts 草稿缓存（apply.md §1 编辑与发布分离）。nil=无草稿面（只读部署不受影响）；
 	// 配置后 ApplyDraft 从缓存取稿走同一三步闸门，成功落库即清稿。
 	Drafts *draft.Store
+	// SpecSemantics kind→声明语义校验器（2026-11-28 用户令「apply 文档的时候 validate scheme
+	// 了吗？没有就实现下」——准入闸 ③b：结构准入过≠声明可用，跨字段一致性在此闸）。注册制
+	// （装配层 SetSpecSemantics 注入；缺席 kind=既有行为面零翻转——纯结构口径不变）。
+	SpecSemantics map[string]func(raw []byte) error
+}
+
+// SetSpecSemantics 注册 kind 域语义校验器（幂等覆盖；fn=nil=注销该 kind——装配序解耦，
+// 与 SetVerifyGate 同款后注入范式）。
+func (e *Engine) SetSpecSemantics(kind string, fn func(raw []byte) error) {
+	if e.SpecSemantics == nil {
+		e.SpecSemantics = map[string]func([]byte) error{}
+	}
+	if fn == nil {
+		delete(e.SpecSemantics, kind)
+		return
+	}
+	e.SpecSemantics[kind] = fn
 }
 
 // Apply 执行写路径三步闸门。幂等：同内容重入 no-op，不产生提交、不发事件。
@@ -208,6 +225,15 @@ func (e *Engine) admit(objKey string, o *repository.Object, opt Options) error {
 	if err := scheme.ValidateDoc(k, o.Content); err != nil {
 		e.audit(opt, objKey, 0, "denied", err.Error(), sub)
 		return fmt.Errorf("%w: %v", ErrSpecInvalid, err)
+	}
+	// ③b 声明语义准入（2026-11-28 用户令——结构过≠声明可用：Workflow phases/transitions/
+	// nodes/entryPoints/triggers 五面一致性；run#127 卡 triggered 实证缺口）。校验器注册制
+	// （装配层注入——apply 不感知域语义）；拒绝词形与 ③ 同类 ErrSpecInvalid（400 直达作者）。
+	if vf := e.SpecSemantics[o.Kind]; vf != nil {
+		if err := vf(o.Content); err != nil {
+			e.audit(opt, objKey, 0, "denied", err.Error(), sub)
+			return fmt.Errorf("%w: %v", ErrSpecInvalid, err)
+		}
 	}
 	// R-UX-2 / R-PUB-1：Scheme 本体与 Proposal 提案正文走同一 R-PUB-1 lint 与结构闸门（禁止绕过 lint/准入直接改动）。
 	if o.Kind == "Scheme" || o.Kind == "Proposal" {
