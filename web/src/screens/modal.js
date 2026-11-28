@@ -7,6 +7,12 @@
 import { esc } from '../core/format.js';
 import { t as tr } from '../core/i18n.js';
 
+/* modalHost 弹窗挂载点（2026-11-28 修复：样式作用域=.cc-app 容器——挂 document.body 的弹窗
+ * 零样式命中（裸奔+无遮罩可连点堆积，截图实证）。挂进 .cc-app 根即入样式树；缺根=body 兜底。 */
+function modalHost() {
+  return (typeof document !== 'undefined' && document.querySelector('.cc-app')) || (typeof document !== 'undefined' ? document.body : null);
+}
+
 /* confirmModal 确认弹窗：{title, body, confirmText, cancelText, danger} → Promise<boolean>。
  * 确认=主操作变体（danger=true=ghost 形 --danger 字——style.md §3.1 破坏性纪律）；取消=次操作；
  * Esc/点 mask=取消（resolve false）；不引入新样式类——全量复用 .chat-modal 族既有 token。
@@ -37,7 +43,7 @@ export function confirmModal(opts) {
     modal.querySelector('[data-cc-modal-cancel]').addEventListener('click', () => done(false));
     modal.querySelector('[data-cc-modal-mask]').addEventListener('click', () => done(false));
     document.addEventListener('keydown', onKey, true);
-    document.body.appendChild(modal);
+    modalHost().appendChild(modal);
     const ok = modal.querySelector('[data-cc-modal-ok]');
     if (ok) ok.focus();
   });
@@ -74,7 +80,7 @@ export function htmlModal(opts) {
     if (x) x.addEventListener('click', done);
     modal.querySelector('[data-cc-modal-mask]').addEventListener('click', done);
     document.addEventListener('keydown', onKey, true);
-    document.body.appendChild(modal);
+    modalHost().appendChild(modal);
     if (o.node) {
       const body = modal.querySelector('.chat-modal-body');
       o.node.hidden = false;
@@ -92,7 +98,7 @@ export function toast(message, kind) {
   if (!wrap) {
     wrap = document.createElement('div');
     wrap.className = 'chat-toast-wrap';
-    document.body.appendChild(wrap);
+    modalHost().appendChild(wrap);
   }
   const t = document.createElement('div');
   t.className = 'chat-toast' + (kind === 'accent' ? ' is-accent' : ' is-error');

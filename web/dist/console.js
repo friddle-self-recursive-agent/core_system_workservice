@@ -2588,6 +2588,9 @@ var CoreConsoleWeb = (() => {
   }
 
   // src/screens/modal.js
+  function modalHost() {
+    return typeof document !== "undefined" && document.querySelector(".cc-app") || (typeof document !== "undefined" ? document.body : null);
+  }
   function confirmModal(opts) {
     const o = opts || {};
     return new Promise((resolve) => {
@@ -2608,7 +2611,7 @@ var CoreConsoleWeb = (() => {
       modal.querySelector("[data-cc-modal-cancel]").addEventListener("click", () => done(false));
       modal.querySelector("[data-cc-modal-mask]").addEventListener("click", () => done(false));
       document.addEventListener("keydown", onKey, true);
-      document.body.appendChild(modal);
+      modalHost().appendChild(modal);
       const ok = modal.querySelector("[data-cc-modal-ok]");
       if (ok) ok.focus();
     });
@@ -2635,7 +2638,7 @@ var CoreConsoleWeb = (() => {
       if (x) x.addEventListener("click", done);
       modal.querySelector("[data-cc-modal-mask]").addEventListener("click", done);
       document.addEventListener("keydown", onKey, true);
-      document.body.appendChild(modal);
+      modalHost().appendChild(modal);
       if (o.node) {
         const body = modal.querySelector(".chat-modal-body");
         o.node.hidden = false;
@@ -2649,7 +2652,7 @@ var CoreConsoleWeb = (() => {
     if (!wrap) {
       wrap = document.createElement("div");
       wrap.className = "chat-toast-wrap";
-      document.body.appendChild(wrap);
+      modalHost().appendChild(wrap);
     }
     const t2 = document.createElement("div");
     t2.className = "chat-toast" + (kind === "accent" ? " is-accent" : " is-error");
