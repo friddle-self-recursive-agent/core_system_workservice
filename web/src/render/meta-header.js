@@ -2,8 +2,9 @@
  * metadatainfo 侧车——tag/创建时间/提交 agent/提交人/相应 ref 等原数据要上屏，公用一个好 header）。
  * 数据源：①frontmatter 现解析（docType/scope/title/tags/importance/ownerRefs——R-DOC-6 侧车
  * 导出词形，git 设计文档与 DB 对象同源通用）；②/v1/doc-history（创建时间=最早 rev 行 at、
- * 最近提交=最新 rev 行 fieldManager——提交人·agent 词形）；git 文档无 author 词形=HEAD sha
- * 诚实不冒充。纯函数 node 直测；一切动态文本 esc——零原文直插；缺席字段整行不渲染（零编造）。 */
+ * 最近提交=最新 rev 行 fieldManager/at——issue #23 修正取反导致的时间线倒挂）；git 文档无
+ * author 词形=HEAD sha 诚实不冒充。纯函数 node 直测；一切动态文本 esc——零原文直插；缺席
+ * 字段整行不渲染（零编造）。 */
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kindBadge, tagRoute, objRoute } from './chips.js';
 import { splitFrontmatter, loadYaml } from './md.js';
@@ -118,12 +119,15 @@ export function paintMetaHeader(slot, ctx, ref, content, headInfo) {
     if (!slot.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
     const rows = (r && r.ok && Array.isArray(r.data && (r.data.rows || r.data.history || r.data.items))) ? (r.data.rows || r.data.history || r.data.items) : (r && r.ok && Array.isArray(r.data) ? r.data : []);
     if (!rows.length) return; // 无账=保持 frontmatter 词形（新建对象首次落库前）
-    const first = rows[0];
-    const last = rows[rows.length - 1];
+    // API 逐次账按 rev 降序：rows[0]=最新一行（最近提交），rows[last]=最早一行（创建）。
+    // issue #23 时间线倒挂根因=此前把两者取反（创建取最新行/最近提交取最早行），
+    // 导致 header 显示「创建 10:04 · 最近提交 09:04」——修正为创建取最早、提交取最新。
+    const earliest = rows[rows.length - 1];
+    const latest = rows[0];
     slot.innerHTML = metaHeaderHtml(meta, Object.assign({}, base, {
-      createdAt: String((first && (first.at || first.appliedAt)) || ''),
-      lastAt: String((last && (last.at || last.appliedAt)) || ''),
-      lastBy: String((last && last.fieldManager) || ''),
+      createdAt: String((earliest && (earliest.at || earliest.appliedAt)) || ''),
+      lastAt: String((latest && (latest.at || latest.appliedAt)) || ''),
+      lastBy: String((latest && latest.fieldManager) || ''),
     }));
     slot.querySelectorAll('[data-go]').forEach((n) => {
       n.addEventListener('click', (ev) => {

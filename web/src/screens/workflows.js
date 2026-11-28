@@ -5,7 +5,7 @@ import { depChips } from './tasks.js';
 import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 import { loadYaml, yamlTextView } from '../render/md.js';
-import { workflowStudioHtml, bindWorkflowStudio, wfGraphHtml } from './workflow-config.js';
+import { workflowStudioHtml, bindWorkflowStudio, wfGraphHtml, WF_TERMINAL_STATUS } from './workflow-config.js';
 import { htmlModal } from './modal.js';
 import { openDocChat } from './doc-chat.js';
 
@@ -314,28 +314,34 @@ function wfSessionChip(sid, label) {
   return chipGo((label ? tr(label) + ' ' : '') + trunc(s, 24), 'session/' + encodeURIComponent(s), 'acc', true, s);
 }
 
-/** 节点聚合（当前相位/到过次数/失败数）。 */
+/** 节点聚合（当前相位/到过次数）——只按 spec.phases 相位词统计。
+ * run 终态词（Failed）不属相位链（workflow.md 规则 14 / F-04）：不计入任何相位节点，
+ * 另以「failed ×N」徽标出链展示（#25）。 */
 function wfNodeStats(runs, phases) {
   const stats = new Map();
-  for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+  for (const p of phases) stats.set(p, { cur: 0, visited: 0 });
   for (const r of runs) {
     const cur = String(r.phase || '');
     if (stats.has(cur)) stats.get(cur).cur++;
     const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String((h && h.to) || '')));
     for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
-    if (String(r.status || '') === 'failed' && stats.has('Failed')) stats.get('Failed').failed++;
   }
   return stats;
 }
 
 /** 节点图（2026-11-28 用户裁决「workflow 页面展示一致强调的是图。因为肯定有交叉出口」：
  * 线性链退役——声明原文可解析即走 wfGraphHtml 真图（分叉边带判断词标签——advance/判断词
- * 交叉出口一图可见）；rawYaml 缺席（纯 builtin 无原文）回退线性链。 */
+ * 交叉出口一图可见）；rawYaml 缺席（纯 builtin 无原文）回退线性链。
+ * 2026-11-28 #25：Failed 是 run 终态词（状态词≠相位词，规则 14/F-04），不占相位链节点位——
+ * 只按 spec.phases 相位词渲染链，终态以「failed ×N」徽标出链展示，计数不跨词域混算。 */
 export function wfNodeGraphHtml(wf, runs) {
-  const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+  const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String)
+    .filter((p) => !WF_TERMINAL_STATUS.has(p));
   const failed = runs.filter((r) => String(r.status || '') === 'failed').length;
-  const list = phases.concat(failed && !phases.includes('Failed') ? ['Failed'] : []);
-  if (!list.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>';
+  const terminalBadge = failed
+    ? '<div class="wf-terminal-badge" style="margin-top:6px"><span class="chip danger tiny" title="' + esc(tr('run 终态统计——状态词不占相位链节点')) + '">' + esc(tr('落终态 failed ×' + failed)) + '</span></div>'
+    : '';
+  if (!phases.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>' + terminalBadge;
   // 分叉图优先（声明原文=transitions 真相源——rawYaml 在场才可解析）。
   const raw = String(wf && wf.rawYaml || '');
   if (raw) {
@@ -345,21 +351,23 @@ export function wfNodeGraphHtml(wf, runs) {
       const transitions = Array.isArray(doc && doc.spec && doc.spec.transitions) ? doc.spec.transitions : [];
       if (transitions.length) {
         const phasesRich = phasesRaw.map((n) => (typeof n === 'string' ? { name: n, phase: n } : n))
-          .filter((n) => n && (n.phase || n.name));
+          .filter((n) => n && (n.phase || n.name) && !WF_TERMINAL_STATUS.has(String(n.phase || n.name)));
+        // wfGraphHtml 已把触及终态词的迁移边出链（Failed 不生成链上/侧轨节点）。
         const graph = wfGraphHtml(phasesRich, transitions);
         if (graph) {
           return '<div class="small faint" style="margin-bottom:6px">' + esc(tr('相位图——交叉出口=判断分叉边（边上词形=判断词；judge 会话 [decision:词] 标记或判定域 connectops-jev 回传点火，未命中=advance 兜底）。')) + '</div>' +
             '<div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div>' +
+            terminalBadge +
             '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
             '<div data-wf-node-drawer class="wf-node-drawer"></div>';
         }
       }
     } catch (e) { /* 原文不可解析=回退线性链（诚实降级不冒充图） */ }
   }
-  const stats = wfNodeStats(runs, list);
-  const body = list.map((p) => {
-    const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
-    const cls = 'pg-node' + (s.cur ? ' active' : '') + ((s.visited || s.failed) ? ' done' : '') + (p === 'Failed' ? ' fail' : '');
+  const stats = wfNodeStats(runs, phases);
+  const body = phases.map((p) => {
+    const s = stats.get(p) || { cur: 0, visited: 0 };
+    const cls = 'pg-node' + (s.cur ? ' active' : '') + (s.visited ? ' done' : '');
     return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button">' +
       '<div class="pg-dot"></div><div class="pg-name">' + esc(p) + '</div>' +
       (s.cur ? '<span class="chip acc tiny">' + esc(tr('当前') + ' ' + s.cur) + '</span>' : '') +
@@ -367,6 +375,7 @@ export function wfNodeGraphHtml(wf, runs) {
       '</div>';
   }).join('<span class="pg-edge">→</span>');
   return '<div class="pg-wrap">' + body + '</div>' +
+    terminalBadge +
     '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
     '<div data-wf-node-drawer class="wf-node-drawer"></div>';
 }
@@ -395,11 +404,34 @@ function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
   });
 }
 
-/** ConnectorOps 骨架节点（真实 executionFlow；缺席=执行面未绑定，不伪造）。 */
-export function wfFlowNodesHtml(wf) {
+/**
+ * 执行面状态判定（同源单点：详情头部徽标/kv、执行节点段、空运行说明共用一词形）。
+ * 三值：bound=connector ops 已声明且引擎挂接门已开（CORE_SYSTEM_CONNECTOPS_RUN=on）；
+ *      partial=已声明但引擎门未开（声明在册，暂不实际拉起）；
+ *      unbound=无任何 connector ops 声明。
+ * 骨架文档缺席≠执行面未绑定——骨架只是可选落地说明，不作绑定判据（#21）。
+ * engineOn 缺席/on 之外一律 partial（诚实降级，不冒充已挂接）。
+ */
+export function wfExecState(wf, engineOn) {
+  const exec = (wf && wf.execution) || {};
+  const connector = String(exec.connector || '');
+  const declared = exec.state === 'bound' && !!connector; // connector/ops 已声明=可执行
+  const state = !declared ? 'unbound' : (engineOn === true ? 'bound' : 'partial');
+  const note = state === 'bound'
+    ? tr('执行面 bound——connector ops 已声明且引擎挂接门已开（CORE_SYSTEM_CONNECTOPS_RUN=on），节点可执行。')
+    : state === 'partial'
+      ? tr('执行面 partial——connector ops 已声明，但引擎挂接门未开（CORE_SYSTEM_CONNECTOPS_RUN≠on）；声明在册，暂不实际拉起。')
+      : tr('执行面 unbound——无任何 connector ops 声明，任务不会拉起 run。');
+  return { state, connector, note };
+}
+
+/** ConnectorOps 执行节点（真实 executionFlow 骨架节点投影；缺席=无落地说明节点，≠未绑定）。 */
+export function wfFlowNodesHtml(wf, execState) {
   const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
+  const st = execState || wfExecState(wf); // 缺省回退同源判定（调用方不各自推词形）
   if (!nodes.length) {
-    return '<div class="small faint">' + esc(tr('执行面未绑定（ConnectorOps 骨架缺席）——workflow apply 后的落地 agent 待接线；当前节点=相位链，节点级会话未单独记录。')) + '</div>';
+    return '<div class="small faint">' + esc(st.note) + ' ' +
+      esc(tr('骨架落地说明节点缺席（可选说明，不作绑定判据）；当前节点=相位链。')) + '</div>';
   }
   return '<div class="wf-flow">' + nodes.map((n) =>
     '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || '—')) + '</div>' +
@@ -512,6 +544,9 @@ function detailScreen(el, ctx, name) {
     const runsAll = wfApiRuns(runsRes);
     const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
     const serverAliases = (wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases) || {};
+    // 引擎挂接态现读（/v1/workflows aggregate 投影 CORE_SYSTEM_CONNECTOPS_RUN=on）——
+    // 执行面三值判定的门输入；缺席/on 之外=false（诚实降级，不冒充已挂接）。
+    const engineOn = !!(wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.connectopsRun === true);
     const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
     let wf = rows.find((x) => String(x && x.name) === String(name));
     if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
@@ -545,14 +580,15 @@ function detailScreen(el, ctx, name) {
     }
     const latest = wf.latest || null;
     const exec = wf.execution || {};
+    const execState = wfExecState(wf, engineOn); // 三值状态同源单点（头部/段落/空运行说明共用）
     const aliasNote = String(name) !== usedName
       ? chip(tr('词形兼容') + '：' + String(name) + ' → ' + usedName, 'mute') : '';
     // 概览 kv（复用既有 kv 渲染）
     const kvRows = [
       [tr('来源'), chip(String(wf.specSource || '—'), wf.specSource === 'builtin' ? 'acc' : (wf.specSource === 'object' ? 'ok' : 'mute'))],
-      [tr('执行面'), exec.connector ? chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + ' ' +
-        chipGo(String(exec.connector), 'connectors', 'mute', true, tr('ConnectorOps')) : '—'],
-      [tr('骨架'), exec.skeleton ? chip(tr('在册'), 'ok') : chip(tr('缺席'), 'mute')],
+      [tr('执行面'), chip(execState.state, execState.state === 'bound' ? 'ok' : 'warn') +
+        (execState.connector ? ' ' + chipGo(execState.connector, 'connectors', 'mute', true, tr('ConnectorOps')) : '')],
+      [tr('骨架'), exec.skeleton ? chip(tr('在册'), 'ok') : chip(tr('缺席'), 'mute')], // 可选落地说明——不作绑定判据
       [tr('运行'), chip(tr('环内 ') + runs.length + ' / 累计 ' + String(wf.runsTotal != null ? wf.runsTotal : '—'), runs.length ? 'acc' : 'mute') +
         (wf.runs24h != null ? ' ' + chip('24h ' + String(wf.runs24h), 'mute') : '')],
       [tr('最新'), latest ? runChip(latest) + ' ' + chip('run #' + String(latest.run), 'mono') + ' ' + esc(relAge(latest.startedAt) || '') : '—'],
@@ -564,7 +600,7 @@ function detailScreen(el, ctx, name) {
       '<div class="run-hero"><div class="rh-top">' +
       (aliasNote ? aliasNote : '') + '</div>' +
       '<div class="rh-title">' + esc(usedName) + ' ' + chip(String(wf.specSource || '—'), 'acc') + ' ' +
-      chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + '</div>' +
+      chip(execState.state, execState.state === 'bound' ? 'ok' : 'warn') + '</div>' +
       '<div class="rh-meta"><span>' + esc(tr('定义/运行/任务均为现读真实数据')) + '</span>' +
       (latest ? '<span>' + esc(tr('最近运行') + ' ') + runChip(latest) + '</span>' : '') + '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div>' +
@@ -573,13 +609,13 @@ function detailScreen(el, ctx, name) {
       (String(wf.rawYaml || '') ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(tr('YAML 声明')) + '</button>' : '') +
       '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
-      '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
+      '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf, execState) + '</div></div>' +
       // R-UX-10 二次收紧（2026-11-28）：配置详情表单（studio A–F 节+YAML 手改）默认不展示——
       // DOM 整体挂隐藏位，「配置详情」按钮点击移入弹窗（绑定随节点保留，关闭归位）。
       '<div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div>' +
       (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
       (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
-        esc(tr('该 workflow 暂无运行记录——')) + (exec.state === 'unbound' ? esc(tr('执行面未绑定（ConnectorOps 骨架缺席），任务不会拉起 run。')) : '') +
+        esc(tr('该 workflow 暂无运行记录——')) + (execState.state === 'unbound' ? esc(execState.note) : '') +
         '</div></div></div>');
     bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
     bindWorkflowStudio(el, ctx, wf, usedName, () => detailScreen(el, ctx, usedName));

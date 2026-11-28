@@ -7,7 +7,7 @@
 
 import { esc, relAge, trunc } from '../core/format.js';
 import { confirmModal, toast } from './modal.js';
-import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute } from '../render/chips.js';
+import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute, objRoute, sessionTargetOf } from '../render/chips.js';
 import { hydrateLoop } from './welcome.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -77,6 +77,8 @@ export function taskIdOf(t) {
   if (t.taskId) return String(t.taskId);
   return (t.scope || 'global') + '/' + String(t.name || '');
 }
+/** 任务详情深链（与 ctx.go('task/'+encodeURIComponent(id)) 同词形；router 侧补 '#/' 前缀）。 */
+export function taskHref(t) { return 'task/' + encodeURIComponent(taskIdOf(t)); }
 export function taskTitle(t) {
   const spec = specOf(t);
   return String(spec.title || (t && t.title) || (t && t.name) || tr('未命名任务'));
@@ -157,7 +159,10 @@ export function depChips(deps, defaultKind = '') {
   }).join(' ');
 }
 
-function taskRow(t) {
+/** 行主区=真链接（R-UX 链接语义：中键新标签/复制深链/键盘 Tab+Enter/读屏器可达）——
+ *  href '#/task/<encoded id>' 与详情路由同词形；动作区（对话 chip/取消按钮）置于 <a> 外，
+ *  避免交互元素嵌套。取消按钮仍由 data-task-cancel 局部监听接管。 */
+export function taskRow(t) {
   const id = taskIdOf(t);
   const s = statusOf(t);
   const spec = specOf(t);
@@ -167,7 +172,8 @@ function taskRow(t) {
   const last = String(s.lastAction || '').trim();
   const unknown = !String(s.phase || '');
   return '<div class="task-row">' +
-    '<div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t)) + '</b>' + phaseChip(t) +
+    '<a class="task-main lk" href="#/' + taskHref(t) + '" title="' + esc(tr('进任务详情')) + '">' +
+    '<div class="task-title"><b>' + esc(taskTitle(t)) + '</b>' + phaseChip(t) +
     chip(id, 'mute') +
     (depList.length ? depChips(depList.slice(0, 3), 'task') + (depList.length > 3 ? chip('+' + (depList.length - 3), 'mute') : '') : '') +
     (agent ? chip(tr('负责 ') + agent, 'mute') : '') + '</div>' +
@@ -175,7 +181,7 @@ function taskRow(t) {
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
     '</div>' +
     (unknown ? '<div class="task-sub small faint">' + esc(tr('状态未知（可取消或进详情核查）')) + '</div>' : '') +
-    '</div>' +
+    '</a>' +
     '<div class="task-acts">' + (sess ? chipGo(tr('对话'), 'session/' + encodeURIComponent(sess), 'mute', true, tr('关联会话')) : '') +
     cancelBtnHtml(t) + '</div>' +
     '</div>';
@@ -195,22 +201,8 @@ function tasksScreen(el, ctx) {
     screenHead(tr('任务中心'), tr('分组=确定性投影（状态单一写者=调度器）；点击行进详情'), chipGo(tr('关注报告'), 'report', 'acc', false)) +
     '<div class="grid cols-2">' + body + '</div></div>';
 
-  el.querySelectorAll('.task-row').forEach((row, i) => {
-    let n = 0;
-    for (const grp of GROUPS) {
-      const rows = g[grp.id] || [];
-      if (i < n + rows.length) {
-        const t = rows[i - n];
-        row.style.cursor = 'pointer';
-        row.addEventListener('click', (ev) => {
-          if (ev.target && ev.target.closest('[data-go],[data-task-cancel]')) return;
-          ctx.go('task/' + encodeURIComponent(taskIdOf(t)));
-        });
-        return;
-      }
-      n += rows.length;
-    }
-  });
+  // 行进详情=行主区真 <a href="#/task/...">（中键/复制深链/键盘/读屏原生可达）——
+  // 无需 JS 行点击绑定；行内 data-go chip 由全仓委托接管，取消按钮由下方局部监听接管。
 
   // 取消按钮：stopPropagation——不触发行进详情；发布 TaskCancelRequested（§19.3 取消通路）
   const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
@@ -279,9 +271,19 @@ function taskDetailScreen(el, ctx, id) {
     [tr('标题'), esc(taskTitle(t))],
     ['id', esc(taskIdOf(t))],
   ];
-  if (spec.agent || s.agent) rows.push([tr('负责'), esc(String(s.agent || spec.agent))]);
+  // #16 双向可达：负责 agent → Agent 对象页（对象页 spec.agent 反查任务详情的另一半）。
+  if (spec.agent || s.agent) {
+    const ag = String(s.agent || spec.agent).trim();
+    const seg = ag.split('/');
+    const scope = seg.length > 1 ? seg[0] : 'global';
+    const name = seg.length > 1 ? seg.slice(1).join('/') : ag;
+    rows.push([tr('负责'), chipGo(ag, objRoute('Agent', scope, name), 'mute', true, tr('打开 Agent 对象页'))]);
+  }
   const sessId = String(s.agentSession || s.sessionId || '').trim();
-  if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
+  if (sessId) {
+    const sessTarget = sessionTargetOf(sessId); // #16 任务键 hint 不冒充 session 深链
+    rows.push([tr('会话'), chipGo(trunc(sessId, 24), sessTarget, 'acc', true, tr('关联会话'))]);
+  }
   if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('状态未知（可取消或核查调度日志）'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);

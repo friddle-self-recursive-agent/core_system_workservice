@@ -375,6 +375,11 @@ function paintNotice() {
 function editorScreen(el, ctx, key) {
   const ed = ED.get(key.key);
   const view = ed ? ed.view : 'render';
+  // 底部提示按文档类型分支（§25/§27）：markdown 默认渲染成品→保留旧文案；YAML 默认即原文
+  // （defaultEditorView=raw），不再误导「点原文查看源文件」，改指向「对话修改」主通路、手改=最后手段。
+  const bottomHint = isMarkdownDoc(key.ref.kind, key.ref.name)
+    ? tr('<div class="small faint">默认展示渲染后的成品；点「原文」查看与编辑源文件。编辑即累积草稿（POST /v1/drafts——不动正式文档、不发事件）；Apply 唯一入口=右栏吸底按钮。</div>')
+    : tr('<div class="small faint">YAML 对象默认即原文（纯文本全文），无需点「原文」查看；修改优先走「对话修改」主通路（LLM 改文档→Apply），手改原文=最后手段。编辑即累积草稿（POST /v1/drafts——不动正式文档、不发事件）；Apply 唯一入口=右栏吸底按钮。</div>');
   el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main">' +
     '<div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + '/' + key.ref.name) + '</span>' + kindBadge(key.ref.kind) +
     tr('<span class="chip ok tiny" data-ed-draft-chip>无草稿</span>') +
@@ -388,7 +393,7 @@ function editorScreen(el, ctx, key) {
     '<div data-ed-notice></div>' +
     '<div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === 'render' ? '' : ' hidden') + '></div>' +
     tr('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="原文编辑——变更即累积草稿"') + (view === 'raw' ? '' : ' hidden') + '></textarea>' +
-    tr('<div class="small faint">默认展示渲染后的成品；点「原文」查看与编辑源文件。编辑即累积草稿（POST /v1/drafts——不动正式文档、不发事件）；Apply 唯一入口=右栏吸底按钮。</div>') +
+    bottomHint +
     '</div>' +
     '<div class="doc-collab">' +
     '<div class="collab-tabs">' +

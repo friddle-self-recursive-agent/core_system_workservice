@@ -400,17 +400,19 @@ function proposalsScreen(el, ctx) {
     const open = propOpen.has(key);
     const isFocus = !!focusName && key === focusName;
     const known = ['title', 'summary', 'status', 'proposer', 'createdAt', 'scope', 'name'];
-    const sub = known.filter((k) => p[k] != null && k !== 'title').map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
+    // R-ENG-9 数据零编造：空串/空白=真实缺席，不渲染标签、不冒充业务词形。
+    const has = (v) => v != null && String(v).trim() !== '';
+    const sub = known.filter((k) => k !== 'title' && has(p[k])).map((k) => esc(k) + ': ' + esc(trunc(String(p[k]), 40))).join(' · ');
     const extras = keys.filter((k) => !known.includes(k) && k !== 'summary' && p[k] != null && p[k] !== '')
       .map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + '</span>').join('');
     // V-14：「去审批」携带提案标识 approvals/:focus；并附对象工作台与直达链接 prop/:name
     const approveRoute = p && p.name ? 'approvals/' + encodeURIComponent(String(p.name)) : 'approvals';
     const propLink = p && p.name ? 'prop/' + encodeURIComponent(String(p.name)) : '';
     return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : '') + '>' +
-      '<div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(String(p.status || tr('待定')), 'mute') + '</div>' +
+      '<div class="mr-main"><div><b>' + esc(String(p.title || p.name || tr('未命名提案'))) + '</b> ' + chip(has(p.status) ? String(p.status) : tr('未声明'), 'mute') + '</div>' +
       '<div class="mr-sub small">' + (sub || tr('<span class="faint">要素字段缺席</span>')) + '</div>' +
       (open
-        ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ''), 2000) || tr('summary 缺席——详情见对象工作台')) + '</div>' +
+        ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(has(p.summary) ? trunc(String(p.summary), 2000) : tr('summary 缺席——详情见对象工作台')) + '</div>' +
           (extras ? '<div class="kv" style="margin-top:6px">' + extras + '</div>' : '') +
           '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
           (p && p.name ? chipGo(tr('对象工作台'), objRoute('Proposal', p.scope || 'global', p.name), 'mute', true) : '') +

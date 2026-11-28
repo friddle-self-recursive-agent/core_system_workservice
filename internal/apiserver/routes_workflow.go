@@ -6,6 +6,7 @@ package apiserver
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -246,7 +247,11 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 				"aliases":  d.sch.WorkflowAliases(),
 				"adapters": d.sch.WorkflowAdapters(),
 				"llm":      d.sch.LLMRuntime(),
-				"workflows": items,
+				// 2026-11-28 #21：connectops 引擎挂接态现读投影（与 cmd/cored 装配同一
+				// CORE_SYSTEM_CONNECTOPS_RUN=on 判据）——决策面执行状态三值（bound/partial/
+				// unbound）的引擎门输入。缺席/on 之外的取值一律 false（不冒充已挂接）。
+				"connectopsRun": os.Getenv("CORE_SYSTEM_CONNECTOPS_RUN") == "on",
+				"workflows":     items,
 			})
 		})
 	}
@@ -327,6 +332,8 @@ func runsPayload(st workflow.RunState) map[string]any {
 			// v0.37 console 读面第二段：来源留痕 involved 投影（run 涉及对象链第一跳——
 			// 运行抽屉「涉及文档」取本字段落对象链接，无前端拼凑；新载荷键=代际判别器）。
 			"involved": r.Involved,
+			// #16 执行 agent 锚（与 involved 被涉对象正交——Agent 对象页按 agent 反查相关运行）。
+			"agent": r.Agent,
 			// 会话锚（G-08 loop 会话关联；空=未回填——节点/任务会话链接的真实来源，不编造）。
 			"sessionId": r.SessionID,
 			// v0.32 刹车首段：生效刹车值投影（声明→留痕面——spec.brakes 钳定后的每锚生效值；

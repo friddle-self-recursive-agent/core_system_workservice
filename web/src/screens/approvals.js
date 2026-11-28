@@ -3,7 +3,8 @@
  * fieldManager=console:approve）；驳回=本地忽略（弃稿通路待后端词形，显式注记不装假）。
  * diff 注水=稿 content（GET /v1/drafts/{kind}/{name}）vs 面现值（GET /v1/objects）现读。
  * 已决记录=GET /v1/approvals 现读不缓存（缺席=诚实降级注记，零 4xx 假装成功）。
- * 收件箱=快照 inbox 投影（四类汇总+计数+深链）。 */
+ * 收件箱=快照 inbox 投影（四类汇总+计数+深链）；「待你处理」计数与清单同读 pendingItems
+ * 单点（#20——welcome 大屏不再另数 inbox.items）。 */
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { confirmModal, toast } from './modal.js';
@@ -11,16 +12,28 @@ import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute, involvedRo
 import { diffLines, renderDiff, diffStats } from '../render/diff.js';
 import { t as tr } from '../core/i18n.js';
 
-const ignored = new Set(); // 本地忽略（内存态——刷新复位；非服务端驳回）
+const ignored = new Set();    // 本地忽略（内存态——刷新复位；非服务端驳回）
+const deadDrafts = new Set(); // 草稿不存在（apply/弃稿后快照残留的死稿——现读 404 即出队）
 
-/** 待审区三源（F-09 ①②——2026-11-26 审批中心口径）：挂起 Workflow run（suspended ∨
- * AwaitingApproval——总览有审批页也要有）∪ 待批 Proposal（status=submitted，批闸锚=
- * Proposal/<scope>/<name>——批准/驳回=Apply 判定串通路）∪ 草稿缓存（DocReview 同源）∪
- * ApprovalNeeded 归档事件行。四源合并同构卡片，均可操作。 */
-function pendingItems(ctx) {
+/** 草稿对象键（pendingItems / 忽略集 / 死稿集同形——出队判据零双写）。 */
+export function draftKey(d) {
+  return 'draft|' + d.kind + '|' + (d.scope || 'global') + '|' + d.name;
+}
+
+/** 死稿出队：apply/弃稿/正文现读 404 后调用——此后 pendingItems 与 welcome 计数同步除名。 */
+export function dequeueDeadDraft(d) {
+  if (d && d.kind && d.name) deadDrafts.add(draftKey(d));
+}
+
+/** 待审区单一过滤面（#20）：审批中心清单与 welcome「待你处理」计数同读本函数——
+ * 一处过滤口径，两处长度必然相等（R-ENG-9 计数=真实账目源）。四源：挂起 Workflow run
+ * （suspended ∨ AwaitingApproval）∪ 待批 Proposal（status=submitted）∪ 草稿缓存（DocReview
+ * 同源，已 apply/弃稿/正文不存在的死稿出队）∪ ApprovalNeeded 归档事件行。 */
+export function pendingItems(ctx) {
   const drafts = ctx.store.drafts()
     .filter((d) => d && d.kind && d.name)
-    .map((d) => ({ kind: 'draft', key: 'draft|' + d.kind + '|' + (d.scope || 'global') + '|' + d.name, draft: d }));
+    .map((d) => ({ kind: 'draft', key: draftKey(d), draft: d }))
+    .filter((x) => !ignored.has(x.key) && !deadDrafts.has(x.key));
   const runs = ctx.store.runs()
     .filter((r) => r && (String(r.status || r.state || '') === 'suspended' || String(r.phase || '') === 'AwaitingApproval'))
     .map((r) => ({ kind: 'run', key: 'run|' + String(r.workflow || '') + '#' + String(r.run != null ? r.run : ''), run: r }));
@@ -30,7 +43,21 @@ function pendingItems(ctx) {
   const evs = ctx.store.events()
     .filter((e) => e && e.type === 'ApprovalNeeded' && !(ignored.has('ev|' + String(e.id ?? ''))))
     .map((e) => ({ kind: 'event', key: 'ev|' + String(e.id ?? ''), ev: e }));
-  return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
+  return drafts.concat(runs, props, evs);
+}
+
+/** 待审项 scope（Service 视角大屏按 scope 收窄——与清单同形，计数口径不另立）。 */
+export function pendingItemScope(it) {
+  if (!it) return '';
+  if (it.kind === 'draft') return String(it.draft && it.draft.scope || 'global');
+  if (it.kind === 'run') {
+    const inv = String((it.run && (it.run.involved || it.run.route || '')) || '');
+    const m = /^Workflow\/([^/\s]+)\//.exec(inv);
+    return m ? m[1] : String((it.run && (it.run.scope || it.run.ownerScope)) || '') || 'global';
+  }
+  if (it.kind === 'proposal') return String(it.proposal && it.proposal.scope || 'global');
+  if (it.kind === 'event') return String(it.ev && it.ev.scope || '');
+  return '';
 }
 
 function apKeyOf(d) {
@@ -190,7 +217,21 @@ function itemHtml(ctx, it, idx, focused = false) {
     '</div></div></div>';
 }
 
-/** diff 注水：稿 content + 面现值现读（不缓存——判定窗口最小化）。 */
+/** 页面计数即时回填（死稿出队/本地忽略后——数字与清单同步，无残留旧值）。 */
+export function refreshPendingCount(ctx) {
+  const el = document.querySelector('[data-ap-count]');
+  if (!el) return;
+  el.innerHTML = esc(tr('待你处理')) + ' <b>' + pendingItems(ctx).length + '</b> ' + esc(tr('件（与总览收件箱同源）'));
+}
+
+/** 草稿正文 404（=草稿不存在）判据：只认 404 或后端 ErrNoDraft 词形——网络/5xx 不冒充死稿。 */
+export function isDeadDraftResult(r) {
+  return !!r && !r.ok && (Number(r.status) === 404 || String(r.error || '').includes('草稿不存在'));
+}
+
+/** diff 注水：稿 content + 面现值现读（不缓存——判定窗口最小化）。
+ * #20：稿已不存在（apply/弃稿后快照残留死稿）即出队——整卡移除，pendingItems 与 welcome
+ * 计数同除名；不再挂「正文暂不可读（draft: 草稿不存在）——重进即恢复」无人能懂的死卡。 */
 async function hydrateDiff(ctx, d) {
   const stamp = typeof location !== 'undefined' ? location.hash : '';
   const [draftR, faceR] = await Promise.all([
@@ -198,6 +239,13 @@ async function hydrateDiff(ctx, d) {
     ctx.api.object(d.kind, d.scope || 'global', d.name),
   ]);
   if ((typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
+  if (isDeadDraftResult(draftR)) {
+    dequeueDeadDraft(d);
+    const card = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
+    if (card) card.remove();
+    refreshPendingCount(ctx); // 出队即重算页面数字——清单减一、计数同减一
+    return;
+  }
   const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
   if (!box) return;
   if (!draftR.ok) {
@@ -314,7 +362,8 @@ async function approve(ctx, d, btn) {
     toast(esc(tr('Apply 失败（') + String(r.error || r.status) + tr('）——稿保留语义，未落库。')), 'error');
     return;
   }
-  ignored.add('draft|' + d.kind + '|' + (d.scope || 'global') + '|' + d.name);
+  ignored.add(draftKey(d));
+  dequeueDeadDraft(d); // apply 已消费稿——快照残留引用不再占「待你处理」账
   const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
   if (cardEl) cardEl.remove();
   ctx.api.snapshot().then((s) => { if (s.ok) ctx.store.init(s.data); });
@@ -462,6 +511,8 @@ function approvalsScreen(el, ctx) {
     screenHead(tr('审批'), tr('待审区=草稿缓存（DocReview 类同源）∪ ApprovalNeeded 归档行。事件行批准/驳回=对 Workflow 锚发布 ApprovalGranted/ApprovalRejected（run 续行/终态 Failed）；草稿批准=Apply；均=人点确认。'),
       chip(tr('批量批准通路待后端词形——逐条批准（诚实注记）'), 'mute')) +
     focusBanner +
+    '<div class="small faint" data-ap-count style="margin-bottom:10px">' +
+      esc(tr('待你处理')) + ' <b>' + items.length + '</b> ' + esc(tr('件（与总览收件箱同源）')) + '</div>' +
     (items.length
       ? items.map((it, idx) => itemHtml(ctx, it, idx, !!focus && matchesApprovalFocus(it, focus))).join('')
       : emptyBox(tr('暂无待审事项'), '', chipGo(tr('回 Welcome'), 'welcome', 'acc', false))) +
@@ -513,6 +564,7 @@ function approvalsScreen(el, ctx) {
       ignored.add(btn.dataset.apIgnore);
       const card = btn.closest('.ap-item');
       if (card) card.remove();
+      refreshPendingCount(ctx);
     });
   });
   el.querySelectorAll('[data-go]').forEach((x) => {

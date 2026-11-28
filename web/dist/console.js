@@ -81,6 +81,7 @@ var CoreConsoleWeb = (() => {
     ["\u5F85\u5BA1\u533A\u4E3A\u7A7A", "No pending reviews (explicit empty state)"],
     ["\u6536\u4EF6\u7BB1", "Inbox"],
     ["\u5F85\u4F60\u5904\u7406", "awaiting you"],
+    ["\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09", "item(s) \u2014 same source as the Overview inbox"],
     ["\u8FDB\u884C\u4E2D\u4EFB\u52A1", "Running tasks"],
     ["\u4EFB\u52A1\u4E2D\u5FC3", "Task Center"],
     ["kinds \u6458\u8981", "kinds summary"],
@@ -304,6 +305,7 @@ var CoreConsoleWeb = (() => {
     ['<div class="small faint">\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002</div>', '<div class="small faint">No runs for this workflow (explicit empty state).</div>'],
     ['<div class="small faint">\u8BE5\u5BF9\u8C61\u6682\u65E0\u5F52\u6863\u4E8B\u4EF6\u884C\uFF08DocApplied/DocReview \u7B49\uFF09\u3002</div>', '<div class="small faint">No archived event rows for this object (DocApplied/DocReview etc. \u2014 explicit empty state).</div>'],
     ['<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>', '<div class="small faint">Shows the rendered result by default; click "Source" to view/edit the raw file. Editing accumulates a draft (POST /v1/drafts \u2014 never touches the official document, no events); the only Apply entry is the docked button in the right column.</div>'],
+    ['<div class="small faint">YAML \u5BF9\u8C61\u9ED8\u8BA4\u5373\u539F\u6587\uFF08\u7EAF\u6587\u672C\u5168\u6587\uFF09\uFF0C\u65E0\u9700\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\uFF1B\u4FEE\u6539\u4F18\u5148\u8D70\u300C\u5BF9\u8BDD\u4FEE\u6539\u300D\u4E3B\u901A\u8DEF\uFF08LLM \u6539\u6587\u6863\u2192Apply\uFF09\uFF0C\u624B\u6539\u539F\u6587=\u6700\u540E\u624B\u6BB5\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>', '<div class="small faint">YAML objects show raw source by default (plain-text full text) \u2014 no need to click "Source". Prefer chat-edit as the primary path (LLM edits the doc \u2192 Apply); hand-editing raw text is a last resort. Editing accumulates a draft (POST /v1/drafts \u2014 never touches the official document, no events); the only Apply entry is the docked button in the right column.</div>'],
     ['<div class="w-foot small faint">\u6570\u636E\u9762\uFF1AGET /v1/snapshot \u57FA\u7EBF + /v1/stream patch \u589E\u91CF\uFF08WS \u65AD\u7EBF\u81EA\u52A8\u964D\u7EA7\u8F6E\u8BE2\uFF09\uFF1B', '<div class="w-foot small faint">Data plane: GET /v1/snapshot baseline + /v1/stream patch increments (auto-degrades to polling on WS loss); '],
     ['<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>', '<div data-ap-ledger style="margin-top:20px"><div class="small faint">Loading decision ledger\u2026</div></div>'],
     ['<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">\u4E0A\u4E0B\u6587\u52A0\u8F7D\u4E2D\u2026\uFF08GET /v1/sessions/', '<div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">Hydrating context\u2026 (GET /v1/sessions/'],
@@ -420,7 +422,6 @@ var CoreConsoleWeb = (() => {
     ["\u5F53\u524D\u65E0\u8FDB\u884C\u4E2D\u5FAA\u73AF", "No loop in progress"],
     ["\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002", "Filter has zero hits \u2014 relax the conditions and retry."],
     ["\u5F85\u542F\u52A8", "pending start"],
-    ["\u5F85\u5B9A", "pending"],
     ["\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\uFF08\u5DF2\u6279\u7684\u4E0D\u51FA\u73B0\uFF09\u3002\u6279\u51C6/\u9A73\u56DE\u5747=\u4EBA\u70B9\uFF1Bdiff=\u7A3F vs \u6587\u6863\u73B0\u503C\u73B0\u8BFB\u3002", "Pending = draft cache (DocReview same source) \u222A ApprovalNeeded archive rows (approved ones drop out). Approve/reject are human clicks; diff = draft vs live document, read fresh."],
     ["\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879", "Pending is empty (both draft cache and ApprovalNeeded archive are empty)"],
     ["\u5FAA\u73AF\u5524\u9192 #", "Loop wake #"],
@@ -676,7 +677,7 @@ var CoreConsoleWeb = (() => {
     ["\u9700\u6C42\u63D0\u6848", "Proposals"],
     ["\u63D0\u6848\u9762\uFF08\u5217\u8868+\u8981\u7D20\u73B0\u8BFB\uFF09\u2014\u2014\u6279\u51C6/\u9A73\u56DE\u8D70\u5BA1\u6279\u4E0E Apply\uFF08LLM \u65E0 Apply \u6743\uFF09", "Proposal face (list + live elements) \u2014 approve/reject go through approvals and Apply (LLM has no Apply right)"],
     ["\u672A\u547D\u540D\u63D0\u6848", "Unnamed proposal"],
-    ["\u5F85\u5B9A", "Pending"],
+    ["\u672A\u58F0\u660E", "Undeclared"],
     ["\u6682\u65E0\u63D0\u6848", "No proposals"],
     ["\u5FEB\u7167 proposals \u805A\u5408\u4E3A\u7A7A\u3002", "Snapshot proposals aggregate is empty (explicit empty state)."],
     [" \u7684\u5BF9\u8C61\u4E0E\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408\u6295\u5F71\uFF09", "\u2019s objects and events (snapshot projection)"],
@@ -1242,7 +1243,7 @@ var CoreConsoleWeb = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -1256,7 +1257,7 @@ var CoreConsoleWeb = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -1383,7 +1384,7 @@ var CoreConsoleWeb = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -1703,7 +1704,7 @@ var CoreConsoleWeb = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -1873,7 +1874,7 @@ var CoreConsoleWeb = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -2180,6 +2181,17 @@ var CoreConsoleWeb = (() => {
   }
 
   // src/core/router.js
+  var PARAM_EXITS = {
+    chat: { go: "chat/core-headless", label: "\u8FDB\u5165\u4F1A\u8BDD\uFF08\u9ED8\u8BA4 agent\uFF09" },
+    session: { go: "chat/core-headless", label: "\u56DE\u4F1A\u8BDD\u5217\u8868" },
+    task: { go: "tasks", label: "\u56DE\u5DE5\u4F5C\u4E0E\u6D41\u7A0B" },
+    event: { go: "events", label: "\u56DE\u4E8B\u4EF6\u6D41" },
+    doc: { go: "docs", label: "\u56DE\u6587\u6863\u4E0E\u8D44\u4EA7" },
+    wf: { go: "workflows", label: "\u56DE\u6D41\u7A0B\u8FD0\u884C" },
+    prop: { go: "proposals", label: "\u56DE\u63D0\u6848" },
+    s: { go: "home", label: "\u56DE\u9996\u9875" },
+    service: { go: "welcome", label: "\u56DE\u603B\u89C8" }
+  };
   function parseHash(hash) {
     let h = String(hash || "").replace(/^#\/?/, "");
     h = h.split("?")[0];
@@ -2215,8 +2227,30 @@ var CoreConsoleWeb = (() => {
       }
       return null;
     }
-    function notFoundHtml(segs) {
-      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + segs.map((s) => s).join("/") + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE\u9996\u9875\u5BF9\u8BDD\u8FDB\u5165\u3002</div><div class="e-act"><button class="btn btn-primary" data-go="home">\u56DE\u9996\u9875</button></div></div></div>';
+    function missingParamOf(segs) {
+      for (const r of routes) {
+        const ps = r.pattern.split("/");
+        if (ps.length <= segs.length) continue;
+        let prefix = true;
+        for (let i = 0; i < segs.length; i++) {
+          if (ps[i].charAt(0) === ":" || ps[i] !== segs[i]) {
+            prefix = false;
+            break;
+          }
+        }
+        if (prefix && ps[segs.length].charAt(0) === ":") {
+          return ps.slice(segs.length).filter((p) => p.charAt(0) === ":").map((p) => p.slice(1));
+        }
+      }
+      return null;
+    }
+    function notFoundHtml(segs, missing) {
+      const exit = missing && PARAM_EXITS[segs[0]];
+      const act = (exit ? '<button class="btn btn-primary" data-go="' + esc(exit.go) + '">' + esc(exit.label) + "</button> " : "") + '<button class="btn' + (exit ? " btn-secondary" : " btn-primary") + '" data-go="home">\u56DE\u9996\u9875</button>';
+      if (missing) {
+        return '<div class="view-inner"><div class="empty"><div class="e-title">\u7F3A\u53C2\u6570\uFF1A' + missing.map((p) => "<code>" + esc(p) + "</code>").join("\u3001") + '</div><div class="small faint">\u8FD9\u4E2A\u5730\u5740\u5C11\u4E86\u53C2\u6570\u2014\u2014\u4E0D\u7528\u624B\u62FC\uFF0C\u70B9\u4E0B\u9762\u5165\u53E3\u8FDB\u3002</div><div class="e-act">' + act + "</div></div></div>";
+      }
+      return '<div class="view-inner"><div class="empty"><div class="e-title">\u672A\u77E5\u8DEF\u5F84\uFF08' + esc(segs.join("/")) + '\uFF09</div><div class="small faint">\u8DEF\u7531\u8BCD\u5F62\u89C1\u63A7\u5236\u53F0\u5BFC\u822A\u2014\u2014\u6216\u4ECE\u9996\u9875\u5BF9\u8BDD\u8FDB\u5165\u3002</div><div class="e-act">' + act + "</div></div></div>";
     }
     const api2 = {
       /** 注册屏（pattern 如 'wf/:name/r/:n'；fn(viewEl, params, ctx)）。 */
@@ -2252,7 +2286,7 @@ var CoreConsoleWeb = (() => {
         const hit = resolve(segs);
         if (!hit) {
           current = { route: "404", pattern: "", segs, params: {} };
-          viewEl.innerHTML = notFoundHtml(segs);
+          viewEl.innerHTML = notFoundHtml(segs, missingParamOf(segs));
           return null;
         }
         current = { route: hit.r.pattern.split("/")[0], pattern: hit.r.pattern, segs, params: hit.params };
@@ -2717,6 +2751,13 @@ var CoreConsoleWeb = (() => {
   function objRoute(kind, scope, name) {
     return "obj/" + encSeg(kind) + "/" + encSeg(scope || "global") + "/" + encSeg(name);
   }
+  function sessionTargetOf(sess) {
+    const s = String(sess == null ? "" : sess).trim();
+    if (!s) return "";
+    if (/^session[-_]/i.test(s)) return "session/" + encSeg(s);
+    if (s.includes("/")) return "task/" + encSeg(s);
+    return "session/" + encSeg(s);
+  }
   function tagRoute(tag2) {
     return "docs/tag/" + encSeg(tag2);
   }
@@ -2797,7 +2838,7 @@ var CoreConsoleWeb = (() => {
     return chip("\u540C\u6B65\u4E2D", "acc");
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -2999,7 +3040,7 @@ var CoreConsoleWeb = (() => {
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -3115,12 +3156,31 @@ var CoreConsoleWeb = (() => {
 
   // src/screens/approvals.js
   var ignored = /* @__PURE__ */ new Set();
+  var deadDrafts = /* @__PURE__ */ new Set();
+  function draftKey(d) {
+    return "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name;
+  }
+  function dequeueDeadDraft(d) {
+    if (d && d.kind && d.name) deadDrafts.add(draftKey(d));
+  }
   function pendingItems(ctx2) {
-    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: draftKey(d), draft: d })).filter((x) => !ignored.has(x.key) && !deadDrafts.has(x.key));
     const runs = ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).map((r) => ({ kind: "run", key: "run|" + String(r.workflow || "") + "#" + String(r.run != null ? r.run : ""), run: r }));
     const props = ctx2.store.proposals().filter((p) => p && p.name && String(p.status || "submitted") === "submitted").map((p) => ({ kind: "proposal", key: "proposal|" + String(p.scope || "global") + "|" + String(p.name), proposal: p }));
     const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
-    return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
+    return drafts.concat(runs, props, evs);
+  }
+  function pendingItemScope(it) {
+    if (!it) return "";
+    if (it.kind === "draft") return String(it.draft && it.draft.scope || "global");
+    if (it.kind === "run") {
+      const inv = String(it.run && (it.run.involved || it.run.route || "") || "");
+      const m = /^Workflow\/([^/\s]+)\//.exec(inv);
+      return m ? m[1] : String(it.run && (it.run.scope || it.run.ownerScope) || "") || "global";
+    }
+    if (it.kind === "proposal") return String(it.proposal && it.proposal.scope || "global");
+    if (it.kind === "event") return String(it.ev && it.ev.scope || "");
+    return "";
   }
   function apKeyOf(d) {
     return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
@@ -3201,6 +3261,14 @@ var CoreConsoleWeb = (() => {
     const scope = d.scope || "global";
     return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"' + hl + '><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip(t("\u7A3F: ") + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + t('"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-approve="' + esc(apKeyOf(d)) + t('">\u6279\u51C6\uFF08= Apply\uFF09</button> ') + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button> ') + '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + t('">\u7F16\u8F91\u5668</button>') + "</div></div></div>";
   }
+  function refreshPendingCount(ctx2) {
+    const el = document.querySelector("[data-ap-count]");
+    if (!el) return;
+    el.innerHTML = esc(t("\u5F85\u4F60\u5904\u7406")) + " <b>" + pendingItems(ctx2).length + "</b> " + esc(t("\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09"));
+  }
+  function isDeadDraftResult(r) {
+    return !!r && !r.ok && (Number(r.status) === 404 || String(r.error || "").includes("\u8349\u7A3F\u4E0D\u5B58\u5728"));
+  }
   async function hydrateDiff(ctx2, d) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const [draftR, faceR] = await Promise.all([
@@ -3208,6 +3276,13 @@ var CoreConsoleWeb = (() => {
       ctx2.api.object(d.kind, d.scope || "global", d.name)
     ]);
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    if (isDeadDraftResult(draftR)) {
+      dequeueDeadDraft(d);
+      const card = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
+      if (card) card.remove();
+      refreshPendingCount(ctx2);
+      return;
+    }
     const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
     if (!box) return;
     if (!draftR.ok) {
@@ -3314,7 +3389,8 @@ var CoreConsoleWeb = (() => {
       toast(esc(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002")), "error");
       return;
     }
-    ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
+    ignored.add(draftKey(d));
+    dequeueDeadDraft(d);
     const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
     if (cardEl) cardEl.remove();
     ctx2.api.snapshot().then((s) => {
@@ -3434,7 +3510,7 @@ var CoreConsoleWeb = (() => {
       t("\u5BA1\u6279"),
       t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\u3002\u4E8B\u4EF6\u884C\u6279\u51C6/\u9A73\u56DE=\u5BF9 Workflow \u951A\u53D1\u5E03 ApprovalGranted/ApprovalRejected\uFF08run \u7EED\u884C/\u7EC8\u6001 Failed\uFF09\uFF1B\u8349\u7A3F\u6279\u51C6=Apply\uFF1B\u5747=\u4EBA\u70B9\u786E\u8BA4\u3002"),
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
-    ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
+    ) + focusBanner + '<div class="small faint" data-ap-count style="margin-bottom:10px">' + esc(t("\u5F85\u4F60\u5904\u7406")) + " <b>" + items.length + "</b> " + esc(t("\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09")) + "</div>" + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
     items.filter((x) => x.kind === "run").forEach((x) => {
       const a = verdictAnchorOf(x.run);
@@ -3475,6 +3551,7 @@ var CoreConsoleWeb = (() => {
         ignored.add(btn.dataset.apIgnore);
         const card = btn.closest(".ap-item");
         if (card) card.remove();
+        refreshPendingCount(ctx2);
       });
     });
     el.querySelectorAll("[data-go]").forEach((x) => {
@@ -3751,16 +3828,17 @@ var CoreConsoleWeb = (() => {
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u6682\u65E0\u5BF9\u8C61")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
   }
+  function inboxCountOf(ctx2, scope = "") {
+    return pendingItems(ctx2).filter((it) => !scope || !pendingItemScope(it) || pendingItemScope(it) === scope).length;
+  }
   function dashLayout(ctx2, opts) {
     const store2 = ctx2.store;
     const scope = opts.scope || "";
     const inScope = (o) => !scope || String(o && (o.scope || o.raw && o.raw.scope) || "") === scope;
     const inbox = store2.inbox();
-    const inboxItems = inbox ? (Array.isArray(inbox) ? inbox : inbox && inbox.items || []) || [] : [];
-    const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
     const inboxCard = inbox ? statCard(
       t("\u6536\u4EF6\u7BB1"),
-      inboxScoped.length,
+      inboxCountOf(ctx2, scope),
       t("\u5F85\u4F60\u5904\u7406"),
       "inbox",
       ""
@@ -3875,6 +3953,9 @@ var CoreConsoleWeb = (() => {
     if (t2.taskId) return String(t2.taskId);
     return (t2.scope || "global") + "/" + String(t2.name || "");
   }
+  function taskHref(t2) {
+    return "task/" + encodeURIComponent(taskIdOf(t2));
+  }
   function taskTitle(t2) {
     const spec = specOf(t2);
     return String(spec.title || t2 && t2.title || t2 && t2.name || t("\u672A\u547D\u540D\u4EFB\u52A1"));
@@ -3954,7 +4035,7 @@ var CoreConsoleWeb = (() => {
     const sess = String(s.agentSession || s.sessionId || "").trim();
     const last = String(s.lastAction || "").trim();
     const unknown = !String(s.phase || "");
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(trunc(last, 100) || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
+    return '<div class="task-row"><a class="task-main lk" href="#/' + taskHref(t2) + '" title="' + esc(t("\u8FDB\u4EFB\u52A1\u8BE6\u60C5")) + '"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(trunc(last, 100) || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</a><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
   }
   function tasksScreen(el, ctx2) {
     const tasks = ctx2.store.tasks();
@@ -3964,22 +4045,6 @@ var CoreConsoleWeb = (() => {
       return '<div class="card"><div class="card-h"><span class="h-title">' + esc(grp.label) + "</span>" + chip(String(rows.length) + t(" \u9879"), rows.length ? "acc" : "mute") + "</div>" + (rows.length ? '<div class="card-b">' + rows.map(taskRow).join("") + "</div>" : '<div class="card-b small faint">' + esc(grp.label) + t("\uFF1A\u6682\u65E0\u3002</div>")) + "</div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4EFB\u52A1\u4E2D\u5FC3"), t("\u5206\u7EC4=\u786E\u5B9A\u6027\u6295\u5F71\uFF08\u72B6\u6001\u5355\u4E00\u5199\u8005=\u8C03\u5EA6\u5668\uFF09\uFF1B\u70B9\u51FB\u884C\u8FDB\u8BE6\u60C5"), chipGo(t("\u5173\u6CE8\u62A5\u544A"), "report", "acc", false)) + '<div class="grid cols-2">' + body + "</div></div>";
-    el.querySelectorAll(".task-row").forEach((row, i) => {
-      let n = 0;
-      for (const grp of GROUPS) {
-        const rows = g[grp.id] || [];
-        if (i < n + rows.length) {
-          const t2 = rows[i - n];
-          row.style.cursor = "pointer";
-          row.addEventListener("click", (ev) => {
-            if (ev.target && ev.target.closest("[data-go],[data-task-cancel]")) return;
-            ctx2.go("task/" + encodeURIComponent(taskIdOf(t2)));
-          });
-          return;
-        }
-        n += rows.length;
-      }
-    });
     const byId = new Map(tasks.map((x) => [taskIdOf(x), x]));
     el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
@@ -4026,9 +4091,18 @@ var CoreConsoleWeb = (() => {
       [t("\u6807\u9898"), esc(taskTitle(t2))],
       ["id", esc(taskIdOf(t2))]
     ];
-    if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
+    if (spec.agent || s.agent) {
+      const ag = String(s.agent || spec.agent).trim();
+      const seg = ag.split("/");
+      const scope = seg.length > 1 ? seg[0] : "global";
+      const name = seg.length > 1 ? seg.slice(1).join("/") : ag;
+      rows.push([t("\u8D1F\u8D23"), chipGo(ag, objRoute("Agent", scope, name), "mute", true, t("\u6253\u5F00 Agent \u5BF9\u8C61\u9875"))]);
+    }
     const sessId = String(s.agentSession || s.sessionId || "").trim();
-    if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    if (sessId) {
+      const sessTarget = sessionTargetOf(sessId);
+      rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), sessTarget, "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    }
     if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u65E5\u5FD7\uFF09"))]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
@@ -4120,7 +4194,7 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -6256,7 +6330,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -8405,7 +8479,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -11745,6 +11819,7 @@ ${text2}</tr>
   }
 
   // src/screens/workflow-config.js
+  var WF_TERMINAL_STATUS = /* @__PURE__ */ new Set(["Failed"]);
   function defaultLoopSpec(name = "core-system-developer-loop", existing = {}) {
     const s = existing && typeof existing === "object" ? existing : {};
     const logSrc = s.logSource || {};
@@ -12076,6 +12151,7 @@ ${actionLines || "      []"}
     const edges = [];
     (transitions || []).forEach((t2) => {
       if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
+      if (WF_TERMINAL_STATUS.has(String(t2.from)) || WF_TERMINAL_STATUS.has(String(t2.to))) return;
       [t2.from, t2.to].forEach((k) => {
         if (!phaseFirst.has(k)) {
           const key = k + "#side";
@@ -13429,21 +13505,20 @@ spec:
   }
   function wfNodeStats(runs, phases) {
     const stats = /* @__PURE__ */ new Map();
-    for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+    for (const p of phases) stats.set(p, { cur: 0, visited: 0 });
     for (const r of runs) {
       const cur = String(r.phase || "");
       if (stats.has(cur)) stats.get(cur).cur++;
       const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String(h && h.to || "")));
       for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
-      if (String(r.status || "") === "failed" && stats.has("Failed")) stats.get("Failed").failed++;
     }
     return stats;
   }
   function wfNodeGraphHtml(wf, runs) {
-    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String).filter((p) => !WF_TERMINAL_STATUS.has(p));
     const failed = runs.filter((r) => String(r.status || "") === "failed").length;
-    const list2 = phases.concat(failed && !phases.includes("Failed") ? ["Failed"] : []);
-    if (!list2.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>";
+    const terminalBadge = failed ? '<div class="wf-terminal-badge" style="margin-top:6px"><span class="chip danger tiny" title="' + esc(t("run \u7EC8\u6001\u7EDF\u8BA1\u2014\u2014\u72B6\u6001\u8BCD\u4E0D\u5360\u76F8\u4F4D\u94FE\u8282\u70B9")) + '">' + esc(t("\u843D\u7EC8\u6001 failed \xD7" + failed)) + "</span></div>" : "";
+    if (!phases.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>" + terminalBadge;
     const raw = String(wf && wf.rawYaml || "");
     if (raw) {
       try {
@@ -13451,22 +13526,22 @@ spec:
         const phasesRaw = Array.isArray(doc && doc.spec && doc.spec.phases) ? doc.spec.phases : [];
         const transitions = Array.isArray(doc && doc.spec && doc.spec.transitions) ? doc.spec.transitions : [];
         if (transitions.length) {
-          const phasesRich = phasesRaw.map((n) => typeof n === "string" ? { name: n, phase: n } : n).filter((n) => n && (n.phase || n.name));
+          const phasesRich = phasesRaw.map((n) => typeof n === "string" ? { name: n, phase: n } : n).filter((n) => n && (n.phase || n.name) && !WF_TERMINAL_STATUS.has(String(n.phase || n.name)));
           const graph = wfGraphHtml(phasesRich, transitions);
           if (graph) {
-            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + '</div><div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + '</div><div style="overflow-x:auto;padding-bottom:4px">' + graph + "</div>" + terminalBadge + '<div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
           }
         }
       } catch (e) {
       }
     }
-    const stats = wfNodeStats(runs, list2);
-    const body = list2.map((p) => {
-      const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
-      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited || s.failed ? " done" : "") + (p === "Failed" ? " fail" : "");
+    const stats = wfNodeStats(runs, phases);
+    const body = phases.map((p) => {
+      const s = stats.get(p) || { cur: 0, visited: 0 };
+      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited ? " done" : "");
       return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (s.cur ? '<span class="chip acc tiny">' + esc(t("\u5F53\u524D") + " " + s.cur) + "</span>" : "") + (s.visited ? '<span class="chip mute tiny">' + esc(t("\u5230\u8FC7") + " " + s.visited) + "</span>" : "") + "</div>";
     }).join('<span class="pg-edge">\u2192</span>');
-    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+    return '<div class="pg-wrap">' + body + "</div>" + terminalBadge + '<div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
   }
   function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
     el.querySelectorAll("[data-wf-node],[data-graph-node]").forEach((n) => {
@@ -14019,12 +14094,12 @@ spec:
       if (!slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
       const rows = r && r.ok && Array.isArray(r.data && (r.data.rows || r.data.history || r.data.items)) ? r.data.rows || r.data.history || r.data.items : r && r.ok && Array.isArray(r.data) ? r.data : [];
       if (!rows.length) return;
-      const first = rows[0];
-      const last = rows[rows.length - 1];
+      const earliest = rows[rows.length - 1];
+      const latest = rows[0];
       slot.innerHTML = metaHeaderHtml(meta, Object.assign({}, base, {
-        createdAt: String(first && (first.at || first.appliedAt) || ""),
-        lastAt: String(last && (last.at || last.appliedAt) || ""),
-        lastBy: String(last && last.fieldManager || "")
+        createdAt: String(earliest && (earliest.at || earliest.appliedAt) || ""),
+        lastAt: String(latest && (latest.at || latest.appliedAt) || ""),
+        lastBy: String(latest && latest.fieldManager || "")
       }));
       slot.querySelectorAll("[data-go]").forEach((n) => {
         n.addEventListener("click", (ev) => {
@@ -14038,20 +14113,31 @@ spec:
   }
 
   // src/screens/objects.js
+  function taskHintMentions(sess, low) {
+    const s = String(sess || "").trim().toLowerCase();
+    if (!s || s.length < 4 || !s.includes("/") || /^session[-_]/i.test(s)) return false;
+    return s === low || s.endsWith("/" + low) || s.includes(low);
+  }
   function relatedTasksOf(name, tasks) {
-    const n = String(name || "");
+    const n = String(name || "").trim();
     if (!n) return [];
+    const low = n.toLowerCase();
     const out = [];
     (tasks || []).forEach((t2) => {
       if (!t2) return;
       const spec = t2.spec || {};
       const st = t2.status || t2;
       const id = (t2.scope || "global") + "/" + String(t2.name || "");
-      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef, t2.title].map((x) => String(x || "").toLowerCase()).join(" \n");
-      const isSelf = String(t2.name || "") === n;
-      const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
-      if (!isSelf && !mentioned) return;
       const sess = String(st.agentSession || st.sessionId || "").trim();
+      const isSelf = String(t2.name || "") === n;
+      const agent = String(spec.agent || t2.agent || "").trim().toLowerCase();
+      const owners = (spec.ownerRefs || t2.ownerRefs || []).map((x) => String(x || "").trim().toLowerCase());
+      const byAgent = !!agent && agent === low;
+      const byOwner = owners.some((r) => r === low || r.endsWith("/" + low));
+      const byHint = taskHintMentions(sess, low);
+      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef, t2.title].map((x) => String(x || "").toLowerCase()).join(" \n");
+      const byText = !isSelf && low.length >= 4 && hay.includes(low);
+      if (!isSelf && !byAgent && !byOwner && !byHint && !byText) return;
       out.push({
         id,
         self: isSelf,
@@ -14067,12 +14153,44 @@ spec:
   function relatedRunsOf(name, runs) {
     const n = String(name || "").toLowerCase();
     if (!n || n.length < 4) return [];
-    return (runs || []).filter((r) => String(r && r.involved || "").toLowerCase().includes(n)).slice(0, 8).map((r) => ({
+    return (runs || []).filter((r) => {
+      if (!r) return false;
+      const a = String(r.agent || "").trim().toLowerCase();
+      if (a && (a === n || a.endsWith("/" + n))) return true;
+      return String(r.involved || "").toLowerCase().includes(n);
+    }).slice(0, 8).map((r) => ({
       workflow: String(r && (r.workflow || r.name) || ""),
       run: r && (r.run != null ? r.run : r.no != null ? r.no : ""),
       phase: String(r && r.phase || ""),
       status: String(r && r.status || "")
     }));
+  }
+  function relatedEventsOf(name, events) {
+    const n = String(name || "").toLowerCase();
+    if (!n || n.length < 4) return [];
+    return (events || []).filter((e) => {
+      if (!e) return false;
+      const inv = String(e.involved || "").toLowerCase();
+      const who = String(e.agent || e.owner || "").trim().toLowerCase();
+      return inv.includes(n) || !!who && (who === n || who.endsWith("/" + n));
+    }).slice(0, 8).map((e) => ({
+      type: String(e.type || ""),
+      eventId: String(e.eventId || e.id || ""),
+      at: String(e.ts || e.at || "")
+    }));
+  }
+  function currentSessionOf(content) {
+    let src = String(content || "");
+    if (!src.trim()) return "";
+    if (src.startsWith("---")) {
+      const end = src.indexOf("\n---", 3);
+      if (end > 3) src = src.slice(3, end);
+    }
+    const d = loadYaml(src);
+    const cur = d && d.status && d.status.currentSession || d && d.currentSession;
+    if (!cur) return "";
+    const id = typeof cur === "string" ? cur : cur.id || cur.sessionId || cur.session || "";
+    return String(id || "").trim();
   }
   var PHASE_CHIP = {
     running: ["\u6B63\u5728\u505A", "acc"],
@@ -14092,17 +14210,33 @@ spec:
     const v = PHASE_CHIP[String(p || "")];
     return v ? chip(v[0], v[1]) : chip(String(p || t("\u72B6\u6001\u672A\u77E5")), "mute");
   }
-  function relatedPanelHtml(tasks, runs) {
-    if (!tasks.length && !runs.length) {
-      return t('<div class="ob-empty">\u65E0\u76F8\u5173\u4EFB\u52A1\u4E0E\u5DE5\u4F5C\u6D41\u8FD0\u884C\uFF08\u5FEB\u7167\u4EFB\u52A1/\u8FD0\u884C\u8BB0\u5F55\u63D0\u53CA\u672C\u5BF9\u8C61\u540D\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002</div>');
+  function sessionChipHtml(sess) {
+    const target = sessionTargetOf(sess);
+    if (!target) return "";
+    const isTask = target.startsWith("task/");
+    return chipGo(
+      isTask ? t("\u770B\u4EFB\u52A1") : t("\u770B\u4F1A\u8BDD"),
+      target,
+      "acc",
+      true,
+      isTask ? t("\u4EFB\u52A1\u952E\u4F1A\u8BDD\u63D0\u793A\u2014\u2014\u94FE\u4EFB\u52A1\u8BE6\u60C5") : t("\u67E5\u770B\u6267\u884C\u4F1A\u8BDD")
+    );
+  }
+  function relatedPanelHtml(tasks, runs, currentSess, events) {
+    if (!tasks.length && !runs.length && !currentSess && !events.length) {
+      return t('<div class="ob-empty">\u65E0\u76F8\u5173\u4EFB\u52A1/\u4F1A\u8BDD/\u8FD0\u884C/\u4E8B\u4EF6\uFF08\u5FEB\u7167\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002</div>');
     }
     const taskRows = tasks.map(
-      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + " <b>" + esc(trunc(x.title, 44)) + "</b> " + (x.agent ? chip(t("\u8D1F\u8D23 ") + x.agent, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(x.id, 48)) + (x.lastAction ? " \xB7 " + esc(trunc(x.lastAction, 60)) : "") + '</div></div><span class="w-ev-time">' + (x.session ? chipGo(t("\u770B\u4F1A\u8BDD"), "session/" + encodeURIComponent(x.session), "acc", true, t("\u67E5\u770B\u6267\u884C\u4F1A\u8BDD")) : "") + " " + chipGo(t("\u4EFB\u52A1\u8BE6\u60C5"), "task/" + encodeURIComponent(x.id), "mute", true) + "</span></div>"
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + " <b>" + esc(trunc(x.title, 44)) + "</b> " + (x.agent ? chip(t("\u8D1F\u8D23 ") + x.agent, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(x.id, 48)) + (x.lastAction ? " \xB7 " + esc(trunc(x.lastAction, 60)) : "") + '</div></div><span class="w-ev-time">' + (x.session ? sessionChipHtml(x.session) : "") + " " + chipGo(t("\u4EFB\u52A1\u8BE6\u60C5"), "task/" + encodeURIComponent(x.id), "mute", true) + "</span></div>"
     ).join("");
+    const sessHtml = currentSess ? '<div class="mini-row"><div class="mr-main"><div>' + chip(t("\u5F53\u524D\u4F1A\u8BDD"), "acc") + ' <span class="mono">' + esc(trunc(currentSess, 56)) + '</span></div></div><span class="w-ev-time">' + sessionChipHtml(currentSess) + "</span></div>" : "";
     const runRows = runs.map(
       (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase || x.status) + " <b>" + esc(x.workflow) + "</b> " + chip("run #" + String(x.run != null ? x.run : "?"), "mono") + '</div></div><span class="w-ev-time">' + chipGo(t("\u770B\u8FD0\u884C"), "wf/" + encodeURIComponent(x.workflow) + "/r/" + encodeURIComponent(String(x.run != null ? x.run : "")), "mute", true) + "</span></div>"
     ).join("");
-    return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u76F8\u5173\u4EFB\u52A1")) + "</div>" + taskRows : "") + (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C")) + "</div>" + runRows : "");
+    const eventRows = events.map(
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + chip(t("\u4E8B\u4EF6"), "mute") + " <b>" + esc(trunc(x.type, 44)) + "</b> " + (x.eventId ? chip("#" + String(x.eventId), "mono") : "") + '</div></div><span class="w-ev-time">' + esc(trunc(x.at, 20)) + "</span></div>"
+    ).join("");
+    return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u76F8\u5173\u4EFB\u52A1")) + "</div>" + taskRows : "") + (sessHtml ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u5F53\u524D\u4F1A\u8BDD")) + "</div>" + sessHtml : "") + (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C")) + "</div>" + runRows : "") + (eventRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u4E8B\u4EF6")) + "</div>" + eventRows : "");
   }
   function tagVocabFromKinds(kinds) {
     const rows = Array.isArray(kinds) ? kinds : [];
@@ -14318,7 +14452,10 @@ spec:
     const ruleState = rulesPending.get(ref.kind + "|" + ref.name) || null;
     const related = relatedPanelHtml(
       relatedTasksOf(ref.name, ctx2.store.tasks()),
-      relatedRunsOf(ref.name, ctx2.store.runs())
+      relatedRunsOf(ref.name, ctx2.store.runs()),
+      currentSessionOf(content),
+      // #16 ④ 对象自身 status.currentSession
+      relatedEventsOf(ref.name, ctx2.store.events())
     );
     el.innerHTML = '<div class="view-inner">' + screenHead(
       ref.name,
@@ -14785,7 +14922,8 @@ spec:
   function editorScreen(el, ctx2, key) {
     const ed = ED.get(key.key);
     const view = ed ? ed.view : "render";
-    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small" data-ed-rv>' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u7248\u672C\u57FA\u51C6\uFF09") : t("\u52A0\u8F7D\u4E2D\u2026")) + '</span></div><div data-ed-meta-header></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn btn-primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
+    const bottomHint = isMarkdownDoc(key.ref.kind, key.ref.name) ? t('<div class="small faint">\u9ED8\u8BA4\u5C55\u793A\u6E32\u67D3\u540E\u7684\u6210\u54C1\uFF1B\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\u4E0E\u7F16\u8F91\u6E90\u6587\u4EF6\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>') : t('<div class="small faint">YAML \u5BF9\u8C61\u9ED8\u8BA4\u5373\u539F\u6587\uFF08\u7EAF\u6587\u672C\u5168\u6587\uFF09\uFF0C\u65E0\u9700\u70B9\u300C\u539F\u6587\u300D\u67E5\u770B\uFF1B\u4FEE\u6539\u4F18\u5148\u8D70\u300C\u5BF9\u8BDD\u4FEE\u6539\u300D\u4E3B\u901A\u8DEF\uFF08LLM \u6539\u6587\u6863\u2192Apply\uFF09\uFF0C\u624B\u6539\u539F\u6587=\u6700\u540E\u624B\u6BB5\u3002\u7F16\u8F91\u5373\u7D2F\u79EF\u8349\u7A3F\uFF08POST /v1/drafts\u2014\u2014\u4E0D\u52A8\u6B63\u5F0F\u6587\u6863\u3001\u4E0D\u53D1\u4E8B\u4EF6\uFF09\uFF1BApply \u552F\u4E00\u5165\u53E3=\u53F3\u680F\u5438\u5E95\u6309\u94AE\u3002</div>');
+    el.innerHTML = '<div class="view-inner"><div class="doc-layout"><div class="doc-main"><div class="doc-headbar"><span class="doc-path mono">' + esc(key.ref.scope + "/" + key.ref.name) + "</span>" + kindBadge(key.ref.kind) + t('<span class="chip ok tiny" data-ed-draft-chip>\u65E0\u8349\u7A3F</span>') + '<div class="md-switch" style="margin-left:auto"><span class="chip click small' + (view === "render" ? " acc" : " mute") + t('" data-ed-view-btn="render">\u6B63\u6587</span>') + '<span class="chip click small' + (view === "raw" ? " acc" : " mute") + t('" data-ed-view-btn="raw">\u539F\u6587</span>') + '</div></div><div class="doc-meta-row">' + chip("scope", "mute") + chipGo(key.ref.scope, "s/" + encodeURIComponent(key.ref.scope), "mute") + '<span class="mono small" data-ed-rv>' + (ed ? ed.faceAbsent ? t("\u6587\u6863\u7F3A\u5E2D\uFF08\u5728\u518C\u7A3F\u57FA\u5EA7\u2014\u2014Apply=\u521B\u5EFA\u901A\u8DEF\uFF09") : "r" + ed.faceRV + t("\uFF08\u7248\u672C\u57FA\u51C6\uFF09") : t("\u52A0\u8F7D\u4E2D\u2026")) + '</span></div><div data-ed-meta-header></div><div data-ed-notice></div><div class="doc-render-wrap" data-ed-view="render" data-ed-body' + (view === "render" ? "" : " hidden") + "></div>" + t('<textarea class="doc-editor" data-ed-textarea spellcheck="false" placeholder="\u539F\u6587\u7F16\u8F91\u2014\u2014\u53D8\u66F4\u5373\u7D2F\u79EF\u8349\u7A3F"') + (view === "raw" ? "" : " hidden") + "></textarea>" + bottomHint + '</div><div class="doc-collab"><div class="collab-tabs"><div class="collab-tab' + ((ed && ed.tab) === "draft" ? " active" : "") + t('" data-ed-tab="draft">\u8349\u7A3F</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "history" ? " active" : "") + t('" data-ed-tab="history">\u5386\u53F2</div>') + '<div class="collab-tab' + ((ed && ed.tab) === "ai" ? " active" : "") + t('" data-ed-tab="ai">AI \u4FEE\u6587\u6863</div>') + '</div><div class="collab-body" data-ed-rail></div>' + t('<div class="apply-dock"><button class="btn btn-primary block" data-ed-apply disabled>Apply\uFF08\u65E0\u53D8\u66F4\uFF09</button></div>') + "</div></div></div>";
     paintNotice();
     paintMeta(key.key);
     if (ed && ed.loaded) {
@@ -16804,11 +16942,12 @@ spec:
       const open = propOpen.has(key);
       const isFocus = !!focusName && key === focusName;
       const known = ["title", "summary", "status", "proposer", "createdAt", "scope", "name"];
-      const sub = known.filter((k) => p[k] != null && k !== "title").map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
+      const has = (v) => v != null && String(v).trim() !== "";
+      const sub = known.filter((k) => k !== "title" && has(p[k])).map((k) => esc(k) + ": " + esc(trunc(String(p[k]), 40))).join(" \xB7 ");
       const extras = keys.filter((k) => !known.includes(k) && k !== "summary" && p[k] != null && p[k] !== "").map((k) => '<span class="k">' + esc(k) + '</span><span class="v">' + esc(trunc(String(p[k]), 200)) + "</span>").join("");
       const approveRoute = p && p.name ? "approvals/" + encodeURIComponent(String(p.name)) : "approvals";
       const propLink = p && p.name ? "prop/" + encodeURIComponent(String(p.name)) : "";
-      return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : "") + '><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(String(p.status || t("\u5F85\u5B9A")), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D</span>')) + "</div>" + (open ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(trunc(String(p.summary || ""), 2e3) || t("summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + "</div>" + (extras ? '<div class="kv" style="margin-top:6px">' + extras + "</div>" : "") + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + (p && p.name ? chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Proposal", p.scope || "global", p.name), "mute", true) : "") + (propLink ? chipGo(t("\u76F4\u8FBE\u94FE\u63A5"), propLink, "mute", true) : "") + '</div><div class="small faint" style="margin-top:4px">' + esc(t("\u518D\u70B9\u4E00\u6B21\u5361\u7247\u6536\u8D77\u3002")) + "</div>" : "") + '</div><span class="ws-chip">' + chipGo(t("\u53BB\u5BA1\u6279"), approveRoute, "acc", true, t("\u5B9A\u4F4D\u81F3\u5BA1\u6279\u9875\u8BE5\u63D0\u6848")) + "</span></div>";
+      return '<div class="mini-row" data-prop="' + esc(key) + '"' + (isFocus ? ' data-prop-focused="1" style="outline:2px solid var(--accent)"' : "") + '><div class="mr-main"><div><b>' + esc(String(p.title || p.name || t("\u672A\u547D\u540D\u63D0\u6848"))) + "</b> " + chip(has(p.status) ? String(p.status) : t("\u672A\u58F0\u660E"), "mute") + '</div><div class="mr-sub small">' + (sub || t('<span class="faint">\u8981\u7D20\u5B57\u6BB5\u7F3A\u5E2D</span>')) + "</div>" + (open ? '<div class="mr-sub" style="margin-top:6px;white-space:pre-wrap">' + esc(has(p.summary) ? trunc(String(p.summary), 2e3) : t("summary \u7F3A\u5E2D\u2014\u2014\u8BE6\u60C5\u89C1\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) + "</div>" + (extras ? '<div class="kv" style="margin-top:6px">' + extras + "</div>" : "") + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' + (p && p.name ? chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Proposal", p.scope || "global", p.name), "mute", true) : "") + (propLink ? chipGo(t("\u76F4\u8FBE\u94FE\u63A5"), propLink, "mute", true) : "") + '</div><div class="small faint" style="margin-top:4px">' + esc(t("\u518D\u70B9\u4E00\u6B21\u5361\u7247\u6536\u8D77\u3002")) + "</div>" : "") + '</div><span class="ws-chip">' + chipGo(t("\u53BB\u5BA1\u6279"), approveRoute, "acc", true, t("\u5B9A\u4F4D\u81F3\u5BA1\u6279\u9875\u8BE5\u63D0\u6848")) + "</span></div>";
     }).join("");
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u9700\u6C42\u63D0\u6848"),
@@ -16948,6 +17087,7 @@ spec:
   var router = createRouter({ defaultRoute: "home" });
   var ctx = { store, api, router, go: (p) => router.go(p), params: {}, route: "" };
   if (typeof window !== "undefined") window.__CC_CONSOLE_CTX__ = ctx;
+  var DEFAULT_CHAT_AGENT = "core-headless";
   var NAV_TREE = [
     {
       level: "sys",
@@ -16962,7 +17102,7 @@ spec:
         ["docs", "\u6587\u6863\u4E0E\u8D44\u4EA7", "\u25A4"]
       ],
       sub: { label: "\u7CFB\u7EDF\u5E95\u5C42", items: [
-        ["chat/core-headless", "\u4F1A\u8BDD", "\u{1F4AC}"],
+        ["chat/" + DEFAULT_CHAT_AGENT, "\u4F1A\u8BDD", "\u{1F4AC}"],
         ["tree", "\u7CFB\u7EDF\u6811", "\u2443"],
         ["tags", "\u6807\u7B7E", "#"],
         ["designdoc", "\u8BBE\u8BA1\u6587\u6863", "\u270E"],
@@ -17184,7 +17324,7 @@ spec:
       } catch {
       }
     });
-    router.route("home", screenOf(render)).route("welcome", screenOf(render3)).route("obj", screenOf(render7)).route("obj/:kind", screenOf(render7)).route("obj/:kind/:scope/:name", screenOf(render7)).route("events", screenOf(render6)).route("event/:id", screenOf(render6)).route("tasks", screenOf(render4)).route("task/:id", screenOf(render4)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render8)).route("doc/:kind/:scope/:name", screenOf(render8)).route("chat/:agent", screenOf(render9)).route("session/:id", screenOf(render9)).route("approvals", screenOf(render2)).route("approvals/:focus", screenOf(render2)).route("inbox", screenOf(render2)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render5)).route("wf/:name", screenOf(render5)).route("wf/:name/r/:n", screenOf(render5)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
+    router.route("home", screenOf(render)).route("welcome", screenOf(render3)).route("obj", screenOf(render7)).route("obj/:kind", screenOf(render7)).route("obj/:kind/:scope/:name", screenOf(render7)).route("events", screenOf(render6)).route("event/:id", screenOf(render6)).route("tasks", screenOf(render4)).route("task/:id", screenOf(render4)).route("report", screenOf(renderReport)).route("doc/:name", screenOf(render8)).route("doc/:kind/:scope/:name", screenOf(render8)).route("chat", () => router.go("chat/" + DEFAULT_CHAT_AGENT)).route("chat/:agent", screenOf(render9)).route("session/:id", screenOf(render9)).route("approvals", screenOf(render2)).route("approvals/:focus", screenOf(render2)).route("inbox", screenOf(render2)).route("proposals", screenOf(render11)).route("proposals/:name", screenOf(render11)).route("prop/:name", screenOf(render11)).route("workflows", screenOf(render5)).route("wf/:name", screenOf(render5)).route("wf/:name/r/:n", screenOf(render5)).route("tree", screenOf(render11)).route("docs", screenOf(render11)).route("docs/tag/:tag", screenOf(render11)).route("tags", screenOf(render10)).route("designdoc", screenOf(render11)).route("designdoc/:repo/:path", screenOf(render11)).route("connectors", screenOf(render11)).route("audit", screenOf(render12)).route("s/:name", screenOf(render11)).route("service/:name", screenOf(renderService)).route("biz", screenOf(renderBiz));
     router.mount(view);
     const stream = connectStream({
       url: BASES.ws || wsUrlOf(opts.location || (typeof location !== "undefined" ? location : null)),
