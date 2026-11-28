@@ -7,7 +7,7 @@
 
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
-import { loadYaml, yamlToCards, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
+import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips, yamlTextView, dumpYaml } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
 /** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。
@@ -180,28 +180,29 @@ function opsPanel(ref, content) {
 
 function schemePanel(kindReg, content) {
   if (!kindReg) return tr('<div class="ob-empty">scheme 暂不可达（kinds 聚合缺席）。</div>');
-  const spec = kindReg.spec || {};
-  const keys = Object.keys(spec);
-  const cards = keys.length
-    ? yamlToCards(Object.keys(spec).map((f) => f + ': ' + JSON.stringify(spec[f])).join('\n'))
-    : '';
   const comp = sectionCompletion(content, (kindReg.requiredSections || [])).map((c) =>
     chip(c.name + (c.done ? ' ✓' : tr(' 缺')), c.done ? 'ok' : 'mute')
   ).join(' ');
-  if (!cards && !comp) return '';
+  const row = {};
+  if (kindReg.name != null) row.name = kindReg.name;
+  if (kindReg.requiredSections != null) row.requiredSections = kindReg.requiredSections;
+  if (kindReg.spec != null) row.spec = kindReg.spec;
+  const yamlText = dumpYaml(row);
+  if (!yamlText && !comp) return '';
   return (comp ? '<div class="ob-seccomp">' + comp + '</div>' : '') +
-    (cards ? '<div data-md-cards="1">' + cards + '</div>' : tr('<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>'));
+    (yamlText ? yamlTextView(yamlText, tr('kind 定义（YAML 纯文本）')) : tr('<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>'));
 }
 
-/** F-08 ③：scheme 字段卡活体注水（store.kinds 快照聚合缺席时现读 /v1/scheme/kinds——
- * 快照带 kinds 键零请求；缺键旧快照=拉真 Kind 定义渲染 scheme 字段卡，不再「暂不可达」）。 */
-function hydrateSchemePanel(el, ctx, kind) {
+/** F-08 ③：scheme 片活体注水（store.kinds 快照聚合缺席时现读 /v1/scheme/kinds——
+ * 快照带 kinds 键零请求；缺键旧快照=拉真 Kind 定义渲染 YAML 文本，不再「暂不可达」）。
+ * 注水时补正文（cached 优先——必填段完成度勾缺要对着真正文判，不冒缺）。 */
+function hydrateSchemePanel(el, ctx, kind, content) {
   const box = el.querySelector('[data-panel-scheme]');
   if (!box) return;
   const paint = (kinds) => {
     const k = (kinds || []).find((x) => x && x.name === kind);
     if (!k) return; // 未注册 kind=保留快照词形（不编造定义）
-    box.innerHTML = schemePanel(k, '');
+    box.innerHTML = schemePanel(k, content || '');
   };
   const snapKinds = ctx.store.kinds();
   if (snapKinds.length) { paint(snapKinds); return; }
@@ -213,13 +214,15 @@ function hydrateSchemePanel(el, ctx, kind) {
   }
 }
 
-function contentPanel(kind, name, content) {
+export function contentPanel(kind, name, content) {
   if (!String(content || '').trim()) return tr('<div class="ob-empty">本文档暂无正文。</div>');
   if (isMarkdownDoc(kind, name)) {
     const { fm, body } = splitFrontmatter(content);
     return '<div data-md-render="1">' + (fm ? schemeChips(fm) : '') + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), content);
   }
-  return (schemeChips(content) || tr('<div class="ob-empty">（空声明）</div>')) + rawDisclosure('YAML', content);
+  // 2026-11-28 用户裁决：scheme 看优先=text-area 纯文本 YAML 全文（结构化视图信息密度太低——
+  // 结构化只在编辑器编辑态出现；修改主通路=对话修改）。
+  return yamlTextView(content, tr('YAML 声明（纯文本全文）'));
 }
 
 /* ---------- 正文懒取（docCache(rv) 命中=复用；未命中=现读后入缓存并重绘） ---------- */
@@ -297,8 +300,8 @@ function renderScreen(el, ctx, ref) {
     });
   }
 
-  // F-08 ③：scheme 字段卡活体注水（快照 kinds 缺席=现读 /v1/scheme/kinds）。
-  hydrateSchemePanel(el, ctx, ref.kind);
+  // F-08 ③：scheme 片活体注水（快照 kinds 缺席=现读 /v1/scheme/kinds）。
+  hydrateSchemePanel(el, ctx, ref.kind, cached ? cached.content : '');
 
   // Provider 工作台增强（2026-11-27 用户指令：页面上添加 Provider+配置 openai key）。
   if (ref.kind === 'Provider') hydrateProviderCreate(el, ctx);

@@ -1,6 +1,7 @@
 /* editor.js —— 文档编辑器（正文/原文双视图 · 草稿 diff · 历史 tab · Apply）。
  * 语义移植旧 console-app 编辑器屏（代码全部重写为 ESM+库）：
- *   - 默认视图=渲染正文（markdown/字段卡——R-UX-4 渲染优先）；「原文」=textarea 可编辑次级；
+ *   - 默认视图=markdown 散文走渲染正文；YAML 对象走「原文」textarea 纯文本
+ *     （2026-11-28 用户裁决：scheme 看优先=纯文本全文，结构化字段卡只在显式切「正文」时出现）；
  *   - 编辑即累积草稿（POST /v1/drafts debounced——不动正式文档、不发事件）；
  *   - Apply 唯一入口=右栏吸底按钮（人点为准；LLM 只在提案，机制上无 Apply 权）；
  *   - 乐观锁基准=face rv（Apply 带 baseResourceVersion——409 走稿保留语义，不静默重基）；
@@ -32,6 +33,12 @@ let screenCtx = null;         // 当前屏 ctx（重试按钮重跑注水用—�
 
 function keyOf(kind, scope, name) { return kind + '|' + (scope || 'global') + '|' + (name || ''); }
 function hasDiff(ed) { return !!ed && ed.loaded && ed.working !== ed.base; }
+
+/** 默认视图（2026-11-28 用户裁决：scheme 看优先=纯文本 YAML——R-UX-4「渲染优先」对
+ * YAML 对象退役；markdown 散文渲染即文本形态，保持渲染默认。结构化字段卡=编辑态显式切换可选形态）。 */
+export function defaultEditorView(kind, name) {
+  return isMarkdownDoc(kind, name) ? 'render' : 'raw';
+}
 
 /** 对象键解析：#/doc/:kind/:scope/:name 直链；#/doc/:name 名字解析（跨 kind/scope 唯一才解析——歧义=空态）。 */
 function resolveRef(ctx) {
@@ -81,7 +88,7 @@ async function hydrate(ctx, key) {
     faceAbsent, faceRV, faceFail,
     baseRV: draftR && draftR.ok && draftR.data ? Number(draftR.data.baseResourceVersion) || faceRV : faceRV,
     draftFM: draftR && draftR.ok && draftR.data ? String(draftR.data.fieldManager || '') : '',
-    view: (prev && prev.view) || 'render',
+    view: (prev && prev.view) || defaultEditorView(kind, name),
     tab: (prev && prev.tab) || 'draft',
     loaded: true,
   });

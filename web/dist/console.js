@@ -3975,1619 +3975,6 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
-  // src/screens/workflow-config.js
-  function defaultLoopSpec(name = "core-system-developer-loop", existing = {}) {
-    const s = existing && typeof existing === "object" ? existing : {};
-    const logSrc = s.logSource || {};
-    const collector = logSrc.collector || {};
-    const timer = logSrc.timer || s.triggers && s.triggers.timer || {};
-    const approval = s.approval || {};
-    const sysBind = s.systemBindings || {};
-    const devSys = sysBind.developerSystem || {};
-    const depSys = sysBind.deploySystem || {};
-    const devConv = devSys.conventions || {};
-    const ver = s.verification || {};
-    const reg = s.regression || {};
-    const llm = s.llm || {};
-    const defaultConditions = [
-      { id: "lint-rules", kind: "code", title: "\u4EE3\u7801 Lint \u4E0E\u89C4\u5219\u5BA1\u6838 (R-PUB-1 / R-DOC-6 / R-ENG-7 \u2264800\u884C)", command: "connectops-code-audit/audit", required: true },
-      { id: "unit-tests", kind: "test", title: "\u540E\u7AEF\u4E0E\u524D\u7AEF\u5355\u5143/\u96C6\u6210\u6D4B\u8BD5\u5168\u7EFF (go test ./... & npm test)", command: "go test ./... && npm test", required: true },
-      { id: "live-probe", kind: "agent", title: "\u6D3B\u4F53\u63A2\u9488\u4E0E\u9875\u9762\u65E0\u5047\u6570\u636E/\u65E0\u62A5\u9519\u9A8C\u8BC1", command: "agent-verify", required: true }
-    ];
-    const defaultPostActions = [
-      { id: "bugdoc-lifecycle", kind: "doc-lifecycle", targetDocType: "BugDoc", action: reg.bugDocPolicy || "invalidate", enabled: true, title: "\u4E34\u65F6 BugDoc \u6536\u5C3E\u5904\u7406\uFF08\u6807\u8BB0\u5931\u6548 invalidate / \u5220\u9664 delete / \u4FDD\u7559 keep\uFF0C\u53EF\u589E\u5220\u6B64\u9879\uFF09" },
-      { id: "status-insync", kind: "status-writeback", targetPhase: "InSync", enabled: true, title: "\u56DE\u5199 ServiceInstance.status.phase = InSync\uFF08\u6E05\u96F6\u6F02\u79FB\uFF09" }
-    ];
-    const defaultPhases = [
-      { name: "log-event", phase: "Idle", title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event", unit: "connectops", connector: collector.connector || "connectops-log-collector", op: collector.op || "collect-logs", provider: llm.provider || "openai-default", modelTier: "low", entryEvents: ["BugReport", "MetricThreshold", "ExternalChanged", "ReconcileTick", "LoopRequested"] },
-      { name: "agent-judge", phase: "Analyzing", title: "2. Agent \u5224\u65AD\uFF08\u8BC4\u4F30\u4FEE\u590D\u4EF7\u503C/\u4EA7\u51FA\u65B9\u6848\u6216 BugDoc\uFF09", unit: "agent", op: "judge-issue", provider: llm.provider || "openai-default", modelTier: "high", refRules: ["rule/rule_eng", "rule/rule_doc"] },
-      { name: "approval-gate", phase: "AwaitingApproval", title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF08\u63A7\u5236\u8282\u70B9\uFF09", unit: "gate", op: "approval-check" },
-      { name: "doc-apply", phase: "Planning", title: "4. Doc Apply\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/BugDoc \u7B2C\u4E8C\u5207\u5165\u70B9\uFF09", unit: "agent", op: "apply-doc", provider: llm.provider || "openai-default", modelTier: "standard", refDocs: ["goal"], refRules: ["rule/rule_doc", "rule/rule_eng"], refTags: ["audit", "fix"], tagRules: ["rule/tag_default"], entryEvents: ["DocApplied"] },
-      { name: "developer-system", phase: "Executing", title: "5. developer-system \u7814\u53D1\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: devSys.connector || "connectops-developer", op: devSys.op || "develop", service: devSys.service || "developer-system", contextPassing: { previousRound: true, fields: ["judge", "plan", "diff", "approval"] }, permissionRole: "role/developer-system-ops" },
-      { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08developer-system Agent \u9A8C\u6536 session\uFF09", unit: "service", service: devSys.service || "developer-system", op: "acceptance", contextPassing: { previousRound: true, fields: ["diff", "verifyConditions"] } },
-      { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u7248\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", service: depSys.service || "deploy-system", contextPassing: { previousRound: true, fields: ["verifyReport", "release"] }, permissionRole: "role/deploy-system-ops" },
-      { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "agent", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low", tools: ["findings-read", "doc-draft", "tag-write"] }
-    ];
-    const defaultTransitions = [
-      { from: "Idle", on: "advance", to: "Analyzing" },
-      { from: "Idle", on: "entry:DocApplied", to: "Planning" },
-      { from: "Analyzing", on: "advance", to: "AwaitingApproval" },
-      { from: "Analyzing", on: "worth_fixing", to: "AwaitingApproval" },
-      { from: "Analyzing", on: "ignore", to: "Reporting" },
-      { from: "AwaitingApproval", on: "advance", to: "Planning" },
-      { from: "AwaitingApproval", on: "ApprovalGranted", to: "Planning" },
-      { from: "AwaitingApproval", on: "ApprovalRejected", to: "Failed" },
-      { from: "Planning", on: "advance", to: "Executing" },
-      { from: "Executing", on: "advance", to: "Verifying" },
-      { from: "Verifying", on: "advance", to: "Deploying" },
-      { from: "Verifying", on: "retry-develop", to: "Executing" },
-      { from: "Deploying", on: "advance", to: "Reporting" }
-    ];
-    return {
-      name,
-      enabled: s.enabled != null ? Boolean(s.enabled) : false,
-      immutableNodes: Boolean(s.immutableNodes),
-      // 2026-11-27 用户裁决：节点可加删（内置主干也不恒锁定）——前端节点表加节点/删节点/改参数，draft→apply 落账
-      undeletable: name === "core-system-developer-loop" || name === "default-task" ? true : Boolean(s.undeletable),
-      servicesInvolved: Array.isArray(s.services && s.services.involved) ? s.services.involved.join(", ") : "self-recursive-core, developer-system, deploy-system",
-      servicesMode: s.services && s.services.mode || "act",
-      provider: llm.provider || "openai-default",
-      defaultModel: llm.model || "reasoning-tier",
-      globalRuleRefs: Array.isArray(s.globalRuleRefs) ? s.globalRuleRefs.join(", ") : "rule/rule_eng, rule/rule_doc, rule/rule_ux, rule/rule_ctx, rule/rule_pub",
-      logEvents: Array.isArray(logSrc.events) ? logSrc.events.join(", ") : "BugReport, MetricThreshold, ExternalChanged, ReconcileTick, LoopRequested",
-      logMinLevel: logSrc.minLevel || "warn",
-      logServices: Array.isArray(logSrc.services) ? logSrc.services.join(", ") : "self-recursive-core",
-      logKeyword: logSrc.keywordMatch || "ERROR|PANIC|FAIL|drift|unhealthy",
-      timerEnabled: timer.enabled != null ? Boolean(timer.enabled) : true,
-      timerInterval: timer.interval || timer.resync || "30m",
-      timerCron: timer.cron || "*/30 * * * *",
-      collectorConnector: collector.connector || "connectops-log-collector",
-      collectorOp: collector.op || "collect-logs",
-      collectorQuery: collector.query || "level>=warn",
-      docApplyEntryEnabled: true,
-      docApplyDocTypes: "Goal, Desc, Rule, WorkflowDesign, ImplDoc, VerifyDoc, BugDoc",
-      approvalMode: approval.mode || "agent",
-      approvalCriteria: approval.autoCriteria || "\u5355\u6D4B\u5168\u7EFF\u3001\u7B26\u5408\u5168\u5C40 rule_eng/rule_doc \u89C4\u8303\u4E14\u4E0D\u6D89\u53CA\u7834\u574F\u6027\u9AD8\u5371\u5220\u5E93\u64CD\u4F5C\u65F6\u81EA\u52A8\u6279\u51C6\u653E\u884C",
-      approvalMaxRisk: approval.maxRiskLevel || "low",
-      devService: devSys.service || "developer-system",
-      devResolution: devSys.resolution || "default",
-      devConnector: devSys.connector || "connectops-developer",
-      devOp: devSys.op || "develop",
-      devBranchPrefix: devConv.branchPrefix || "agent/",
-      devWorktreeDir: devConv.worktreeDir || "worktrees/",
-      devMaxLines: devConv.maxFileLines || 800,
-      deployService: depSys.service || "deploy-system",
-      deployResolution: depSys.resolution || "default",
-      deployConnector: depSys.connector || "connectops-deploy",
-      deployOp: depSys.op || "release",
-      verifyMode: ver.mode || "both",
-      verifyConnector: ver.connector || "connectops-code-audit",
-      verifyOp: ver.op || "audit",
-      verifyOnFail: ver.onFail || "retry-develop",
-      conditions: Array.isArray(ver.conditions) && ver.conditions.length ? ver.conditions : defaultConditions,
-      bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? "delete" : "invalidate"),
-      statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
-      postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
-      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases.map((n) => n && n.unit === "session" ? { ...n, unit: "agent" } : n) : defaultPhases,
-      transitions: Array.isArray(s.transitions) && s.transitions.length ? s.transitions.map((t2) => ({ from: t2 && t2.from, on: t2 && t2.on, to: t2 && t2.to })).filter((t2) => t2.from && t2.to) : defaultTransitions
-    };
-  }
-  function buildWorkflowYaml(cfg, scope = "global") {
-    const splitList = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
-    const inv = splitList(cfg.servicesInvolved);
-    const rules = splitList(cfg.globalRuleRefs);
-    const logEvs = splitList(cfg.logEvents);
-    const logSvcs = splitList(cfg.logServices);
-    const docTypes = splitList(cfg.docApplyDocTypes);
-    const q = (s) => JSON.stringify(String(s == null ? "" : s));
-    const condLines = (cfg.conditions || []).map(
-      (c, idx) => `      - {id: ${q(c.id || "cond-" + (idx + 1))}, kind: ${q(c.kind || "code")}, title: ${q(c.title || "")}, command: ${q(c.command || "")}, required: ${Boolean(c.required)}}`
-    ).join("\n");
-    const actionLines = (cfg.postActions || []).map(
-      (a, idx) => `      - {id: ${q(a.id || "act-" + (idx + 1))}, kind: ${q(a.kind || "doc-lifecycle")}, targetDocType: ${q(a.targetDocType || "BugDoc")}, action: ${q(a.action || cfg.bugDocPolicy || "invalidate")}, enabled: ${Boolean(a.enabled)}, title: ${q(a.title || "")}}`
-    ).join("\n");
-    const nodeLine = (n) => {
-      const p = [`name: ${n.name || "node"}`, `phase: ${n.phase || "Idle"}`, `title: ${q(n.title || n.name || "")}`, `unit: ${n.unit || "connectops"}`];
-      if (n.connector) p.push(`connector: ${n.connector}`);
-      if (n.op) p.push(`op: ${n.op}`);
-      if (n.service) p.push(`service: ${n.service}`);
-      if (n.provider) p.push(`provider: ${n.provider}`);
-      if (n.model) p.push(`model: ${q(n.model)}`);
-      if (n.modelTier) p.push(`modelTier: ${n.modelTier}`);
-      if (n.permissionRole) p.push(`permissionRole: ${n.permissionRole}`);
-      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
-        if (Array.isArray(n[k]) && n[k].length) p.push(`${k}: [${n[k].map(q).join(", ")}]`);
-      });
-      if (n.contextPassing && (n.contextPassing.previousRound || Array.isArray(n.contextPassing.fields) && n.contextPassing.fields.length)) {
-        p.push(`contextPassing: {previousRound: ${n.contextPassing.previousRound !== false}, fields: [${(n.contextPassing.fields || []).map(q).join(", ")}]}`);
-      }
-      return `    - {${p.join(", ")}}`;
-    };
-    const phaseLines = (cfg.phases || []).map(nodeLine).join("\n");
-    const nodeMappingLines = (cfg.phases || []).map(
-      (n) => `      ${n.name}: {tier: ${n.modelTier || "standard"}${n.model ? ", model: " + q(n.model) : ""}}`
-    ).join("\n");
-    const transLines = (cfg.transitions || []).map(
-      (t2) => `    - {from: ${t2.from}, on: ${q(String(t2.on || "advance"))}, to: ${t2.to}}`
-    ).join("\n");
-    return `apiVersion: core/v1
-kind: Workflow
-metadata:
-  name: ${cfg.name}
-  scope: ${scope}
-  labels:
-    core/origin: builtin
-spec:
-  enabled: ${Boolean(cfg.enabled)}
-  immutableNodes: ${Boolean(cfg.immutableNodes)}
-  undeletable: ${Boolean(cfg.undeletable)}
-  connector: connector-ops/${cfg.name}
-  services:
-    involved: [${inv.map(q).join(", ")}]
-    mode: ${cfg.servicesMode || "act"}
-  llm:
-    provider: ${cfg.provider || "openai-default"}
-    model: ${q(cfg.defaultModel || "reasoning-tier")}
-    tier: high
-    nodeMapping:
-${nodeMappingLines}
-  globalRuleRefs: [${rules.map(q).join(", ")}]
-  logSource:
-    events: [${logEvs.map(q).join(", ")}]
-    minLevel: ${cfg.logMinLevel || "warn"}
-    services: [${logSvcs.map(q).join(", ")}]
-    keywordMatch: ${q(cfg.logKeyword || "")}
-    timer:
-      enabled: ${Boolean(cfg.timerEnabled)}
-      interval: ${q(cfg.timerInterval || "30m")}
-      cron: ${q(cfg.timerCron || "*/30 * * * *")}
-    collector:
-      connector: ${cfg.collectorConnector || "connectops-log-collector"}
-      op: ${cfg.collectorOp || "collect-logs"}
-      query: ${q(cfg.collectorQuery || "level>=warn")}
-      autoDevelopOnMissing: true
-  triggers:
-    events:
-      types: [${logEvs.concat(cfg.docApplyEntryEnabled ? ["DocApplied"] : []).map(q).join(", ")}]
-      minLevel: ${cfg.logMinLevel || "warn"}
-    timer:
-      resync: ${q(cfg.timerInterval || "30m")}
-      enabled: ${Boolean(cfg.timerEnabled)}
-      interval: ${q(cfg.timerInterval || "30m")}
-      cron: ${q(cfg.timerCron || "*/30 * * * *")}
-  entryPoints:
-    - {node: log-event, phase: Idle, enabled: true, events: [${logEvs.map(q).join(", ")}], description: "\u5165\u53E3 1\uFF1A\u76D1\u542C\u65E5\u5FD7/\u8FD0\u884C\u671F Bug/\u5B9A\u65F6\u5DE1\u68C0\u4E8B\u4EF6\u4ECE\u5934\u6D41\u8F6C"}
-    - {node: doc-apply, phase: Planning, enabled: ${Boolean(cfg.docApplyEntryEnabled)}, events: ["DocApplied"], docTypes: [${docTypes.map(q).join(", ")}], description: "\u5165\u53E3 2\uFF1A\u7528\u6237\u5BF9\u8BDD\u4FEE\u6539\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u63A5\u4ECE\u8282\u70B9 4 \u5207\u5165"}
-  ingest:
-    dedup: {window: 5m}
-    group: {by: service, max: 20}
-    filterLevels: [warn, error, fatal]
-  approval:
-    mode: ${cfg.approvalMode || "agent"}
-    autoCriteria: ${q(cfg.approvalCriteria || "")}
-    maxRiskLevel: ${cfg.approvalMaxRisk || "low"}
-  systemBindings:
-    developerSystem:
-      service: ${cfg.devService || "developer-system"}
-      resolution: ${cfg.devResolution || "default"}
-      connector: ${cfg.devConnector || "connectops-developer"}
-      op: ${cfg.devOp || "develop"}
-      conventions:
-        branchPrefix: ${q(cfg.devBranchPrefix || "agent/")}
-        worktreeDir: ${q(cfg.devWorktreeDir || "worktrees/")}
-        tmpDir: "tmp/"
-        maxFileLines: ${Number(cfg.devMaxLines) || 800}
-    deploySystem:
-      service: ${cfg.deployService || "deploy-system"}
-      resolution: ${cfg.deployResolution || "default"}
-      connector: ${cfg.deployConnector || "connectops-deploy"}
-      op: ${cfg.deployOp || "release"}
-  verification:
-    mode: ${cfg.verifyMode || "both"}
-    connector: ${cfg.verifyConnector || "connectops-code-audit"}
-    op: ${cfg.verifyOp || "audit"}
-    onFail: ${cfg.verifyOnFail || "retry-develop"}
-    conditions:
-${condLines || "      []"}
-  phases:
-${phaseLines}
-  transitions:
-${transLines}
-  onEscalate: {action: pause, notify: bind-role}
-  onFailed:
-    backoff: 30s*2^n
-    maxAttempts: 3
-    rollbackPolicy: by-step
-    escalate: {to: root, notify: bind-role}
-  brakes:
-    cooldown: 2m
-    maxMutationsPerTick: 10
-    avoidRepeatFix: true
-  regression:
-    statusWriteback: ${Boolean(cfg.statusWriteback)}
-    bugDocPolicy: ${cfg.bugDocPolicy || "invalidate"}
-    cleanTempBugDoc: ${cfg.bugDocPolicy === "delete"}
-    targetPhaseOnConverge: InSync
-    postActions:
-${actionLines || "      []"}
-    reports: [DriftReport, SessionLog]
-`;
-  }
-  var NODE_UNITS = ["connectops", "agent", "service", "gate"];
-  var UNIT_CHIP = { connectops: "mute", agent: "acc", service: "warn", gate: "llm", side: "esc" };
-  function nodeRowHtml(n, i, defProvider) {
-    return `<tr data-node-edit="${esc(n.name || "")}" style="cursor:pointer" title="${esc(t("\u70B9\u51FB\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E"))}"><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit || "connectops", UNIT_CHIP[n.unit] || "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || defProvider)}" title="${esc(t("\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04"))}">Provider: ${esc(n.provider || defProvider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.refRules) && n.refRules.length ? esc(n.refRules.join(", ")) : "\u2014"}${Array.isArray(n.refTags) && n.refTags.length ? ' <span class="faint">tag:</span>' + esc(n.refTags.join(",")) : ""}</td></tr>`;
-  }
-  function nodeFieldsHtml(n, defProvider) {
-    const u = n.unit || "connectops";
-    const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
-    const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-nm="${key}" value="${esc(val == null ? "" : String(val))}" style="width:100%"></div>`;
-    const base = grid(
-      inp("\u8282\u70B9\u540D (name)", "name", n.name || "") + inp("\u76F8\u4F4D (phase)", "phase", n.phase || "Idle") + `<div><div class="small faint">${esc(t("\u804C\u8D23\u8BF4\u660E (title)"))}</div><input class="inp" data-nm="title" value="${esc(n.title || "")}" style="width:100%"></div><div><div class="small faint">${esc(t("\u6267\u884C\u5355\u5143 (unit)"))}</div><select class="inp" data-nm="unit" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${x}${x === "gate" ? t("\uFF08\u63A7\u5236\u8282\u70B9\uFF09") : ""}</option>`).join("")}</select></div>`
-    );
-    const rows = [base];
-    if (u === "agent") {
-      rows.push(grid(
-        inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier low/standard/high)", "modelTier", n.modelTier || "standard") + inp("ref \u6587\u6863 (refDocs \u9017\u53F7\u5206\u9694)", "refDocs", (n.refDocs || []).join(", ")) + inp("ref \u89C4\u5219 (refRules)", "refRules", (n.refRules || []).join(", ")) + inp("\u9ED8\u8BA4 ref tag (refTags)", "refTags", (n.refTags || []).join(", ")) + inp("tag \u89C4\u5219 (tagRules)", "tagRules", (n.tagRules || []).join(", ")) + inp("\u968F\u8EAB\u5DE5\u5177 (tools)", "tools", (n.tools || []).join(", ")) + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
-      ));
-    } else if (u === "service") {
-      rows.push(grid(
-        inp("\u76EE\u6807\u7CFB\u7EDF (service)", "service", n.service || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("ConnectorOps", "connector", n.connector || "") + inp("\u6743\u9650 Role (permissionRole\u2014\u2014P7 \u968F\u6587\u6863\u6388\u4E88)", "permissionRole", n.permissionRole || "") + inp("\u4E0A\u4E00\u8F6E\u4E0A\u4E0B\u6587\u5B57\u6BB5 (contextPassing.fields)", "ctxFields", (n.contextPassing && n.contextPassing.fields || []).join(", ")) + `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-nm="ctxPrev" ${!n.contextPassing || n.contextPassing.previousRound !== false ? "checked" : ""}> ${esc(t("\u4F20\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587"))}</label></div>`
-      ));
-    } else if (u === "connectops") {
-      rows.push(grid(
-        inp("ConnectorOps", "connector", n.connector || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier)", "modelTier", n.modelTier || "low") + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
-      ));
-    } else {
-      rows.push(grid(inp("\u95F8\u7B97\u5B50 (op)", "op", n.op || "approval-check")));
-    }
-    return rows.join("");
-  }
-  function readNodeFields(root, base) {
-    const get = (k) => root.querySelector(`[data-nm="${k}"]`);
-    const lst = (k) => String(get(k) ? get(k).value : "").split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
-    const u = get("unit") ? get("unit").value : base.unit || "connectops";
-    const n = {
-      ...base,
-      name: get("name") && get("name").value.trim() || base.name || "node",
-      phase: get("phase") && get("phase").value.trim() || "Idle",
-      title: get("title") ? get("title").value : base.title || "",
-      unit: u
-    };
-    if (u === "agent") {
-      n.provider = get("provider") ? get("provider").value.trim() : "";
-      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "standard";
-      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
-        n[k] = lst(k);
-      });
-      delete n.service;
-      delete n.contextPassing;
-      delete n.permissionRole;
-    } else if (u === "service") {
-      n.service = get("service") ? get("service").value.trim() : "";
-      n.op = get("op") ? get("op").value.trim() : "";
-      n.connector = get("connector") ? get("connector").value.trim() : "";
-      n.permissionRole = get("permissionRole") ? get("permissionRole").value.trim() : "";
-      n.contextPassing = { previousRound: Boolean(get("ctxPrev") && get("ctxPrev").checked), fields: lst("ctxFields") };
-      ["refDocs", "refRules", "refTags", "tagRules", "tools"].forEach((k) => delete n[k]);
-    } else if (u === "connectops") {
-      n.connector = get("connector") ? get("connector").value.trim() : "";
-      n.op = get("op") ? get("op").value.trim() : "";
-      n.provider = get("provider") ? get("provider").value.trim() : "";
-      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "low";
-      n.entryEvents = lst("entryEvents");
-      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole"].forEach((k) => delete n[k]);
-    } else {
-      n.op = get("op") ? get("op").value.trim() : "approval-check";
-      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole", "connector", "provider", "modelTier", "entryEvents"].forEach((k) => delete n[k]);
-    }
-    return n;
-  }
-  function wfGraphHtml(phases, transitions) {
-    const byPhase = /* @__PURE__ */ new Map();
-    (phases || []).forEach((n) => {
-      if (!n || !n.phase && !n.name) return;
-      const key = String(n.phase || n.name);
-      if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || "", unit: n.unit || "connectops", entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
-    });
-    const nodes = [...byPhase.values()];
-    const known = new Set(nodes.map((n) => n.key));
-    const edges = [];
-    (transitions || []).forEach((t2) => {
-      if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
-      [t2.from, t2.to].forEach((k) => {
-        if (!known.has(k)) {
-          nodes.push({ key: k, name: k, title: t("\u4FA7\u8F68\u6001\uFF08\u975E\u6B63\u5411\u4E3B\u7EBF\uFF09"), unit: "side", entry: false });
-          known.add(k);
-        }
-      });
-      edges.push({ from: t2.from, on: String(t2.on || "advance"), to: t2.to });
-    });
-    const branchPairs = new Set(edges.filter((e) => e.on !== "advance").map((e) => e.from + "\u2192" + e.to));
-    const drawn = [];
-    const seenPair = /* @__PURE__ */ new Set();
-    edges.forEach((e) => {
-      const pair = e.from + "\u2192" + e.to;
-      if (e.on === "advance" && branchPairs.has(pair)) return;
-      if (seenPair.has(pair + "|" + e.on)) return;
-      seenPair.add(pair + "|" + e.on);
-      drawn.push(e);
-    });
-    if (!nodes.length) return "";
-    const level = new Map(nodes.map((n) => [n.key, 0]));
-    for (let pass = 0; pass < nodes.length; pass++) {
-      let changed = false;
-      drawn.forEach((e) => {
-        const lf = level.get(e.from) || 0;
-        const lt = level.get(e.to) || 0;
-        if (lt < lf + 1 && lf + 1 < nodes.length) {
-          level.set(e.to, lf + 1);
-          changed = true;
-        }
-      });
-      if (!changed) break;
-    }
-    let entryNo = 0;
-    nodes.forEach((n) => {
-      if (n.entry) n.entryLabel = t("\u5165\u53E3") + ++entryNo;
-    });
-    const cols = /* @__PURE__ */ new Map();
-    nodes.forEach((n) => {
-      const lv = level.get(n.key) || 0;
-      if (!cols.has(lv)) cols.set(lv, []);
-      cols.get(lv).push(n);
-    });
-    const NW = 190, NH = 56, GX = 108, GY = 28;
-    let maxRows = 1;
-    cols.forEach((rows) => {
-      maxRows = Math.max(maxRows, rows.length);
-    });
-    const colKeys = [...cols.keys()].sort((a, b) => a - b);
-    const W = colKeys.length * (NW + GX) - GX + 8;
-    const H = maxRows * (NH + GY) - GY + 10;
-    const pos = /* @__PURE__ */ new Map();
-    colKeys.forEach((lv, ci) => {
-      const rows = cols.get(lv);
-      const yOff = Math.max(5, (H - (rows.length * (NH + GY) - GY)) / 2);
-      rows.forEach((n, ri) => pos.set(n.key, { x: ci * (NW + GX) + 4, y: yOff + ri * (NH + GY) }));
-    });
-    const nodeDiv = (n) => {
-      const p = pos.get(n.key);
-      const unitCls = UNIT_CHIP[n.unit] || "mute";
-      const unitLabel = n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit === "side" ? t("\u4FA7\u8F68") : n.unit;
-      return '<div class="wf-graph-node' + (n.unit === "side" ? " wf-graph-side" : "") + '" style="left:' + p.x + "px;top:" + p.y + "px;width:" + NW + "px;height:" + NH + 'px" data-graph-node="' + esc(n.name) + '" title="' + esc((n.title || n.name) + " \xB7 " + n.key) + '"><div class="wf-graph-unit"><span class="chip ' + unitCls + ' tiny">' + esc(unitLabel) + "</span>" + (n.entryLabel ? ' <span class="chip acc tiny">' + esc(n.entryLabel) + "</span>" : "") + '</div><div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + "</span></div></div>";
-    };
-    const svg2 = drawn.map((e) => {
-      const a = pos.get(e.from), b = pos.get(e.to);
-      if (!a || !b) return "";
-      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
-      const mx = (x1 + x2) / 2;
-      const d = "M " + x1 + " " + y1 + " C " + mx + " " + y1 + ", " + mx + " " + y2 + ", " + x2 + " " + y2;
-      const branch = !(e.on === "advance");
-      const label = branch ? '<div class="wf-graph-elabel" style="left:' + mx + "px;top:" + Math.round((y1 + y2) / 2 - 9) + 'px">' + esc(e.on) + "</div>" : "";
-      return '<path d="' + d + '" class="wf-graph-edge' + (branch ? " wf-graph-branch" : "") + '"></path>' + label;
-    }).join("");
-    return '<div class="wf-graph" style="width:' + W + "px;height:" + H + 'px"><svg width="' + W + '" height="' + H + '" style="position:absolute;left:0;top:0;pointer-events:none"><defs><marker id="wfg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--border-2)"></path></marker></defs>' + svg2 + "</svg>" + nodes.map(nodeDiv).join("") + "</div>";
-  }
-  function workflowStudioHtml(wf, usedName) {
-    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
-    const scope = wf && wf.primaryScope || "global";
-    const yamlText = wf && wf.rawYaml ? String(wf.rawYaml) : buildWorkflowYaml(cfg, scope);
-    const condRowsHtml = (cfg.conditions || []).map(
-      (c, idx) => `<div class="mini-row" data-wf-cond-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-cond-req="${idx}" ${c.required !== false ? "checked" : ""} title="\u5FC5\u8FC7\u786C\u95E8" /><select class="inp" data-cond-kind="${idx}" style="width:110px">` + ["code", "test", "agent", "probe", "custom"].map((k) => `<option value="${k}" ${c.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><input class="inp" data-cond-title="${idx}" value="${esc(c.title || "")}" placeholder="\u9A8C\u6536\u6761\u4EF6\u63CF\u8FF0" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="${esc(c.command || "")}" placeholder="\u6267\u884C\u547D\u4EE4\u6216 ConnectorOps/op" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button></div>`
-    ).join("");
-    const postActRowsHtml = (cfg.postActions || []).map(
-      (a, idx) => `<div class="mini-row" data-wf-act-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-act-en="${idx}" ${a.enabled !== false ? "checked" : ""} title="\u542F\u7528\u6B64\u6536\u5C3E\u52A8\u4F5C" /><select class="inp" data-act-kind="${idx}" style="width:140px">` + ["doc-lifecycle", "status-writeback", "notify", "custom"].map((k) => `<option value="${k}" ${a.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate" ${(a.action || cfg.bugDocPolicy) === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete" ${(a.action || cfg.bugDocPolicy) === "delete" ? "selected" : ""}>\u5220\u9664\u6587\u6863 (delete)</option><option value="keep" ${(a.action || cfg.bugDocPolicy) === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="${esc(a.title || "")}" placeholder="\u6536\u5C3E\u52A8\u4F5C\u8BF4\u660E" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button></div>`
-    ).join("");
-    const designNodesHtml = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
-    return `
-  <h2 class="sec-title">${esc(t("\u8BBE\u8BA1\u8868\u4E0E\u8282\u70B9\u6D41\u8F6C\u67B6\u6784\uFF08Workflow + Scheme = \u58F0\u660E\u5C42\uFF0C\u4EE3\u7801 = \u901A\u7528\u89E3\u91CA\u5668\uFF09"))}</h2>
-  <div class="card">
-    <div class="card-h">
-      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u76F8\u4F4D\u94FE\uFF08\u591A\u8D77\u70B9 / \u6761\u4EF6\u5206\u53C9\u8FB9\u2014\u2014\u5224\u65AD\u8BCD\u5F62=LLM \u5206\u652F\u8F93\u51FA\uFF1B\u70B9\u51FB\u8282\u70B9\u76D2\u6216\u8868\u884C\u5F39\u7A97\u7F16\u8F91\uFF09"))}</span>
-      <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
-    </div>
-    <div class="card-b" style="overflow-x:auto">
-      <div class="wf-graph-scroll" data-node-graph>${wfGraphHtml(cfg.phases, cfg.transitions)}</div>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <div class="card-h">
-      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u4E3B\u5E72\u8BBE\u8BA1\u8868\uFF08\u70B9\u51FB\u4EFB\u610F\u884C\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E\uFF09"))}</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button type="button" class="btn tiny acc" data-node-add>${esc(t("+ \u6DFB\u52A0\u8282\u70B9"))}</button>
-        <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
-      </div>
-    </div>
-    <div class="card-b" style="overflow-x:auto">
-      <div class="small faint" style="margin-bottom:8px">
-        ${esc(t("\u5165\u53E3 1\uFF08\u8FD0\u884C\u671F\u65E5\u5FD7/Bug/\u5DE1\u68C0\u4E8B\u4EF6\uFF09\u4ECE\u8282\u70B9 1 (Idle) \u987A\u6B21\u6D41\u8F6C\uFF1B\u5165\u53E3 2\uFF08\u5BF9\u8BDD\u4FEE\u6539\u8BBE\u8BA1\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied\uFF09\u76F4\u63A5\u4ECE\u8282\u70B9 4 (Planning / Doc Apply) \u5207\u5165\uFF0C\u76F4\u8D70 developer-system \u2192 \u9A8C\u6536 \u2192 deploy-system \u2192 \u603B\u7ED3\u5F52\u6863\u3002\u70B9\u51FB\u4EFB\u610F Provider \u5FBD\u7AE0\u53EF\u76F4\u63A5\u914D\u7F6E OpenAIProvider \u8D26\u53F7\u3001Base \u5730\u5740\u4E0E\u6A21\u578B\u5206\u7EA7\u3002"))}
-      </div>
-      <table class="tbl">
-        <thead><tr><th>\u8282\u70B9</th><th>\u76F8\u4F4D</th><th>\u804C\u8D23\u8BF4\u660E</th><th>\u6267\u884C\u5355\u5143</th><th>ConnectorOps / \u7B97\u5B50</th><th>OpenAIProvider / \u6A21\u578B\u5206\u7EA7</th><th>ref \u89C4\u5219 / ref tag</th></tr></thead>
-        <tbody data-node-tbody>${designNodesHtml}</tbody>
-      </table>
-    </div>
-  </div>
-
-  <div data-provider-drawer></div>
-
-  <h2 class="sec-title">${esc(t("\u4EE5\u4EBA\u4E3A\u672C\u53EF\u89C6\u5316\u914D\u7F6E\u5DE5\u4F5C\u53F0\uFF08Scheme Adapter \u5C42\u914D\u7F6E\uFF0C\u4FDD\u5B58\u5373 Apply \u843D\u5E93\uFF09"))}</h2>
-  <div class="card" data-wf-studio>
-    <div class="card-h">
-      <span class="h-title">${esc(usedName)} \xB7 ${esc(t("\u5168\u8282\u70B9\u53C2\u6570\u3001\u81EA\u52A8\u5BA1\u6279\u3001\u9A8C\u6536\u6761\u4EF6\u4E0E\u4E34\u65F6 BugDoc \u6536\u5C3E\u7B56\u7565\u914D\u7F6E"))}</span>
-      <div>
-        ${cfg.undeletable ? chip(t("\u5185\u7F6E\u4FDD\u62A4\uFF1A\u4E0D\u53EF\u5220\u9664"), "warn") : ""}
-        ${cfg.immutableNodes ? chip(t("\u4E3B\u5E72\u8282\u70B9\u62D3\u6251\u9501\u5B9A\uFF08\u53C2\u6570\u53EF\u914D\uFF09"), "acc") : chip(t("\u8282\u70B9\u53EF\u52A0\u5220\uFF08draft\u2192apply\uFF09"), "ok")}
-      </div>
-    </div>
-    <div class="card-b">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
-        <div class="card" style="margin:0"><div class="card-b">
-          <b>${esc(t("A. \u603B\u63A7\u5F00\u5173\u4E0E\u5168\u5C40\u89C4\u5219\u5F15\u7528"))}</b>
-          <div style="margin-top:8px">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              <input type="checkbox" data-cfg="enabled" ${cfg.enabled ? "checked" : ""} />
-              <span><b>${esc(t("\u542F\u7528\u6B64\u5DE5\u4F5C\u6D41 (spec.enabled)"))}</b> ${esc(t("\uFF08\u51FA\u5382\u9ED8\u8BA4\u4E0D\u542F\u52A8\uFF1Bcore-system \u81EA\u6211\u8FED\u4EE3\u663E\u5F0F\u5F00\u542F\uFF09"))}</span>
-            </label>
-          </div>
-          <div style="margin-top:8px">
-            <div class="small faint">${esc(t("\u6D89\u53CA\u670D\u52A1 (services.involved)"))}</div>
-            <input class="inp" data-cfg="servicesInvolved" value="${esc(cfg.servicesInvolved)}" style="width:100%" />
-          </div>
-          <div style="margin-top:8px">
-            <div class="small faint">${esc(t("Session/Agent \u9ED8\u8BA4\u5F15\u7528\u5168\u5C40\u89C4\u5219 (globalRuleRefs)"))}</div>
-            <input class="inp mono" data-cfg="globalRuleRefs" value="${esc(cfg.globalRuleRefs)}" style="width:100%" />
-          </div>
-        </div></div>
-
-        <div class="card" style="margin:0"><div class="card-b">
-          <b>${esc(t("B. \u8282\u70B9 1\uFF08\u76D1\u542C\u65E5\u5FD7\u4E0E Event \u8FC7\u6EE4 + ConnectorOps \u6536\u96C6\uFF09"))}</b>
-          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
-            <div>
-              <div class="small faint">${esc(t("\u76D1\u542C\u4E8B\u4EF6\u7C7B\u578B"))}</div>
-              <input class="inp mono" data-cfg="logEvents" value="${esc(cfg.logEvents)}" style="width:100%" />
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u6700\u4F4E\u65E5\u5FD7\u7EA7\u522B"))}</div>
-              <select class="inp" data-cfg="logMinLevel" style="width:100%">
-                ${["debug", "info", "warn", "error", "fatal"].map((l) => `<option value="${l}" ${cfg.logMinLevel === l ? "selected" : ""}>${l}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            <div>
-              <div class="small faint">${esc(t("\u8FC7\u6EE4 Service"))}</div>
-              <input class="inp mono" data-cfg="logServices" value="${esc(cfg.logServices)}" style="width:100%" />
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u65E5\u5FD7\u5173\u952E\u8BCD/\u6B63\u5219\u8FC7\u6EE4"))}</div>
-              <input class="inp mono" data-cfg="logKeyword" value="${esc(cfg.logKeyword)}" style="width:100%" />
-            </div>
-          </div>
-          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 110px auto;gap:6px;align-items:end">
-            <div>
-              <div class="small faint">${esc(t("\u65E5\u5FD7\u6536\u96C6 ConnectorOps"))}</div>
-              <input class="inp mono" data-cfg="collectorConnector" value="${esc(cfg.collectorConnector)}" style="width:100%" />
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u6536\u96C6\u7B97\u5B50 op"))}</div>
-              <input class="inp mono" data-cfg="collectorOp" value="${esc(cfg.collectorOp)}" style="width:100%" />
-            </div>
-            <button type="button" class="btn tiny acc" data-develop-collector title="\u5F53\u65E5\u5FD7\u6536\u96C6 ConnectorOps \u7F3A\u5931\u6216\u4E3A\u9AA8\u67B6\u65F6\uFF0C\u76F4\u63A5\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u5E76\u6253\u5F00\u7F16\u8F91">${esc(t("\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1/\u7F16\u8F91"))}</button>
-          </div>
-          <div style="margin-top:6px;display:grid;grid-template-columns:auto 100px 1fr;gap:6px;align-items:center">
-            <label><input type="checkbox" data-cfg="timerEnabled" ${cfg.timerEnabled ? "checked" : ""} /> ${esc(t("\u5B9A\u65F6\u89E6\u53D1"))}</label>
-            <input class="inp mono" data-cfg="timerInterval" value="${esc(cfg.timerInterval)}" placeholder="30m" />
-            <input class="inp mono" data-cfg="timerCron" value="${esc(cfg.timerCron)}" placeholder="*/30 * * * *" />
-          </div>
-        </div></div>
-
-        <div class="card" style="margin:0"><div class="card-b">
-          <b>${esc(t("C. \u8282\u70B9 3\uFF08\u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09& \u8282\u70B9 4\uFF08Doc Apply \u7B2C\u4E8C\u5165\u53E3\uFF09"))}</b>
-          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
-            <div>
-              <div class="small faint">${esc(t("\u8282\u70B9 3 \u5BA1\u6279\u6A21\u5F0F (approval.mode)"))}</div>
-              <select class="inp" data-cfg="approvalMode" style="width:100%">
-                <option value="agent" ${cfg.approvalMode === "agent" ? "selected" : ""}>agent\uFF08Agent \u6309\u89C4\u5219\u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09</option>
-                <option value="auto" ${cfg.approvalMode === "auto" ? "selected" : ""}>auto\uFF08\u5168\u81EA\u52A8\u653E\u884C\u4E0D\u6302\u8D77\uFF09</option>
-                <option value="human" ${cfg.approvalMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u5BA1\u6279\u6302\u8D77\uFF09</option>
-              </select>
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u81EA\u52A8\u653E\u884C\u6700\u9AD8\u98CE\u9669"))}</div>
-              <select class="inp" data-cfg="approvalMaxRisk" style="width:100%">
-                ${["low", "medium", "high"].map((r) => `<option value="${r}" ${cfg.approvalMaxRisk === r ? "selected" : ""}>${r}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-          <div style="margin-top:6px">
-            <div class="small faint">${esc(t("Agent \u81EA\u52A8\u5BA1\u6279\u5224\u65AD\u51C6\u5219 (autoCriteria)"))}</div>
-            <input class="inp" data-cfg="approvalCriteria" value="${esc(cfg.approvalCriteria)}" style="width:100%" />
-          </div>
-          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ds-border)">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-              <input type="checkbox" data-cfg="docApplyEntryEnabled" ${cfg.docApplyEntryEnabled ? "checked" : ""} />
-              <span><b>${esc(t("\u542F\u7528\u8282\u70B9 4 (Doc Apply) \u591A\u5165\u53E3\u5207\u5165"))}</b> ${esc(t("\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u5207\u8282\u70B9 4\uFF09"))}</span>
-            </label>
-            <input class="inp mono" data-cfg="docApplyDocTypes" value="${esc(cfg.docApplyDocTypes)}" style="width:100%;margin-top:4px" />
-          </div>
-        </div></div>
-
-        <div class="card" style="margin:0"><div class="card-b">
-          <b>${esc(t("D. \u8282\u70B9 5 & 7\uFF08developer-system / deploy-system \u9010\u5C42\u7ED1\u5B9A\uFF09"))}</b>
-          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
-            <div>
-              <div class="small faint">${esc(t("\u7814\u53D1\u7CFB\u7EDF (developer-system)"))}</div>
-              <input class="inp mono" data-cfg="devService" value="${esc(cfg.devService)}" style="width:100%" />
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
-              <select class="inp" data-cfg="devResolution" style="width:100%">
-                <option value="default" ${cfg.devResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5F00\u6E90\u4E60\u60EF)</option>
-                <option value="install" ${cfg.devResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
-                <option value="import" ${cfg.devResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5DF2\u6709\u7CFB\u7EDF)</option>
-              </select>
-            </div>
-          </div>
-          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 80px;gap:6px">
-            <input class="inp mono" data-cfg="devBranchPrefix" value="${esc(cfg.devBranchPrefix)}" placeholder="\u5206\u652F\u524D\u7F00 agent/" title="\u5F00\u6E90\u4E60\u60EF\uFF1A\u5206\u652F\u524D\u7F00" />
-            <input class="inp mono" data-cfg="devWorktreeDir" value="${esc(cfg.devWorktreeDir)}" placeholder="worktrees/" title="\u5F00\u6E90\u4E60\u60EF\uFF1Aworktree \u76EE\u5F55" />
-            <input class="inp mono" data-cfg="devMaxLines" value="${esc(String(cfg.devMaxLines))}" placeholder="800" title="\u5355\u6587\u4EF6\u884C\u6570\u4E0A\u9650" />
-          </div>
-          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
-            <div>
-              <div class="small faint">${esc(t("\u53D1\u5E03\u7CFB\u7EDF (deploy-system)"))}</div>
-              <input class="inp mono" data-cfg="deployService" value="${esc(cfg.deployService)}" style="width:100%" />
-            </div>
-            <div>
-              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
-              <select class="inp" data-cfg="deployResolution" style="width:100%">
-                <option value="default" ${cfg.deployResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5BBF\u4E3B\u53D1\u5E03)</option>
-                <option value="install" ${cfg.deployResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
-                <option value="import" ${cfg.deployResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5916\u90E8\u53D1\u5E03)</option>
-              </select>
-            </div>
-          </div>
-        </div></div>
-      </div>
-
-      <div class="card" style="margin-bottom:12px"><div class="card-b">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          <b>${esc(t("E. \u8282\u70B9 6\uFF08\u9A8C\u6536 Verify \u914D\u7F6E \u2014\u2014 \u600E\u4E48\u9A8C\u6536\u3001\u9A8C\u6536\u6761\u4EF6\u53EF\u81EA\u7531\u6DFB\u52A0/\u5220\u9664\uFF09"))}</b>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select class="inp" data-cfg="verifyMode">
-              <option value="both" ${cfg.verifyMode === "both" ? "selected" : ""}>both\uFF08\u4EE3\u7801\u5BA1\u6838 + Agent \u9A8C\u6536\uFF09</option>
-              <option value="code" ${cfg.verifyMode === "code" ? "selected" : ""}>code\uFF08\u4EC5\u4EE3\u7801\u89C4\u5219\u5BA1\u6838\uFF09</option>
-              <option value="agent" ${cfg.verifyMode === "agent" ? "selected" : ""}>agent\uFF08\u4EC5 Agent \u63A2\u9488\u9A8C\u6536\uFF09</option>
-              <option value="human" ${cfg.verifyMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u786E\u8BA4\u9A8C\u6536\uFF09</option>
-            </select>
-            <select class="inp" data-cfg="verifyOnFail">
-              <option value="retry-develop" ${cfg.verifyOnFail === "retry-develop" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u6253\u56DE developer-system \u91CD\u4FEE</option>
-              <option value="block" ${cfg.verifyOnFail === "block" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u963B\u65AD\u5E76\u4E0A\u62A5</option>
-              <option value="ask" ${cfg.verifyOnFail === "ask" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u8F6C\u4EBA\u5DE5\u88C1\u51B3</option>
-            </select>
-            <button type="button" class="btn tiny acc" data-cond-add>${esc(t("+ \u6DFB\u52A0\u9A8C\u6536\u6761\u4EF6"))}</button>
-          </div>
-        </div>
-        <div data-wf-cond-list>${condRowsHtml}</div>
-      </div></div>
-
-      <div class="card" style="margin-bottom:12px"><div class="card-b">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-          <b>${esc(t("F. \u8282\u70B9 8\uFF08\u603B\u7ED3\u5F52\u6863 Reporting \u901A\u7528\u89E3\u91CA\u5668\u6536\u5C3E\u52A8\u4F5C \u2014\u2014 \u4E34\u65F6 BugDoc \u9ED8\u8BA4\u53EF\u6807\u8BB0\u5931\u6548/\u5220\u9664/\u9009\u62E9\u4E0D\u5220\u9664\uFF0C\u52A8\u4F5C\u9879\u53EF\u81EA\u7531\u589E\u5220\uFF09"))}</b>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="small faint">${esc(t("\u4E34\u65F6 BugDoc \u9ED8\u8BA4\u7B56\u7565\uFF1A"))}</span>
-            <select class="inp" data-cfg="bugDocPolicy">
-              <option value="invalidate" ${cfg.bugDocPolicy === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548\u5F52\u6863 (invalidate)</option>
-              <option value="delete" ${cfg.bugDocPolicy === "delete" ? "selected" : ""}>\u5220\u9664\u4E34\u65F6 BugDoc (delete)</option>
-              <option value="keep" ${cfg.bugDocPolicy === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option>
-            </select>
-            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-cfg="statusWriteback" ${cfg.statusWriteback ? "checked" : ""} /> ${esc(t("\u56DE\u5199 InSync"))}</label>
-            <button type="button" class="btn tiny acc" data-act-add>${esc(t("+ \u6DFB\u52A0\u6536\u5C3E\u52A8\u4F5C"))}</button>
-          </div>
-        </div>
-        <div data-wf-act-list>${postActRowsHtml}</div>
-      </div></div>
-
-      <details class="ex-block" open>
-        <summary class="ex-sum"><span class="ex-chev">\u25B6</span><b>${esc(t("Workflow \u5B8C\u6574 YAML \u58F0\u660E\uFF08\u89E3\u91CA\u5668\u6743\u5A01\u6E90\uFF0C\u8868\u5355\u8054\u52A8\u5B9E\u65F6\u751F\u6210\uFF0C\u4E5F\u53EF\u76F4\u63A5\u7F16\u8F91 YAML\uFF09"))}</b></summary>
-        <div class="ex-body">
-          <textarea class="inp mono" data-wf-yaml rows="18" style="width:100%;font-size:12px;line-height:1.45">${esc(yamlText)}</textarea>
-        </div>
-      </details>
-
-      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="btn acc" data-wf-save>${esc(t("\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E"))}</button>
-        <button type="button" class="btn mute" data-wf-sync-yaml>${esc(t("\u4ECE\u4E0A\u65B9\u8868\u5355\u91CD\u65B0\u751F\u6210 YAML"))}</button>
-        <span class="small faint" data-wf-save-msg></span>
-      </div>
-    </div>
-  </div>`;
-  }
-  function bindWorkflowStudio(el, ctx2, wf, usedName, onSaved) {
-    const studio = el.querySelector("[data-wf-studio]");
-    if (!studio) return;
-    const scope = wf && wf.primaryScope || "global";
-    let baseRv = Number(wf && wf.primaryRv || 0);
-    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
-    const readFormIntoCfg = () => {
-      studio.querySelectorAll("[data-cfg]").forEach((inp) => {
-        const k = inp.getAttribute("data-cfg");
-        if (inp.type === "checkbox") cfg[k] = Boolean(inp.checked);
-        else cfg[k] = inp.value;
-      });
-      const conds = [];
-      studio.querySelectorAll("[data-wf-cond-row]").forEach((row) => {
-        const idx = row.getAttribute("data-wf-cond-row");
-        conds.push({
-          id: "cond-" + (conds.length + 1),
-          required: Boolean(row.querySelector(`[data-cond-req="${idx}"]`)?.checked),
-          kind: row.querySelector(`[data-cond-kind="${idx}"]`)?.value || "code",
-          title: row.querySelector(`[data-cond-title="${idx}"]`)?.value || "",
-          command: row.querySelector(`[data-cond-cmd="${idx}"]`)?.value || ""
-        });
-      });
-      cfg.conditions = conds;
-      const acts = [];
-      studio.querySelectorAll("[data-wf-act-row]").forEach((row) => {
-        const idx = row.getAttribute("data-wf-act-row");
-        acts.push({
-          id: "act-" + (acts.length + 1),
-          enabled: Boolean(row.querySelector(`[data-act-en="${idx}"]`)?.checked),
-          kind: row.querySelector(`[data-act-kind="${idx}"]`)?.value || "doc-lifecycle",
-          targetDocType: "BugDoc",
-          action: row.querySelector(`[data-act-policy="${idx}"]`)?.value || cfg.bugDocPolicy || "invalidate",
-          title: row.querySelector(`[data-act-title="${idx}"]`)?.value || ""
-        });
-      });
-      cfg.postActions = acts;
-    };
-    const syncYamlBox = () => {
-      readFormIntoCfg();
-      const box = studio.querySelector("[data-wf-yaml]");
-      if (box) box.value = buildWorkflowYaml(cfg, scope);
-    };
-    studio.querySelectorAll("[data-cfg]").forEach((inp) => {
-      inp.addEventListener("change", syncYamlBox);
-    });
-    const bindRowDeletes = () => {
-      studio.querySelectorAll("[data-cond-del]").forEach((btn) => {
-        btn.onclick = () => {
-          btn.closest("[data-wf-cond-row]")?.remove();
-          syncYamlBox();
-        };
-      });
-      studio.querySelectorAll("[data-act-del]").forEach((btn) => {
-        btn.onclick = () => {
-          btn.closest("[data-wf-act-row]")?.remove();
-          syncYamlBox();
-        };
-      });
-      studio.querySelectorAll("[data-wf-cond-row] input, [data-wf-cond-row] select, [data-wf-act-row] input, [data-wf-act-row] select").forEach((inp) => {
-        inp.onchange = syncYamlBox;
-      });
-    };
-    bindRowDeletes();
-    studio.querySelector("[data-cond-add]")?.addEventListener("click", () => {
-      const list2 = studio.querySelector("[data-wf-cond-list]");
-      if (!list2) return;
-      const idx = Date.now();
-      const div = document.createElement("div");
-      div.className = "mini-row";
-      div.setAttribute("data-wf-cond-row", String(idx));
-      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
-      div.innerHTML = `<input type="checkbox" data-cond-req="${idx}" checked /><select class="inp" data-cond-kind="${idx}" style="width:110px"><option value="code">code</option><option value="test">test</option><option value="agent">agent</option><option value="probe">probe</option><option value="custom">custom</option></select><input class="inp" data-cond-title="${idx}" value="\u81EA\u5B9A\u4E49\u9A8C\u6536\u6761\u4EF6" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="connectops-code-audit/audit" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button>`;
-      list2.appendChild(div);
-      bindRowDeletes();
-      syncYamlBox();
-    });
-    studio.querySelector("[data-act-add]")?.addEventListener("click", () => {
-      const list2 = studio.querySelector("[data-wf-act-list]");
-      if (!list2) return;
-      const idx = Date.now();
-      const div = document.createElement("div");
-      div.className = "mini-row";
-      div.setAttribute("data-wf-act-row", String(idx));
-      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
-      div.innerHTML = `<input type="checkbox" data-act-en="${idx}" checked /><select class="inp" data-act-kind="${idx}" style="width:140px"><option value="doc-lifecycle">doc-lifecycle</option><option value="status-writeback">status-writeback</option><option value="notify">notify</option><option value="custom">custom</option></select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate">\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete">\u5220\u9664\u6587\u6863 (delete)</option><option value="keep">\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="\u4E34\u65F6 BugDoc \u6536\u5C3E\u52A8\u4F5C" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button>`;
-      list2.appendChild(div);
-      bindRowDeletes();
-      syncYamlBox();
-    });
-    studio.querySelector("[data-wf-sync-yaml]")?.addEventListener("click", syncYamlBox);
-    const repaintNodeSurfaces = () => {
-      const tbl = el.querySelector("[data-node-tbody]");
-      if (tbl) tbl.innerHTML = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
-      const graph = el.querySelector("[data-node-graph]");
-      if (graph) graph.innerHTML = wfGraphHtml(cfg.phases, cfg.transitions);
-      bindRowClicks();
-    };
-    const closeModal = () => {
-      el.querySelectorAll(".chat-modal[data-nm-modal]").forEach((m) => m.remove());
-    };
-    const openNodeModal = (nameOrIdx) => {
-      readFormIntoCfg();
-      const idx = typeof nameOrIdx === "number" ? nameOrIdx : cfg.phases.findIndex((n) => n.name === nameOrIdx);
-      if (idx < 0 || !cfg.phases[idx]) return;
-      closeModal();
-      const modal = document.createElement("div");
-      modal.className = "chat-modal";
-      modal.setAttribute("data-nm-modal", "1");
-      const paint3 = (node) => {
-        modal.innerHTML = '<div class="chat-modal-mask"></div><div class="chat-modal-panel"><div class="chat-modal-head"><div class="chat-modal-title"><span class="chip ' + (UNIT_CHIP[node.unit] || "mute") + ' tiny">' + esc(node.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : node.unit || "connectops") + '</span> <b class="mono">' + esc(node.name || "") + "</b> \xB7 " + esc(t("\u8282\u70B9\u7EC6\u8282\u914D\u7F6E")) + '</div><div class="chat-modal-acts"><button type="button" class="btn tiny mute" data-nm-cancel>' + esc(t("\u53D6\u6D88")) + '</button></div></div><div class="chat-modal-body"><div data-nm-fields>' + nodeFieldsHtml(node, cfg.provider) + '</div><div style="margin-top:14px;display:flex;gap:8px;align-items:center"><button type="button" class="btn acc sm" data-nm-save>' + esc(t("\u4FDD\u5B58\u8282\u70B9")) + '</button><button type="button" class="btn btn-ghost btn-danger sm" data-nm-del>' + esc(t("\u5220\u9664\u8282\u70B9")) + '</button><span class="small faint">' + esc(t("\u6539\u52A8\u968F\u300C\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u300D\u4EE5 Workflow \u6587\u6863\u5BF9\u8C61\u843D\u8D26")) + "</span></div></div></div>";
-        modal.querySelector("[data-nm-cancel]").addEventListener("click", closeModal);
-        modal.querySelector(".chat-modal-mask").addEventListener("click", closeModal);
-        modal.querySelector('[data-nm="unit"]').addEventListener("change", () => {
-          const draft = readNodeFields(modal, cfg.phases[idx]);
-          cfg.phases[idx] = draft;
-          paint3(cfg.phases[idx]);
-        });
-        modal.querySelector("[data-nm-save]").addEventListener("click", () => {
-          cfg.phases[idx] = readNodeFields(modal, cfg.phases[idx]);
-          closeModal();
-          repaintNodeSurfaces();
-          syncYamlBox();
-        });
-        modal.querySelector("[data-nm-del]").addEventListener("click", () => {
-          cfg.phases.splice(idx, 1);
-          closeModal();
-          repaintNodeSurfaces();
-          syncYamlBox();
-        });
-      };
-      paint3(cfg.phases[idx]);
-      el.appendChild(modal);
-    };
-    const bindRowClicks = () => {
-      el.querySelectorAll("[data-node-edit]").forEach((row) => {
-        row.onclick = () => openNodeModal(row.getAttribute("data-node-edit") || "");
-      });
-      el.querySelectorAll("[data-graph-node]").forEach((box) => {
-        box.onclick = () => openNodeModal(box.getAttribute("data-graph-node") || "");
-      });
-    };
-    el.querySelector("[data-node-add]")?.addEventListener("click", () => {
-      readFormIntoCfg();
-      cfg.phases.push({ name: "node-" + (cfg.phases.length + 1), phase: "Idle", title: "\u65B0\u8282\u70B9", unit: "connectops", provider: cfg.provider, modelTier: "standard" });
-      repaintNodeSurfaces();
-      syncYamlBox();
-      openNodeModal(cfg.phases.length - 1);
-    });
-    bindRowClicks();
-    studio.querySelector("[data-develop-collector]")?.addEventListener("click", async () => {
-      readFormIntoCfg();
-      const connName = String(cfg.collectorConnector || "connectops-log-collector").trim();
-      const opName = String(cfg.collectorOp || "collect-logs").trim();
-      const msg = studio.querySelector("[data-wf-save-msg]");
-      if (msg) msg.textContent = t("\u6B63\u5728\u68C0\u67E5/\u751F\u6210 ConnectorOps \u9AA8\u67B6\u5E76\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u2026");
-      const existing = await ctx2.api.object("ConnectorOps", "global", connName);
-      if (!existing.ok) {
-        const connYaml = `apiVersion: core/v1
-kind: ConnectorOps
-metadata:
-  name: ${connName}
-  scope: global
-spec:
-  workservice: workflow-engine
-  workflow: ${usedName}
-  provider: ${cfg.provider || "openai-default"}
-  llm:
-    provider: ${cfg.provider || "openai-default"}
-    tier: low
-    model: "flash-tier"
-  ops: [${opName}]
-  config:
-    query: ${JSON.stringify(cfg.collectorQuery || "level>=warn")}
-    services: ${JSON.stringify(cfg.logServices || "self-recursive-core")}
-`;
-        await ctx2.api.apply({ kind: "ConnectorOps", scope: "global", name: connName, resourceVersion: 0, content: connYaml, fieldManager: "console:workflow-studio", reasonRef: "develop-collector:" + connName });
-      }
-      if (msg) msg.innerHTML = esc(t("\u5DF2\u5C31\u7EEA ConnectorOps/global/" + connName + " \u2014\u2014 ")) + chipGo(t("\u6253\u5F00 ConnectorOps \u7F16\u8F91\u5668\u5F00\u53D1\u7B97\u5B50"), docRoute("ConnectorOps", "global", connName), "acc", true);
-    });
-    studio.querySelector("[data-wf-save]")?.addEventListener("click", async () => {
-      const yamlBox = studio.querySelector("[data-wf-yaml]");
-      const content = yamlBox ? yamlBox.value : buildWorkflowYaml(cfg, scope);
-      const msg = studio.querySelector("[data-wf-save-msg]");
-      if (msg) msg.textContent = t("\u6B63\u5728 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u2026");
-      let rv = baseRv;
-      const cur = await ctx2.api.object("Workflow", scope, usedName);
-      if (cur.ok && cur.data && cur.data.resourceVersion != null) rv = Number(cur.data.resourceVersion) || 0;
-      const res = await ctx2.api.apply({
-        kind: "Workflow",
-        scope,
-        name: usedName,
-        resourceVersion: rv,
-        content,
-        fieldManager: "console:workflow-studio",
-        reasonRef: "workflow-config:" + usedName
-      });
-      if (!res.ok) {
-        if (msg) msg.textContent = t("Apply \u5931\u8D25\uFF1A") + String(res.error || res.status);
-        return;
-      }
-      baseRv = Number(res.data && res.data.rv) || rv + 1;
-      if (msg) msg.textContent = t("\u5DF2\u4FDD\u5B58\u5E76 Apply \u751F\u6548\uFF08rv=" + baseRv + "\uFF09");
-      if (typeof onSaved === "function") onSaved();
-    });
-    el.querySelectorAll("[data-open-provider]").forEach((btn) => {
-      btn.addEventListener("click", () => openProviderDrawer(el, ctx2, btn.getAttribute("data-open-provider") || "openai-default"));
-    });
-    el.querySelectorAll("[data-open-conn]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const cName = btn.getAttribute("data-open-conn");
-        if (cName && ctx2.router) ctx2.router.go(docRoute("ConnectorOps", "global", cName));
-      });
-    });
-  }
-  async function openProviderDrawer(el, ctx2, providerName = "openai-default") {
-    const slot = el.querySelector("[data-provider-drawer]");
-    if (!slot) return;
-    slot.innerHTML = `<div class="card" style="border:1px solid var(--ds-accent)"><div class="card-b"><div class="small faint">${esc(t("\u6B63\u5728\u52A0\u8F7D OpenAIProvider (" + providerName + ") \u914D\u7F6E\u2026"))}</div></div></div>`;
-    const res = await ctx2.api.object("Provider", "global", providerName);
-    const rv = res.ok && res.data && res.data.resourceVersion != null ? Number(res.data.resourceVersion) : 0;
-    const raw = res.ok && res.data && res.data.content ? String(res.data.content) : "";
-    const extract = (re, def2) => {
-      const m = raw.match(re);
-      return m ? m[1].trim().replace(/^["']|["']$/g, "") : def2;
-    };
-    const account = extract(/account:\s*([^\n#]+)/, "magpie-openai-gateway");
-    const secretSrc = extract(/source:\s*([^\n}#]+)/, "secret:llm/magpie-gateway-key");
-    const baseUrl = extract(/baseUrl:\s*([^\n#]+)/, "https://magpie.ListenAll.cn/v1");
-    const lowModel = extract(/low:\s*([^\n}#]+)/, "flash-tier");
-    const stdModel = extract(/standard:\s*([^\n}#]+)/, "standard-tier");
-    const highModel = extract(/high:\s*([^\n}#]+)/, "reasoning-tier");
-    slot.innerHTML = `
-  <div class="card" style="border:1px solid var(--ds-accent);margin-bottom:14px">
-    <div class="card-h">
-      <span class="h-title">${esc(t("OpenAIProvider \u914D\u7F6E\u9762\u677F"))} \xB7 <span class="mono">${esc(providerName)}</span> (rv=${rv})</span>
-      <button type="button" class="btn tiny mute" data-prov-close>${esc(t("\u6536\u8D77"))}</button>
-    </div>
-    <div class="card-b">
-      <div class="small faint" style="margin-bottom:8px">${esc(t("\u6240\u6709 Session\u3001ConnectorOps \u4E0E Workflow \u8282\u70B9\u9ED8\u8BA4\u7ED1\u5B9A\u6B64 OpenAIProvider\u3002\u652F\u6301\u6309\u4EFB\u52A1\u667A\u5546\u8981\u6C42\u5206\u7EA7\u8DEF\u7531\uFF1A\u91CD\u590D\u6027/\u65E5\u5FD7\u8FC7\u6EE4\u4EFB\u52A1\u7528\u4F4E\u667A\u5546\u8F7B\u91CF\u6A21\u578B\uFF08low\uFF09\uFF0C\u5E38\u89C4\u5F00\u53D1\u7528\u6807\u51C6\u6A21\u578B\uFF08standard\uFF09\uFF0C\u67B6\u6784\u8BBE\u8BA1\u4E0E\u590D\u6742\u6839\u56E0\u8BCA\u65AD\u7528\u9AD8\u667A\u5546\u63A8\u7406\u6A21\u578B\uFF08high\uFF09\u3002"))}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
-        <div>
-          <div class="small faint">${esc(t("\u8D26\u53F7\u6807\u8BC6 (auth.account)"))}</div>
-          <input class="inp mono" data-prov="account" value="${esc(account)}" style="width:100%" />
-        </div>
-        <div>
-          <div class="small faint">${esc(t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)"))}</div>
-          <input class="inp mono" data-prov="secretSrc" value="${esc(secretSrc)}" style="width:100%" />
-        </div>
-        <div>
-          <div class="small faint">${esc(t("OpenAI \u517C\u5BB9 Base \u5730\u5740 (config.baseUrl)"))}</div>
-          <input class="inp mono" data-prov="baseUrl" value="${esc(baseUrl)}" style="width:100%" />
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">
-        <div>
-          <div class="small faint">${esc(t("Low \u6863\u6A21\u578B\uFF08\u91CD\u590D\u6027\u4EFB\u52A1/\u65E5\u5FD7\u6536\u96C6/\u4EE3\u7801\u5BA1\u6838\u7B97\u5B50\uFF09"))}</div>
-          <input class="inp mono" data-prov="lowModel" value="${esc(lowModel)}" style="width:100%" />
-        </div>
-        <div>
-          <div class="small faint">${esc(t("Standard \u6863\u6A21\u578B\uFF08Doc Apply/\u5E38\u89C4\u5F00\u53D1\u7B97\u5B50\uFF09"))}</div>
-          <input class="inp mono" data-prov="stdModel" value="${esc(stdModel)}" style="width:100%" />
-        </div>
-        <div>
-          <div class="small faint">${esc(t("High \u6863\u6A21\u578B\uFF08\u67B6\u6784\u8BBE\u8BA1/Agent \u5224\u65AD/\u81EA\u52A8\u5BA1\u6279/\u6838\u5FC3\u7814\u53D1\uFF09"))}</div>
-          <input class="inp mono" data-prov="highModel" value="${esc(highModel)}" style="width:100%" />
-        </div>
-      </div>
-      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
-        <button type="button" class="btn acc" data-prov-save>${esc(t("\u4FDD\u5B58\u5E76 Apply OpenAIProvider"))}</button>
-        ${chipGo(t("\u5728\u5BF9\u8C61\u7F16\u8F91\u5668\u4E2D\u67E5\u770B YAML"), docRoute("Provider", "global", providerName), "mute", true)}
-        <span class="small faint" data-prov-msg></span>
-      </div>
-    </div>
-  </div>`;
-    slot.querySelector("[data-prov-close]")?.addEventListener("click", () => {
-      slot.innerHTML = "";
-    });
-    slot.querySelector("[data-prov-save]")?.addEventListener("click", async () => {
-      const val = (k) => slot.querySelector(`[data-prov="${k}"]`)?.value.trim() || "";
-      const yamlContent = `apiVersion: core/v1
-kind: Provider
-metadata:
-  name: ${providerName}
-  scope: global
-spec:
-  kind: openai
-  trustLevel: trusted
-  auth:
-    scheme: bearer
-    account: ${JSON.stringify(val("account") || "magpie-openai-gateway")}
-    secret:
-      source: ${JSON.stringify(val("secretSrc") || "secret:llm/magpie-gateway-key")}
-      rotation: manual
-  config:
-    baseUrl: ${JSON.stringify(val("baseUrl") || "https://magpie.ListenAll.cn/v1")}
-    defaultModel: ${JSON.stringify(val("highModel") || "reasoning-tier")}
-    models: [${JSON.stringify(val("lowModel"))}, ${JSON.stringify(val("stdModel"))}, ${JSON.stringify(val("highModel"))}]
-    modelTiers:
-      low: ${JSON.stringify(val("lowModel") || "flash-tier")}
-      standard: ${JSON.stringify(val("stdModel") || "standard-tier")}
-      high: ${JSON.stringify(val("highModel") || "reasoning-tier")}
-    taskModelMapping:
-      connectops-log-collector: ${JSON.stringify(val("lowModel") || "flash-tier")}
-      connectops-code-audit: ${JSON.stringify(val("lowModel") || "flash-tier")}
-      connectops-deploy: ${JSON.stringify(val("lowModel") || "flash-tier")}
-      doc-apply: ${JSON.stringify(val("stdModel") || "standard-tier")}
-      agent-judge: ${JSON.stringify(val("highModel") || "reasoning-tier")}
-      approval-gate: ${JSON.stringify(val("highModel") || "reasoning-tier")}
-      connectops-developer: ${JSON.stringify(val("highModel") || "reasoning-tier")}
-`;
-      const msg = slot.querySelector("[data-prov-msg]");
-      if (msg) msg.textContent = t("\u6B63\u5728 Apply OpenAIProvider\u2026");
-      const r = await ctx2.api.apply({
-        kind: "Provider",
-        scope: "global",
-        name: providerName,
-        resourceVersion: rv,
-        content: yamlContent,
-        fieldManager: "console:provider-drawer",
-        reasonRef: "openai-provider:" + providerName
-      });
-      if (msg) msg.textContent = r.ok ? t("OpenAIProvider \u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + (r.data && r.data.rv) + ")") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
-    });
-  }
-  async function hydrateDocsExportConfig(el, ctx2) {
-    const slot = el.querySelector("[data-wf-export-cfg]");
-    if (!slot || !ctx2.api.exportConfig) return;
-    const r = await ctx2.api.exportConfig();
-    if (!r.ok || !el.isConnected) return;
-    const cfg = r.data || {};
-    const excl = Array.isArray(cfg.excludeDocTypes) ? cfg.excludeDocTypes.join(", ") : "BugDoc, DriftReport, PlanDoc, SessionLog";
-    slot.innerHTML = `
-  <div class="card">
-    <div class="card-h"><span class="h-title">${esc(t("\u6587\u6863 Git \u5BFC\u51FA\u72EC\u7ACB\u914D\u7F6E\uFF08\u6570\u636E\u5E93 docs_export_config\uFF0C\u975E\u4EE3\u7801\u786C\u7F16\u7801\uFF09"))}</span></div>
-    <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" data-exp-inc ${cfg.includeRuntimeDocs ? "checked" : ""} />
-        <span>${esc(t("\u5BFC\u51FA\u65F6\u5305\u542B\u8FD0\u884C\u65F6\u4E34\u65F6\u6587\u6863 (includeRuntimeDocs)"))}</span>
-      </label>
-      <span class="small faint">${esc(t("\u9ED8\u8BA4\u6392\u9664\u7684\u8FD0\u884C\u65F6 docTypes\uFF1A"))}</span>
-      <input class="inp mono" data-exp-types value="${esc(excl)}" style="min-width:280px;flex:1" />
-      <button type="button" class="btn tiny acc" data-exp-save>${esc(t("\u4FDD\u5B58\u5BFC\u51FA\u914D\u7F6E"))}</button>
-      <span class="small faint" data-exp-msg></span>
-    </div>
-  </div>`;
-    slot.querySelector("[data-exp-save]")?.addEventListener("click", async () => {
-      const inc = Boolean(slot.querySelector("[data-exp-inc]")?.checked);
-      const types2 = String(slot.querySelector("[data-exp-types]")?.value || "").split(",").map((x) => x.trim()).filter(Boolean);
-      const msg = slot.querySelector("[data-exp-msg]");
-      const res = await ctx2.api.saveExportConfig({ includeRuntimeDocs: inc, excludeDocTypes: types2, excludeKinds: cfg.excludeKinds || [] });
-      if (msg) msg.textContent = res.ok ? t("\u5BFC\u51FA\u914D\u7F6E\u5DF2\u66F4\u65B0\u5165\u5E93") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(res.error || res.status);
-    });
-  }
-
-  // src/screens/workflows.js
-  function wfAnchorOfRoute(route) {
-    const r = String(route || "");
-    if (!r) return "";
-    if (r.startsWith("workflows/")) return r.slice("workflows/".length);
-    if (/-workflow$/.test(r)) return "core-workflow";
-    return "";
-  }
-  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
-  function isTerminalRun(st) {
-    return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
-  }
-  var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
-  var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
-  function runChip(r) {
-    const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
-    return chip(st, RUN_CLS[st] || "mute");
-  }
-  function phChip(ph) {
-    const p = String(ph || "");
-    return chip(p || "\u2014", PH_CLS[p.toLowerCase()] || "mute");
-  }
-  function wfDesignRoute() {
-    return "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("concepts/workflow.md");
-  }
-  function realTplCardHtml(o) {
-    const scope = o.scope || "global";
-    return '<div class="card"><div class="card-h"><span class="h-title mono">' + esc(o.name) + '</span><span class="h-right">' + chip("Template", "acc") + " " + chip("r" + String(o.rv || 0), "mute") + '</span></div><div class="card-b"><div class="small mono faint">scope: ' + esc(scope) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Template", scope, o.name), "acc", true, t("\u67E5\u770B Template \u58F0\u660E")) + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute("Template", scope, o.name), "mute", true, t("\u67E5\u770B\u6B63\u6587")) + "</div></div></div>";
-  }
-  function templatesSectionHtml(ctx2) {
-    const tpls = ctx2.store.refs("Template");
-    const bugWf = ctx2.store.refs("Workflow").find((w) => w && w.name === "bug-lifecycle");
-    const bugRuns = ctx2.store.runs().filter((r) => r && String(r.workflow || r.name || "") === "bug-lifecycle");
-    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="dh-actions">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
-    const tplBlock = tpls.length ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join("") + "</div>" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u6D41\u7A0B\u6A21\u677F\uFF08Template \u5BF9\u8C61\u5728\u518C\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002")) + " " + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + "</div></div></div>";
-    return bugBlock + tplBlock;
-  }
-  function listScreen(el, ctx2) {
-    const state = { rows: [], filter: "", err: "" };
-    const snapRuns = ctx2.store.runs().slice(0, 8);
-    const runRowHtml = (r) => {
-      const wf = String(r && (r.workflow || r.name) || "");
-      const no = r && (r.run != null ? r.run : r.no != null ? r.no : "");
-      if (!wf && (no == null || no === "")) return "";
-      const started = r && (r.startedAt || r.at || r.ts);
-      const invChips = String(r && r.involved || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 3).map((x) => {
-        const rt = involvedRoute(x);
-        return rt ? chipGo(trunc(x, 36), rt, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : '<span class="chip mute tiny">' + esc(trunc(x, 36)) + "</span>";
-      }).join(" ");
-      const go = wf && no != null && no !== "" ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(no)) : "";
-      return "<tr" + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : "") + '><td class="mono small">#' + esc(String(no != null && no !== "" ? no : "\u2014")) + '</td><td class="mono small">' + esc(wf || "\u2014") + "</td><td>" + phChip(r && r.phase) + "</td><td>" + runChip(r) + '</td><td class="small mono">' + esc(relAge(started) || (started ? String(started).slice(0, 16) : "\u2014")) + '</td><td class="small">' + (invChips || '<span class="faint">\u2014</span>') + "</td></tr>";
-    };
-    const paintRuns = () => {
-      const slot = el.querySelector("[data-wf-runs]");
-      if (!slot) return;
-      const seen = /* @__PURE__ */ new Set();
-      const merged = [];
-      for (const r of state.rows.concat(snapRuns)) {
-        const k = String(r && (r.workflow || r.name) || "") + "#" + String(r && (r.run != null ? r.run : r.no != null ? r.no : ""));
-        if (seen.has(k)) continue;
-        seen.add(k);
-        merged.push(r);
-      }
-      const shown = (state.filter ? merged.filter((r) => String(r && (r.workflow || r.name) || "") === state.filter) : merged).slice(0, 50);
-      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto"><div style="margin-bottom:6px">' + chip(merged.length + t(" \u6761\u8FD0\u884C\u8BB0\u5F55"), "mute") + " " + (state.filter ? chipGo(t("\u6E05\u9664\u8FC7\u6EE4\uFF1A") + state.filter, "workflows", "warn", true, t("\u6E05\u9664\u8FC7\u6EE4\u5E76\u56DE\u5168\u8868")) : "") + "</div>" + (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(state.err) + esc(t("\uFF09\u2014\u2014\u4E0B\u8868\u4EC5\u6982\u89C8\u884C\u3002")) + "</div>" : "") + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(t("\u5DE5\u4F5C\u6D41")) + "</th><th>" + esc(t("\u76F8\u4F4D")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u5F00\u59CB")) + "</th><th>" + esc(t("\u6D89\u53CA")) + "</th></tr></thead><tbody>" + shown.map(runRowHtml).join("") + '</tbody></table><div class="small faint" style="margin-top:6px">' + esc(t("\u884C\u70B9\u51FB\u8FDB\u8FD0\u884C\u8BE6\u60C5\uFF1Binvolved chip=\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u6DF1\u94FE\u3002")) + "</div>" : '<div class="small faint">' + esc(state.filter ? t("\u8BE5 workflow \u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\u3002") : t("\u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002"))) + "</div></div>";
-    };
-    el.innerHTML = '<div class="view-inner">' + screenHead(
-      t("\u5DE5\u4F5C\u6D41"),
-      t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
-      chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
-    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + '<div data-wf-export-cfg style="margin-top:18px"></div></div>';
-    paintRuns();
-    hydrateDocsExportConfig(el, ctx2);
-    (async () => {
-      const stamp = typeof location !== "undefined" ? location.hash : "";
-      const slot = el.querySelector("[data-wf-reg]");
-      const r = await ctx2.api.workflows();
-      if (!slot || !slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-      if (!r.ok) {
-        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(String(r.error || r.status)) + esc(t("\uFF09\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5\u3002")) + "</div></div></div>";
-        return;
-      }
-      const data = r.data && typeof r.data === "object" ? r.data : {};
-      const rows = Array.isArray(data.workflows) ? data.workflows : [];
-      if (!rows.length) {
-        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41\u3002")) + "</div></div></div>";
-        return;
-      }
-      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' + chip((data.count != null ? data.count : rows.length) + t(" \u6761\u5728\u518C"), "acc") + " " + (data.scanCapped ? chip(t("\u626B\u63CF\u622A\u65AD\uFF08\u7A97\u53E3\u5185 ") + String(data.scanned != null ? data.scanned : "?") + t(" \u6761\uFF09"), "warn") : "") + '<table class="tbl" style="margin-top:8px"><thead><tr><th>' + esc(t("\u540D\u79F0")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u8FDE\u63A5")) + "</th><th>" + esc(t("\u6700\u8FD1")) + "</th><th></th></tr></thead><tbody>" + rows.map((w) => {
-        const name = String(w && w.name || "");
-        const ex = w && w.execution || {};
-        const exState = String(ex.state || "");
-        const connTxt = String(ex.connector || "") + (ex.connectorScope ? "/" + String(ex.connectorScope) : "");
-        const connCell = connTxt ? chipGo(connTxt, "connectors", "mute", true, t("\u8FDE\u63A5\u5C42\u2014\u2014\u67E5\u770B\u7ED1\u5B9A connector")) : '<span class="faint">\u2014</span>';
-        const latest = w && w.latest;
-        const latestTxt = typeof latest === "string" ? latest : String(latest && (latest.summary || latest.note || latest.status || latest.state) || "");
-        return '<tr><td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + "</span>" : "\u2014") + "</td><td>" + chip(exState || "\u2014", REG_CLS[exState.toLowerCase()] || "mute") + '</td><td class="mono small">' + connCell + '</td><td class="small">' + esc(trunc(latestTxt || "\u2014", 60)) + '</td><td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(t("\u8FC7\u6EE4\u672C\u9875\u8FD0\u884C\u8BB0\u5F55")) + '">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + "</span>" : "") + "</td></tr>";
-      }).join("") + "</tbody></table></div></div>";
-      slot.querySelectorAll("[data-wf-runfilter]").forEach((c) => {
-        c.addEventListener("click", () => {
-          state.filter = String(c.getAttribute("data-wf-runfilter") || "");
-          paintRuns();
-          const rs = el.querySelector("[data-wf-runs]");
-          if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-      });
-    })();
-    (async () => {
-      const stamp = typeof location !== "undefined" ? location.hash : "";
-      const r = await ctx2.api.workflowRuns();
-      if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-      if (!r.ok) {
-        state.err = String(r.error || r.status);
-      } else {
-        const data = r.data && typeof r.data === "object" ? r.data : {};
-        state.rows = Array.isArray(data.runs) ? data.runs : [];
-      }
-      paintRuns();
-    })();
-  }
-  var WF_ALIASES = {
-    "bug-workflow": "core-system-developer-loop",
-    "bug-lifecycle": "core-system-developer-loop",
-    "core-workflow": "core-system-developer-loop",
-    "dev-delivery": "core-system-developer-loop",
-    "apply-workflow": "default-task",
-    "simple-shot": "default-task",
-    "watch-only": "default-task"
-  };
-  function wfApiRows(res) {
-    return res && res.ok && res.data && Array.isArray(res.data.workflows) ? res.data.workflows : [];
-  }
-  function wfApiRuns(res) {
-    return res && res.ok && res.data && Array.isArray(res.data.runs) ? res.data.runs : [];
-  }
-  function wfApiTasks(res) {
-    return res && res.ok && res.data && Array.isArray(res.data.tasks) ? res.data.tasks : [];
-  }
-  function wfTaskIndex(tasks) {
-    const m = /* @__PURE__ */ new Map();
-    for (const t2 of tasks) if (t2 && t2.name) m.set(String(t2.scope || "global") + "/" + String(t2.name), t2);
-    return m;
-  }
-  function wfTaskKey(involved) {
-    const m = /^Task\/([^/]+)\/([^/]+)/.exec(String(involved || ""));
-    return m ? m[1] + "/" + m[2] : "";
-  }
-  var SESSION_MATCH_WINDOW_MS = 10 * 60 * 1e3;
-  function wfSessionAnchor(run, task, sessionRows, hist = null) {
-    const hs = String(hist && hist.sessionId || "");
-    if (/^session[-_]/i.test(hs)) return { sid: hs, label: t("\u8282\u70B9\u4F1A\u8BDD") };
-    const direct = String(run && run.sessionId || "");
-    if (/^session[-_]/i.test(direct)) return { sid: direct, label: t("\u8FD0\u884C\u4F1A\u8BDD") };
-    const key = wfTaskKey(run && run.involved);
-    const candidates = (Array.isArray(sessionRows) ? sessionRows : []).filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || "")));
-    if (!candidates.length) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
-    const started = Date.parse(String(run && (run.startedAt || run.at || run.ts) || ""));
-    if (!Number.isFinite(started)) {
-      return candidates.length === 1 ? { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") } : { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
-    }
-    const ranked = candidates.map((x) => ({
-      x,
-      d: Number.isFinite(Number(x.startedAt)) ? Math.abs(Number(x.startedAt) - started) : Number.POSITIVE_INFINITY
-    })).sort((a, b) => a.d - b.d);
-    if (!ranked.length || ranked[0].d > SESSION_MATCH_WINDOW_MS) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
-    return { sid: String(ranked[0].x.sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
-  }
-  function wfSessionChip(sid, label) {
-    const s = String(sid || "");
-    if (!s) return '<span class="small faint">' + esc(t("\u4F1A\u8BDD\u672A\u8BB0\u5F55")) + "</span>";
-    const isSession = /^session[-_]/i.test(s);
-    if (!isSession) return '<span class="small faint">' + esc((label ? t(label) + " " : "") + t("\u4EFB\u52A1\u951A\uFF08\u975E sessionId\uFF09") + " " + trunc(s, 24)) + "</span>";
-    return chipGo((label ? t(label) + " " : "") + trunc(s, 24), "session/" + encodeURIComponent(s), "acc", true, s);
-  }
-  function wfNodeStats(runs, phases) {
-    const stats = /* @__PURE__ */ new Map();
-    for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
-    for (const r of runs) {
-      const cur = String(r.phase || "");
-      if (stats.has(cur)) stats.get(cur).cur++;
-      const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String(h && h.to || "")));
-      for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
-      if (String(r.status || "") === "failed" && stats.has("Failed")) stats.get("Failed").failed++;
-    }
-    return stats;
-  }
-  function wfNodeGraphHtml(wf, runs) {
-    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
-    const failed = runs.filter((r) => String(r.status || "") === "failed").length;
-    const list2 = phases.concat(failed && !phases.includes("Failed") ? ["Failed"] : []);
-    if (!list2.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>";
-    const stats = wfNodeStats(runs, list2);
-    const body = list2.map((p) => {
-      const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
-      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited || s.failed ? " done" : "") + (p === "Failed" ? " fail" : "");
-      return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (s.cur ? '<span class="chip acc tiny">' + esc(t("\u5F53\u524D") + " " + s.cur) + "</span>" : "") + (s.visited ? '<span class="chip mute tiny">' + esc(t("\u5230\u8FC7") + " " + s.visited) + "</span>" : "") + "</div>";
-    }).join('<span class="pg-edge">\u2192</span>');
-    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
-  }
-  function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
-    el.querySelectorAll("[data-wf-node]").forEach((n) => {
-      n.addEventListener("click", () => {
-        const ph = String(n.getAttribute("data-wf-node") || "");
-        const drawer = el.querySelector("[data-wf-node-drawer]");
-        if (!drawer) return;
-        const hits = runs.filter((r) => String(r.phase || "") === ph || (Array.isArray(r.history) ? r.history : []).some((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph));
-        const rows = hits.length ? hits.map((r) => {
-          const no = r.run != null ? r.run : r.no != null ? r.no : "";
-          const task = taskIdx.get(wfTaskKey(r.involved));
-          const hist = (Array.isArray(r.history) ? r.history : []).find((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph);
-          const anchor = wfSessionAnchor(r, task, sessionRows, hist);
-          return '<div class="mini-row"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</div></div><div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + " " + chipGo(t("\u8FD0\u884C"), "wf/" + encodeURIComponent(wfName) + "/r/" + encodeURIComponent(String(no)), "mute", true) + "</div></div>";
-        }).join("") : '<div class="small faint">' + esc(t("\u6682\u65E0\u8FD0\u884C\u5230\u8FBE\u8BE5\u8282\u70B9\u3002")) + "</div>";
-        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span><span class="h-right">' + esc(t("\u5230\u8FBE") + " " + hits.length) + '</span></div><div class="card-b">' + rows + "</div></div>";
-      });
-    });
-  }
-  function wfFlowNodesHtml(wf) {
-    const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
-    if (!nodes.length) {
-      return '<div class="small faint">' + esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\u2014\u2014workflow apply \u540E\u7684\u843D\u5730 agent \u5F85\u63A5\u7EBF\uFF1B\u5F53\u524D\u8282\u70B9=\u76F8\u4F4D\u94FE\uFF0C\u8282\u70B9\u7EA7\u4F1A\u8BDD\u672A\u5355\u72EC\u8BB0\u5F55\u3002")) + "</div>";
-    }
-    return '<div class="wf-flow">' + nodes.map((n) => '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || "\u2014")) + '</div><div class="small">' + esc(String(n.title || "")) + '</div><div class="small faint">' + esc([n.unit, n.op, n.connector, n.provider].filter(Boolean).join(" \xB7 ")) + "</div></div>").join("") + "</div>";
-  }
-  function wfRunNodesHtml(run, task, sessionRows = []) {
-    const phases = (Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")]).map(String);
-    const byTo = /* @__PURE__ */ new Map();
-    for (const h of Array.isArray(run.history) ? run.history : []) {
-      if (h && h.to) byTo.set(String(h.to), h);
-    }
-    const cur = String(run.phase || "");
-    const rows = phases.map((p) => {
-      const h = byTo.get(p);
-      const state = p === cur ? t("\u5F53\u524D") : h ? t("\u5DF2\u8D70\u8FC7") : t("\u672A\u5230\u8FBE");
-      const anchor = wfSessionAnchor(run, task, sessionRows, h);
-      const sessionHtml = p === cur || h ? wfSessionChip(anchor.sid, anchor.label) : '<span class="small faint">' + esc(t("\u65E0\u4F1A\u8BDD\uFF08\u672A\u5230\u8FBE\uFF09")) + "</span>";
-      return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + "</b> " + chip(state, p === cur ? "acc" : h ? "ok" : "mute") + '</div><div class="mr-sub small mono">' + esc(h ? String(h.on || "") : "") + '</div></div><div class="mr-side">' + sessionHtml + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || "") + "</span>" : "") + "</div></div>";
-    }).join("");
-    return '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u951A=history.sessionId \u2192 run.sessionId \u2192 Task journal \u53CD\u67E5\uFF08\u7A7A=\u672A\u8BB0\u5F55\uFF0C\u4E0D\u7F16\u9020\uFF1B\u65E7 task.agentSession=taskId \u4E0D\u5F53 session\uFF09\u3002")) + "</div>" + rows;
-  }
-  function wfTasksHtml(runs, taskIdx, sessionRows = []) {
-    const seen = /* @__PURE__ */ new Map();
-    for (const r of runs) {
-      const key = wfTaskKey(r.involved);
-      if (!key) continue;
-      if (!seen.has(key)) seen.set(key, { key, task: taskIdx.get(key), runs: [] });
-      seen.get(key).runs.push(r);
-    }
-    if (!seen.size) return "";
-    const rows = [...seen.values()].map((x) => {
-      const t2 = x.task;
-      const title = t2 ? String(t2.title || t2.name || x.key) : x.key;
-      const ph = t2 ? String(t2.phase || "") : "";
-      const taskSessions = (Array.isArray(sessionRows) ? sessionRows : []).filter((r) => r && r.taskId === x.key && /^session[-_]/i.test(String(r.sessionId || ""))).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
-      const latest = taskSessions[0] || null;
-      const direct = /^session[-_]/i.test(String(t2 && t2.agentSession || "")) ? String(t2.agentSession) : "";
-      const sid = latest ? String(latest.sessionId) : direct;
-      const sessionHtml = wfSessionChip(sid, "\u4EFB\u52A1\u4F1A\u8BDD") + (taskSessions.length > 1 ? '<span class="small faint">' + esc(t("\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD").replace("{n}", String(taskSessions.length))) + "</span>" : "");
-      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + "</b> " + (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || "mute") : "") + '</div><div class="mr-sub small mono">Task/' + esc(x.key) + " \xB7 " + esc(t("runs") + " " + x.runs.length) + '</div></div><div class="mr-side">' + sessionHtml + " " + chipGo(t("\u4EFB\u52A1"), "task/" + encodeURIComponent(x.key), "mute", true) + "</div></div>";
-    }).join("");
-    return '<h2 class="sec-title">' + esc(t("\u4EFB\u52A1")) + '</h2><div class="card">' + rows + "</div>";
-  }
-  function wfRunsHtml(runs, taskIdx, sessionRows = []) {
-    if (!runs.length) return "";
-    return '<h2 class="sec-title">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div class="card">' + runs.map((r, i) => {
-      const no = r.run != null ? r.run : r.no != null ? r.no : i + 1;
-      const task = taskIdx.get(wfTaskKey(r.involved));
-      const anchor = wfSessionAnchor(r, task, sessionRows);
-      return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum"><span class="ex-chev">\u25B6</span><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</span><span class="wf-run-side">' + wfSessionChip(anchor.sid, anchor.label) + '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span>" + chipGo(t("\u8FD0\u884C\u8BE6\u60C5"), "wf/" + encodeURIComponent(String(r.workflow || "")) + "/r/" + encodeURIComponent(String(no)), "mute", true) + '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + "</div></details>";
-    }).join("") + "</div>";
-  }
-  function wfEditChips(wf, name) {
-    if (wf && String(wf.specSource || "") === "object") {
-      const scope = String(wf.scope || "global");
-      return chipGo(t("\u7F16\u8F91 Workflow"), docRoute("Workflow", scope, name), "acc", true, t("\u7F16\u8F91 Workflow \u58F0\u660E")) + " " + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Workflow", scope, name), "mute", true);
-    }
-    return chipGo(t("\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09"), wfDesignRoute(), "acc", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + " " + chipGo(t("\u76F8\u4F4D\u8868\uFF08scheme\uFF09"), "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("core/scheme.yaml"), "mute", true);
-  }
-  var wfDetailSeq = 0;
-  function detailScreen(el, ctx2, name) {
-    const stamp = "#" + ++wfDetailSeq;
-    el.setAttribute("data-wf-detail-stamp", stamp);
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5DE5\u4F5C\u6D41"), String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false)) + '<div data-wf-detail><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u4E2D\u2026\uFF08\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\uFF09")) + "</div></div></div>";
-    (async () => {
-      const [wfsRes, runsRes, tasksRes] = await Promise.all([
-        ctx2.api.workflows(),
-        ctx2.api.workflowRuns(),
-        ctx2.api.tasks()
-      ]);
-      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
-      const rows = wfApiRows(wfsRes);
-      const runsAll = wfApiRuns(runsRes);
-      const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
-      const serverAliases = wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases || {};
-      const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
-      let wf = rows.find((x) => String(x && x.name) === String(name));
-      if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
-      const usedName = wf ? String(wf.name) : String(alias || name);
-      const runs = runsAll.filter((r) => String(r && r.workflow) === usedName || String(r && r.workflow) === String(name)).sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
-      let sessionRows = [];
-      const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
-      if (taskIds.length && ctx2.api.taskSessions) {
-        try {
-          const sr = await ctx2.api.taskSessions(taskIds);
-          if (sr && sr.ok && Array.isArray(sr.data && sr.data.items)) sessionRows = sr.data.items;
-        } catch {
-        }
-      }
-      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
-      const detail = el.querySelector("[data-wf-detail]");
-      if (!detail) return;
-      if (!rows.length && !runs.length) {
-        detail.innerHTML = emptyBox(
-          t("\u5DE5\u4F5C\u6D41\u9762\u6682\u4E0D\u53EF\u8BFB"),
-          t("GET /v1/workflows \u4E0E /v1/workflows/runs \u5747\u672A\u8FD4\u56DE\u6570\u636E\u2014\u2014") + " " + chipGo(t("\u91CD\u8BD5"), "wf/" + encodeURIComponent(String(name)), "acc", true)
-        );
-        return;
-      }
-      if (!wf) {
-        const similar = rows.filter((x) => String(x.name || "").toLowerCase().includes(String(name).toLowerCase().split("-")[0])).slice(0, 8);
-        detail.innerHTML = emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + (similar.length ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u76F8\u8FD1\u5DE5\u4F5C\u6D41")) + '</span></div><div class="card-b">' + similar.map((x) => chipGo(String(x.name), "wf/" + encodeURIComponent(String(x.name)), "mute", true)).join(" ") + "</div></div>" : "");
-        return;
-      }
-      const latest = wf.latest || null;
-      const exec = wf.execution || {};
-      const aliasNote = String(name) !== usedName ? chip(t("\u8BCD\u5F62\u517C\u5BB9") + "\uFF1A" + String(name) + " \u2192 " + usedName, "mute") : "";
-      const kvRows = [
-        [t("\u6765\u6E90"), chip(String(wf.specSource || "\u2014"), wf.specSource === "builtin" ? "acc" : wf.specSource === "object" ? "ok" : "mute")],
-        [t("\u6267\u884C\u9762"), exec.connector ? chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + " " + chipGo(String(exec.connector), "connectors", "mute", true, t("ConnectorOps")) : "\u2014"],
-        [t("\u9AA8\u67B6"), exec.skeleton ? chip(t("\u5728\u518C"), "ok") : chip(t("\u7F3A\u5E2D"), "mute")],
-        [t("\u8FD0\u884C"), chip(t("\u73AF\u5185 ") + runs.length + " / \u7D2F\u8BA1 " + String(wf.runsTotal != null ? wf.runsTotal : "\u2014"), runs.length ? "acc" : "mute") + (wf.runs24h != null ? " " + chip("24h " + String(wf.runs24h), "mute") : "")],
-        [t("\u6700\u65B0"), latest ? runChip(latest) + " " + chip("run #" + String(latest.run), "mono") + " " + esc(relAge(latest.startedAt) || "") : "\u2014"],
-        [t("\u751F\u6548"), wf.effective ? chip(String(wf.effective.scope || "") + " \xB7 " + (wf.effective.enabled ? t("\u542F\u7528") : t("\u505C\u7528")), wf.effective.enabled ? "ok" : "mute") : "\u2014"]
-      ];
-      const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
-      const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
-      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
-      bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
-      bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
-      hydrateDocsExportConfig(el, ctx2);
-    })().catch((e) => {
-      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
-      const detail = el.querySelector("[data-wf-detail]");
-      if (detail) detail.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u5931\u8D25\uFF1A") + String(e && e.message || e)) + "</div></div></div>";
-    });
-  }
-  function bindDocLinks(scopeEl, ctx2) {
-    scopeEl.querySelectorAll("[data-go]").forEach((n) => {
-      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
-    });
-  }
-  function runScreen(el, ctx2, name, no) {
-    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
-    const run = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
-    if (!run) {
-      el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u8FD0\u884C\u8BB0\u5F55\uFF08\u53EF\u80FD\u5DF2\u5F52\u6863\uFF09\u3002")) + "</div>";
-      return;
-    }
-    let st = String(run.status || "");
-    let stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
-    const startedAt = run.startedAt || run.at || run.ts;
-    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
-    const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
-    const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
-    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-session>' + wfSessionChip(run.sessionId) + '</div></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u8282\u70B9\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-node-sessions><div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
-    const sel = { idx: 0, phases: [] };
-    const lineEl = el.querySelector("[data-step-line]");
-    const paintLine = () => {
-      const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")];
-      sel.phases = phases;
-      const curIdx = phases.indexOf(run.phase);
-      if (curIdx >= 0) sel.idx = curIdx;
-      const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
-      const isTerminal = st === "done" || st === "converged";
-      lineEl.innerHTML = phases.map((p, i) => {
-        const done = visited.has(p) && (p !== run.phase || isTerminal);
-        const active = i === curIdx && !isTerminal;
-        const dot = done ? "\u2713" : active ? "" : String(i + 1);
-        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
-        return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
-      }).join("");
-      el.querySelectorAll("[data-step]").forEach((n) => {
-        n.addEventListener("click", () => {
-          sel.idx = Number(n.getAttribute("data-step"));
-          paintNow();
-          paintSel();
-        });
-      });
-      paintSel();
-    };
-    const paintSel = () => {
-      el.querySelectorAll("[data-step]").forEach((n, i) => n.classList.toggle("sel", i === sel.idx));
-    };
-    const nowEl = el.querySelector("[data-run-now]");
-    const tlEl = el.querySelector("[data-run-tl]");
-    const paintNow = () => {
-      const phases = sel.phases.length ? sel.phases : [run.phase || t("\u5355\u8282\u70B9")];
-      const ph = phases[sel.idx] || run.phase || t("\u5355\u8282\u70B9");
-      const isCur = ph === run.phase;
-      const involved = String(run.involved || "");
-      const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
-        const p2 = x.split("/");
-        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
-      }).join(" ");
-      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? isTerminalRun(st) ? t("\u8BE5\u76F8\u4F4D\u5DF2\u6536\u675F\u2014\u2014\u5355\u6B21\u8FD0\u884C\u7ED3\u675F") : t("\u8FDB\u884C\u4E2D\u2014\u2014\u72B6\u6001\u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u6309\u8FD0\u884C\u8F68\u8FF9\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
-      bindDocLinks(nowEl, ctx2);
-    };
-    const paintTl = () => {
-      const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
-      const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u9636\u6BB5\u63A8\u8FDB\u8BB0\u5F55\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
-        const at = String(x && (x.at || x.ts || x.time) || "");
-        const from = String(x && (x.from || x.fromPhase) || "\u2014");
-        const to = String(x && (x.to || x.toPhase || x.phase) || "\u2014");
-        return '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(from) + " \u2192 " + esc(to) + '</b></div><div class="tl-time mono">' + esc(relAge(at) || (at ? at.slice(0, 16) : "")) + "</div></div>";
-      }).join("") + "</div>" : "";
-      const evs = ctx2.store.events().filter((e) => {
-        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
-        return hay.includes(String(run.workflow || "")) || hay.includes(String(run.phase || ""));
-      }).slice(0, 12);
-      tlEl.innerHTML = transHtml + (evs.length ? '<div class="tl">' + evs.map((e) => {
-        const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-        const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
-        return '<div class="tl-row"' + goAttr + '><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>";
-      }).join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u6682\u65E0\u76F8\u5173\u4E8B\u4EF6\u2014\u2014\u6D41\u7A0B\u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u66F4\u65B0\u3002")) + "</div>");
-    };
-    paintLine();
-    paintNow();
-    paintTl();
-    let nodeSessionRows = [];
-    let nodeTask = null;
-    const hydrateNodeSessions = async () => {
-      const box = el.querySelector("[data-run-node-sessions]");
-      if (!box || !el.isConnected) return;
-      const key = wfTaskKey(run.involved);
-      if (!key) {
-        box.innerHTML = '<div class="small faint">' + esc(t("\u8BE5\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\u2014\u2014\u8282\u70B9\u4F1A\u8BDD\u672A\u8BB0\u5F55\u3002")) + "</div>";
-        return;
-      }
-      try {
-        const [tasksRes, sessionsRes] = await Promise.all([
-          ctx2.api.tasks(),
-          ctx2.api.taskSessions ? ctx2.api.taskSessions([key]) : Promise.resolve({ ok: false })
-        ]);
-        if (!el.isConnected) return;
-        const tasks = wfApiTasks(tasksRes);
-        nodeTask = tasks.find((t2) => String(t2.scope || "global") + "/" + String(t2.name || "") === key) || null;
-        nodeSessionRows = sessionsRes && sessionsRes.ok && Array.isArray(sessionsRes.data && sessionsRes.data.items) ? sessionsRes.data.items : [];
-        box.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
-        const topAnchor = wfSessionAnchor(run, nodeTask, nodeSessionRows);
-        const sessionBox = el.querySelector("[data-run-session]");
-        if (sessionBox) sessionBox.innerHTML = wfSessionChip(topAnchor.sid, topAnchor.label);
-      } catch {
-        if (el.isConnected) box.innerHTML = '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u8BFB\u53D6\u5931\u8D25\u2014\u2014\u4E0D\u5192\u5145\u5DF2\u8BB0\u5F55\u3002")) + "</div>";
-      }
-    };
-    hydrateNodeSessions();
-    const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
-      if (!r.ok || !el.isConnected) return;
-      const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
-      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
-      if (!full) return;
-      run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
-      run.phase = full.phase || run.phase;
-      run.status = full.status || run.status;
-      st = String(run.status || "");
-      stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
-      run.sessionId = full.sessionId || run.sessionId;
-      run.involved = full.involved || run.involved;
-      run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
-      run.history = Array.isArray(full.history) ? full.history : run.history;
-      const sessionBox = el.querySelector("[data-run-session]");
-      if (sessionBox) sessionBox.innerHTML = wfSessionChip(run.sessionId);
-      const nodeBox = el.querySelector("[data-run-node-sessions]");
-      if (nodeBox && wfTaskKey(run.involved)) nodeBox.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
-      paintLine();
-      paintNow();
-      paintTl();
-    });
-    refreshFace();
-    el.querySelectorAll("[data-gate-act]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const grant = btn.getAttribute("data-gate-act") === "grant";
-        const confirmed = await confirmModal({
-          title: grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62"),
-          body: esc(grant ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002")),
-          confirmText: grant ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
-          danger: !grant
-        });
-        if (!confirmed) return;
-        btn.disabled = true;
-        btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
-        const runNo = Number(no) || 0;
-        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor, ...runNo > 0 ? { run: runNo } : {} });
-        if (!r.ok) {
-          btn.disabled = false;
-          btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
-          toast(esc(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002")), "error");
-          return;
-        }
-        refreshFace();
-        ctx2.api.snapshot().then((s) => {
-          if (s.ok) ctx2.store.init(s.data);
-        });
-      });
-    });
-  }
-  function render5(el, ctx2) {
-    const p = ctx2.params || {};
-    if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
-    else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
-    else listScreen(el, ctx2);
-  }
-
-  // src/screens/events.js
-  var filter = { level: "", q: "" };
-  var LEVEL_CLS = { critical: "esc", error: "esc", warn: "warn", warning: "warn", info: "mute", debug: "mute" };
-  function clean(x) {
-    return String(x == null ? "" : x).replace(/^"+|"+$/g, "");
-  }
-  function levelChip(e) {
-    const lv = String(e && e.level || "info");
-    return chip(lv, LEVEL_CLS[lv] || "mute");
-  }
-  function involvedHtml(e) {
-    const s = clean(e && e.involved);
-    if (!s) return chip("involved\uFF1A\u2014", "mute");
-    return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
-      const p = part.trim();
-      const route = involvedRoute(p);
-      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : chip(p, "mute");
-    }).join(" ");
-  }
-  function linksHtml(e) {
-    const out = [];
-    const route = String(e && e.route || "");
-    const wf = wfAnchorOfRoute(route);
-    if (wf) out.push(chipGo(t("workflow \u951A ") + wf, "wf/" + encodeURIComponent(wf), "acc", true, "route " + route + t(" \u2192 \u5DE5\u4F5C\u6D41")));
-    if (e && e.run) out.push(chipGo("run #" + e.run, route && wf ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(e.run)) : "workflows", "mute", true, t("\u5173\u8054\u8FD0\u884C")));
-    const sess = clean(e && (e.agentSession || e.session));
-    if (sess) out.push(chipGo(t("\u4F1A\u8BDD ") + trunc(sess, 18), "session/" + encodeURIComponent(sess), "mute", true, t("\u4F1A\u8BDD\u8BE6\u60C5")));
-    const wake = e && (e.wake != null ? e.wake : e.loopId != null ? e.loopId : null);
-    if (wake != null) out.push(chipGo(t("\u5FAA\u73AF\u5524\u9192 #") + wake, "welcome", "mute", true, t("\u603B\u89C8\u5FAA\u73AF\u5361\u2014\u2014loop \u5524\u9192\u5173\u8054")));
-    return out.join(" ");
-  }
-  function eventRow(e) {
-    const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
-    const involved = clean(e && e.involved);
-    const parts = involved.split(/[,;]\s*/).filter(Boolean);
-    const invHtml = parts.length ? parts.map((part) => {
-      const p = part.trim();
-      const route = involvedRoute(p);
-      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : '<span class="mono">' + esc(p) + "</span>";
-    }).join(" ") : '<span class="mono">\u2014</span>';
-    const hasClipboard = typeof navigator !== "undefined" && !!(navigator.clipboard && navigator.clipboard.writeText);
-    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + invHtml + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + '</span><button class="btn btn-ghost sm" data-copy-id="' + esc(String(id)) + '"' + (hasClipboard ? "" : ' disabled title="' + esc(t("\u526A\u8D34\u677F\u4E0D\u53EF\u7528")) + '"') + ">" + esc(t("\u590D\u5236 id")) + "</button></div>";
-  }
-  function listScreen2(el, ctx2) {
-    let rows = ctx2.store.events().slice();
-    if (filter.level) rows = rows.filter((e) => String(e && e.level || "") === filter.level);
-    if (filter.q) {
-      const q = filter.q.toLowerCase();
-      rows = rows.filter((e) => String(e && (e.type || "") + " " + (e.involved || "") + " " + (e.summary || e.message || "")).toLowerCase().includes(q));
-    }
-    const fbar = '<div class="filter-bar">' + t('<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="') + esc(filter.q) + '">' + ["", "error", "warn", "info"].map(
-      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc(lv) + '">' + esc(lv || t("\u5168\u90E8\u7EA7\u522B")) + "</span>"
-    ).join("") + "</div>";
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u6D41"), t("\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09")) + fbar + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u6682\u65E0\u4E8B\u4EF6"), filter.q || filter.level ? t("\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002") : t("\u6682\u65E0\u4E8B\u4EF6\u3002"))) + "</div>";
-    const inp = el.querySelector("#ev-q");
-    if (inp) {
-      inp.addEventListener("input", () => {
-        filter.q = inp.value;
-        listScreen2(el, ctx2);
-      });
-      inp.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") ev.preventDefault();
-      });
-    }
-    el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
-      c.addEventListener("click", () => {
-        filter.level = c.dataset.lv || "";
-        listScreen2(el, ctx2);
-      });
-    });
-    el.querySelectorAll("[data-copy-id]").forEach((btn) => {
-      if (btn.disabled) return;
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const raw = String(btn.dataset.copyId || "");
-        navigator.clipboard.writeText(raw).then(() => {
-          btn.textContent = t("\u5DF2\u590D\u5236");
-          setTimeout(() => {
-            btn.textContent = t("\u590D\u5236 id");
-          }, 1200);
-        }).catch(() => {
-          btn.textContent = t("\u590D\u5236\u5931\u8D25");
-          setTimeout(() => {
-            btn.textContent = t("\u590D\u5236 id");
-          }, 1200);
-        });
-      });
-    });
-  }
-  async function detailScreen2(el, ctx2, id) {
-    const stamp = typeof location !== "undefined" ? location.hash : "";
-    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u8BE6\u60C5"), "id=" + id) + '<div class="card"><div class="card-b">' + kv([[t("\u72B6\u6001"), chip(t("\u73B0\u8BFB\u4E2D\u2026"), "mute")]]) + '</div></div><div class="dh-actions" style="margin-top:10px">' + chipGo(t("\u2190 \u56DE\u4E8B\u4EF6\u6D41"), "events", "mute", false) + "</div></div>";
-    const r = await ctx2.api.event(id);
-    if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
-    const box = el.querySelector(".card .card-b");
-    if (!box) return;
-    if (!r.ok) {
-      box.innerHTML = t('<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>");
-      return;
-    }
-    const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
-    const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
-    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => {
-      const v = k === "involved" || k === "summary" || k === "message" || k === "agentSession" || k === "session" ? clean(e[k]) : String(e[k]);
-      return [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(v, 200))];
-    });
-    box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
-  }
-  function render6(el, ctx2) {
-    const id = ctx2.params && ctx2.params.id;
-    if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
-    else listScreen2(el, ctx2);
-  }
-
   // node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
@@ -13190,6 +11577,20 @@ ${text2}</tr>
   function rawDisclosure(title, content) {
     return '<details class="md-raw"><summary>' + esc(title || t("\u539F\u6587")) + '</summary><pre class="mono md-raw-pre">' + esc(content == null ? "" : content) + "</pre></details>";
   }
+  function yamlTextView(content, title) {
+    const s = String(content == null ? "" : content);
+    const rows = Math.min(Math.max(s.split("\n").length + 1, 4), 48);
+    return (title ? '<div class="small faint" style="margin-bottom:4px">' + esc(title) + "</div>" : "") + '<textarea class="inp mono" readonly rows="' + rows + '" spellcheck="false" style="width:100%;font-size:12px;line-height:1.5;resize:vertical;white-space:pre">' + esc(s) + "</textarea>";
+  }
+  function dumpYaml(value) {
+    if (value == null) return "";
+    try {
+      const s = yaml.dump(value, { lineWidth: 240, noRefs: true });
+      return typeof s === "string" ? s : "";
+    } catch {
+      return "";
+    }
+  }
   function splitFrontmatter(src) {
     const s = String(src == null ? "" : src);
     if (!s.startsWith("---")) return { fm: "", body: s };
@@ -13222,6 +11623,1620 @@ ${text2}</tr>
       out += '<details class="scheme-more"><summary>' + esc(t("scheme \u8BE6\u7EC6\uFF08") + complex.length + t(" \u9879\uFF0C\u9ED8\u8BA4\u6298\u53E0\uFF09")) + '</summary><pre class="mono scheme-more-pre">' + esc(trunc(lines, 4e3)) + "</pre></details>";
     }
     return out;
+  }
+
+  // src/screens/workflow-config.js
+  function defaultLoopSpec(name = "core-system-developer-loop", existing = {}) {
+    const s = existing && typeof existing === "object" ? existing : {};
+    const logSrc = s.logSource || {};
+    const collector = logSrc.collector || {};
+    const timer = logSrc.timer || s.triggers && s.triggers.timer || {};
+    const approval = s.approval || {};
+    const sysBind = s.systemBindings || {};
+    const devSys = sysBind.developerSystem || {};
+    const depSys = sysBind.deploySystem || {};
+    const devConv = devSys.conventions || {};
+    const ver = s.verification || {};
+    const reg = s.regression || {};
+    const llm = s.llm || {};
+    const defaultConditions = [
+      { id: "lint-rules", kind: "code", title: "\u4EE3\u7801 Lint \u4E0E\u89C4\u5219\u5BA1\u6838 (R-PUB-1 / R-DOC-6 / R-ENG-7 \u2264800\u884C)", command: "connectops-code-audit/audit", required: true },
+      { id: "unit-tests", kind: "test", title: "\u540E\u7AEF\u4E0E\u524D\u7AEF\u5355\u5143/\u96C6\u6210\u6D4B\u8BD5\u5168\u7EFF (go test ./... & npm test)", command: "go test ./... && npm test", required: true },
+      { id: "live-probe", kind: "agent", title: "\u6D3B\u4F53\u63A2\u9488\u4E0E\u9875\u9762\u65E0\u5047\u6570\u636E/\u65E0\u62A5\u9519\u9A8C\u8BC1", command: "agent-verify", required: true }
+    ];
+    const defaultPostActions = [
+      { id: "bugdoc-lifecycle", kind: "doc-lifecycle", targetDocType: "BugDoc", action: reg.bugDocPolicy || "invalidate", enabled: true, title: "\u4E34\u65F6 BugDoc \u6536\u5C3E\u5904\u7406\uFF08\u6807\u8BB0\u5931\u6548 invalidate / \u5220\u9664 delete / \u4FDD\u7559 keep\uFF0C\u53EF\u589E\u5220\u6B64\u9879\uFF09" },
+      { id: "status-insync", kind: "status-writeback", targetPhase: "InSync", enabled: true, title: "\u56DE\u5199 ServiceInstance.status.phase = InSync\uFF08\u6E05\u96F6\u6F02\u79FB\uFF09" }
+    ];
+    const defaultPhases = [
+      { name: "log-event", phase: "Idle", title: "1. \u76D1\u542C\u65E5\u5FD7\u4E0E Event", unit: "connectops", connector: collector.connector || "connectops-log-collector", op: collector.op || "collect-logs", provider: llm.provider || "openai-default", modelTier: "low", entryEvents: ["BugReport", "MetricThreshold", "ExternalChanged", "ReconcileTick", "LoopRequested"] },
+      { name: "agent-judge", phase: "Analyzing", title: "2. Agent \u5224\u65AD\uFF08\u8BC4\u4F30\u4FEE\u590D\u4EF7\u503C/\u4EA7\u51FA\u65B9\u6848\u6216 BugDoc\uFF09", unit: "agent", op: "judge-issue", provider: llm.provider || "openai-default", modelTier: "high", refRules: ["rule/rule_eng", "rule/rule_doc"] },
+      { name: "approval-gate", phase: "AwaitingApproval", title: "3. \u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF08\u63A7\u5236\u8282\u70B9\uFF09", unit: "gate", op: "approval-check" },
+      { name: "doc-apply", phase: "Planning", title: "4. Doc Apply\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/BugDoc \u7B2C\u4E8C\u5207\u5165\u70B9\uFF09", unit: "agent", op: "apply-doc", provider: llm.provider || "openai-default", modelTier: "standard", refDocs: ["goal"], refRules: ["rule/rule_doc", "rule/rule_eng"], refTags: ["audit", "fix"], tagRules: ["rule/tag_default"], entryEvents: ["DocApplied"] },
+      { name: "developer-system", phase: "Executing", title: "5. developer-system \u7814\u53D1\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: devSys.connector || "connectops-developer", op: devSys.op || "develop", service: devSys.service || "developer-system", contextPassing: { previousRound: true, fields: ["judge", "plan", "diff", "approval"] }, permissionRole: "role/developer-system-ops" },
+      { name: "verify", phase: "Verifying", title: "6. \u9A8C\u6536\uFF08developer-system Agent \u9A8C\u6536 session\uFF09", unit: "service", service: devSys.service || "developer-system", op: "acceptance", contextPassing: { previousRound: true, fields: ["diff", "verifyConditions"] } },
+      { name: "deploy-system", phase: "Deploying", title: "7. deploy-system \u53D1\u7248\uFF08service \u5185\u90E8 agent \u6267\u884C\uFF09", unit: "service", connector: depSys.connector || "connectops-deploy", op: depSys.op || "release", service: depSys.service || "deploy-system", contextPassing: { previousRound: true, fields: ["verifyReport", "release"] }, permissionRole: "role/deploy-system-ops" },
+      { name: "report-archive", phase: "Reporting", title: "8. \u603B\u7ED3\u5F52\u6863\uFF08\u89E3\u91CA\u6267\u884C postActions + \u56DE\u5199 InSync\uFF09", unit: "agent", op: "archive-report", provider: llm.provider || "openai-default", modelTier: "low", tools: ["findings-read", "doc-draft", "tag-write"] }
+    ];
+    const defaultTransitions = [
+      { from: "Idle", on: "advance", to: "Analyzing" },
+      { from: "Idle", on: "entry:DocApplied", to: "Planning" },
+      { from: "Analyzing", on: "advance", to: "AwaitingApproval" },
+      { from: "Analyzing", on: "worth_fixing", to: "AwaitingApproval" },
+      { from: "Analyzing", on: "ignore", to: "Reporting" },
+      { from: "AwaitingApproval", on: "advance", to: "Planning" },
+      { from: "AwaitingApproval", on: "ApprovalGranted", to: "Planning" },
+      { from: "AwaitingApproval", on: "ApprovalRejected", to: "Failed" },
+      { from: "Planning", on: "advance", to: "Executing" },
+      { from: "Executing", on: "advance", to: "Verifying" },
+      { from: "Verifying", on: "advance", to: "Deploying" },
+      { from: "Verifying", on: "retry-develop", to: "Executing" },
+      { from: "Deploying", on: "advance", to: "Reporting" }
+    ];
+    return {
+      name,
+      enabled: s.enabled != null ? Boolean(s.enabled) : false,
+      immutableNodes: Boolean(s.immutableNodes),
+      // 2026-11-27 用户裁决：节点可加删（内置主干也不恒锁定）——前端节点表加节点/删节点/改参数，draft→apply 落账
+      undeletable: name === "core-system-developer-loop" || name === "default-task" ? true : Boolean(s.undeletable),
+      servicesInvolved: Array.isArray(s.services && s.services.involved) ? s.services.involved.join(", ") : "self-recursive-core, developer-system, deploy-system",
+      servicesMode: s.services && s.services.mode || "act",
+      provider: llm.provider || "openai-default",
+      defaultModel: llm.model || "reasoning-tier",
+      globalRuleRefs: Array.isArray(s.globalRuleRefs) ? s.globalRuleRefs.join(", ") : "rule/rule_eng, rule/rule_doc, rule/rule_ux, rule/rule_ctx, rule/rule_pub",
+      logEvents: Array.isArray(logSrc.events) ? logSrc.events.join(", ") : "BugReport, MetricThreshold, ExternalChanged, ReconcileTick, LoopRequested",
+      logMinLevel: logSrc.minLevel || "warn",
+      logServices: Array.isArray(logSrc.services) ? logSrc.services.join(", ") : "self-recursive-core",
+      logKeyword: logSrc.keywordMatch || "ERROR|PANIC|FAIL|drift|unhealthy",
+      timerEnabled: timer.enabled != null ? Boolean(timer.enabled) : true,
+      timerInterval: timer.interval || timer.resync || "30m",
+      timerCron: timer.cron || "*/30 * * * *",
+      collectorConnector: collector.connector || "connectops-log-collector",
+      collectorOp: collector.op || "collect-logs",
+      collectorQuery: collector.query || "level>=warn",
+      docApplyEntryEnabled: true,
+      docApplyDocTypes: "Goal, Desc, Rule, WorkflowDesign, ImplDoc, VerifyDoc, BugDoc",
+      approvalMode: approval.mode || "agent",
+      approvalCriteria: approval.autoCriteria || "\u5355\u6D4B\u5168\u7EFF\u3001\u7B26\u5408\u5168\u5C40 rule_eng/rule_doc \u89C4\u8303\u4E14\u4E0D\u6D89\u53CA\u7834\u574F\u6027\u9AD8\u5371\u5220\u5E93\u64CD\u4F5C\u65F6\u81EA\u52A8\u6279\u51C6\u653E\u884C",
+      approvalMaxRisk: approval.maxRiskLevel || "low",
+      devService: devSys.service || "developer-system",
+      devResolution: devSys.resolution || "default",
+      devConnector: devSys.connector || "connectops-developer",
+      devOp: devSys.op || "develop",
+      devBranchPrefix: devConv.branchPrefix || "agent/",
+      devWorktreeDir: devConv.worktreeDir || "worktrees/",
+      devMaxLines: devConv.maxFileLines || 800,
+      deployService: depSys.service || "deploy-system",
+      deployResolution: depSys.resolution || "default",
+      deployConnector: depSys.connector || "connectops-deploy",
+      deployOp: depSys.op || "release",
+      verifyMode: ver.mode || "both",
+      verifyConnector: ver.connector || "connectops-code-audit",
+      verifyOp: ver.op || "audit",
+      verifyOnFail: ver.onFail || "retry-develop",
+      conditions: Array.isArray(ver.conditions) && ver.conditions.length ? ver.conditions : defaultConditions,
+      bugDocPolicy: reg.bugDocPolicy || (reg.cleanTempBugDoc === true ? "delete" : "invalidate"),
+      statusWriteback: reg.statusWriteback != null ? Boolean(reg.statusWriteback) : true,
+      postActions: Array.isArray(reg.postActions) && reg.postActions.length ? reg.postActions : defaultPostActions,
+      phases: Array.isArray(s.phases) && s.phases.length && typeof s.phases[0] === "object" ? s.phases.map((n) => n && n.unit === "session" ? { ...n, unit: "agent" } : n) : defaultPhases,
+      transitions: Array.isArray(s.transitions) && s.transitions.length ? s.transitions.map((t2) => ({ from: t2 && t2.from, on: t2 && t2.on, to: t2 && t2.to })).filter((t2) => t2.from && t2.to) : defaultTransitions
+    };
+  }
+  function buildWorkflowYaml(cfg, scope = "global") {
+    const splitList = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const inv = splitList(cfg.servicesInvolved);
+    const rules = splitList(cfg.globalRuleRefs);
+    const logEvs = splitList(cfg.logEvents);
+    const logSvcs = splitList(cfg.logServices);
+    const docTypes = splitList(cfg.docApplyDocTypes);
+    const q = (s) => JSON.stringify(String(s == null ? "" : s));
+    const condLines = (cfg.conditions || []).map(
+      (c, idx) => `      - {id: ${q(c.id || "cond-" + (idx + 1))}, kind: ${q(c.kind || "code")}, title: ${q(c.title || "")}, command: ${q(c.command || "")}, required: ${Boolean(c.required)}}`
+    ).join("\n");
+    const actionLines = (cfg.postActions || []).map(
+      (a, idx) => `      - {id: ${q(a.id || "act-" + (idx + 1))}, kind: ${q(a.kind || "doc-lifecycle")}, targetDocType: ${q(a.targetDocType || "BugDoc")}, action: ${q(a.action || cfg.bugDocPolicy || "invalidate")}, enabled: ${Boolean(a.enabled)}, title: ${q(a.title || "")}}`
+    ).join("\n");
+    const nodeLine = (n) => {
+      const p = [`name: ${n.name || "node"}`, `phase: ${n.phase || "Idle"}`, `title: ${q(n.title || n.name || "")}`, `unit: ${n.unit || "connectops"}`];
+      if (n.connector) p.push(`connector: ${n.connector}`);
+      if (n.op) p.push(`op: ${n.op}`);
+      if (n.service) p.push(`service: ${n.service}`);
+      if (n.provider) p.push(`provider: ${n.provider}`);
+      if (n.model) p.push(`model: ${q(n.model)}`);
+      if (n.modelTier) p.push(`modelTier: ${n.modelTier}`);
+      if (n.permissionRole) p.push(`permissionRole: ${n.permissionRole}`);
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
+        if (Array.isArray(n[k]) && n[k].length) p.push(`${k}: [${n[k].map(q).join(", ")}]`);
+      });
+      if (n.contextPassing && (n.contextPassing.previousRound || Array.isArray(n.contextPassing.fields) && n.contextPassing.fields.length)) {
+        p.push(`contextPassing: {previousRound: ${n.contextPassing.previousRound !== false}, fields: [${(n.contextPassing.fields || []).map(q).join(", ")}]}`);
+      }
+      return `    - {${p.join(", ")}}`;
+    };
+    const phaseLines = (cfg.phases || []).map(nodeLine).join("\n");
+    const nodeMappingLines = (cfg.phases || []).map(
+      (n) => `      ${n.name}: {tier: ${n.modelTier || "standard"}${n.model ? ", model: " + q(n.model) : ""}}`
+    ).join("\n");
+    const transLines = (cfg.transitions || []).map(
+      (t2) => `    - {from: ${t2.from}, on: ${q(String(t2.on || "advance"))}, to: ${t2.to}}`
+    ).join("\n");
+    return `apiVersion: core/v1
+kind: Workflow
+metadata:
+  name: ${cfg.name}
+  scope: ${scope}
+  labels:
+    core/origin: builtin
+spec:
+  enabled: ${Boolean(cfg.enabled)}
+  immutableNodes: ${Boolean(cfg.immutableNodes)}
+  undeletable: ${Boolean(cfg.undeletable)}
+  connector: connector-ops/${cfg.name}
+  services:
+    involved: [${inv.map(q).join(", ")}]
+    mode: ${cfg.servicesMode || "act"}
+  llm:
+    provider: ${cfg.provider || "openai-default"}
+    model: ${q(cfg.defaultModel || "reasoning-tier")}
+    tier: high
+    nodeMapping:
+${nodeMappingLines}
+  globalRuleRefs: [${rules.map(q).join(", ")}]
+  logSource:
+    events: [${logEvs.map(q).join(", ")}]
+    minLevel: ${cfg.logMinLevel || "warn"}
+    services: [${logSvcs.map(q).join(", ")}]
+    keywordMatch: ${q(cfg.logKeyword || "")}
+    timer:
+      enabled: ${Boolean(cfg.timerEnabled)}
+      interval: ${q(cfg.timerInterval || "30m")}
+      cron: ${q(cfg.timerCron || "*/30 * * * *")}
+    collector:
+      connector: ${cfg.collectorConnector || "connectops-log-collector"}
+      op: ${cfg.collectorOp || "collect-logs"}
+      query: ${q(cfg.collectorQuery || "level>=warn")}
+      autoDevelopOnMissing: true
+  triggers:
+    events:
+      types: [${logEvs.concat(cfg.docApplyEntryEnabled ? ["DocApplied"] : []).map(q).join(", ")}]
+      minLevel: ${cfg.logMinLevel || "warn"}
+    timer:
+      resync: ${q(cfg.timerInterval || "30m")}
+      enabled: ${Boolean(cfg.timerEnabled)}
+      interval: ${q(cfg.timerInterval || "30m")}
+      cron: ${q(cfg.timerCron || "*/30 * * * *")}
+  entryPoints:
+    - {node: log-event, phase: Idle, enabled: true, events: [${logEvs.map(q).join(", ")}], description: "\u5165\u53E3 1\uFF1A\u76D1\u542C\u65E5\u5FD7/\u8FD0\u884C\u671F Bug/\u5B9A\u65F6\u5DE1\u68C0\u4E8B\u4EF6\u4ECE\u5934\u6D41\u8F6C"}
+    - {node: doc-apply, phase: Planning, enabled: ${Boolean(cfg.docApplyEntryEnabled)}, events: ["DocApplied"], docTypes: [${docTypes.map(q).join(", ")}], description: "\u5165\u53E3 2\uFF1A\u7528\u6237\u5BF9\u8BDD\u4FEE\u6539\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u63A5\u4ECE\u8282\u70B9 4 \u5207\u5165"}
+  ingest:
+    dedup: {window: 5m}
+    group: {by: service, max: 20}
+    filterLevels: [warn, error, fatal]
+  approval:
+    mode: ${cfg.approvalMode || "agent"}
+    autoCriteria: ${q(cfg.approvalCriteria || "")}
+    maxRiskLevel: ${cfg.approvalMaxRisk || "low"}
+  systemBindings:
+    developerSystem:
+      service: ${cfg.devService || "developer-system"}
+      resolution: ${cfg.devResolution || "default"}
+      connector: ${cfg.devConnector || "connectops-developer"}
+      op: ${cfg.devOp || "develop"}
+      conventions:
+        branchPrefix: ${q(cfg.devBranchPrefix || "agent/")}
+        worktreeDir: ${q(cfg.devWorktreeDir || "worktrees/")}
+        tmpDir: "tmp/"
+        maxFileLines: ${Number(cfg.devMaxLines) || 800}
+    deploySystem:
+      service: ${cfg.deployService || "deploy-system"}
+      resolution: ${cfg.deployResolution || "default"}
+      connector: ${cfg.deployConnector || "connectops-deploy"}
+      op: ${cfg.deployOp || "release"}
+  verification:
+    mode: ${cfg.verifyMode || "both"}
+    connector: ${cfg.verifyConnector || "connectops-code-audit"}
+    op: ${cfg.verifyOp || "audit"}
+    onFail: ${cfg.verifyOnFail || "retry-develop"}
+    conditions:
+${condLines || "      []"}
+  phases:
+${phaseLines}
+  transitions:
+${transLines}
+  onEscalate: {action: pause, notify: bind-role}
+  onFailed:
+    backoff: 30s*2^n
+    maxAttempts: 3
+    rollbackPolicy: by-step
+    escalate: {to: root, notify: bind-role}
+  brakes:
+    cooldown: 2m
+    maxMutationsPerTick: 10
+    avoidRepeatFix: true
+  regression:
+    statusWriteback: ${Boolean(cfg.statusWriteback)}
+    bugDocPolicy: ${cfg.bugDocPolicy || "invalidate"}
+    cleanTempBugDoc: ${cfg.bugDocPolicy === "delete"}
+    targetPhaseOnConverge: InSync
+    postActions:
+${actionLines || "      []"}
+    reports: [DriftReport, SessionLog]
+`;
+  }
+  var NODE_UNITS = ["connectops", "agent", "service", "gate"];
+  var UNIT_CHIP = { connectops: "mute", agent: "acc", service: "warn", gate: "llm", side: "esc" };
+  function nodeRowHtml(n, i, defProvider) {
+    return `<tr data-node-edit="${esc(n.name || "")}" style="cursor:pointer" title="${esc(t("\u70B9\u51FB\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E"))}"><td class="mono small">${i + 1}. ${esc(n.name || "")}</td><td>${chip(n.phase || "\u2014", "acc")}</td><td><b>${esc(n.title || "")}</b></td><td class="mono small">${chip(n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit || "connectops", UNIT_CHIP[n.unit] || "mute")}</td><td class="mono small">${n.connector ? `<span class="lk" data-open-conn="${esc(n.connector)}">${esc(n.connector)}</span>` : "\u2014"}${n.op ? ` \xB7 ${esc(n.op)}` : ""}</td><td><span class="chip acc tiny click" data-open-provider="${esc(n.provider || defProvider)}" title="${esc(t("\u70B9\u51FB\u914D\u7F6E OpenAIProvider \u8D26\u53F7/baseUrl/\u6A21\u578B\u6620\u5C04"))}">Provider: ${esc(n.provider || defProvider)}</span> ${chip("tier:" + (n.modelTier || "standard"), n.modelTier === "high" ? "warn" : "mute")}</td><td class="small mono">${Array.isArray(n.refRules) && n.refRules.length ? esc(n.refRules.join(", ")) : "\u2014"}${Array.isArray(n.refTags) && n.refTags.length ? ' <span class="faint">tag:</span>' + esc(n.refTags.join(",")) : ""}</td></tr>`;
+  }
+  function nodeFieldsHtml(n, defProvider) {
+    const u = n.unit || "connectops";
+    const grid = (inner) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-top:6px">${inner}</div>`;
+    const inp = (lab, key, val) => `<div><div class="small faint">${esc(lab)}</div><input class="inp mono" data-nm="${key}" value="${esc(val == null ? "" : String(val))}" style="width:100%"></div>`;
+    const base = grid(
+      inp("\u8282\u70B9\u540D (name)", "name", n.name || "") + inp("\u76F8\u4F4D (phase)", "phase", n.phase || "Idle") + `<div><div class="small faint">${esc(t("\u804C\u8D23\u8BF4\u660E (title)"))}</div><input class="inp" data-nm="title" value="${esc(n.title || "")}" style="width:100%"></div><div><div class="small faint">${esc(t("\u6267\u884C\u5355\u5143 (unit)"))}</div><select class="inp" data-nm="unit" style="width:100%">${NODE_UNITS.map((x) => `<option value="${x}" ${u === x ? "selected" : ""}>${x}${x === "gate" ? t("\uFF08\u63A7\u5236\u8282\u70B9\uFF09") : ""}</option>`).join("")}</select></div>`
+    );
+    const rows = [base];
+    if (u === "agent") {
+      rows.push(grid(
+        inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier low/standard/high)", "modelTier", n.modelTier || "standard") + inp("ref \u6587\u6863 (refDocs \u9017\u53F7\u5206\u9694)", "refDocs", (n.refDocs || []).join(", ")) + inp("ref \u89C4\u5219 (refRules)", "refRules", (n.refRules || []).join(", ")) + inp("\u9ED8\u8BA4 ref tag (refTags)", "refTags", (n.refTags || []).join(", ")) + inp("tag \u89C4\u5219 (tagRules)", "tagRules", (n.tagRules || []).join(", ")) + inp("\u968F\u8EAB\u5DE5\u5177 (tools)", "tools", (n.tools || []).join(", ")) + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
+      ));
+    } else if (u === "service") {
+      rows.push(grid(
+        inp("\u76EE\u6807\u7CFB\u7EDF (service)", "service", n.service || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("ConnectorOps", "connector", n.connector || "") + inp("\u6743\u9650 Role (permissionRole\u2014\u2014P7 \u968F\u6587\u6863\u6388\u4E88)", "permissionRole", n.permissionRole || "") + inp("\u4E0A\u4E00\u8F6E\u4E0A\u4E0B\u6587\u5B57\u6BB5 (contextPassing.fields)", "ctxFields", (n.contextPassing && n.contextPassing.fields || []).join(", ")) + `<div style="display:flex;align-items:end;padding-bottom:4px"><label class="small"><input type="checkbox" data-nm="ctxPrev" ${!n.contextPassing || n.contextPassing.previousRound !== false ? "checked" : ""}> ${esc(t("\u4F20\u4E0A\u4E00\u8F6E\u8BE6\u7EC6\u4E0A\u4E0B\u6587"))}</label></div>`
+      ));
+    } else if (u === "connectops") {
+      rows.push(grid(
+        inp("ConnectorOps", "connector", n.connector || "") + inp("\u7B97\u5B50 (op)", "op", n.op || "") + inp("Provider", "provider", n.provider || defProvider || "openai-default") + inp("\u6A21\u578B\u6863\u4F4D (modelTier)", "modelTier", n.modelTier || "low") + inp("\u5165\u53E3\u4E8B\u4EF6 (entryEvents)", "entryEvents", (n.entryEvents || []).join(", "))
+      ));
+    } else {
+      rows.push(grid(inp("\u95F8\u7B97\u5B50 (op)", "op", n.op || "approval-check")));
+    }
+    return rows.join("");
+  }
+  function readNodeFields(root, base) {
+    const get = (k) => root.querySelector(`[data-nm="${k}"]`);
+    const lst = (k) => String(get(k) ? get(k).value : "").split(/[，,]+/).map((x) => x.trim()).filter(Boolean);
+    const u = get("unit") ? get("unit").value : base.unit || "connectops";
+    const n = {
+      ...base,
+      name: get("name") && get("name").value.trim() || base.name || "node",
+      phase: get("phase") && get("phase").value.trim() || "Idle",
+      title: get("title") ? get("title").value : base.title || "",
+      unit: u
+    };
+    if (u === "agent") {
+      n.provider = get("provider") ? get("provider").value.trim() : "";
+      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "standard";
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "entryEvents"].forEach((k) => {
+        n[k] = lst(k);
+      });
+      delete n.service;
+      delete n.contextPassing;
+      delete n.permissionRole;
+    } else if (u === "service") {
+      n.service = get("service") ? get("service").value.trim() : "";
+      n.op = get("op") ? get("op").value.trim() : "";
+      n.connector = get("connector") ? get("connector").value.trim() : "";
+      n.permissionRole = get("permissionRole") ? get("permissionRole").value.trim() : "";
+      n.contextPassing = { previousRound: Boolean(get("ctxPrev") && get("ctxPrev").checked), fields: lst("ctxFields") };
+      ["refDocs", "refRules", "refTags", "tagRules", "tools"].forEach((k) => delete n[k]);
+    } else if (u === "connectops") {
+      n.connector = get("connector") ? get("connector").value.trim() : "";
+      n.op = get("op") ? get("op").value.trim() : "";
+      n.provider = get("provider") ? get("provider").value.trim() : "";
+      n.modelTier = get("modelTier") ? get("modelTier").value.trim() : "low";
+      n.entryEvents = lst("entryEvents");
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole"].forEach((k) => delete n[k]);
+    } else {
+      n.op = get("op") ? get("op").value.trim() : "approval-check";
+      ["refDocs", "refRules", "refTags", "tagRules", "tools", "service", "contextPassing", "permissionRole", "connector", "provider", "modelTier", "entryEvents"].forEach((k) => delete n[k]);
+    }
+    return n;
+  }
+  function wfGraphHtml(phases, transitions) {
+    const byPhase = /* @__PURE__ */ new Map();
+    (phases || []).forEach((n) => {
+      if (!n || !n.phase && !n.name) return;
+      const key = String(n.phase || n.name);
+      if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || "", unit: n.unit || "connectops", entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+    });
+    const nodes = [...byPhase.values()];
+    const known = new Set(nodes.map((n) => n.key));
+    const edges = [];
+    (transitions || []).forEach((t2) => {
+      if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
+      [t2.from, t2.to].forEach((k) => {
+        if (!known.has(k)) {
+          nodes.push({ key: k, name: k, title: t("\u4FA7\u8F68\u6001\uFF08\u975E\u6B63\u5411\u4E3B\u7EBF\uFF09"), unit: "side", entry: false });
+          known.add(k);
+        }
+      });
+      edges.push({ from: t2.from, on: String(t2.on || "advance"), to: t2.to });
+    });
+    const branchPairs = new Set(edges.filter((e) => e.on !== "advance").map((e) => e.from + "\u2192" + e.to));
+    const drawn = [];
+    const seenPair = /* @__PURE__ */ new Set();
+    edges.forEach((e) => {
+      const pair = e.from + "\u2192" + e.to;
+      if (e.on === "advance" && branchPairs.has(pair)) return;
+      if (seenPair.has(pair + "|" + e.on)) return;
+      seenPair.add(pair + "|" + e.on);
+      drawn.push(e);
+    });
+    if (!nodes.length) return "";
+    const level = new Map(nodes.map((n) => [n.key, 0]));
+    for (let pass = 0; pass < nodes.length; pass++) {
+      let changed = false;
+      drawn.forEach((e) => {
+        const lf = level.get(e.from) || 0;
+        const lt = level.get(e.to) || 0;
+        if (lt < lf + 1 && lf + 1 < nodes.length) {
+          level.set(e.to, lf + 1);
+          changed = true;
+        }
+      });
+      if (!changed) break;
+    }
+    let entryNo = 0;
+    nodes.forEach((n) => {
+      if (n.entry) n.entryLabel = t("\u5165\u53E3") + ++entryNo;
+    });
+    const cols = /* @__PURE__ */ new Map();
+    nodes.forEach((n) => {
+      const lv = level.get(n.key) || 0;
+      if (!cols.has(lv)) cols.set(lv, []);
+      cols.get(lv).push(n);
+    });
+    const NW = 190, NH = 56, GX = 108, GY = 28;
+    let maxRows = 1;
+    cols.forEach((rows) => {
+      maxRows = Math.max(maxRows, rows.length);
+    });
+    const colKeys = [...cols.keys()].sort((a, b) => a - b);
+    const W = colKeys.length * (NW + GX) - GX + 8;
+    const H = maxRows * (NH + GY) - GY + 10;
+    const pos = /* @__PURE__ */ new Map();
+    colKeys.forEach((lv, ci) => {
+      const rows = cols.get(lv);
+      const yOff = Math.max(5, (H - (rows.length * (NH + GY) - GY)) / 2);
+      rows.forEach((n, ri) => pos.set(n.key, { x: ci * (NW + GX) + 4, y: yOff + ri * (NH + GY) }));
+    });
+    const nodeDiv = (n) => {
+      const p = pos.get(n.key);
+      const unitCls = UNIT_CHIP[n.unit] || "mute";
+      const unitLabel = n.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : n.unit === "side" ? t("\u4FA7\u8F68") : n.unit;
+      return '<div class="wf-graph-node' + (n.unit === "side" ? " wf-graph-side" : "") + '" style="left:' + p.x + "px;top:" + p.y + "px;width:" + NW + "px;height:" + NH + 'px" data-graph-node="' + esc(n.name) + '" title="' + esc((n.title || n.name) + " \xB7 " + n.key) + '"><div class="wf-graph-unit"><span class="chip ' + unitCls + ' tiny">' + esc(unitLabel) + "</span>" + (n.entryLabel ? ' <span class="chip acc tiny">' + esc(n.entryLabel) + "</span>" : "") + '</div><div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + "</span></div></div>";
+    };
+    const svg2 = drawn.map((e) => {
+      const a = pos.get(e.from), b = pos.get(e.to);
+      if (!a || !b) return "";
+      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
+      const mx = (x1 + x2) / 2;
+      const d = "M " + x1 + " " + y1 + " C " + mx + " " + y1 + ", " + mx + " " + y2 + ", " + x2 + " " + y2;
+      const branch = !(e.on === "advance");
+      const label = branch ? '<div class="wf-graph-elabel" style="left:' + mx + "px;top:" + Math.round((y1 + y2) / 2 - 9) + 'px">' + esc(e.on) + "</div>" : "";
+      return '<path d="' + d + '" class="wf-graph-edge' + (branch ? " wf-graph-branch" : "") + '"></path>' + label;
+    }).join("");
+    return '<div class="wf-graph" style="width:' + W + "px;height:" + H + 'px"><svg width="' + W + '" height="' + H + '" style="position:absolute;left:0;top:0;pointer-events:none"><defs><marker id="wfg-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--border-2)"></path></marker></defs>' + svg2 + "</svg>" + nodes.map(nodeDiv).join("") + "</div>";
+  }
+  function workflowStudioHtml(wf, usedName) {
+    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
+    const scope = wf && wf.primaryScope || "global";
+    const yamlText = wf && wf.rawYaml ? String(wf.rawYaml) : buildWorkflowYaml(cfg, scope);
+    const condRowsHtml = (cfg.conditions || []).map(
+      (c, idx) => `<div class="mini-row" data-wf-cond-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-cond-req="${idx}" ${c.required !== false ? "checked" : ""} title="\u5FC5\u8FC7\u786C\u95E8" /><select class="inp" data-cond-kind="${idx}" style="width:110px">` + ["code", "test", "agent", "probe", "custom"].map((k) => `<option value="${k}" ${c.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><input class="inp" data-cond-title="${idx}" value="${esc(c.title || "")}" placeholder="\u9A8C\u6536\u6761\u4EF6\u63CF\u8FF0" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="${esc(c.command || "")}" placeholder="\u6267\u884C\u547D\u4EE4\u6216 ConnectorOps/op" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button></div>`
+    ).join("");
+    const postActRowsHtml = (cfg.postActions || []).map(
+      (a, idx) => `<div class="mini-row" data-wf-act-row="${idx}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="checkbox" data-act-en="${idx}" ${a.enabled !== false ? "checked" : ""} title="\u542F\u7528\u6B64\u6536\u5C3E\u52A8\u4F5C" /><select class="inp" data-act-kind="${idx}" style="width:140px">` + ["doc-lifecycle", "status-writeback", "notify", "custom"].map((k) => `<option value="${k}" ${a.kind === k ? "selected" : ""}>${k}</option>`).join("") + `</select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate" ${(a.action || cfg.bugDocPolicy) === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete" ${(a.action || cfg.bugDocPolicy) === "delete" ? "selected" : ""}>\u5220\u9664\u6587\u6863 (delete)</option><option value="keep" ${(a.action || cfg.bugDocPolicy) === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="${esc(a.title || "")}" placeholder="\u6536\u5C3E\u52A8\u4F5C\u8BF4\u660E" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button></div>`
+    ).join("");
+    const designNodesHtml = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
+    return `
+  <h2 class="sec-title">${esc(t("\u8BBE\u8BA1\u8868\u4E0E\u8282\u70B9\u6D41\u8F6C\u67B6\u6784\uFF08Workflow + Scheme = \u58F0\u660E\u5C42\uFF0C\u4EE3\u7801 = \u901A\u7528\u89E3\u91CA\u5668\uFF09"))}</h2>
+  <div class="card">
+    <div class="card-h">
+      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u76F8\u4F4D\u94FE\uFF08\u591A\u8D77\u70B9 / \u6761\u4EF6\u5206\u53C9\u8FB9\u2014\u2014\u5224\u65AD\u8BCD\u5F62=LLM \u5206\u652F\u8F93\u51FA\uFF1B\u70B9\u51FB\u8282\u70B9\u76D2\u6216\u8868\u884C\u5F39\u7A97\u7F16\u8F91\uFF09"))}</span>
+      <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
+    </div>
+    <div class="card-b" style="overflow-x:auto">
+      <div class="wf-graph-scroll" data-node-graph>${wfGraphHtml(cfg.phases, cfg.transitions)}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-h">
+      <span class="h-title">${esc(t(String((cfg.phases || []).length) + " \u8282\u70B9\u4E3B\u5E72\u8BBE\u8BA1\u8868\uFF08\u70B9\u51FB\u4EFB\u610F\u884C\u5F39\u7A97\u7F16\u8F91\u8282\u70B9\u7EC6\u8282\u914D\u7F6E\uFF09"))}</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="btn tiny acc" data-node-add>${esc(t("+ \u6DFB\u52A0\u8282\u70B9"))}</button>
+        <button type="button" class="btn tiny acc" data-open-provider="${esc(cfg.provider)}">${esc(t("\u914D\u7F6E\u9ED8\u8BA4 OpenAIProvider (" + cfg.provider + ")"))}</button>
+      </div>
+    </div>
+    <div class="card-b" style="overflow-x:auto">
+      <div class="small faint" style="margin-bottom:8px">
+        ${esc(t("\u5165\u53E3 1\uFF08\u8FD0\u884C\u671F\u65E5\u5FD7/Bug/\u5DE1\u68C0\u4E8B\u4EF6\uFF09\u4ECE\u8282\u70B9 1 (Idle) \u987A\u6B21\u6D41\u8F6C\uFF1B\u5165\u53E3 2\uFF08\u5BF9\u8BDD\u4FEE\u6539\u8BBE\u8BA1\u6587\u6863\u6216\u4EA7\u51FA\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied\uFF09\u76F4\u63A5\u4ECE\u8282\u70B9 4 (Planning / Doc Apply) \u5207\u5165\uFF0C\u76F4\u8D70 developer-system \u2192 \u9A8C\u6536 \u2192 deploy-system \u2192 \u603B\u7ED3\u5F52\u6863\u3002\u70B9\u51FB\u4EFB\u610F Provider \u5FBD\u7AE0\u53EF\u76F4\u63A5\u914D\u7F6E OpenAIProvider \u8D26\u53F7\u3001Base \u5730\u5740\u4E0E\u6A21\u578B\u5206\u7EA7\u3002"))}
+      </div>
+      <table class="tbl">
+        <thead><tr><th>\u8282\u70B9</th><th>\u76F8\u4F4D</th><th>\u804C\u8D23\u8BF4\u660E</th><th>\u6267\u884C\u5355\u5143</th><th>ConnectorOps / \u7B97\u5B50</th><th>OpenAIProvider / \u6A21\u578B\u5206\u7EA7</th><th>ref \u89C4\u5219 / ref tag</th></tr></thead>
+        <tbody data-node-tbody>${designNodesHtml}</tbody>
+      </table>
+    </div>
+  </div>
+
+  <div data-provider-drawer></div>
+
+  <h2 class="sec-title">${esc(t("\u4EE5\u4EBA\u4E3A\u672C\u53EF\u89C6\u5316\u914D\u7F6E\u5DE5\u4F5C\u53F0\uFF08Scheme Adapter \u5C42\u914D\u7F6E\uFF0C\u4FDD\u5B58\u5373 Apply \u843D\u5E93\uFF09"))}</h2>
+  <div class="card" data-wf-studio>
+    <div class="card-h">
+      <span class="h-title">${esc(usedName)} \xB7 ${esc(t("\u5168\u8282\u70B9\u53C2\u6570\u3001\u81EA\u52A8\u5BA1\u6279\u3001\u9A8C\u6536\u6761\u4EF6\u4E0E\u4E34\u65F6 BugDoc \u6536\u5C3E\u7B56\u7565\u914D\u7F6E"))}</span>
+      <div>
+        ${cfg.undeletable ? chip(t("\u5185\u7F6E\u4FDD\u62A4\uFF1A\u4E0D\u53EF\u5220\u9664"), "warn") : ""}
+        ${cfg.immutableNodes ? chip(t("\u4E3B\u5E72\u8282\u70B9\u62D3\u6251\u9501\u5B9A\uFF08\u53C2\u6570\u53EF\u914D\uFF09"), "acc") : chip(t("\u8282\u70B9\u53EF\u52A0\u5220\uFF08draft\u2192apply\uFF09"), "ok")}
+      </div>
+    </div>
+    <div class="card-b">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("A. \u603B\u63A7\u5F00\u5173\u4E0E\u5168\u5C40\u89C4\u5219\u5F15\u7528"))}</b>
+          <div style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" data-cfg="enabled" ${cfg.enabled ? "checked" : ""} />
+              <span><b>${esc(t("\u542F\u7528\u6B64\u5DE5\u4F5C\u6D41 (spec.enabled)"))}</b> ${esc(t("\uFF08\u51FA\u5382\u9ED8\u8BA4\u4E0D\u542F\u52A8\uFF1Bcore-system \u81EA\u6211\u8FED\u4EE3\u663E\u5F0F\u5F00\u542F\uFF09"))}</span>
+            </label>
+          </div>
+          <div style="margin-top:8px">
+            <div class="small faint">${esc(t("\u6D89\u53CA\u670D\u52A1 (services.involved)"))}</div>
+            <input class="inp" data-cfg="servicesInvolved" value="${esc(cfg.servicesInvolved)}" style="width:100%" />
+          </div>
+          <div style="margin-top:8px">
+            <div class="small faint">${esc(t("Session/Agent \u9ED8\u8BA4\u5F15\u7528\u5168\u5C40\u89C4\u5219 (globalRuleRefs)"))}</div>
+            <input class="inp mono" data-cfg="globalRuleRefs" value="${esc(cfg.globalRuleRefs)}" style="width:100%" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("B. \u8282\u70B9 1\uFF08\u76D1\u542C\u65E5\u5FD7\u4E0E Event \u8FC7\u6EE4 + ConnectorOps \u6536\u96C6\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u76D1\u542C\u4E8B\u4EF6\u7C7B\u578B"))}</div>
+              <input class="inp mono" data-cfg="logEvents" value="${esc(cfg.logEvents)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6700\u4F4E\u65E5\u5FD7\u7EA7\u522B"))}</div>
+              <select class="inp" data-cfg="logMinLevel" style="width:100%">
+                ${["debug", "info", "warn", "error", "fatal"].map((l) => `<option value="${l}" ${cfg.logMinLevel === l ? "selected" : ""}>${l}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u8FC7\u6EE4 Service"))}</div>
+              <input class="inp mono" data-cfg="logServices" value="${esc(cfg.logServices)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u65E5\u5FD7\u5173\u952E\u8BCD/\u6B63\u5219\u8FC7\u6EE4"))}</div>
+              <input class="inp mono" data-cfg="logKeyword" value="${esc(cfg.logKeyword)}" style="width:100%" />
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 110px auto;gap:6px;align-items:end">
+            <div>
+              <div class="small faint">${esc(t("\u65E5\u5FD7\u6536\u96C6 ConnectorOps"))}</div>
+              <input class="inp mono" data-cfg="collectorConnector" value="${esc(cfg.collectorConnector)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6536\u96C6\u7B97\u5B50 op"))}</div>
+              <input class="inp mono" data-cfg="collectorOp" value="${esc(cfg.collectorOp)}" style="width:100%" />
+            </div>
+            <button type="button" class="btn tiny acc" data-develop-collector title="\u5F53\u65E5\u5FD7\u6536\u96C6 ConnectorOps \u7F3A\u5931\u6216\u4E3A\u9AA8\u67B6\u65F6\uFF0C\u76F4\u63A5\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u5E76\u6253\u5F00\u7F16\u8F91">${esc(t("\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1/\u7F16\u8F91"))}</button>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:auto 100px 1fr;gap:6px;align-items:center">
+            <label><input type="checkbox" data-cfg="timerEnabled" ${cfg.timerEnabled ? "checked" : ""} /> ${esc(t("\u5B9A\u65F6\u89E6\u53D1"))}</label>
+            <input class="inp mono" data-cfg="timerInterval" value="${esc(cfg.timerInterval)}" placeholder="30m" />
+            <input class="inp mono" data-cfg="timerCron" value="${esc(cfg.timerCron)}" placeholder="*/30 * * * *" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("C. \u8282\u70B9 3\uFF08\u5BA1\u6279 / \u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09& \u8282\u70B9 4\uFF08Doc Apply \u7B2C\u4E8C\u5165\u53E3\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 110px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u8282\u70B9 3 \u5BA1\u6279\u6A21\u5F0F (approval.mode)"))}</div>
+              <select class="inp" data-cfg="approvalMode" style="width:100%">
+                <option value="agent" ${cfg.approvalMode === "agent" ? "selected" : ""}>agent\uFF08Agent \u6309\u89C4\u5219\u81EA\u52A8\u5224\u65AD\u5BA1\u6279\uFF09</option>
+                <option value="auto" ${cfg.approvalMode === "auto" ? "selected" : ""}>auto\uFF08\u5168\u81EA\u52A8\u653E\u884C\u4E0D\u6302\u8D77\uFF09</option>
+                <option value="human" ${cfg.approvalMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u5BA1\u6279\u6302\u8D77\uFF09</option>
+              </select>
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u81EA\u52A8\u653E\u884C\u6700\u9AD8\u98CE\u9669"))}</div>
+              <select class="inp" data-cfg="approvalMaxRisk" style="width:100%">
+                ${["low", "medium", "high"].map((r) => `<option value="${r}" ${cfg.approvalMaxRisk === r ? "selected" : ""}>${r}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px">
+            <div class="small faint">${esc(t("Agent \u81EA\u52A8\u5BA1\u6279\u5224\u65AD\u51C6\u5219 (autoCriteria)"))}</div>
+            <input class="inp" data-cfg="approvalCriteria" value="${esc(cfg.approvalCriteria)}" style="width:100%" />
+          </div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ds-border)">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" data-cfg="docApplyEntryEnabled" ${cfg.docApplyEntryEnabled ? "checked" : ""} />
+              <span><b>${esc(t("\u542F\u7528\u8282\u70B9 4 (Doc Apply) \u591A\u5165\u53E3\u5207\u5165"))}</b> ${esc(t("\uFF08\u5BF9\u8BDD\u6539\u6587\u6863/\u4E34\u65F6 BugDoc \u89E6\u53D1 DocApplied \u76F4\u5207\u8282\u70B9 4\uFF09"))}</span>
+            </label>
+            <input class="inp mono" data-cfg="docApplyDocTypes" value="${esc(cfg.docApplyDocTypes)}" style="width:100%;margin-top:4px" />
+          </div>
+        </div></div>
+
+        <div class="card" style="margin:0"><div class="card-b">
+          <b>${esc(t("D. \u8282\u70B9 5 & 7\uFF08developer-system / deploy-system \u9010\u5C42\u7ED1\u5B9A\uFF09"))}</b>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u7814\u53D1\u7CFB\u7EDF (developer-system)"))}</div>
+              <input class="inp mono" data-cfg="devService" value="${esc(cfg.devService)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
+              <select class="inp" data-cfg="devResolution" style="width:100%">
+                <option value="default" ${cfg.devResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5F00\u6E90\u4E60\u60EF)</option>
+                <option value="install" ${cfg.devResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
+                <option value="import" ${cfg.devResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5DF2\u6709\u7CFB\u7EDF)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr 80px;gap:6px">
+            <input class="inp mono" data-cfg="devBranchPrefix" value="${esc(cfg.devBranchPrefix)}" placeholder="\u5206\u652F\u524D\u7F00 agent/" title="\u5F00\u6E90\u4E60\u60EF\uFF1A\u5206\u652F\u524D\u7F00" />
+            <input class="inp mono" data-cfg="devWorktreeDir" value="${esc(cfg.devWorktreeDir)}" placeholder="worktrees/" title="\u5F00\u6E90\u4E60\u60EF\uFF1Aworktree \u76EE\u5F55" />
+            <input class="inp mono" data-cfg="devMaxLines" value="${esc(String(cfg.devMaxLines))}" placeholder="800" title="\u5355\u6587\u4EF6\u884C\u6570\u4E0A\u9650" />
+          </div>
+          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 130px;gap:6px">
+            <div>
+              <div class="small faint">${esc(t("\u53D1\u5E03\u7CFB\u7EDF (deploy-system)"))}</div>
+              <input class="inp mono" data-cfg="deployService" value="${esc(cfg.deployService)}" style="width:100%" />
+            </div>
+            <div>
+              <div class="small faint">${esc(t("\u6765\u6E90\u7B56\u7565 (\u9010\u5C42\u8BE2\u95EE)"))}</div>
+              <select class="inp" data-cfg="deployResolution" style="width:100%">
+                <option value="default" ${cfg.deployResolution === "default" ? "selected" : ""}>default (\u9ED8\u8BA4\u5BBF\u4E3B\u53D1\u5E03)</option>
+                <option value="install" ${cfg.deployResolution === "install" ? "selected" : ""}>install (\u6A21\u677F\u5B89\u88C5)</option>
+                <option value="import" ${cfg.deployResolution === "import" ? "selected" : ""}>import (\u5BFC\u5165\u5916\u90E8\u53D1\u5E03)</option>
+              </select>
+            </div>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(t("E. \u8282\u70B9 6\uFF08\u9A8C\u6536 Verify \u914D\u7F6E \u2014\u2014 \u600E\u4E48\u9A8C\u6536\u3001\u9A8C\u6536\u6761\u4EF6\u53EF\u81EA\u7531\u6DFB\u52A0/\u5220\u9664\uFF09"))}</b>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select class="inp" data-cfg="verifyMode">
+              <option value="both" ${cfg.verifyMode === "both" ? "selected" : ""}>both\uFF08\u4EE3\u7801\u5BA1\u6838 + Agent \u9A8C\u6536\uFF09</option>
+              <option value="code" ${cfg.verifyMode === "code" ? "selected" : ""}>code\uFF08\u4EC5\u4EE3\u7801\u89C4\u5219\u5BA1\u6838\uFF09</option>
+              <option value="agent" ${cfg.verifyMode === "agent" ? "selected" : ""}>agent\uFF08\u4EC5 Agent \u63A2\u9488\u9A8C\u6536\uFF09</option>
+              <option value="human" ${cfg.verifyMode === "human" ? "selected" : ""}>human\uFF08\u4EBA\u5DE5\u786E\u8BA4\u9A8C\u6536\uFF09</option>
+            </select>
+            <select class="inp" data-cfg="verifyOnFail">
+              <option value="retry-develop" ${cfg.verifyOnFail === "retry-develop" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u6253\u56DE developer-system \u91CD\u4FEE</option>
+              <option value="block" ${cfg.verifyOnFail === "block" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u963B\u65AD\u5E76\u4E0A\u62A5</option>
+              <option value="ask" ${cfg.verifyOnFail === "ask" ? "selected" : ""}>\u672A\u901A\u8FC7\uFF1A\u8F6C\u4EBA\u5DE5\u88C1\u51B3</option>
+            </select>
+            <button type="button" class="btn tiny acc" data-cond-add>${esc(t("+ \u6DFB\u52A0\u9A8C\u6536\u6761\u4EF6"))}</button>
+          </div>
+        </div>
+        <div data-wf-cond-list>${condRowsHtml}</div>
+      </div></div>
+
+      <div class="card" style="margin-bottom:12px"><div class="card-b">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <b>${esc(t("F. \u8282\u70B9 8\uFF08\u603B\u7ED3\u5F52\u6863 Reporting \u901A\u7528\u89E3\u91CA\u5668\u6536\u5C3E\u52A8\u4F5C \u2014\u2014 \u4E34\u65F6 BugDoc \u9ED8\u8BA4\u53EF\u6807\u8BB0\u5931\u6548/\u5220\u9664/\u9009\u62E9\u4E0D\u5220\u9664\uFF0C\u52A8\u4F5C\u9879\u53EF\u81EA\u7531\u589E\u5220\uFF09"))}</b>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="small faint">${esc(t("\u4E34\u65F6 BugDoc \u9ED8\u8BA4\u7B56\u7565\uFF1A"))}</span>
+            <select class="inp" data-cfg="bugDocPolicy">
+              <option value="invalidate" ${cfg.bugDocPolicy === "invalidate" ? "selected" : ""}>\u6807\u8BB0\u5931\u6548\u5F52\u6863 (invalidate)</option>
+              <option value="delete" ${cfg.bugDocPolicy === "delete" ? "selected" : ""}>\u5220\u9664\u4E34\u65F6 BugDoc (delete)</option>
+              <option value="keep" ${cfg.bugDocPolicy === "keep" ? "selected" : ""}>\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-cfg="statusWriteback" ${cfg.statusWriteback ? "checked" : ""} /> ${esc(t("\u56DE\u5199 InSync"))}</label>
+            <button type="button" class="btn tiny acc" data-act-add>${esc(t("+ \u6DFB\u52A0\u6536\u5C3E\u52A8\u4F5C"))}</button>
+          </div>
+        </div>
+        <div data-wf-act-list>${postActRowsHtml}</div>
+      </div></div>
+
+      <details class="ex-block" open>
+        <summary class="ex-sum"><span class="ex-chev">\u25B6</span><b>${esc(t("Workflow \u5B8C\u6574 YAML \u58F0\u660E\uFF08\u89E3\u91CA\u5668\u6743\u5A01\u6E90\uFF0C\u8868\u5355\u8054\u52A8\u5B9E\u65F6\u751F\u6210\uFF0C\u4E5F\u53EF\u76F4\u63A5\u7F16\u8F91 YAML\uFF09"))}</b></summary>
+        <div class="ex-body">
+          <textarea class="inp mono" data-wf-yaml rows="18" style="width:100%;font-size:12px;line-height:1.45">${esc(yamlText)}</textarea>
+        </div>
+      </details>
+
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="btn acc" data-wf-save>${esc(t("\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E"))}</button>
+        <button type="button" class="btn mute" data-wf-sync-yaml>${esc(t("\u4ECE\u4E0A\u65B9\u8868\u5355\u91CD\u65B0\u751F\u6210 YAML"))}</button>
+        <span class="small faint" data-wf-save-msg></span>
+      </div>
+    </div>
+  </div>`;
+  }
+  function bindWorkflowStudio(el, ctx2, wf, usedName, onSaved) {
+    const studio = el.querySelector("[data-wf-studio]");
+    if (!studio) return;
+    const scope = wf && wf.primaryScope || "global";
+    let baseRv = Number(wf && wf.primaryRv || 0);
+    const cfg = defaultLoopSpec(usedName, wf && wf.spec);
+    const readFormIntoCfg = () => {
+      studio.querySelectorAll("[data-cfg]").forEach((inp) => {
+        const k = inp.getAttribute("data-cfg");
+        if (inp.type === "checkbox") cfg[k] = Boolean(inp.checked);
+        else cfg[k] = inp.value;
+      });
+      const conds = [];
+      studio.querySelectorAll("[data-wf-cond-row]").forEach((row) => {
+        const idx = row.getAttribute("data-wf-cond-row");
+        conds.push({
+          id: "cond-" + (conds.length + 1),
+          required: Boolean(row.querySelector(`[data-cond-req="${idx}"]`)?.checked),
+          kind: row.querySelector(`[data-cond-kind="${idx}"]`)?.value || "code",
+          title: row.querySelector(`[data-cond-title="${idx}"]`)?.value || "",
+          command: row.querySelector(`[data-cond-cmd="${idx}"]`)?.value || ""
+        });
+      });
+      cfg.conditions = conds;
+      const acts = [];
+      studio.querySelectorAll("[data-wf-act-row]").forEach((row) => {
+        const idx = row.getAttribute("data-wf-act-row");
+        acts.push({
+          id: "act-" + (acts.length + 1),
+          enabled: Boolean(row.querySelector(`[data-act-en="${idx}"]`)?.checked),
+          kind: row.querySelector(`[data-act-kind="${idx}"]`)?.value || "doc-lifecycle",
+          targetDocType: "BugDoc",
+          action: row.querySelector(`[data-act-policy="${idx}"]`)?.value || cfg.bugDocPolicy || "invalidate",
+          title: row.querySelector(`[data-act-title="${idx}"]`)?.value || ""
+        });
+      });
+      cfg.postActions = acts;
+    };
+    const syncYamlBox = () => {
+      readFormIntoCfg();
+      const box = studio.querySelector("[data-wf-yaml]");
+      if (box) box.value = buildWorkflowYaml(cfg, scope);
+    };
+    studio.querySelectorAll("[data-cfg]").forEach((inp) => {
+      inp.addEventListener("change", syncYamlBox);
+    });
+    const bindRowDeletes = () => {
+      studio.querySelectorAll("[data-cond-del]").forEach((btn) => {
+        btn.onclick = () => {
+          btn.closest("[data-wf-cond-row]")?.remove();
+          syncYamlBox();
+        };
+      });
+      studio.querySelectorAll("[data-act-del]").forEach((btn) => {
+        btn.onclick = () => {
+          btn.closest("[data-wf-act-row]")?.remove();
+          syncYamlBox();
+        };
+      });
+      studio.querySelectorAll("[data-wf-cond-row] input, [data-wf-cond-row] select, [data-wf-act-row] input, [data-wf-act-row] select").forEach((inp) => {
+        inp.onchange = syncYamlBox;
+      });
+    };
+    bindRowDeletes();
+    studio.querySelector("[data-cond-add]")?.addEventListener("click", () => {
+      const list2 = studio.querySelector("[data-wf-cond-list]");
+      if (!list2) return;
+      const idx = Date.now();
+      const div = document.createElement("div");
+      div.className = "mini-row";
+      div.setAttribute("data-wf-cond-row", String(idx));
+      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      div.innerHTML = `<input type="checkbox" data-cond-req="${idx}" checked /><select class="inp" data-cond-kind="${idx}" style="width:110px"><option value="code">code</option><option value="test">test</option><option value="agent">agent</option><option value="probe">probe</option><option value="custom">custom</option></select><input class="inp" data-cond-title="${idx}" value="\u81EA\u5B9A\u4E49\u9A8C\u6536\u6761\u4EF6" style="flex:2;min-width:200px" /><input class="inp mono" data-cond-cmd="${idx}" value="connectops-code-audit/audit" style="flex:1;min-width:160px" /><button type="button" class="btn tiny mute" data-cond-del="${idx}">\u5220\u9664</button>`;
+      list2.appendChild(div);
+      bindRowDeletes();
+      syncYamlBox();
+    });
+    studio.querySelector("[data-act-add]")?.addEventListener("click", () => {
+      const list2 = studio.querySelector("[data-wf-act-list]");
+      if (!list2) return;
+      const idx = Date.now();
+      const div = document.createElement("div");
+      div.className = "mini-row";
+      div.setAttribute("data-wf-act-row", String(idx));
+      div.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      div.innerHTML = `<input type="checkbox" data-act-en="${idx}" checked /><select class="inp" data-act-kind="${idx}" style="width:140px"><option value="doc-lifecycle">doc-lifecycle</option><option value="status-writeback">status-writeback</option><option value="notify">notify</option><option value="custom">custom</option></select><select class="inp" data-act-policy="${idx}" style="width:170px"><option value="invalidate">\u6807\u8BB0\u5931\u6548 (invalidate)</option><option value="delete">\u5220\u9664\u6587\u6863 (delete)</option><option value="keep">\u4FDD\u7559\u4E0D\u5220\u9664 (keep)</option></select><input class="inp" data-act-title="${idx}" value="\u4E34\u65F6 BugDoc \u6536\u5C3E\u52A8\u4F5C" style="flex:2;min-width:220px" /><button type="button" class="btn tiny mute" data-act-del="${idx}">\u5220\u9664\u52A8\u4F5C</button>`;
+      list2.appendChild(div);
+      bindRowDeletes();
+      syncYamlBox();
+    });
+    studio.querySelector("[data-wf-sync-yaml]")?.addEventListener("click", syncYamlBox);
+    const repaintNodeSurfaces = () => {
+      const tbl = el.querySelector("[data-node-tbody]");
+      if (tbl) tbl.innerHTML = (cfg.phases || []).map((n, i) => nodeRowHtml(n, i, cfg.provider)).join("");
+      const graph = el.querySelector("[data-node-graph]");
+      if (graph) graph.innerHTML = wfGraphHtml(cfg.phases, cfg.transitions);
+      bindRowClicks();
+    };
+    const closeModal = () => {
+      el.querySelectorAll(".chat-modal[data-nm-modal]").forEach((m) => m.remove());
+    };
+    const openNodeModal = (nameOrIdx) => {
+      readFormIntoCfg();
+      const idx = typeof nameOrIdx === "number" ? nameOrIdx : cfg.phases.findIndex((n) => n.name === nameOrIdx);
+      if (idx < 0 || !cfg.phases[idx]) return;
+      closeModal();
+      const modal = document.createElement("div");
+      modal.className = "chat-modal";
+      modal.setAttribute("data-nm-modal", "1");
+      const paint3 = (node) => {
+        modal.innerHTML = '<div class="chat-modal-mask"></div><div class="chat-modal-panel"><div class="chat-modal-head"><div class="chat-modal-title"><span class="chip ' + (UNIT_CHIP[node.unit] || "mute") + ' tiny">' + esc(node.unit === "gate" ? t("\u63A7\u5236\u8282\u70B9") : node.unit || "connectops") + '</span> <b class="mono">' + esc(node.name || "") + "</b> \xB7 " + esc(t("\u8282\u70B9\u7EC6\u8282\u914D\u7F6E")) + '</div><div class="chat-modal-acts"><button type="button" class="btn tiny mute" data-nm-cancel>' + esc(t("\u53D6\u6D88")) + '</button></div></div><div class="chat-modal-body"><div data-nm-fields>' + nodeFieldsHtml(node, cfg.provider) + '</div><div style="margin-top:14px;display:flex;gap:8px;align-items:center"><button type="button" class="btn acc sm" data-nm-save>' + esc(t("\u4FDD\u5B58\u8282\u70B9")) + '</button><button type="button" class="btn btn-ghost btn-danger sm" data-nm-del>' + esc(t("\u5220\u9664\u8282\u70B9")) + '</button><span class="small faint">' + esc(t("\u6539\u52A8\u968F\u300C\u4FDD\u5B58\u5E76 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u300D\u4EE5 Workflow \u6587\u6863\u5BF9\u8C61\u843D\u8D26")) + "</span></div></div></div>";
+        modal.querySelector("[data-nm-cancel]").addEventListener("click", closeModal);
+        modal.querySelector(".chat-modal-mask").addEventListener("click", closeModal);
+        modal.querySelector('[data-nm="unit"]').addEventListener("change", () => {
+          const draft = readNodeFields(modal, cfg.phases[idx]);
+          cfg.phases[idx] = draft;
+          paint3(cfg.phases[idx]);
+        });
+        modal.querySelector("[data-nm-save]").addEventListener("click", () => {
+          cfg.phases[idx] = readNodeFields(modal, cfg.phases[idx]);
+          closeModal();
+          repaintNodeSurfaces();
+          syncYamlBox();
+        });
+        modal.querySelector("[data-nm-del]").addEventListener("click", () => {
+          cfg.phases.splice(idx, 1);
+          closeModal();
+          repaintNodeSurfaces();
+          syncYamlBox();
+        });
+      };
+      paint3(cfg.phases[idx]);
+      el.appendChild(modal);
+    };
+    const bindRowClicks = () => {
+      el.querySelectorAll("[data-node-edit]").forEach((row) => {
+        row.onclick = () => openNodeModal(row.getAttribute("data-node-edit") || "");
+      });
+      el.querySelectorAll("[data-graph-node]").forEach((box) => {
+        box.onclick = () => openNodeModal(box.getAttribute("data-graph-node") || "");
+      });
+    };
+    el.querySelector("[data-node-add]")?.addEventListener("click", () => {
+      readFormIntoCfg();
+      cfg.phases.push({ name: "node-" + (cfg.phases.length + 1), phase: "Idle", title: "\u65B0\u8282\u70B9", unit: "connectops", provider: cfg.provider, modelTier: "standard" });
+      repaintNodeSurfaces();
+      syncYamlBox();
+      openNodeModal(cfg.phases.length - 1);
+    });
+    bindRowClicks();
+    studio.querySelector("[data-develop-collector]")?.addEventListener("click", async () => {
+      readFormIntoCfg();
+      const connName = String(cfg.collectorConnector || "connectops-log-collector").trim();
+      const opName = String(cfg.collectorOp || "collect-logs").trim();
+      const msg = studio.querySelector("[data-wf-save-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728\u68C0\u67E5/\u751F\u6210 ConnectorOps \u9AA8\u67B6\u5E76\u62C9\u51FA\u4EE3\u7801\u5F00\u53D1\u4EFB\u52A1\u2026");
+      const existing = await ctx2.api.object("ConnectorOps", "global", connName);
+      if (!existing.ok) {
+        const connYaml = `apiVersion: core/v1
+kind: ConnectorOps
+metadata:
+  name: ${connName}
+  scope: global
+spec:
+  workservice: workflow-engine
+  workflow: ${usedName}
+  provider: ${cfg.provider || "openai-default"}
+  llm:
+    provider: ${cfg.provider || "openai-default"}
+    tier: low
+    model: "flash-tier"
+  ops: [${opName}]
+  config:
+    query: ${JSON.stringify(cfg.collectorQuery || "level>=warn")}
+    services: ${JSON.stringify(cfg.logServices || "self-recursive-core")}
+`;
+        await ctx2.api.apply({ kind: "ConnectorOps", scope: "global", name: connName, resourceVersion: 0, content: connYaml, fieldManager: "console:workflow-studio", reasonRef: "develop-collector:" + connName });
+      }
+      if (msg) msg.innerHTML = esc(t("\u5DF2\u5C31\u7EEA ConnectorOps/global/" + connName + " \u2014\u2014 ")) + chipGo(t("\u6253\u5F00 ConnectorOps \u7F16\u8F91\u5668\u5F00\u53D1\u7B97\u5B50"), docRoute("ConnectorOps", "global", connName), "acc", true);
+    });
+    studio.querySelector("[data-wf-save]")?.addEventListener("click", async () => {
+      const yamlBox = studio.querySelector("[data-wf-yaml]");
+      const content = yamlBox ? yamlBox.value : buildWorkflowYaml(cfg, scope);
+      const msg = studio.querySelector("[data-wf-save-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728 Apply \u5DE5\u4F5C\u6D41\u914D\u7F6E\u2026");
+      let rv = baseRv;
+      const cur = await ctx2.api.object("Workflow", scope, usedName);
+      if (cur.ok && cur.data && cur.data.resourceVersion != null) rv = Number(cur.data.resourceVersion) || 0;
+      const res = await ctx2.api.apply({
+        kind: "Workflow",
+        scope,
+        name: usedName,
+        resourceVersion: rv,
+        content,
+        fieldManager: "console:workflow-studio",
+        reasonRef: "workflow-config:" + usedName
+      });
+      if (!res.ok) {
+        if (msg) msg.textContent = t("Apply \u5931\u8D25\uFF1A") + String(res.error || res.status);
+        return;
+      }
+      baseRv = Number(res.data && res.data.rv) || rv + 1;
+      if (msg) msg.textContent = t("\u5DF2\u4FDD\u5B58\u5E76 Apply \u751F\u6548\uFF08rv=" + baseRv + "\uFF09");
+      if (typeof onSaved === "function") onSaved();
+    });
+    el.querySelectorAll("[data-open-provider]").forEach((btn) => {
+      btn.addEventListener("click", () => openProviderDrawer(el, ctx2, btn.getAttribute("data-open-provider") || "openai-default"));
+    });
+    el.querySelectorAll("[data-open-conn]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cName = btn.getAttribute("data-open-conn");
+        if (cName && ctx2.router) ctx2.router.go(docRoute("ConnectorOps", "global", cName));
+      });
+    });
+  }
+  async function openProviderDrawer(el, ctx2, providerName = "openai-default") {
+    const slot = el.querySelector("[data-provider-drawer]");
+    if (!slot) return;
+    slot.innerHTML = `<div class="card" style="border:1px solid var(--ds-accent)"><div class="card-b"><div class="small faint">${esc(t("\u6B63\u5728\u52A0\u8F7D OpenAIProvider (" + providerName + ") \u914D\u7F6E\u2026"))}</div></div></div>`;
+    const res = await ctx2.api.object("Provider", "global", providerName);
+    const rv = res.ok && res.data && res.data.resourceVersion != null ? Number(res.data.resourceVersion) : 0;
+    const raw = res.ok && res.data && res.data.content ? String(res.data.content) : "";
+    const extract = (re, def2) => {
+      const m = raw.match(re);
+      return m ? m[1].trim().replace(/^["']|["']$/g, "") : def2;
+    };
+    const account = extract(/account:\s*([^\n#]+)/, "magpie-openai-gateway");
+    const secretSrc = extract(/source:\s*([^\n}#]+)/, "secret:llm/magpie-gateway-key");
+    const baseUrl = extract(/baseUrl:\s*([^\n#]+)/, "https://magpie.ListenAll.cn/v1");
+    const lowModel = extract(/low:\s*([^\n}#]+)/, "flash-tier");
+    const stdModel = extract(/standard:\s*([^\n}#]+)/, "standard-tier");
+    const highModel = extract(/high:\s*([^\n}#]+)/, "reasoning-tier");
+    slot.innerHTML = `
+  <div class="card" style="border:1px solid var(--ds-accent);margin-bottom:14px">
+    <div class="card-h">
+      <span class="h-title">${esc(t("OpenAIProvider \u914D\u7F6E\u9762\u677F"))} \xB7 <span class="mono">${esc(providerName)}</span> (rv=${rv})</span>
+      <button type="button" class="btn tiny mute" data-prov-close>${esc(t("\u6536\u8D77"))}</button>
+    </div>
+    <div class="card-b">
+      <div class="small faint" style="margin-bottom:8px">${esc(t("\u6240\u6709 Session\u3001ConnectorOps \u4E0E Workflow \u8282\u70B9\u9ED8\u8BA4\u7ED1\u5B9A\u6B64 OpenAIProvider\u3002\u652F\u6301\u6309\u4EFB\u52A1\u667A\u5546\u8981\u6C42\u5206\u7EA7\u8DEF\u7531\uFF1A\u91CD\u590D\u6027/\u65E5\u5FD7\u8FC7\u6EE4\u4EFB\u52A1\u7528\u4F4E\u667A\u5546\u8F7B\u91CF\u6A21\u578B\uFF08low\uFF09\uFF0C\u5E38\u89C4\u5F00\u53D1\u7528\u6807\u51C6\u6A21\u578B\uFF08standard\uFF09\uFF0C\u67B6\u6784\u8BBE\u8BA1\u4E0E\u590D\u6742\u6839\u56E0\u8BCA\u65AD\u7528\u9AD8\u667A\u5546\u63A8\u7406\u6A21\u578B\uFF08high\uFF09\u3002"))}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+        <div>
+          <div class="small faint">${esc(t("\u8D26\u53F7\u6807\u8BC6 (auth.account)"))}</div>
+          <input class="inp mono" data-prov="account" value="${esc(account)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)"))}</div>
+          <input class="inp mono" data-prov="secretSrc" value="${esc(secretSrc)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("OpenAI \u517C\u5BB9 Base \u5730\u5740 (config.baseUrl)"))}</div>
+          <input class="inp mono" data-prov="baseUrl" value="${esc(baseUrl)}" style="width:100%" />
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">
+        <div>
+          <div class="small faint">${esc(t("Low \u6863\u6A21\u578B\uFF08\u91CD\u590D\u6027\u4EFB\u52A1/\u65E5\u5FD7\u6536\u96C6/\u4EE3\u7801\u5BA1\u6838\u7B97\u5B50\uFF09"))}</div>
+          <input class="inp mono" data-prov="lowModel" value="${esc(lowModel)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("Standard \u6863\u6A21\u578B\uFF08Doc Apply/\u5E38\u89C4\u5F00\u53D1\u7B97\u5B50\uFF09"))}</div>
+          <input class="inp mono" data-prov="stdModel" value="${esc(stdModel)}" style="width:100%" />
+        </div>
+        <div>
+          <div class="small faint">${esc(t("High \u6863\u6A21\u578B\uFF08\u67B6\u6784\u8BBE\u8BA1/Agent \u5224\u65AD/\u81EA\u52A8\u5BA1\u6279/\u6838\u5FC3\u7814\u53D1\uFF09"))}</div>
+          <input class="inp mono" data-prov="highModel" value="${esc(highModel)}" style="width:100%" />
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn acc" data-prov-save>${esc(t("\u4FDD\u5B58\u5E76 Apply OpenAIProvider"))}</button>
+        ${chipGo(t("\u5728\u5BF9\u8C61\u7F16\u8F91\u5668\u4E2D\u67E5\u770B YAML"), docRoute("Provider", "global", providerName), "mute", true)}
+        <span class="small faint" data-prov-msg></span>
+      </div>
+    </div>
+  </div>`;
+    slot.querySelector("[data-prov-close]")?.addEventListener("click", () => {
+      slot.innerHTML = "";
+    });
+    slot.querySelector("[data-prov-save]")?.addEventListener("click", async () => {
+      const val = (k) => slot.querySelector(`[data-prov="${k}"]`)?.value.trim() || "";
+      const yamlContent = `apiVersion: core/v1
+kind: Provider
+metadata:
+  name: ${providerName}
+  scope: global
+spec:
+  kind: openai
+  trustLevel: trusted
+  auth:
+    scheme: bearer
+    account: ${JSON.stringify(val("account") || "magpie-openai-gateway")}
+    secret:
+      source: ${JSON.stringify(val("secretSrc") || "secret:llm/magpie-gateway-key")}
+      rotation: manual
+  config:
+    baseUrl: ${JSON.stringify(val("baseUrl") || "https://magpie.ListenAll.cn/v1")}
+    defaultModel: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+    models: [${JSON.stringify(val("lowModel"))}, ${JSON.stringify(val("stdModel"))}, ${JSON.stringify(val("highModel"))}]
+    modelTiers:
+      low: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      standard: ${JSON.stringify(val("stdModel") || "standard-tier")}
+      high: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+    taskModelMapping:
+      connectops-log-collector: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      connectops-code-audit: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      connectops-deploy: ${JSON.stringify(val("lowModel") || "flash-tier")}
+      doc-apply: ${JSON.stringify(val("stdModel") || "standard-tier")}
+      agent-judge: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+      approval-gate: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+      connectops-developer: ${JSON.stringify(val("highModel") || "reasoning-tier")}
+`;
+      const msg = slot.querySelector("[data-prov-msg]");
+      if (msg) msg.textContent = t("\u6B63\u5728 Apply OpenAIProvider\u2026");
+      const r = await ctx2.api.apply({
+        kind: "Provider",
+        scope: "global",
+        name: providerName,
+        resourceVersion: rv,
+        content: yamlContent,
+        fieldManager: "console:provider-drawer",
+        reasonRef: "openai-provider:" + providerName
+      });
+      if (msg) msg.textContent = r.ok ? t("OpenAIProvider \u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + (r.data && r.data.rv) + ")") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+    });
+  }
+  async function hydrateDocsExportConfig(el, ctx2) {
+    const slot = el.querySelector("[data-wf-export-cfg]");
+    if (!slot || !ctx2.api.exportConfig) return;
+    const r = await ctx2.api.exportConfig();
+    if (!r.ok || !el.isConnected) return;
+    const cfg = r.data || {};
+    const excl = Array.isArray(cfg.excludeDocTypes) ? cfg.excludeDocTypes.join(", ") : "BugDoc, DriftReport, PlanDoc, SessionLog";
+    slot.innerHTML = `
+  <div class="card">
+    <div class="card-h"><span class="h-title">${esc(t("\u6587\u6863 Git \u5BFC\u51FA\u72EC\u7ACB\u914D\u7F6E\uFF08\u6570\u636E\u5E93 docs_export_config\uFF0C\u975E\u4EE3\u7801\u786C\u7F16\u7801\uFF09"))}</span></div>
+    <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" data-exp-inc ${cfg.includeRuntimeDocs ? "checked" : ""} />
+        <span>${esc(t("\u5BFC\u51FA\u65F6\u5305\u542B\u8FD0\u884C\u65F6\u4E34\u65F6\u6587\u6863 (includeRuntimeDocs)"))}</span>
+      </label>
+      <span class="small faint">${esc(t("\u9ED8\u8BA4\u6392\u9664\u7684\u8FD0\u884C\u65F6 docTypes\uFF1A"))}</span>
+      <input class="inp mono" data-exp-types value="${esc(excl)}" style="min-width:280px;flex:1" />
+      <button type="button" class="btn tiny acc" data-exp-save>${esc(t("\u4FDD\u5B58\u5BFC\u51FA\u914D\u7F6E"))}</button>
+      <span class="small faint" data-exp-msg></span>
+    </div>
+  </div>`;
+    slot.querySelector("[data-exp-save]")?.addEventListener("click", async () => {
+      const inc = Boolean(slot.querySelector("[data-exp-inc]")?.checked);
+      const types2 = String(slot.querySelector("[data-exp-types]")?.value || "").split(",").map((x) => x.trim()).filter(Boolean);
+      const msg = slot.querySelector("[data-exp-msg]");
+      const res = await ctx2.api.saveExportConfig({ includeRuntimeDocs: inc, excludeDocTypes: types2, excludeKinds: cfg.excludeKinds || [] });
+      if (msg) msg.textContent = res.ok ? t("\u5BFC\u51FA\u914D\u7F6E\u5DF2\u66F4\u65B0\u5165\u5E93") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(res.error || res.status);
+    });
+  }
+
+  // src/screens/workflows.js
+  function wfAnchorOfRoute(route) {
+    const r = String(route || "");
+    if (!r) return "";
+    if (r.startsWith("workflows/")) return r.slice("workflows/".length);
+    if (/-workflow$/.test(r)) return "core-workflow";
+    return "";
+  }
+  var RUN_CLS = { running: "acc", done: "ok", ok: "ok", success: "ok", converged: "ok", failed: "esc", error: "esc", canceled: "mute", queued: "mute", pending: "mute" };
+  function isTerminalRun(st) {
+    return ["done", "converged", "failed", "canceled", "ok", "success"].includes(String(st || ""));
+  }
+  var REG_CLS = { running: "acc", active: "acc", suspended: "warn", awaitingapproval: "warn", failed: "esc", error: "esc", done: "ok", ok: "ok", idle: "mute", registered: "mute" };
+  var PH_CLS = { awaitingapproval: "warn", failed: "esc", done: "ok", executing: "acc", running: "acc" };
+  function runChip(r) {
+    const st = String(r && (r.status || r.state || r.phase) || t("\u672A\u77E5"));
+    return chip(st, RUN_CLS[st] || "mute");
+  }
+  function phChip(ph) {
+    const p = String(ph || "");
+    return chip(p || "\u2014", PH_CLS[p.toLowerCase()] || "mute");
+  }
+  function wfDesignRoute() {
+    return "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("concepts/workflow.md");
+  }
+  function realTplCardHtml(o) {
+    const scope = o.scope || "global";
+    return '<div class="card"><div class="card-h"><span class="h-title mono">' + esc(o.name) + '</span><span class="h-right">' + chip("Template", "acc") + " " + chip("r" + String(o.rv || 0), "mute") + '</span></div><div class="card-b"><div class="small mono faint">scope: ' + esc(scope) + '</div><div class="dh-actions" style="margin-top:8px">' + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Template", scope, o.name), "acc", true, t("\u67E5\u770B Template \u58F0\u660E")) + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute("Template", scope, o.name), "mute", true, t("\u67E5\u770B\u6B63\u6587")) + "</div></div></div>";
+  }
+  function templatesSectionHtml(ctx2) {
+    const tpls = ctx2.store.refs("Template");
+    const bugWf = ctx2.store.refs("Workflow").find((w) => w && w.name === "bug-lifecycle");
+    const bugRuns = ctx2.store.runs().filter((r) => r && String(r.workflow || r.name || "") === "bug-lifecycle");
+    const bugBlock = bugWf || bugRuns.length ? '<div class="card" style="margin-bottom:10px"><div class="card-h"><span class="h-title mono">bug-lifecycle</span><span class="h-right">' + chip("Workflow", "acc") + " " + chip(bugRuns.length + t(" \u6B21\u8FD0\u884C"), bugRuns.length ? "acc" : "mute") + '</span></div><div class="card-b"><div class="dh-actions">' + chipGo(t("\u5DE5\u4F5C\u6D41\u8BE6\u60C5"), "wf/bug-lifecycle", "acc", true) + " " + chipGo(t("\u6587\u6863\u5E93 BugDoc"), "docs", "mute", true) + "</div></div></div>" : "";
+    const tplBlock = tpls.length ? '<div class="grid cols-2">' + tpls.map(realTplCardHtml).join("") + "</div>" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u6D41\u7A0B\u6A21\u677F\uFF08Template \u5BF9\u8C61\u5728\u518C\u540E\u6B64\u5904\u663E\u793A\uFF09\u3002")) + " " + chipGo(t("\u8BBE\u8BA1\u89C1 workflow.md \xA79b"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + "</div></div></div>";
+    return bugBlock + tplBlock;
+  }
+  function listScreen(el, ctx2) {
+    const state = { rows: [], filter: "", err: "" };
+    const snapRuns = ctx2.store.runs().slice(0, 8);
+    const runRowHtml = (r) => {
+      const wf = String(r && (r.workflow || r.name) || "");
+      const no = r && (r.run != null ? r.run : r.no != null ? r.no : "");
+      if (!wf && (no == null || no === "")) return "";
+      const started = r && (r.startedAt || r.at || r.ts);
+      const invChips = String(r && r.involved || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 3).map((x) => {
+        const rt = involvedRoute(x);
+        return rt ? chipGo(trunc(x, 36), rt, "mute", true, t("\u53BB\u5BF9\u8C61\u5DE5\u4F5C\u53F0")) : '<span class="chip mute tiny">' + esc(trunc(x, 36)) + "</span>";
+      }).join(" ");
+      const go = wf && no != null && no !== "" ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(no)) : "";
+      return "<tr" + (go ? ' data-go="' + esc(go) + '" style="cursor:pointer"' : "") + '><td class="mono small">#' + esc(String(no != null && no !== "" ? no : "\u2014")) + '</td><td class="mono small">' + esc(wf || "\u2014") + "</td><td>" + phChip(r && r.phase) + "</td><td>" + runChip(r) + '</td><td class="small mono">' + esc(relAge(started) || (started ? String(started).slice(0, 16) : "\u2014")) + '</td><td class="small">' + (invChips || '<span class="faint">\u2014</span>') + "</td></tr>";
+    };
+    const paintRuns = () => {
+      const slot = el.querySelector("[data-wf-runs]");
+      if (!slot) return;
+      const seen = /* @__PURE__ */ new Set();
+      const merged = [];
+      for (const r of state.rows.concat(snapRuns)) {
+        const k = String(r && (r.workflow || r.name) || "") + "#" + String(r && (r.run != null ? r.run : r.no != null ? r.no : ""));
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(r);
+      }
+      const shown = (state.filter ? merged.filter((r) => String(r && (r.workflow || r.name) || "") === state.filter) : merged).slice(0, 50);
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto"><div style="margin-bottom:6px">' + chip(merged.length + t(" \u6761\u8FD0\u884C\u8BB0\u5F55"), "mute") + " " + (state.filter ? chipGo(t("\u6E05\u9664\u8FC7\u6EE4\uFF1A") + state.filter, "workflows", "warn", true, t("\u6E05\u9664\u8FC7\u6EE4\u5E76\u56DE\u5168\u8868")) : "") + "</div>" + (state.err ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(state.err) + esc(t("\uFF09\u2014\u2014\u4E0B\u8868\u4EC5\u6982\u89C8\u884C\u3002")) + "</div>" : "") + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>' + esc(t("\u5DE5\u4F5C\u6D41")) + "</th><th>" + esc(t("\u76F8\u4F4D")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u5F00\u59CB")) + "</th><th>" + esc(t("\u6D89\u53CA")) + "</th></tr></thead><tbody>" + shown.map(runRowHtml).join("") + '</tbody></table><div class="small faint" style="margin-top:6px">' + esc(t("\u884C\u70B9\u51FB\u8FDB\u8FD0\u884C\u8BE6\u60C5\uFF1Binvolved chip=\u5BF9\u8C61\u5DE5\u4F5C\u53F0\u6DF1\u94FE\u3002")) + "</div>" : '<div class="small faint">' + esc(state.filter ? t("\u8BE5 workflow \u7A97\u53E3\u5185\u6682\u65E0\u8FD0\u884C\u884C\u3002") : t("\u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u3002"))) + "</div></div>";
+    };
+    el.innerHTML = '<div class="view-inner">' + screenHead(
+      t("\u5DE5\u4F5C\u6D41"),
+      t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
+      chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
+    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + '<div data-wf-export-cfg style="margin-top:18px"></div></div>';
+    paintRuns();
+    hydrateDocsExportConfig(el, ctx2);
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const slot = el.querySelector("[data-wf-reg]");
+      const r = await ctx2.api.workflows();
+      if (!slot || !slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u6E05\u5355\u6682\u4E0D\u53EF\u8BFB\uFF08")) + esc(String(r.error || r.status)) + esc(t("\uFF09\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5\u3002")) + "</div></div></div>";
+        return;
+      }
+      const data = r.data && typeof r.data === "object" ? r.data : {};
+      const rows = Array.isArray(data.workflows) ? data.workflows : [];
+      if (!rows.length) {
+        slot.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6682\u65E0\u5728\u518C\u5DE5\u4F5C\u6D41\u3002")) + "</div></div></div>";
+        return;
+      }
+      slot.innerHTML = '<div class="card"><div class="card-b" style="overflow-x:auto">' + chip((data.count != null ? data.count : rows.length) + t(" \u6761\u5728\u518C"), "acc") + " " + (data.scanCapped ? chip(t("\u626B\u63CF\u622A\u65AD\uFF08\u7A97\u53E3\u5185 ") + String(data.scanned != null ? data.scanned : "?") + t(" \u6761\uFF09"), "warn") : "") + '<table class="tbl" style="margin-top:8px"><thead><tr><th>' + esc(t("\u540D\u79F0")) + "</th><th>" + esc(t("\u72B6\u6001")) + "</th><th>" + esc(t("\u8FDE\u63A5")) + "</th><th>" + esc(t("\u6700\u8FD1")) + "</th><th></th></tr></thead><tbody>" + rows.map((w) => {
+        const name = String(w && w.name || "");
+        const ex = w && w.execution || {};
+        const exState = String(ex.state || "");
+        const connTxt = String(ex.connector || "") + (ex.connectorScope ? "/" + String(ex.connectorScope) : "");
+        const connCell = connTxt ? chipGo(connTxt, "connectors", "mute", true, t("\u8FDE\u63A5\u5C42\u2014\u2014\u67E5\u770B\u7ED1\u5B9A connector")) : '<span class="faint">\u2014</span>';
+        const latest = w && w.latest;
+        const latestTxt = typeof latest === "string" ? latest : String(latest && (latest.summary || latest.note || latest.status || latest.state) || "");
+        return '<tr><td class="mono small">' + (name ? '<span class="lk" data-go="wf/' + encodeURIComponent(name) + '">' + esc(name) + "</span>" : "\u2014") + "</td><td>" + chip(exState || "\u2014", REG_CLS[exState.toLowerCase()] || "mute") + '</td><td class="mono small">' + connCell + '</td><td class="small">' + esc(trunc(latestTxt || "\u2014", 60)) + '</td><td style="text-align:right">' + (name ? '<span class="chip mute tiny click" data-wf-runfilter="' + esc(name) + '" title="' + esc(t("\u8FC7\u6EE4\u672C\u9875\u8FD0\u884C\u8BB0\u5F55")) + '">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + "</span>" : "") + "</td></tr>";
+      }).join("") + "</tbody></table></div></div>";
+      slot.querySelectorAll("[data-wf-runfilter]").forEach((c) => {
+        c.addEventListener("click", () => {
+          state.filter = String(c.getAttribute("data-wf-runfilter") || "");
+          paintRuns();
+          const rs = el.querySelector("[data-wf-runs]");
+          if (rs && rs.scrollIntoView) rs.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
+    })();
+    (async () => {
+      const stamp = typeof location !== "undefined" ? location.hash : "";
+      const r = await ctx2.api.workflowRuns();
+      if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (!r.ok) {
+        state.err = String(r.error || r.status);
+      } else {
+        const data = r.data && typeof r.data === "object" ? r.data : {};
+        state.rows = Array.isArray(data.runs) ? data.runs : [];
+      }
+      paintRuns();
+    })();
+  }
+  var WF_ALIASES = {
+    "bug-workflow": "core-system-developer-loop",
+    "bug-lifecycle": "core-system-developer-loop",
+    "core-workflow": "core-system-developer-loop",
+    "dev-delivery": "core-system-developer-loop",
+    "apply-workflow": "default-task",
+    "simple-shot": "default-task",
+    "watch-only": "default-task"
+  };
+  function wfApiRows(res) {
+    return res && res.ok && res.data && Array.isArray(res.data.workflows) ? res.data.workflows : [];
+  }
+  function wfApiRuns(res) {
+    return res && res.ok && res.data && Array.isArray(res.data.runs) ? res.data.runs : [];
+  }
+  function wfApiTasks(res) {
+    return res && res.ok && res.data && Array.isArray(res.data.tasks) ? res.data.tasks : [];
+  }
+  function wfTaskIndex(tasks) {
+    const m = /* @__PURE__ */ new Map();
+    for (const t2 of tasks) if (t2 && t2.name) m.set(String(t2.scope || "global") + "/" + String(t2.name), t2);
+    return m;
+  }
+  function wfTaskKey(involved) {
+    const m = /^Task\/([^/]+)\/([^/]+)/.exec(String(involved || ""));
+    return m ? m[1] + "/" + m[2] : "";
+  }
+  var SESSION_MATCH_WINDOW_MS = 10 * 60 * 1e3;
+  function wfSessionAnchor(run, task, sessionRows, hist = null) {
+    const hs = String(hist && hist.sessionId || "");
+    if (/^session[-_]/i.test(hs)) return { sid: hs, label: t("\u8282\u70B9\u4F1A\u8BDD") };
+    const direct = String(run && run.sessionId || "");
+    if (/^session[-_]/i.test(direct)) return { sid: direct, label: t("\u8FD0\u884C\u4F1A\u8BDD") };
+    const key = wfTaskKey(run && run.involved);
+    const candidates = (Array.isArray(sessionRows) ? sessionRows : []).filter((x) => x && x.taskId === key && /^session[-_]/i.test(String(x.sessionId || "")));
+    if (!candidates.length) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    const started = Date.parse(String(run && (run.startedAt || run.at || run.ts) || ""));
+    if (!Number.isFinite(started)) {
+      return candidates.length === 1 ? { sid: String(candidates[0].sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") } : { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    }
+    const ranked = candidates.map((x) => ({
+      x,
+      d: Number.isFinite(Number(x.startedAt)) ? Math.abs(Number(x.startedAt) - started) : Number.POSITIVE_INFINITY
+    })).sort((a, b) => a.d - b.d);
+    if (!ranked.length || ranked[0].d > SESSION_MATCH_WINDOW_MS) return { sid: "", label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+    return { sid: String(ranked[0].x.sessionId), label: t("\u4EFB\u52A1\u4F1A\u8BDD") };
+  }
+  function wfSessionChip(sid, label) {
+    const s = String(sid || "");
+    if (!s) return '<span class="small faint">' + esc(t("\u4F1A\u8BDD\u672A\u8BB0\u5F55")) + "</span>";
+    const isSession = /^session[-_]/i.test(s);
+    if (!isSession) return '<span class="small faint">' + esc((label ? t(label) + " " : "") + t("\u4EFB\u52A1\u951A\uFF08\u975E sessionId\uFF09") + " " + trunc(s, 24)) + "</span>";
+    return chipGo((label ? t(label) + " " : "") + trunc(s, 24), "session/" + encodeURIComponent(s), "acc", true, s);
+  }
+  function wfNodeStats(runs, phases) {
+    const stats = /* @__PURE__ */ new Map();
+    for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+    for (const r of runs) {
+      const cur = String(r.phase || "");
+      if (stats.has(cur)) stats.get(cur).cur++;
+      const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String(h && h.to || "")));
+      for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
+      if (String(r.status || "") === "failed" && stats.has("Failed")) stats.get("Failed").failed++;
+    }
+    return stats;
+  }
+  function wfNodeGraphHtml(wf, runs) {
+    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+    const failed = runs.filter((r) => String(r.status || "") === "failed").length;
+    const list2 = phases.concat(failed && !phases.includes("Failed") ? ["Failed"] : []);
+    if (!list2.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>";
+    const stats = wfNodeStats(runs, list2);
+    const body = list2.map((p) => {
+      const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
+      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited || s.failed ? " done" : "") + (p === "Failed" ? " fail" : "");
+      return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (s.cur ? '<span class="chip acc tiny">' + esc(t("\u5F53\u524D") + " " + s.cur) + "</span>" : "") + (s.visited ? '<span class="chip mute tiny">' + esc(t("\u5230\u8FC7") + " " + s.visited) + "</span>" : "") + "</div>";
+    }).join('<span class="pg-edge">\u2192</span>');
+    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+  }
+  function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
+    el.querySelectorAll("[data-wf-node]").forEach((n) => {
+      n.addEventListener("click", () => {
+        const ph = String(n.getAttribute("data-wf-node") || "");
+        const drawer = el.querySelector("[data-wf-node-drawer]");
+        if (!drawer) return;
+        const hits = runs.filter((r) => String(r.phase || "") === ph || (Array.isArray(r.history) ? r.history : []).some((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph));
+        const rows = hits.length ? hits.map((r) => {
+          const no = r.run != null ? r.run : r.no != null ? r.no : "";
+          const task = taskIdx.get(wfTaskKey(r.involved));
+          const hist = (Array.isArray(r.history) ? r.history : []).find((h) => String(h && h.to || "") === ph || String(h && h.from || "") === ph);
+          const anchor = wfSessionAnchor(r, task, sessionRows, hist);
+          return '<div class="mini-row"><div class="mr-main"><div><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '</div><div class="mr-sub small">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</div></div><div class="mr-side">' + wfSessionChip(anchor.sid, anchor.label) + " " + chipGo(t("\u8FD0\u884C"), "wf/" + encodeURIComponent(wfName) + "/r/" + encodeURIComponent(String(no)), "mute", true) + "</div></div>";
+        }).join("") : '<div class="small faint">' + esc(t("\u6682\u65E0\u8FD0\u884C\u5230\u8FBE\u8BE5\u8282\u70B9\u3002")) + "</div>";
+        drawer.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(ph) + '</span><span class="h-right">' + esc(t("\u5230\u8FBE") + " " + hits.length) + '</span></div><div class="card-b">' + rows + "</div></div>";
+      });
+    });
+  }
+  function wfFlowNodesHtml(wf) {
+    const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
+    if (!nodes.length) {
+      return '<div class="small faint">' + esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\u2014\u2014workflow apply \u540E\u7684\u843D\u5730 agent \u5F85\u63A5\u7EBF\uFF1B\u5F53\u524D\u8282\u70B9=\u76F8\u4F4D\u94FE\uFF0C\u8282\u70B9\u7EA7\u4F1A\u8BDD\u672A\u5355\u72EC\u8BB0\u5F55\u3002")) + "</div>";
+    }
+    return '<div class="wf-flow">' + nodes.map((n) => '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || "\u2014")) + '</div><div class="small">' + esc(String(n.title || "")) + '</div><div class="small faint">' + esc([n.unit, n.op, n.connector, n.provider].filter(Boolean).join(" \xB7 ")) + "</div></div>").join("") + "</div>";
+  }
+  function wfRunNodesHtml(run, task, sessionRows = []) {
+    const phases = (Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")]).map(String);
+    const byTo = /* @__PURE__ */ new Map();
+    for (const h of Array.isArray(run.history) ? run.history : []) {
+      if (h && h.to) byTo.set(String(h.to), h);
+    }
+    const cur = String(run.phase || "");
+    const rows = phases.map((p) => {
+      const h = byTo.get(p);
+      const state = p === cur ? t("\u5F53\u524D") : h ? t("\u5DF2\u8D70\u8FC7") : t("\u672A\u5230\u8FBE");
+      const anchor = wfSessionAnchor(run, task, sessionRows, h);
+      const sessionHtml = p === cur || h ? wfSessionChip(anchor.sid, anchor.label) : '<span class="small faint">' + esc(t("\u65E0\u4F1A\u8BDD\uFF08\u672A\u5230\u8FBE\uFF09")) + "</span>";
+      return '<div class="mini-row wf-node-row"><div class="mr-main"><div><b class="mono">' + esc(p) + "</b> " + chip(state, p === cur ? "acc" : h ? "ok" : "mute") + '</div><div class="mr-sub small mono">' + esc(h ? String(h.on || "") : "") + '</div></div><div class="mr-side">' + sessionHtml + (h && h.at ? '<span class="w-ev-time mono">' + esc(relAge(h.at) || "") + "</span>" : "") + "</div></div>";
+    }).join("");
+    return '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u951A=history.sessionId \u2192 run.sessionId \u2192 Task journal \u53CD\u67E5\uFF08\u7A7A=\u672A\u8BB0\u5F55\uFF0C\u4E0D\u7F16\u9020\uFF1B\u65E7 task.agentSession=taskId \u4E0D\u5F53 session\uFF09\u3002")) + "</div>" + rows;
+  }
+  function wfTasksHtml(runs, taskIdx, sessionRows = []) {
+    const seen = /* @__PURE__ */ new Map();
+    for (const r of runs) {
+      const key = wfTaskKey(r.involved);
+      if (!key) continue;
+      if (!seen.has(key)) seen.set(key, { key, task: taskIdx.get(key), runs: [] });
+      seen.get(key).runs.push(r);
+    }
+    if (!seen.size) return "";
+    const rows = [...seen.values()].map((x) => {
+      const t2 = x.task;
+      const title = t2 ? String(t2.title || t2.name || x.key) : x.key;
+      const ph = t2 ? String(t2.phase || "") : "";
+      const taskSessions = (Array.isArray(sessionRows) ? sessionRows : []).filter((r) => r && r.taskId === x.key && /^session[-_]/i.test(String(r.sessionId || ""))).sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+      const latest = taskSessions[0] || null;
+      const direct = /^session[-_]/i.test(String(t2 && t2.agentSession || "")) ? String(t2.agentSession) : "";
+      const sid = latest ? String(latest.sessionId) : direct;
+      const sessionHtml = wfSessionChip(sid, "\u4EFB\u52A1\u4F1A\u8BDD") + (taskSessions.length > 1 ? '<span class="small faint">' + esc(t("\u5171 {n} \u4E2A\u771F\u5B9E\u4F1A\u8BDD").replace("{n}", String(taskSessions.length))) + "</span>" : "");
+      return '<div class="mini-row"><div class="mr-main"><div><b>' + esc(trunc(title, 64)) + "</b> " + (ph ? chip(ph, PH_CLS[ph.toLowerCase()] || "mute") : "") + '</div><div class="mr-sub small mono">Task/' + esc(x.key) + " \xB7 " + esc(t("runs") + " " + x.runs.length) + '</div></div><div class="mr-side">' + sessionHtml + " " + chipGo(t("\u4EFB\u52A1"), "task/" + encodeURIComponent(x.key), "mute", true) + "</div></div>";
+    }).join("");
+    return '<h2 class="sec-title">' + esc(t("\u4EFB\u52A1")) + '</h2><div class="card">' + rows + "</div>";
+  }
+  function wfRunsHtml(runs, taskIdx, sessionRows = []) {
+    if (!runs.length) return "";
+    return '<h2 class="sec-title">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div class="card">' + runs.map((r, i) => {
+      const no = r.run != null ? r.run : r.no != null ? r.no : i + 1;
+      const task = taskIdx.get(wfTaskKey(r.involved));
+      const anchor = wfSessionAnchor(r, task, sessionRows);
+      return '<details class="ex-block wf-run"><summary class="ex-sum wf-run-sum"><span class="ex-chev">\u25B6</span><b class="mono">run #' + esc(String(no)) + "</b> " + runChip(r) + '<span class="small wf-run-title">' + esc(task ? String(task.title || task.name || "") : String(r.involved || "\u2014")) + '</span><span class="wf-run-side">' + wfSessionChip(anchor.sid, anchor.label) + '<span class="w-ev-time mono">' + esc(relAge(r.startedAt || r.at || r.ts) || "\u2014") + "</span>" + chipGo(t("\u8FD0\u884C\u8BE6\u60C5"), "wf/" + encodeURIComponent(String(r.workflow || "")) + "/r/" + encodeURIComponent(String(no)), "mute", true) + '</span></summary><div class="ex-body">' + wfRunNodesHtml(r, task, sessionRows) + "</div></details>";
+    }).join("") + "</div>";
+  }
+  function wfEditChips(wf, name) {
+    if (wf && String(wf.specSource || "") === "object") {
+      const scope = String(wf.scope || "global");
+      return chipGo(t("\u7F16\u8F91 Workflow"), docRoute("Workflow", scope, name), "acc", true, t("\u7F16\u8F91 Workflow \u58F0\u660E")) + " " + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Workflow", scope, name), "mute", true);
+    }
+    return chipGo(t("\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09"), wfDesignRoute(), "acc", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + " " + chipGo(t("\u76F8\u4F4D\u8868\uFF08scheme\uFF09"), "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("core/scheme.yaml"), "mute", true);
+  }
+  var wfDetailSeq = 0;
+  function detailScreen(el, ctx2, name) {
+    const stamp = "#" + ++wfDetailSeq;
+    el.setAttribute("data-wf-detail-stamp", stamp);
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5DE5\u4F5C\u6D41"), String(name), chipGo(t("\u2190 \u5DE5\u4F5C\u6D41"), "workflows", "mute", false)) + '<div data-wf-detail><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u4E2D\u2026\uFF08\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\uFF09")) + "</div></div></div>";
+    (async () => {
+      const [wfsRes, runsRes, tasksRes] = await Promise.all([
+        ctx2.api.workflows(),
+        ctx2.api.workflowRuns(),
+        ctx2.api.tasks()
+      ]);
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const rows = wfApiRows(wfsRes);
+      const runsAll = wfApiRuns(runsRes);
+      const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
+      const serverAliases = wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases || {};
+      const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
+      let wf = rows.find((x) => String(x && x.name) === String(name));
+      if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
+      const usedName = wf ? String(wf.name) : String(alias || name);
+      const runs = runsAll.filter((r) => String(r && r.workflow) === usedName || String(r && r.workflow) === String(name)).sort((a, b) => (Number(b.run) || 0) - (Number(a.run) || 0));
+      let sessionRows = [];
+      const taskIds = [...new Set(runs.map((r) => wfTaskKey(r.involved)).filter(Boolean))];
+      if (taskIds.length && ctx2.api.taskSessions) {
+        try {
+          const sr = await ctx2.api.taskSessions(taskIds);
+          if (sr && sr.ok && Array.isArray(sr.data && sr.data.items)) sessionRows = sr.data.items;
+        } catch {
+        }
+      }
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const detail = el.querySelector("[data-wf-detail]");
+      if (!detail) return;
+      if (!rows.length && !runs.length) {
+        detail.innerHTML = emptyBox(
+          t("\u5DE5\u4F5C\u6D41\u9762\u6682\u4E0D\u53EF\u8BFB"),
+          t("GET /v1/workflows \u4E0E /v1/workflows/runs \u5747\u672A\u8FD4\u56DE\u6570\u636E\u2014\u2014") + " " + chipGo(t("\u91CD\u8BD5"), "wf/" + encodeURIComponent(String(name)), "acc", true)
+        );
+        return;
+      }
+      if (!wf) {
+        const similar = rows.filter((x) => String(x.name || "").toLowerCase().includes(String(name).toLowerCase().split("-")[0])).slice(0, 8);
+        detail.innerHTML = emptyBox(t("\u5DE5\u4F5C\u6D41\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u5DE5\u4F5C\u6D41\uFF08\u53EF\u80FD\u5DF2\u4E0B\u7EBF\u6216\u540D\u79F0\u6709\u8BEF\uFF09\u3002")) + (similar.length ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u76F8\u8FD1\u5DE5\u4F5C\u6D41")) + '</span></div><div class="card-b">' + similar.map((x) => chipGo(String(x.name), "wf/" + encodeURIComponent(String(x.name)), "mute", true)).join(" ") + "</div></div>" : "");
+        return;
+      }
+      const latest = wf.latest || null;
+      const exec = wf.execution || {};
+      const aliasNote = String(name) !== usedName ? chip(t("\u8BCD\u5F62\u517C\u5BB9") + "\uFF1A" + String(name) + " \u2192 " + usedName, "mute") : "";
+      const kvRows = [
+        [t("\u6765\u6E90"), chip(String(wf.specSource || "\u2014"), wf.specSource === "builtin" ? "acc" : wf.specSource === "object" ? "ok" : "mute")],
+        [t("\u6267\u884C\u9762"), exec.connector ? chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + " " + chipGo(String(exec.connector), "connectors", "mute", true, t("ConnectorOps")) : "\u2014"],
+        [t("\u9AA8\u67B6"), exec.skeleton ? chip(t("\u5728\u518C"), "ok") : chip(t("\u7F3A\u5E2D"), "mute")],
+        [t("\u8FD0\u884C"), chip(t("\u73AF\u5185 ") + runs.length + " / \u7D2F\u8BA1 " + String(wf.runsTotal != null ? wf.runsTotal : "\u2014"), runs.length ? "acc" : "mute") + (wf.runs24h != null ? " " + chip("24h " + String(wf.runs24h), "mute") : "")],
+        [t("\u6700\u65B0"), latest ? runChip(latest) + " " + chip("run #" + String(latest.run), "mono") + " " + esc(relAge(latest.startedAt) || "") : "\u2014"],
+        [t("\u751F\u6548"), wf.effective ? chip(String(wf.effective.scope || "") + " \xB7 " + (wf.effective.enabled ? t("\u542F\u7528") : t("\u505C\u7528")), wf.effective.enabled ? "ok" : "mute") : "\u2014"]
+      ];
+      const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
+      const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
+      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + "</div></div>" + // 2026-11-28 用户裁决：workflow 定义看优先=YAML 纯文本全文（rawYaml 现读真源；缺席=不装假不建卡）。
+      (String(wf.rawYaml || "") ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("YAML \u58F0\u660E")) + '</span></div><div class="card-b">' + yamlTextView(String(wf.rawYaml)) + "</div></div>" : "") + '<h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
+      bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
+      hydrateDocsExportConfig(el, ctx2);
+    })().catch((e) => {
+      if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
+      const detail = el.querySelector("[data-wf-detail]");
+      if (detail) detail.innerHTML = '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5DE5\u4F5C\u6D41\u73B0\u8BFB\u5931\u8D25\uFF1A") + String(e && e.message || e)) + "</div></div></div>";
+    });
+  }
+  function bindDocLinks(scopeEl, ctx2) {
+    scopeEl.querySelectorAll("[data-go]").forEach((n) => {
+      n.addEventListener("click", () => ctx2.go(n.getAttribute("data-go")));
+    });
+  }
+  function runScreen(el, ctx2, name, no) {
+    const runs = ctx2.store.runs().filter((r) => String(r && (r.workflow || r.name || "")) === String(name));
+    const run = runs.find((r) => String(r.run != null ? r.run : r.no != null ? r.no : "") === String(no)) || runs[0];
+    if (!run) {
+      el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(no)) + "</span></div></div>" + emptyBox(t("\u8FD0\u884C\u8BB0\u5F55\u4E0D\u5728\u518C"), t("\u6682\u65E0\u6B64\u8FD0\u884C\u8BB0\u5F55\uFF08\u53EF\u80FD\u5DF2\u5F52\u6863\uFF09\u3002")) + "</div>";
+      return;
+    }
+    let st = String(run.status || "");
+    let stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+    const startedAt = run.startedAt || run.at || run.ts;
+    const gateWord = st === "suspended" ? t("\u7B49\u5BA1\u6279") : st === "running" ? t("\u8FD0\u884C\u4E2D") : st === "converged" ? t("\u5DF2\u6536\u675F") : st === "failed" ? t("\u5DF2\u9A73\u56DE") : st;
+    const canGate = String(run.phase || "") === "AwaitingApproval" || st === "suspended";
+    const gateAnchor = "Workflow/" + String(run.owner || "global") + "/" + String(run.workflow || name);
+    el.innerHTML = '<div class="view-inner"><div class="run-hero"><div class="rh-top">' + chipGo(t("\u2190 " + String(name)), "wf/" + encodeURIComponent(String(name)), "mute", false) + '</div><div class="rh-title">' + esc(String(name)) + ' <span class="rh-run">#' + esc(String(run.run != null ? run.run : no)) + "</span>" + chip(st || t("\u672A\u77E5"), stCls) + '</div><div class="rh-meta">' + (startedAt ? "<span>" + esc(t("\u5F00\u59CB\u4E8E")) + " " + esc(relAge(startedAt) || String(startedAt)) + "</span>" : "") + (run.error ? '<span class="rh-err">' + esc(trunc(String(run.error), 120)) + "</span>" : "") + (st === "suspended" ? '<span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5BA1\u6279 \u2192")) + "</span>" : "") + "</div>" + (canGate ? '<div class="dh-actions" style="margin-top:10px"><button class="btn btn-primary sm" data-gate-act="grant">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-gate-act="reject">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + '</button> <span class="small faint mono">' + esc(t("\u6279\u95F8\u951A\uFF1A")) + esc(gateAnchor) + "</span></div>" : "") + '</div><div class="step-line" data-step-line></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-session>' + wfSessionChip(run.sessionId) + '</div></div><div class="card" style="margin-bottom:16px"><div class="card-h"><span class="h-title">' + esc(t("\u8282\u70B9\u4F1A\u8BDD")) + '</span></div><div class="card-b" data-run-node-sessions><div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div><div class="run-cols"><div class="run-col"><div class="panel-h">' + esc(t("\u5F53\u524D\u76F8\u4F4D")) + '</div><div data-run-now></div></div><div class="run-col"><div class="panel-h">' + esc(t("\u4E8B\u4EF6\u65F6\u95F4\u7EBF")) + '</div><div data-run-tl></div></div></div><div class="foot-note">' + esc(t("\u6D41\u7A0B\u6309\u58F0\u660E\u9636\u6BB5\u63A8\u8FDB\uFF1B" + gateWord + "\u3002")) + "</div></div>";
+    const sel = { idx: 0, phases: [] };
+    const lineEl = el.querySelector("[data-step-line]");
+    const paintLine = () => {
+      const phases = Array.isArray(run.phases) && run.phases.length ? run.phases : [run.phase || t("\u5355\u8282\u70B9")];
+      sel.phases = phases;
+      const curIdx = phases.indexOf(run.phase);
+      if (curIdx >= 0) sel.idx = curIdx;
+      const visited = new Set((Array.isArray(run.history) ? run.history : []).map((h) => String(h && h.to || "")).filter(Boolean));
+      const isTerminal = st === "done" || st === "converged";
+      lineEl.innerHTML = phases.map((p, i) => {
+        const done = visited.has(p) && (p !== run.phase || isTerminal);
+        const active = i === curIdx && !isTerminal;
+        const dot = done ? "\u2713" : active ? "" : String(i + 1);
+        const conn = i < phases.length - 1 ? '<div class="step-conn' + (done || curIdx >= 0 && i < curIdx ? " fill" : "") + '"></div>' : "";
+        return '<div class="step' + (done ? " done" : "") + (active ? " active" : "") + (p === "Failed" ? " failstep" : "") + '" data-step="' + i + '" role="button"><div class="step-dot">' + dot + '</div><div class="step-name">' + esc(p) + "</div></div>" + conn;
+      }).join("");
+      el.querySelectorAll("[data-step]").forEach((n) => {
+        n.addEventListener("click", () => {
+          sel.idx = Number(n.getAttribute("data-step"));
+          paintNow();
+          paintSel();
+        });
+      });
+      paintSel();
+    };
+    const paintSel = () => {
+      el.querySelectorAll("[data-step]").forEach((n, i) => n.classList.toggle("sel", i === sel.idx));
+    };
+    const nowEl = el.querySelector("[data-run-now]");
+    const tlEl = el.querySelector("[data-run-tl]");
+    const paintNow = () => {
+      const phases = sel.phases.length ? sel.phases : [run.phase || t("\u5355\u8282\u70B9")];
+      const ph = phases[sel.idx] || run.phase || t("\u5355\u8282\u70B9");
+      const isCur = ph === run.phase;
+      const involved = String(run.involved || "");
+      const refs = involved.split(",").map((x) => x.trim()).filter((x) => x.split("/").length >= 3).map((x) => {
+        const p2 = x.split("/");
+        return '<span class="ref-chip" data-go="obj/' + esc(p2[0]) + "/" + esc(p2[1]) + "/" + esc(p2[2]) + '">' + esc(x) + "</span>";
+      }).join(" ");
+      nowEl.innerHTML = '<div class="now-ph">' + esc(ph) + (isCur ? chip(gateWord || st || t("\u8FDB\u884C\u4E2D"), stCls) : "") + '</div><div class="small faint">' + esc(isCur ? isTerminalRun(st) ? t("\u8BE5\u76F8\u4F4D\u5DF2\u6536\u675F\u2014\u2014\u5355\u6B21\u8FD0\u884C\u7ED3\u675F") : t("\u8FDB\u884C\u4E2D\u2014\u2014\u72B6\u6001\u5B9E\u65F6\u5237\u65B0") : t("\u5386\u53F2\u76F8\u4F4D\u2014\u2014\u6309\u8FD0\u884C\u8F68\u8FF9\u56DE\u653E")) + "</div>" + (refs ? '<div class="now-refs">' + esc(t("\u6D89\u53CA")) + "\uFF1A" + refs + "</div>" : "") + (isCur && st === "suspended" ? '<div class="now-act"><span class="ref-chip" data-go="approvals">' + esc(t("\u53BB\u5904\u7406\u8FD9\u6761\u5BA1\u6279")) + "</span></div>" : "");
+      bindDocLinks(nowEl, ctx2);
+    };
+    const paintTl = () => {
+      const trans = Array.isArray(run.history) ? run.history.filter(Boolean) : [];
+      const transHtml = trans.length ? '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u9636\u6BB5\u63A8\u8FDB\u8BB0\u5F55\uFF1A")) + '</div><div class="tl" style="margin-bottom:10px">' + trans.slice(0, 20).map((x) => {
+        const at = String(x && (x.at || x.ts || x.time) || "");
+        const from = String(x && (x.from || x.fromPhase) || "\u2014");
+        const to = String(x && (x.to || x.toPhase || x.phase) || "\u2014");
+        return '<div class="tl-row"><div class="tl-dot"></div><div class="tl-main"><b>' + esc(from) + " \u2192 " + esc(to) + '</b></div><div class="tl-time mono">' + esc(relAge(at) || (at ? at.slice(0, 16) : "")) + "</div></div>";
+      }).join("") + "</div>" : "";
+      const evs = ctx2.store.events().filter((e) => {
+        const hay = JSON.stringify([e.dedupKey, e.involved, e.type]);
+        return hay.includes(String(run.workflow || "")) || hay.includes(String(run.phase || ""));
+      }).slice(0, 12);
+      tlEl.innerHTML = transHtml + (evs.length ? '<div class="tl">' + evs.map((e) => {
+        const eid = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
+        const goAttr = eid !== "" ? ' data-go="event/' + encodeURIComponent(String(eid)) + '" role="link" style="cursor:pointer"' : "";
+        return '<div class="tl-row"' + goAttr + '><div class="tl-dot"></div><div class="tl-main"><b>' + esc(String(e.type || "")) + '</b><div class="mr-sub small mono">' + esc(trunc(String(e.involved || "\u2014"), 56)) + '</div></div><div class="tl-time">' + esc(relAge(e.ts) || "") + "</div></div>";
+      }).join("") + "</div>" : '<div class="tl-empty">' + esc(t("\u6682\u65E0\u76F8\u5173\u4E8B\u4EF6\u2014\u2014\u6D41\u7A0B\u63A8\u8FDB\u65F6\u6B64\u5904\u5B9E\u65F6\u66F4\u65B0\u3002")) + "</div>");
+    };
+    paintLine();
+    paintNow();
+    paintTl();
+    let nodeSessionRows = [];
+    let nodeTask = null;
+    const hydrateNodeSessions = async () => {
+      const box = el.querySelector("[data-run-node-sessions]");
+      if (!box || !el.isConnected) return;
+      const key = wfTaskKey(run.involved);
+      if (!key) {
+        box.innerHTML = '<div class="small faint">' + esc(t("\u8BE5\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\u2014\u2014\u8282\u70B9\u4F1A\u8BDD\u672A\u8BB0\u5F55\u3002")) + "</div>";
+        return;
+      }
+      try {
+        const [tasksRes, sessionsRes] = await Promise.all([
+          ctx2.api.tasks(),
+          ctx2.api.taskSessions ? ctx2.api.taskSessions([key]) : Promise.resolve({ ok: false })
+        ]);
+        if (!el.isConnected) return;
+        const tasks = wfApiTasks(tasksRes);
+        nodeTask = tasks.find((t2) => String(t2.scope || "global") + "/" + String(t2.name || "") === key) || null;
+        nodeSessionRows = sessionsRes && sessionsRes.ok && Array.isArray(sessionsRes.data && sessionsRes.data.items) ? sessionsRes.data.items : [];
+        box.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
+        const topAnchor = wfSessionAnchor(run, nodeTask, nodeSessionRows);
+        const sessionBox = el.querySelector("[data-run-session]");
+        if (sessionBox) sessionBox.innerHTML = wfSessionChip(topAnchor.sid, topAnchor.label);
+      } catch {
+        if (el.isConnected) box.innerHTML = '<div class="small faint">' + esc(t("\u8282\u70B9\u4F1A\u8BDD\u8BFB\u53D6\u5931\u8D25\u2014\u2014\u4E0D\u5192\u5145\u5DF2\u8BB0\u5F55\u3002")) + "</div>";
+      }
+    };
+    hydrateNodeSessions();
+    const refreshFace = () => ctx2.api.workflowRuns().then((r) => {
+      if (!r.ok || !el.isConnected) return;
+      const arr = Array.isArray(r.data && r.data.runs) ? r.data.runs : Array.isArray(r.data) ? r.data : [];
+      const full = arr.find((x) => String(x && (x.run != null ? x.run : "")) === String(no));
+      if (!full) return;
+      run.phases = Array.isArray(full.phases) ? full.phases : run.phases;
+      run.phase = full.phase || run.phase;
+      run.status = full.status || run.status;
+      st = String(run.status || "");
+      stCls = st === "suspended" ? "warn" : RUN_CLS[st] || "mute";
+      run.sessionId = full.sessionId || run.sessionId;
+      run.involved = full.involved || run.involved;
+      run.transitions = Array.isArray(full.transitions) ? full.transitions : run.transitions;
+      run.history = Array.isArray(full.history) ? full.history : run.history;
+      const sessionBox = el.querySelector("[data-run-session]");
+      if (sessionBox) sessionBox.innerHTML = wfSessionChip(run.sessionId);
+      const nodeBox = el.querySelector("[data-run-node-sessions]");
+      if (nodeBox && wfTaskKey(run.involved)) nodeBox.innerHTML = wfRunNodesHtml(run, nodeTask, nodeSessionRows);
+      paintLine();
+      paintNow();
+      paintTl();
+    });
+    refreshFace();
+    el.querySelectorAll("[data-gate-act]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const grant = btn.getAttribute("data-gate-act") === "grant";
+        const confirmed = await confirmModal({
+          title: grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62"),
+          body: esc(grant ? t("\u786E\u8BA4\u6279\u51C6\u7EE7\u7EED\uFF1F\u53D1\u5E03 ApprovalGranted\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u6CBF\u58F0\u660E\u76F8\u4F4D\u5E8F\u5217\u7EED\u884C\u3002") : t("\u786E\u8BA4\u9A73\u56DE\u7EC8\u6B62\uFF1F\u53D1\u5E03 ApprovalRejected\uFF08") + gateAnchor + t("\uFF09\u2014\u2014run \u5C06\u8FDB\u5165\u7EC8\u6001 Failed\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002")),
+          confirmText: grant ? t("\u6279\u51C6") : t("\u9A73\u56DE"),
+          danger: !grant
+        });
+        if (!confirmed) return;
+        btn.disabled = true;
+        btn.textContent = t("\u53D1\u5E03\u4E2D\u2026");
+        const runNo = Number(no) || 0;
+        const r = await ctx2.api.eventPub({ type: grant ? "ApprovalGranted" : "ApprovalRejected", involved: gateAnchor, ...runNo > 0 ? { run: runNo } : {} });
+        if (!r.ok) {
+          btn.disabled = false;
+          btn.textContent = grant ? t("\u6279\u51C6\u7EE7\u7EED") : t("\u9A73\u56DE\u7EC8\u6B62");
+          toast(esc(t("\u4E8B\u4EF6\u53D1\u5E03\u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014run \u4ECD\u6302\u539F\u76F8\u4F4D\uFF0C\u672A\u88C5\u6210\u529F\u3002")), "error");
+          return;
+        }
+        refreshFace();
+        ctx2.api.snapshot().then((s) => {
+          if (s.ok) ctx2.store.init(s.data);
+        });
+      });
+    });
+  }
+  function render5(el, ctx2) {
+    const p = ctx2.params || {};
+    if (p.n != null && p.n !== "") runScreen(el, ctx2, p.name, p.n);
+    else if (p.name != null && p.name !== "") detailScreen(el, ctx2, p.name);
+    else listScreen(el, ctx2);
+  }
+
+  // src/screens/events.js
+  var filter = { level: "", q: "" };
+  var LEVEL_CLS = { critical: "esc", error: "esc", warn: "warn", warning: "warn", info: "mute", debug: "mute" };
+  function clean(x) {
+    return String(x == null ? "" : x).replace(/^"+|"+$/g, "");
+  }
+  function levelChip(e) {
+    const lv = String(e && e.level || "info");
+    return chip(lv, LEVEL_CLS[lv] || "mute");
+  }
+  function involvedHtml(e) {
+    const s = clean(e && e.involved);
+    if (!s) return chip("involved\uFF1A\u2014", "mute");
+    return s.split(/[,;]\s*/).filter(Boolean).map((part) => {
+      const p = part.trim();
+      const route = involvedRoute(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : chip(p, "mute");
+    }).join(" ");
+  }
+  function linksHtml(e) {
+    const out = [];
+    const route = String(e && e.route || "");
+    const wf = wfAnchorOfRoute(route);
+    if (wf) out.push(chipGo(t("workflow \u951A ") + wf, "wf/" + encodeURIComponent(wf), "acc", true, "route " + route + t(" \u2192 \u5DE5\u4F5C\u6D41")));
+    if (e && e.run) out.push(chipGo("run #" + e.run, route && wf ? "wf/" + encodeURIComponent(wf) + "/r/" + encodeURIComponent(String(e.run)) : "workflows", "mute", true, t("\u5173\u8054\u8FD0\u884C")));
+    const sess = clean(e && (e.agentSession || e.session));
+    if (sess) out.push(chipGo(t("\u4F1A\u8BDD ") + trunc(sess, 18), "session/" + encodeURIComponent(sess), "mute", true, t("\u4F1A\u8BDD\u8BE6\u60C5")));
+    const wake = e && (e.wake != null ? e.wake : e.loopId != null ? e.loopId : null);
+    if (wake != null) out.push(chipGo(t("\u5FAA\u73AF\u5524\u9192 #") + wake, "welcome", "mute", true, t("\u603B\u89C8\u5FAA\u73AF\u5361\u2014\u2014loop \u5524\u9192\u5173\u8054")));
+    return out.join(" ");
+  }
+  function eventRow(e) {
+    const id = e && (e.id != null ? e.id : e.eventId != null ? e.eventId : "");
+    const involved = clean(e && e.involved);
+    const parts = involved.split(/[,;]\s*/).filter(Boolean);
+    const invHtml = parts.length ? parts.map((part) => {
+      const p = part.trim();
+      const route = involvedRoute(p);
+      return route ? chipGo(p, route, "mute", true, t("\u67E5\u770B ") + p) : '<span class="mono">' + esc(p) + "</span>";
+    }).join(" ") : '<span class="mono">\u2014</span>';
+    const hasClipboard = typeof navigator !== "undefined" && !!(navigator.clipboard && navigator.clipboard.writeText);
+    return '<div class="mini-row" data-go="event/' + encodeURIComponent(String(id)) + '"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + '</div><div class="mr-sub mono">' + invHtml + '</div></div><span class="w-ev-time mono">' + esc(relAge(e && (e.ts || e.at || e.time)) || "\u2014") + '</span><button class="btn btn-ghost sm" data-copy-id="' + esc(String(id)) + '"' + (hasClipboard ? "" : ' disabled title="' + esc(t("\u526A\u8D34\u677F\u4E0D\u53EF\u7528")) + '"') + ">" + esc(t("\u590D\u5236 id")) + "</button></div>";
+  }
+  function listScreen2(el, ctx2) {
+    let rows = ctx2.store.events().slice();
+    if (filter.level) rows = rows.filter((e) => String(e && e.level || "") === filter.level);
+    if (filter.q) {
+      const q = filter.q.toLowerCase();
+      rows = rows.filter((e) => String(e && (e.type || "") + " " + (e.involved || "") + " " + (e.summary || e.message || "")).toLowerCase().includes(q));
+    }
+    const fbar = '<div class="filter-bar">' + t('<input class="inp" id="ev-q" placeholder="\u6309\u7C7B\u578B/\u5BF9\u8C61/\u6458\u8981\u8FC7\u6EE4\u2026" value="') + esc(filter.q) + '">' + ["", "error", "warn", "info"].map(
+      (lv) => '<span class="fchip' + (filter.level === lv ? " on" : "") + '" data-act="ev-level" data-lv="' + esc(lv) + '">' + esc(lv || t("\u5168\u90E8\u7EA7\u522B")) + "</span>"
+    ).join("") + "</div>";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u6D41"), t("\u5F52\u6863\u4E8B\u4EF6\uFF08\u5FEB\u7167\u805A\u5408 + patch \u589E\u91CF\uFF1B\u70B9\u51FB\u770B\u5168\u6587\u4E0E\u94FE\u8DEF\uFF09")) + fbar + (rows.length ? '<div class="card">' + rows.slice(0, 300).map(eventRow).join("") + (rows.length > 300 ? t('<div class="small faint" style="padding:8px 14px">\u2026\u5171 ') + rows.length + t(" \u884C\u2014\u2014\u7528\u8FC7\u6EE4\u6536\u7A84\u3002</div>") : "") + "</div>" : emptyBox(t("\u6682\u65E0\u4E8B\u4EF6"), filter.q || filter.level ? t("\u5F53\u524D\u8FC7\u6EE4\u96F6\u547D\u4E2D\u2014\u2014\u653E\u5BBD\u6761\u4EF6\u518D\u8BD5\u3002") : t("\u6682\u65E0\u4E8B\u4EF6\u3002"))) + "</div>";
+    const inp = el.querySelector("#ev-q");
+    if (inp) {
+      inp.addEventListener("input", () => {
+        filter.q = inp.value;
+        listScreen2(el, ctx2);
+      });
+      inp.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") ev.preventDefault();
+      });
+    }
+    el.querySelectorAll('[data-act="ev-level"]').forEach((c) => {
+      c.addEventListener("click", () => {
+        filter.level = c.dataset.lv || "";
+        listScreen2(el, ctx2);
+      });
+    });
+    el.querySelectorAll("[data-copy-id]").forEach((btn) => {
+      if (btn.disabled) return;
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const raw = String(btn.dataset.copyId || "");
+        navigator.clipboard.writeText(raw).then(() => {
+          btn.textContent = t("\u5DF2\u590D\u5236");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        }).catch(() => {
+          btn.textContent = t("\u590D\u5236\u5931\u8D25");
+          setTimeout(() => {
+            btn.textContent = t("\u590D\u5236 id");
+          }, 1200);
+        });
+      });
+    });
+  }
+  async function detailScreen2(el, ctx2, id) {
+    const stamp = typeof location !== "undefined" ? location.hash : "";
+    el.innerHTML = '<div class="view-inner">' + screenHead(t("\u4E8B\u4EF6\u8BE6\u60C5"), "id=" + id) + '<div class="card"><div class="card-b">' + kv([[t("\u72B6\u6001"), chip(t("\u73B0\u8BFB\u4E2D\u2026"), "mute")]]) + '</div></div><div class="dh-actions" style="margin-top:10px">' + chipGo(t("\u2190 \u56DE\u4E8B\u4EF6\u6D41"), "events", "mute", false) + "</div></div>";
+    const r = await ctx2.api.event(id);
+    if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    const box = el.querySelector(".card .card-b");
+    if (!box) return;
+    if (!r.ok) {
+      box.innerHTML = t('<div class="ob-empty">\u4E8B\u4EF6\u5168\u6587\u6682\u4E0D\u53EF\u8FBE\uFF08') + esc(String(r.error || r.status)) + t("\uFF09\u2014\u2014\u6062\u590D\u540E\u91CD\u8FDB\u5373\u73B0\u8BFB\u3002</div>");
+      return;
+    }
+    const e = r.data && typeof r.data === "object" ? r.data : { raw: r.data };
+    const known = ["type", "level", "ts", "at", "time", "involved", "dedupKey", "routedTo", "summary", "message", "route", "run", "agentSession", "session", "wake"];
+    const rows = known.filter((k) => e[k] != null && e[k] !== "").map((k) => {
+      const v = k === "involved" || k === "summary" || k === "message" || k === "agentSession" || k === "session" ? clean(e[k]) : String(e[k]);
+      return [k, k === "ts" || k === "at" || k === "time" ? timeHtml(e[k]) : esc(trunc(v, 200))];
+    });
+    box.innerHTML = '<div class="ev-head">' + esc(String(e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + " " + levelChip(e) + " " + linksHtml(e) + "</div>" + (rows.length ? kv(rows) : "") + (e.involved ? '<div class="ev-involved">' + involvedHtml(e) + "</div>" : "") + t('<details class="md-raw"><summary>\u539F\u59CB\u8F7D\u8377\uFF08JSON\uFF09</summary><pre class="mono md-raw-pre">') + esc(JSON.stringify(e, null, 2)) + "</pre></details>";
+  }
+  function render6(el, ctx2) {
+    const id = ctx2.params && ctx2.params.id;
+    if (id != null && id !== "") detailScreen2(el, ctx2, String(id));
+    else listScreen2(el, ctx2);
   }
 
   // src/screens/objects.js
@@ -13358,22 +13373,24 @@ ${text2}</tr>
   }
   function schemePanel(kindReg, content) {
     if (!kindReg) return t('<div class="ob-empty">scheme \u6682\u4E0D\u53EF\u8FBE\uFF08kinds \u805A\u5408\u7F3A\u5E2D\uFF09\u3002</div>');
-    const spec = kindReg.spec || {};
-    const keys = Object.keys(spec);
-    const cards = keys.length ? yamlToCards(Object.keys(spec).map((f) => f + ": " + JSON.stringify(spec[f])).join("\n")) : "";
     const comp = sectionCompletion(content, kindReg.requiredSections || []).map(
       (c) => chip(c.name + (c.done ? " \u2713" : t(" \u7F3A")), c.done ? "ok" : "mute")
     ).join(" ");
-    if (!cards && !comp) return "";
-    return (comp ? '<div class="ob-seccomp">' + comp + "</div>" : "") + (cards ? '<div data-md-cards="1">' + cards + "</div>" : t('<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>'));
+    const row = {};
+    if (kindReg.name != null) row.name = kindReg.name;
+    if (kindReg.requiredSections != null) row.requiredSections = kindReg.requiredSections;
+    if (kindReg.spec != null) row.spec = kindReg.spec;
+    const yamlText = dumpYaml(row);
+    if (!yamlText && !comp) return "";
+    return (comp ? '<div class="ob-seccomp">' + comp + "</div>" : "") + (yamlText ? yamlTextView(yamlText, t("kind \u5B9A\u4E49\uFF08YAML \u7EAF\u6587\u672C\uFF09")) : t('<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>'));
   }
-  function hydrateSchemePanel(el, ctx2, kind) {
+  function hydrateSchemePanel(el, ctx2, kind, content) {
     const box = el.querySelector("[data-panel-scheme]");
     if (!box) return;
     const paint3 = (kinds) => {
       const k = (kinds || []).find((x) => x && x.name === kind);
       if (!k) return;
-      box.innerHTML = schemePanel(k, "");
+      box.innerHTML = schemePanel(k, content || "");
     };
     const snapKinds = ctx2.store.kinds();
     if (snapKinds.length) {
@@ -13394,7 +13411,7 @@ ${text2}</tr>
       const { fm, body } = splitFrontmatter(content);
       return '<div data-md-render="1">' + (fm ? schemeChips(fm) : "") + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
     }
-    return (schemeChips(content) || t('<div class="ob-empty">\uFF08\u7A7A\u58F0\u660E\uFF09</div>')) + rawDisclosure("YAML", content);
+    return yamlTextView(content, t("YAML \u58F0\u660E\uFF08\u7EAF\u6587\u672C\u5168\u6587\uFF09"));
   }
   async function hydrateDoc(el, ctx2, ref) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
@@ -13449,7 +13466,7 @@ ${text2}</tr>
         if (v) ctx2.go(v);
       });
     }
-    hydrateSchemePanel(el, ctx2, ref.kind);
+    hydrateSchemePanel(el, ctx2, ref.kind, cached ? cached.content : "");
     if (ref.kind === "Provider") hydrateProviderCreate(el, ctx2);
     if (ref.kind === "Agent") hydrateAgentProviderBinding(el, ctx2, ref);
     if (!cached) {
@@ -13619,6 +13636,9 @@ ${text2}</tr>
   function hasDiff(ed) {
     return !!ed && ed.loaded && ed.working !== ed.base;
   }
+  function defaultEditorView(kind, name) {
+    return isMarkdownDoc(kind, name) ? "render" : "raw";
+  }
   function resolveRef(ctx2) {
     const p = ctx2.params || {};
     const objs = ctx2.store.objects();
@@ -13666,7 +13686,7 @@ ${text2}</tr>
       faceFail,
       baseRV: draftR && draftR.ok && draftR.data ? Number(draftR.data.baseResourceVersion) || faceRV : faceRV,
       draftFM: draftR && draftR.ok && draftR.data ? String(draftR.data.fieldManager || "") : "",
-      view: prev && prev.view || "render",
+      view: prev && prev.view || defaultEditorView(kind, name),
       tab: prev && prev.tab || "draft",
       loaded: true
     });

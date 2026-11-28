@@ -237,6 +237,28 @@ export function rawDisclosure(title, content) {
     '<pre class="mono md-raw-pre">' + esc(content == null ? '' : content) + '</pre></details>';
 }
 
+/* ---------- YAML 纯文本视图（2026-11-28 用户裁决：scheme 展示纯文本优先） ----------
+ * 所有 scheme/对象(YAML) 的「看」默认=text-area 纯文本全文（信息密度优先——结构化视图
+ * 只留编辑态）；markdown 散文不受影响（渲染即文本形态）。 */
+
+/** 只读等宽 textarea 全文视图（行数自适应 4..48 有界；全 esc——零原文直插）。 */
+export function yamlTextView(content, title) {
+  const s = String(content == null ? '' : content);
+  const rows = Math.min(Math.max(s.split('\n').length + 1, 4), 48);
+  return (title ? '<div class="small faint" style="margin-bottom:4px">' + esc(title) + '</div>' : '') +
+    '<textarea class="inp mono" readonly rows="' + rows + '" spellcheck="false" ' +
+    'style="width:100%;font-size:12px;line-height:1.5;resize:vertical;white-space:pre">' + esc(s) + '</textarea>';
+}
+
+/** 值 → YAML 文本（kind 定义行等 JSON 结构纯文本化；js-yaml dump，失败=空串由调用方出诚实空态）。 */
+export function dumpYaml(value) {
+  if (value == null) return '';
+  try {
+    const s = yaml.dump(value, { lineWidth: 240, noRefs: true });
+    return typeof s === 'string' ? s : '';
+  } catch { return ''; }
+}
+
 /* ---------- frontmatter 拆分 + scheme 简易标签（2026-11-27 用户裁决） ----------
  * 文档 = frontmatter(YAML 属性) + markdown 正文。属性在库/metainfo 里，
  * 不是正文内容 → 顶栏用轻量 chip 展示，复杂的收进折叠（默认不展开）；

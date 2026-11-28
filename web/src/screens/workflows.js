@@ -4,6 +4,7 @@ import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, involvedRoute, repoL
 import { depChips } from './tasks.js';
 import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
+import { yamlTextView } from '../render/md.js';
 import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
 
 export function wfAnchorOfRoute(route) {
@@ -540,6 +541,9 @@ function detailScreen(el, ctx, name) {
       (latest ? '<span>' + esc(tr('最近运行') + ' ') + runChip(latest) + '</span>' : '') + '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div>' +
       '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('定义')) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
+      // 2026-11-28 用户裁决：workflow 定义看优先=YAML 纯文本全文（rawYaml 现读真源；缺席=不装假不建卡）。
+      (String(wf.rawYaml || '') ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('YAML 声明')) + '</span></div><div class="card-b">' +
+        yamlTextView(String(wf.rawYaml)) + '</div></div>' : '') +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
       workflowStudioHtml(wf, usedName) +
