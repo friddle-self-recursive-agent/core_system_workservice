@@ -1084,4 +1084,6 @@ export const enEntries = [
   ["重要度 ", "Importance "],
   ["归属：", "Owners: "],
   ["归属对象", "Owning object"],
+  ["会话列表", "Sessions"],
+  ["会话清单开合（具体会话深链默认收起）", "Toggle session list (collapsed by default on session deep links)"],
 ];

@@ -415,3 +415,7 @@
 }
 .cc-app .chat-toast.is-accent { border-left-color: var(--accent); }
 .cc-app .chat-toast.is-leaving { opacity: 0; transform: translateY(-6px); }
+
+/* ── 左清单开合（2026-11-28 用户裁决：#/session/:id 具体会话深链=清单默认不展示；
+ * 「会话列表」钮开合；#/chat/:agent 入口默认展开）——[hidden] 要压过 display:flex。 */
+.cc-app .chat-side[hidden] { display: none; }

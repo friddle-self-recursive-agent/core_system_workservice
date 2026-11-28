@@ -188,6 +188,7 @@ function screenShell(can) {
     '<div class="chat-top-title"><h1 class="chat-h1">' + esc(tr('会话')) + '</h1>' +
     '<div class="dh-sub">' + esc(tr('自有对话面——真实转录与发送；会话 id 由宿主发，永不手填')) + '</div></div>' +
     '<div class="chat-top-actions">' +
+    '<button class="btn btn-chip sm" data-cc-side-toggle title="' + esc(tr('会话清单开合（具体会话深链默认收起）')) + '">' + esc(tr('会话列表')) + '</button>' +
     '<button class="btn btn-chip sm" data-cc-provider title="' + esc(tr('配置 OpenAIProvider（api-key 引用 / base 地址 / 模型分级）')) + '">Provider</button>' +
     '<span data-cc-state></span>' +
     '<button class="btn btn-chip sm" data-cc-new>' + esc(tr('新会话')) + '</button>' +
@@ -578,13 +579,34 @@ function autoGrow(ta) {
 
 /* ---------- 屏主体 ---------- */
 
+/** 默认左栏开合（R-UX-10 深链口径 2026-11-28 用户裁决：#/session/:id 具体会话=清单默认
+ * 不展示——上下文是这场对话不是浏览；#/chat/:agent 入口=清单保留）。纯函数 node 直测。 */
+export function defaultSideOpen(id) {
+  return !(id != null && id !== '');
+}
+
+function paintSideToggle(el, open) {
+  const aside = el.querySelector('.chat-side');
+  if (aside) aside.hidden = !open;
+  const btn = el.querySelector('[data-cc-side-toggle]');
+  if (btn) {
+    btn.classList.toggle('acc', open);
+    btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+  }
+}
+
 /** 会话屏 v4：三段式全高对话面（左玻璃抽屉清单+右转录列+底部 composer）。 */
-function dialogScreen(el, ctx) {
+function dialogScreen(el, ctx, sideOpen) {
   const f = faces();
   const can = !!(f && typeof f.send === 'function');
   CHAT.el = el;
   el.innerHTML = screenShell(can);
   el.classList.add('route-chat');
+  paintSideToggle(el, sideOpen !== false);
+  el.querySelector('[data-cc-side-toggle]').addEventListener('click', () => {
+    const aside = el.querySelector('.chat-side');
+    paintSideToggle(el, !(aside && !aside.hidden));
+  });
   // R-UX-10 二次收紧（2026-11-28）：对话修改主通路预填——他屏（wf/obj）「对话修改」按钮置
   // __CC_CHAT_PREFILL__ 后跳转本屏，composer 预填一次即清（人审后发送——不自动发）。
   try {
@@ -734,7 +756,7 @@ export function render(el, ctx) {
     CHAT.lastNodes = [];
     CHAT.refsChunks = [];
     CHAT.paintRefs = null;
-    dialogScreen(el, ctx);
+    dialogScreen(el, ctx, defaultSideOpen(id));
     if (id == null && agent) {
       // #/chat/<agent>：清单到账后选最新一条（宿主档案；blank 优先复用）——零手填
       const f = faces();

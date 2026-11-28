@@ -67,3 +67,10 @@ test('relatedTasksOf：快照扁平行（无 status/spec 包裹）兜底读顶�
   assert.equal(rows[0].session, 'sess-flat', '扁平 agentSession 兜底')
   assert.equal(rows[0].title, '对齐任务', '扁平 title 兜底')
 })
+
+test('defaultSideOpen：#/session/:id 深链=清单默认收起；#/chat 入口=展开', async () => {
+  const { defaultSideOpen } = await import('../src/screens/chat.js')
+  assert.equal(defaultSideOpen('session-9bc0'), false, '具体会话深链=收起')
+  assert.equal(defaultSideOpen(''), true, 'agent 入口=展开')
+  assert.equal(defaultSideOpen(undefined), true)
+})

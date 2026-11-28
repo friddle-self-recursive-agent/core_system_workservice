@@ -1107,7 +1107,9 @@ var CoreConsoleWeb = (() => {
     ["\u6700\u8FD1\u63D0\u4EA4 ", "Last applied "],
     ["\u91CD\u8981\u5EA6 ", "Importance "],
     ["\u5F52\u5C5E\uFF1A", "Owners: "],
-    ["\u5F52\u5C5E\u5BF9\u8C61", "Owning object"]
+    ["\u5F52\u5C5E\u5BF9\u8C61", "Owning object"],
+    ["\u4F1A\u8BDD\u5217\u8868", "Sessions"],
+    ["\u4F1A\u8BDD\u6E05\u5355\u5F00\u5408\uFF08\u5177\u4F53\u4F1A\u8BDD\u6DF1\u94FE\u9ED8\u8BA4\u6536\u8D77\uFF09", "Toggle session list (collapsed by default on session deep links)"]
   ];
 
   // src/core/i18n.js
@@ -15553,7 +15555,7 @@ spec:
     return '<div class="chat-comp"><textarea class="chat-text" data-cc-text rows="1" placeholder="' + esc(t("\u63D0\u4EA4\u9700\u6C42\uFF0F\u627E\u6587\u6863\uFF0F\u66F4\u65B0\u6587\u6863\u2026\u2026")) + '"></textarea><button class="chat-send" data-cc-send data-mode="' + mode + '"' + (can ? "" : " disabled") + ' title="' + esc(running ? t("\u505C\u6B62") : t("\u53D1\u9001")) + '"><span class="chat-send-ico">' + (running ? "\u25A0" : "\u2191") + '</span></button></div><div class="cc-comp-tools"><label class="btn btn-ghost sm cc-img-btn" title="' + esc(t("\u9644\u52A0\u56FE\u7247\uFF08\u22648MB\uFF09")) + '">\u{1F5BC} ' + esc(t("\u56FE\u7247")) + '<input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" data-cc-img hidden></label><span class="cc-img-previews" data-cc-img-previews></span></div><div class="chat-foot">' + esc(t("Enter \u53D1\u9001 \xB7 Shift+Enter \u6362\u884C")) + "</div>";
   }
   function screenShell(can) {
-    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><button class="btn btn-chip sm" data-cc-provider title="' + esc(t("\u914D\u7F6E OpenAIProvider\uFF08api-key \u5F15\u7528 / base \u5730\u5740 / \u6A21\u578B\u5206\u7EA7\uFF09")) + '">Provider</button><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div><aside class="chat-right" data-cc-right><div data-stages-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E09\u6BB5\u5F0F Session \u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u9009\u5B9A\u4F1A\u8BDD\u540E\u88C5\u914D\uFF09")) + '</div></div></div></div><div data-provider-drawer></div></aside></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
+    return '<div class="chat-screen"><div class="chat-top"><div class="chat-top-title"><h1 class="chat-h1">' + esc(t("\u4F1A\u8BDD")) + '</h1><div class="dh-sub">' + esc(t("\u81EA\u6709\u5BF9\u8BDD\u9762\u2014\u2014\u771F\u5B9E\u8F6C\u5F55\u4E0E\u53D1\u9001\uFF1B\u4F1A\u8BDD id \u7531\u5BBF\u4E3B\u53D1\uFF0C\u6C38\u4E0D\u624B\u586B")) + '</div></div><div class="chat-top-actions"><button class="btn btn-chip sm" data-cc-side-toggle title="' + esc(t("\u4F1A\u8BDD\u6E05\u5355\u5F00\u5408\uFF08\u5177\u4F53\u4F1A\u8BDD\u6DF1\u94FE\u9ED8\u8BA4\u6536\u8D77\uFF09")) + '">' + esc(t("\u4F1A\u8BDD\u5217\u8868")) + '</button><button class="btn btn-chip sm" data-cc-provider title="' + esc(t("\u914D\u7F6E OpenAIProvider\uFF08api-key \u5F15\u7528 / base \u5730\u5740 / \u6A21\u578B\u5206\u7EA7\uFF09")) + '">Provider</button><span data-cc-state></span><button class="btn btn-chip sm" data-cc-new>' + esc(t("\u65B0\u4F1A\u8BDD")) + "</button></div></div>" + (can ? "" : '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u8F6C\u5F55\u4E0E\u53D1\u9001\u9762\u663E\u5F0F\u7F3A\u5E2D\uFF0C\u4E0D\u5192\u5145\u3002")) + "</div></div></div>") + '<div data-sess-backlinks-slot class="chat-backlinks"></div><div class="chat-main"><aside class="chat-side"><div class="chat-side-head">' + esc(t("\u4F1A\u8BDD")) + '<span class="chat-side-new"></span></div><div class="chat-sess-list" data-cc-sessions><div class="chat-sess-day">' + esc(t("\u4F1A\u8BDD\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></aside><div class="chat-stream-wrap"><div class="chat-stream" data-cc-tr><div class="chat-sess-day">' + esc(t("\u8F6C\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><button class="chat-jump" data-cc-jump hidden>\u2193 <span data-cc-jump-n></span></button></div><aside class="chat-right" data-cc-right><div data-stages-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E09\u6BB5\u5F0F Session \u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><div data-ctx-panel><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u4E0A\u4E0B\u6587\u73B0\u8BFB\u4E2D\u2026\uFF08\u9009\u5B9A\u4F1A\u8BDD\u540E\u88C5\u914D\uFF09")) + '</div></div></div></div><div data-provider-drawer></div></aside></div><div class="chat-dock"><div class="chat-refs-slot" data-cc-refs></div>' + composerHtmlInner(can, false) + '<div class="chat-note" data-cc-note></div></div></div>';
   }
   function streamEl(el) {
     return el.querySelector("[data-cc-tr]");
@@ -15893,12 +15895,29 @@ spec:
     const max = lh * 8 + 8;
     ta.style.height = Math.min(ta.scrollHeight, max) + "px";
   }
-  function dialogScreen(el, ctx2) {
+  function defaultSideOpen(id) {
+    return !(id != null && id !== "");
+  }
+  function paintSideToggle(el, open) {
+    const aside = el.querySelector(".chat-side");
+    if (aside) aside.hidden = !open;
+    const btn = el.querySelector("[data-cc-side-toggle]");
+    if (btn) {
+      btn.classList.toggle("acc", open);
+      btn.setAttribute("aria-pressed", open ? "true" : "false");
+    }
+  }
+  function dialogScreen(el, ctx2, sideOpen) {
     const f = faces2();
     const can = !!(f && typeof f.send === "function");
     CHAT.el = el;
     el.innerHTML = screenShell(can);
     el.classList.add("route-chat");
+    paintSideToggle(el, sideOpen !== false);
+    el.querySelector("[data-cc-side-toggle]").addEventListener("click", () => {
+      const aside = el.querySelector(".chat-side");
+      paintSideToggle(el, !(aside && !aside.hidden));
+    });
     try {
       const pre = String(typeof window !== "undefined" && window.__CC_CHAT_PREFILL__ || "");
       if (pre) {
@@ -16063,7 +16082,7 @@ spec:
       CHAT.lastNodes = [];
       CHAT.refsChunks = [];
       CHAT.paintRefs = null;
-      dialogScreen(el, ctx2);
+      dialogScreen(el, ctx2, defaultSideOpen(id));
       if (id == null && agent) {
         const f2 = faces2();
         if (f2) setTimeout(async () => {

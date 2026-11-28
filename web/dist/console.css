@@ -3502,6 +3502,9 @@
   opacity: 0;
   transform: translateY(-6px);
 }
+.cc-app .chat-side[hidden] {
+  display: none;
+}
 
 /* styles/home.css */
 .cc-app .home {
