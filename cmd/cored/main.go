@@ -695,7 +695,7 @@ func run() error {
 		// 声明语义准入（2026-11-28 用户令「apply 文档的时候 validate scheme 了吗？没有就实现下」
 		// ——admit 闸 ③b 注册制）：Workflow 五面一致性（phases 起点/transitions 引用/节点 unit
 		// 词汇与声明完备性/entryPoints/triggers 事件注册/approval 词——run127 卡 triggered 实证）。
-		engine.SetSpecSemantics("Workflow", workflow.ValidateDecl)
+		engine.SetSpecSemantics("Workflow", func(raw []byte) error { return workflow.ValidateDecl(raw, sch) })
 		// workflow 执行模型绑定面（v0.49 R-7，workflow-runtime.md §11.1——apply 即实现骨架）：
 		// 写面开启时装配（绑定物化=一次普通 apply，同闸门同审计零旁路）。存量枚举=初值
 		// （metrics 阈值桥 v0.47 同款范式）+ DocApplied×Workflow 订阅热路径（积压合并一次
