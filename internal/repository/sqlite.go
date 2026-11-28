@@ -207,7 +207,8 @@ func (r *SQLiteRepo) serve(req *writeReq) {
 }
 
 // Delete 实现 ObjectDeleter（串行队列同通道；expectRV>0=乐观锁期望）。
-// 删除=现行行移除 + doc_history 终态行（rev=被删 rv、正文=库内原文）留账 +
+// 删除=现行行移除 + doc_history 终态兜底行（rev=被删 rv、正文=库内原文；仅当该 rv 尚无账
+// 行时补——每版一行的新口径下被删版本在写入时已落账，不重复插） +
 // ops apply_log "deleted" 行 + watch 广播——删除也是账面动作（R-DOC-7 规则 4；
 // workflow.md §9a bug 文档修复后删除即走此通路）。
 func (r *SQLiteRepo) Delete(kind, scope, name string, expectRV int64, fieldManager, reasonRef string) (int64, error) {
@@ -215,8 +216,8 @@ func (r *SQLiteRepo) Delete(kind, scope, name string, expectRV int64, fieldManag
 		return 0, ErrNoFieldManager
 	}
 	req := &writeReq{
-		del:  &deleteReq{kind: kind, scope: scope, name: name, expectRV: expectRV},
-		fm:   fieldManager,
+		del:    &deleteReq{kind: kind, scope: scope, name: name, expectRV: expectRV},
+		fm:     fieldManager,
 		reason: reasonRef,
 		ctx:    context.Background(),
 		resp:   make(chan writeResp, 1),
@@ -231,7 +232,7 @@ func (r *SQLiteRepo) Delete(kind, scope, name string, expectRV int64, fieldManag
 }
 
 // applyDelete 删除事务（串行队列内）：键校验→现行行读取（缺席=ErrNotFound；期望 rv 不符=
-// ConflictError）→doc_history 终态行+现行行删除同事务→ops 双写+广播。
+// ConflictError）→doc_history 终态兜底行（该 rv 无账行才补）+现行行删除同事务→ops 双写+广播。
 func (r *SQLiteRepo) applyDelete(req *writeReq) (int64, error) {
 	d := req.del
 	if _, err := objectKeyValidation(r.sch, d.kind, d.scope, d.name); err != nil {
@@ -262,10 +263,15 @@ func (r *SQLiteRepo) applyDelete(req *writeReq) (int64, error) {
 		return 0, &ConflictError{Kind: d.kind, Scope: d.scope, Name: d.name,
 			Expected: d.expectRV, Current: storedRV}
 	}
+	// issue #23 每版一行口径：被删版本在写入时已落 doc_history 同 rev 行——删除不重复插，
+	// 避免同 rev 双行破坏逐次账唯一性。仅当该 rv 无账行（历史库/种子导入前的旧数据）才补
+	// 终态行兜底，保证「删掉的版本正文仍可考古」不破。条件插入与删除同事务，任一步失败同滚。
 	if _, err := tx.Exec(`INSERT INTO doc_history
 	(kind, scope, name, rev, content, applied_at, field_manager)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		d.kind, d.scope, d.name, storedRV, storedCanon, stampNow(), "console:delete:"+req.fm); err != nil {
+SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS
+	(SELECT 1 FROM doc_history WHERE kind=? AND scope=? AND name=? AND rev=?)`,
+		d.kind, d.scope, d.name, storedRV, storedCanon, stampNow(), "console:delete:"+req.fm,
+		d.kind, d.scope, d.name, storedRV); err != nil {
 		_ = tx.Rollback()
 		return 0, fmt.Errorf("repository: docs DB 删除留账: %w", err)
 	}
@@ -432,19 +438,21 @@ func (r *SQLiteRepo) applyWrite(req *writeReq) (int64, string, error) {
 		return 0, "", err
 	}
 	// 权威落库 + 逐次正文历史捕获同事务（事务上方已开——SELECT 与写入原子，loop-88 A 象
-	// 修复）：update 动作先把
-	// 旧内容落 doc_history 一行（R-DOC-7 规则 4——逐次账非周期快照；rev=旧内容自带的
-	// resourceVersion、正文=库内原文逐字节、field_manager=本次翻页写者、applied_at=翻页时刻），
-	// 再 upsert 现行行；任一步失败同滚——不产生「现行已翻页、历史缺席」的缺口。
-	// create 无历史起点（第一版即现行，读现行 rv=现行正文）；noop/conflict 不落（无翻页发生）。
-	if action == "update" {
-		if _, err := tx.Exec(`INSERT INTO doc_history
+	// 修复）：每次「产生新版本」的写（create/update，含回滚/fromDraft 等特殊语义的 apply）
+	// 都把本次产生的新版本正文落 doc_history 一行——
+	//   rev=本次产生的新 resourceVersion、正文=落库原文逐字节、field_manager=本次写者、
+	//   applied_at=落库时刻（issue #23：旧口径只记「被替换版本」导致当前版本 rv 在逐次账
+	//   缺席——回滚写 rv=4 查无对应行；改为每版一行后「每次改动都有一行账」，回滚写同样
+	//   落 rev=4 行，账面不再断环）。
+	// 再 upsert 现行行；任一步失败同滚——不产生「现行已翻页、历史缺席该 rv 行」的缺口。
+	// noop/conflict 不落（无新版本产生，本就不该有行）。现行行仍在 doc 表（rv 反写行在册，
+	// RevContent 现行命中优先读 doc；历史 rv 读 doc_history 同 rev 行——两源正文逐字节同源）。
+	if _, err := tx.Exec(`INSERT INTO doc_history
 	(kind, scope, name, rev, content, applied_at, field_manager)
 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			o.Kind, o.Scope, o.Name, storedRV, storedCanon, stampNow(), req.fm); err != nil {
-			_ = tx.Rollback()
-			return 0, "", fmt.Errorf("repository: docs DB 历史落行: %w", err)
-		}
+		o.Kind, o.Scope, o.Name, newRV, string(out), stampNow(), req.fm); err != nil {
+		_ = tx.Rollback()
+		return 0, "", fmt.Errorf("repository: docs DB 历史落行: %w", err)
 	}
 	if _, err := tx.Exec(`INSERT INTO doc (kind, scope, name, content, resource_version, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -625,6 +633,18 @@ VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kind, scope, name) DO NOTHING`,
 				o.Kind, o.Scope, o.Name, string(o.Content), o.ResourceVersion, stampNow()); err != nil {
 				return inserted, fmt.Errorf("repository: 种子导入 %s/%s/%s: %w", o.Kind, o.Scope, o.Name, err)
 			}
+			// issue #23 特殊写入路径记账：种子导入直接 INSERT doc（绕过 applyWrite），
+			// 旧口径下逐次账零行=「导入对象无账」破口。补齐导入版本本身的一行账（rev=导入
+			// rv、正文=布局原文逐字节、field_manager=seed:import 诚实标注导入来源）；导入前
+			// 的历史版本正文布局未提供，不伪造——口径=导入对象逐次账自导入版本起算。
+			if o.ResourceVersion > 0 {
+				if _, err := r.db.Exec(`INSERT INTO doc_history
+	(kind, scope, name, rev, content, applied_at, field_manager)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					o.Kind, o.Scope, o.Name, o.ResourceVersion, string(o.Content), stampNow(), "seed:import"); err != nil {
+					return inserted, fmt.Errorf("repository: 种子历史落账 %s/%s/%s: %w", o.Kind, o.Scope, o.Name, err)
+				}
+			}
 			inserted++
 		}
 	}
@@ -692,9 +712,10 @@ WHERE kind=? AND scope=? AND name=? ORDER BY rev DESC`, kind, scope, name)
 }
 
 // RevContent 历史版本正文读面（RevContentFace 契约——GET /v1/rev-content 读半边；rv 由
-// face 层验为正整数）。数据源=doc_history 逐次账（R-DOC-7 规则 4）：rv=现行 → doc 表现行
-// 正文（该 rv 反写行在册）；rv<现行 → doc_history 行正文（该翻页时点原文逐字节）；其余 →
-// ErrRevNotFound（快照缺席，与对象缺席 ErrNotFound 分立）。读面零副作用零写路径。
+// face 层验为正整数）。数据源=doc_history 逐次账（R-DOC-7 规则 4，issue #23 每版一行口径）：
+// rv=现行 → doc 表现行正文（同 rv 的 history 行亦在册，现行命中优先读 doc 省一跳）；
+// rv<现行 → doc_history 同 rev 行正文（该版落库原文逐字节）；其余 → ErrRevNotFound
+// （快照缺席，与对象缺席 ErrNotFound 分立——不冒充现行）。读面零副作用零写路径。
 func (r *SQLiteRepo) RevContent(_ context.Context, kind, scope, name string, rv int64) (string, error) {
 	if _, err := objectKeyValidation(r.sch, kind, scope, name); err != nil {
 		return "", err

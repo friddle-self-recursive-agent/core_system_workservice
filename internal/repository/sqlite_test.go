@@ -186,11 +186,21 @@ spec:
 	if err != nil || o.ResourceVersion != 5 {
 		t.Fatalf("seed get rv: %+v err=%v", o, err)
 	}
+	// issue #23 特殊写入路径记账：种子导入绕过 applyWrite 也必须落导入版本一行账——
+	// 账自导入 rv 起算，fieldManager 诚实标注 seed:import（不伪造导入前的历史正文）。
+	hs, err := r.DocHistory("Agent", "global", "seed-a")
+	if err != nil || len(hs) != 1 || hs[0].Rev != 5 || hs[0].FieldManager != "seed:import" {
+		t.Fatalf("seed 逐次账应恰 rev=5/seed:import 一行，得 %+v err=%v", hs, err)
+	}
 	// 携现 rv 更新=update rv=6（种子导入不重排代——乐观锁续链）。
 	rv, action, err := r.Write(context.Background(), &Object{Kind: "Agent", Scope: "global", Name: "seed-a",
 		ResourceVersion: 5, Content: agentYAML("seed-a", "\n  extra: 1")}, "fm", "")
 	if err != nil || action != "update" || rv != 6 {
 		t.Fatalf("seed 续链: rv=%d action=%s err=%v", rv, action, err)
+	}
+	hs, err = r.DocHistory("Agent", "global", "seed-a")
+	if err != nil || len(hs) != 2 || hs[0].Rev != 6 || hs[1].Rev != 5 {
+		t.Fatalf("续链后逐次账应 rev=[6 5]，得 %+v err=%v", hs, err)
 	}
 	// 非空库再导入=幂等零行。
 	n2, err := r.SeedFromLayout(root)

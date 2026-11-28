@@ -2,7 +2,7 @@
 // tag/创建时间/提交 agent/提交人/相应 refs 公用一个 header 组件）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { frontMetaOf, metaHeaderHtml } from '../src/render/meta-header.js'
+import { frontMetaOf, metaHeaderHtml, paintMetaHeader } from '../src/render/meta-header.js'
 
 const FM = `---
 name: style
@@ -53,3 +53,23 @@ test('metaHeaderHtml：身份/账/tags/importance/归属四行；缺席整行不
   const xss = metaHeaderHtml(frontMetaOf('---\ntitle: "<img src=x>"\n---\n'), {})
   assert.ok(!xss.includes('<img src=x>'), 'esc 注入转义')
 })
+
+// issue #23 回归锚：GET /v1/doc-history 行按 rev 降序（rows[0]=最新/rows[last]=最早），
+// 创建须取最早行、最近提交须取最新行（写者同理）；修复前取反导致「创建晚于最近提交」。
+test('paintMetaHeader：创建取最早 rev 行、最近提交取最新 rev 行（时间线不倒挂）', async () => {
+  const slot = { isConnected: true, innerHTML: '', querySelectorAll: () => [] };
+  const rows = [
+    { rev: 4, at: '2026-11-28T11:00:00Z', fieldManager: 'agent:rollback' },
+    { rev: 3, at: '2026-11-28T10:04:00Z', fieldManager: 'probe-cleanup' },
+    { rev: 2, at: '2026-11-28T10:00:00Z', fieldManager: 'console:doc-chat' },
+    { rev: 1, at: '2026-11-28T09:04:00Z', fieldManager: 'corectl' },
+  ];
+  const ctx = { api: { docHistory: async () => ({ ok: true, data: { history: rows } }) } };
+  const content = 'apiVersion: core/v1\nkind: Provider\nmetadata:\n  name: gh\n  scope: global\n';
+  paintMetaHeader(slot, ctx, { kind: 'Provider', scope: 'global', name: 'gh', rv: 4 }, content);
+  await new Promise((resolve) => setImmediate(resolve)); // 冲异步补账（.then）
+  assert.match(slot.innerHTML, /2026-11-28 09:04/, '创建应取最早 rev 行时刻');
+  assert.ok(!slot.innerHTML.includes('2026-11-28 11:00'), '创建不应取最新 rev 行时刻（倒挂）');
+  assert.match(slot.innerHTML, /agent:rollback/, '最近提交写者应取最新 rev 行');
+  assert.ok(!slot.innerHTML.includes('corectl'), '最早写者不应冒充最近提交');
+});

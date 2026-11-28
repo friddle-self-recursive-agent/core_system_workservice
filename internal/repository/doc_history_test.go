@@ -1,7 +1,7 @@
 // doc_history_test.go —— 逐次正文历史（doc_history）与 sqlite rev-content 读面验收
-// （R-DOC-7 规则 4：逐次账非周期快照——apply 成功且内容变化先落旧内容一行；rev=该次时点
-// 正文逐字节；noop/conflict 不落行；create 无历史起点；清单不含正文；快照缺席=ErrRevNotFound
-// 与对象缺席 ErrNotFound 分立，不冒充）。
+// （R-DOC-7 规则 4：逐次账非周期快照——issue #23 起每版一行：create/update（含回滚/fromDraft
+// 特殊语义）都把本次产生的新版本正文落一行，rev=该版本 rv、fieldManager=本次写者；noop/conflict
+// 无新版本不落行；清单不含正文；快照缺席=ErrRevNotFound 与对象缺席 ErrNotFound 分立，不冒充）。
 package repository
 
 import (
@@ -18,7 +18,7 @@ func TestSQLiteHistoryCaptureOnContentChange(t *testing.T) {
 	if _, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "h1", Content: v1}, "fm-1", ""); err != nil || action != "create" {
 		t.Fatalf("create: action=%s err=%v", action, err)
 	}
-	// 改两次内容 → history 两条，rev=1/2 正确（行 rev=被翻页那次的 rv）。
+	// 每版一行：create 落 rev=1，改两次内容各落 rev=2/3（行 rev=该版本自带 rv）。
 	v2 := agentYAML("h1", "\n  extra: 1")
 	if rv, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "h1", ResourceVersion: 1, Content: v2}, "fm-2", ""); err != nil || rv != 2 || action != "update" {
 		t.Fatalf("第一改: rv=%d action=%s err=%v", rv, action, err)
@@ -27,7 +27,7 @@ func TestSQLiteHistoryCaptureOnContentChange(t *testing.T) {
 	if rv, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "h1", ResourceVersion: 2, Content: v3}, "fm-3", ""); err != nil || rv != 3 || action != "update" {
 		t.Fatalf("第二改: rv=%d action=%s err=%v", rv, action, err)
 	}
-	// noop（幂等重入）与 conflict（乐观锁冲突）都无翻页 → 不落历史行。
+	// noop（幂等重入）与 conflict（乐观锁冲突）都无新版本 → 不落历史行。
 	if _, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "h1", ResourceVersion: 3, Content: v3}, "fm-4", ""); err != nil || action != "noop" {
 		t.Fatalf("noop: action=%s err=%v", action, err)
 	}
@@ -38,37 +38,39 @@ func TestSQLiteHistoryCaptureOnContentChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("history: %v", err)
 	}
-	if len(hs) != 2 {
-		t.Fatalf("历史行数=%d（期望 2——仅两次内容翻页；noop/conflict 不落）", len(hs))
+	if len(hs) != 3 {
+		t.Fatalf("历史行数=%d（期望 3——create/两改各一行；noop/conflict 不落）", len(hs))
 	}
-	if hs[0].Rev != 2 || hs[1].Rev != 1 {
-		t.Fatalf("rev 序应降序 [2 1]，得 [%d %d]", hs[0].Rev, hs[1].Rev)
+	if hs[0].Rev != 3 || hs[1].Rev != 2 || hs[2].Rev != 1 {
+		t.Fatalf("rev 序应降序 [3 2 1]，得 [%d %d %d]", hs[0].Rev, hs[1].Rev, hs[2].Rev)
 	}
-	if hs[0].FieldManager != "fm-3" || hs[1].FieldManager != "fm-2" {
-		t.Fatalf("fieldManager 应为翻页写者（rev2←fm-3 rev1←fm-2），得 %q/%q", hs[0].FieldManager, hs[1].FieldManager)
+	if hs[0].FieldManager != "fm-3" || hs[1].FieldManager != "fm-2" || hs[2].FieldManager != "fm-1" {
+		t.Fatalf("fieldManager 应为该版写者（r3←fm-3 r2←fm-2 r1←fm-1），得 %q/%q/%q", hs[0].FieldManager, hs[1].FieldManager, hs[2].FieldManager)
 	}
-	if hs[0].AppliedAt.IsZero() || hs[1].AppliedAt.IsZero() {
-		t.Fatal("appliedAt 应在册（翻页时刻）")
+	if hs[0].AppliedAt.IsZero() || hs[1].AppliedAt.IsZero() || hs[2].AppliedAt.IsZero() {
+		t.Fatal("appliedAt 应在册（落库时刻）")
 	}
-	// 清单不含正文：Bytes=该次正文字节长度（与 rev-content 实取正文交叉对账）。
-	c2, err := r.RevContent(ctx, "Agent", "global", "h1", 2)
-	if err != nil {
-		t.Fatalf("rev-content r2: %v", err)
-	}
-	if hs[0].Bytes != len(c2) {
-		t.Fatalf("bytes 应与该次正文字节恒等（%d vs %d）", hs[0].Bytes, len(c2))
+	// 清单不含正文：Bytes=该版正文字节长度（与 rev-content 同 rev 实取正文交叉对账）。
+	for i, rv := range []int64{3, 2, 1} {
+		c, err := r.RevContent(ctx, "Agent", "global", "h1", rv)
+		if err != nil {
+			t.Fatalf("rev-content r%d: %v", rv, err)
+		}
+		if hs[i].Bytes != len(c) {
+			t.Fatalf("r%d bytes 应与该版正文恒等（%d vs %d）", rv, hs[i].Bytes, len(c))
+		}
 	}
 	// 对象缺席=ErrNotFound（与快照缺席分立）。
 	if _, err := r.DocHistory("Agent", "global", "absent"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("缺席对象应 ErrNotFound，得 %v", err)
 	}
-	// 在册无翻页史（仅创建）=空清单合法词形（不冒充）。
+	// 仅创建对象也有一行账（每版一行含创建版——issue #23 逐次账无缺口）。
 	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "h2", Content: agentYAML("h2", "")}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
 	hs2, err := r.DocHistory("Agent", "global", "h2")
-	if err != nil || len(hs2) != 0 {
-		t.Fatalf("零历史应为空清单，得 %d 行 err=%v", len(hs2), err)
+	if err != nil || len(hs2) != 1 || hs2[0].Rev != 1 {
+		t.Fatalf("仅创建应恰好 rev=1 一行，得 %d 行 err=%v", len(hs2), err)
 	}
 	// 键闸门：kind 未注册 / scope 缺失。
 	if _, err := r.DocHistory("Nope", "global", "h1"); !errors.Is(err, ErrNotRegistered) {
@@ -76,6 +78,73 @@ func TestSQLiteHistoryCaptureOnContentChange(t *testing.T) {
 	}
 	if _, err := r.DocHistory("Agent", "", "h1"); !errors.Is(err, ErrScope) {
 		t.Fatalf("空 scope 应 ErrScope，得 %v", err)
+	}
+}
+
+// TestSQLiteRollbackWriteLandsHistoryRow issue #23 回归锚：回滚写（把正文改回历史版本）
+// 必须落 doc_history 对应 rev 行——对象现值 rv=4 时账面须含 rev=4，不得只到 rev=3。
+func TestSQLiteRollbackWriteLandsHistoryRow(t *testing.T) {
+	r, _ := newSQLiteRepo(t)
+	ctx := context.Background()
+	steps := []struct {
+		rv      int64
+		content []byte
+		fm      string
+	}{
+		{0, agentYAML("rb", ""), "corectl"},
+		{1, agentYAML("rb", "\n  extra: 1"), "console:doc-chat"},
+		{2, agentYAML("rb", "\n  extra: 2"), "probe-cleanup"},
+		// 回滚写：正文退回 v2 词形，rv=3→4（issue #23 实证的那次回滚）。
+		{3, agentYAML("rb", "\n  extra: 1"), "agent:rollback"},
+	}
+	for i, s := range steps {
+		rv, action, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "rb",
+			ResourceVersion: s.rv, Content: s.content}, s.fm, "issue-23")
+		want := "update"
+		if i == 0 {
+			want = "create"
+		}
+		if err != nil || action != want || rv != int64(i+1) {
+			t.Fatalf("第 %d 写: rv=%d action=%s err=%v（期望 rv=%d/%s）", i+1, rv, action, err, i+1, want)
+		}
+	}
+	cur, err := r.Get(ctx, "Agent", "global", "rb")
+	gotRV := int64(-1)
+	if cur != nil {
+		gotRV = cur.ResourceVersion
+	}
+	if err != nil || gotRV != 4 {
+		t.Fatalf("现值应为 rv=4，得 %d err=%v", gotRV, err)
+	}
+	hs, err := r.DocHistory("Agent", "global", "rb")
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(hs) != 4 {
+		t.Fatalf("逐次账应 4 行（rev1-4），得 %d 行——回滚写 rv4 漏账", len(hs))
+	}
+	if hs[0].Rev != 4 || hs[0].FieldManager != "agent:rollback" {
+		t.Fatalf("rev4 行应在册且写者为回滚者，得 rev=%d fm=%q", hs[0].Rev, hs[0].FieldManager)
+	}
+	seen := map[int64]bool{}
+	for _, h := range hs {
+		if seen[h.Rev] {
+			t.Fatalf("逐次账 rev 重复：%d", h.Rev)
+		}
+		seen[h.Rev] = true
+	}
+	for rv := int64(1); rv <= 4; rv++ {
+		if !seen[rv] {
+			t.Fatalf("逐次账缺 rev=%d 行", rv)
+		}
+	}
+	// 回滚版本正文可读且与现行逐字节一致（账内 rev4 行非占位）。
+	c4, err := r.RevContent(ctx, "Agent", "global", "rb", 4)
+	if err != nil || c4 != string(cur.Content) {
+		t.Fatalf("rev4 正文应与现行一致，err=%v", err)
+	}
+	if !strings.Contains(c4, "extra: 1") || strings.Contains(c4, "extra: 2") {
+		t.Fatalf("rev4 正文应是回滚后的 v2 词形，得 %.80q", c4)
 	}
 }
 
