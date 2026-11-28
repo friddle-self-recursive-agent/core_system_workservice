@@ -58,3 +58,12 @@ test('contentPanel：markdown 正文先行（零 scheme-chips 首屏），YAML �
   const yamlHtml = contentPanel('Provider', 'p', 'kind: Provider\n')
   assert.match(yamlHtml, /<textarea[^>]*readonly/, 'YAML 纯文本保持')
 })
+
+test('relatedTasksOf：快照扁平行（无 status/spec 包裹）兜底读顶层字段', () => {
+  const flat = [{ scope: 'self-recursive-core', name: 'align-docs-reality-20261127', title: '对齐任务', phase: 'done', agentSession: 'sess-flat', lastAction: '完成' }]
+  const rows = relatedTasksOf('align-docs-reality-20261127', flat)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].phase, 'done', '扁平 phase 兜底')
+  assert.equal(rows[0].session, 'sess-flat', '扁平 agentSession 兜底')
+  assert.equal(rows[0].title, '对齐任务', '扁平 title 兜底')
+})

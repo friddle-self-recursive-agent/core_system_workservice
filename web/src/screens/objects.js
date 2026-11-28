@@ -16,17 +16,18 @@ import { t as tr } from '../core/i18n.js';
  * 确定性纯函数（机械直测）：对象名在任务字段（name/spec.title/summary/source/sourceRef）提及
  * 即命中；run 的 involved 提及即命中。状态人话、session 可点直达。零编造——不在册=诚实空态。 */
 
-/** 相关任务行匹配（纯函数）：Task 对象同名精确 + 他类对象字段提及；行=可点任务+可点会话。 */
+/** 相关任务行匹配（纯函数）：Task 对象同名精确 + 他类对象字段提及；行=可点任务+可点会话。
+ * 任务行双词形兼容（F-05 同口径）：快照扁平行（phase/agentSession 顶层）∪ API 嵌套行（status/spec 包裹）。 */
 export function relatedTasksOf(name, tasks) {
   const n = String(name || '');
   if (!n) return [];
   const out = [];
   (tasks || []).forEach((t) => {
     if (!t) return;
-    const id = (t.scope || 'global') + '/' + String(t.name || '');
     const spec = t.spec || {};
-    const st = t.status || {};
-    const hay = [t.name, spec.title, spec.summary, spec.source, spec.sourceRef]
+    const st = t.status || t; // 嵌套缺席=扁平行兜底
+    const id = (t.scope || 'global') + '/' + String(t.name || '');
+    const hay = [t.name, spec.title, spec.summary, spec.source, spec.sourceRef, t.title]
       .map((x) => String(x || '').toLowerCase()).join(' \n');
     const isSelf = String(t.name || '') === n;
     const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
@@ -34,9 +35,9 @@ export function relatedTasksOf(name, tasks) {
     const sess = String(st.agentSession || st.sessionId || '').trim();
     out.push({
       id, self: isSelf,
-      title: String(spec.title || t.name || id),
+      title: String(spec.title || t.title || t.name || id),
       phase: String(st.phase || ''),
-      agent: String(spec.agent || ''),
+      agent: String(spec.agent || t.agent || ''),
       session: sess,
       lastAction: String(st.lastAction || ''),
     });

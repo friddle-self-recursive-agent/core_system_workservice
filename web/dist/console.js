@@ -13336,10 +13336,10 @@ spec:
     const out = [];
     (tasks || []).forEach((t2) => {
       if (!t2) return;
-      const id = (t2.scope || "global") + "/" + String(t2.name || "");
       const spec = t2.spec || {};
-      const st = t2.status || {};
-      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef].map((x) => String(x || "").toLowerCase()).join(" \n");
+      const st = t2.status || t2;
+      const id = (t2.scope || "global") + "/" + String(t2.name || "");
+      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef, t2.title].map((x) => String(x || "").toLowerCase()).join(" \n");
       const isSelf = String(t2.name || "") === n;
       const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
       if (!isSelf && !mentioned) return;
@@ -13347,9 +13347,9 @@ spec:
       out.push({
         id,
         self: isSelf,
-        title: String(spec.title || t2.name || id),
+        title: String(spec.title || t2.title || t2.name || id),
         phase: String(st.phase || ""),
-        agent: String(spec.agent || ""),
+        agent: String(spec.agent || t2.agent || ""),
         session: sess,
         lastAction: String(st.lastAction || "")
       });
