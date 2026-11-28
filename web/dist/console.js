@@ -1109,7 +1109,33 @@ var CoreConsoleWeb = (() => {
     ["\u5F52\u5C5E\uFF1A", "Owners: "],
     ["\u5F52\u5C5E\u5BF9\u8C61", "Owning object"],
     ["\u4F1A\u8BDD\u5217\u8868", "Sessions"],
-    ["\u4F1A\u8BDD\u6E05\u5355\u5F00\u5408\uFF08\u5177\u4F53\u4F1A\u8BDD\u6DF1\u94FE\u9ED8\u8BA4\u6536\u8D77\uFF09", "Toggle session list (collapsed by default on session deep links)"]
+    ["\u4F1A\u8BDD\u6E05\u5355\u5F00\u5408\uFF08\u5177\u4F53\u4F1A\u8BDD\u6DF1\u94FE\u9ED8\u8BA4\u6536\u8D77\uFF09", "Toggle session list (collapsed by default on session deep links)"],
+    /* ── 原地对话修改面板 doc-chat（2026-11-28）── */
+    ["\u5BF9\u8BDD\u4FEE\u6539 \xB7 ", "Chat-edit \xB7 "],
+    ["\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u539F\u5730\u5BF9\u8BDD\u4FEE\u6539\u4E0D\u53EF\u7528\uFF1B\u53EF\u5728\u300C\u539F\u6587\u300D\u89C6\u56FE\u624B\u7F16\uFF0C\u6216\u7ECF\u4F1A\u8BDD\u5C4F\u5BF9\u8BDD\u3002", "Chat bridge not injected (chatfaces.js absent) \u2014 in-place chat-edit unavailable; edit in the raw view or use the chat screen."],
+    ["\u5C1A\u65E0\u5BF9\u8BDD\u2014\u2014\u4E0B\u65B9\u8F93\u5165\u4FEE\u6539\u610F\u56FE\u53D1\u9001\u3002", "No messages yet \u2014 type your edit intent below and send."],
+    ["\u601D\u8003", "Thinking"],
+    ["\u4FEE\u6539\u610F\u56FE\uFF08\u5982\uFF1A\u628A standard \u6A21\u578B\u6362\u6210 reasoning-tier\uFF09\u2014\u2014\u53D1\u9001\u540E\u52A9\u624B\u56DE\u4FEE\u6539\u540E YAML\uFF0C\u5BF9\u6BD4\u786E\u8BA4\u5373 Apply", "Edit intent (e.g. switch standard model to reasoning-tier) \u2014 the assistant replies with modified YAML; compare then Apply"],
+    ["\u5BF9\u6BD4\u5E76 Apply", "Compare & Apply"],
+    ["\u53D1\u9001", "Send"],
+    ["\u505C\u6B62", "Stop"],
+    ["\u8BF7\u5148\u5199\u4FEE\u6539\u610F\u56FE", "Write your edit intent first"],
+    ["\u4E0A\u4E00\u8F6E\u4ECD\u5728\u8FD0\u884C\u2014\u2014\u53EF\u70B9\u505C\u6B62", "Previous turn still running \u2014 you can stop it"],
+    ["\u53D1\u9001\u5931\u8D25\uFF1A", "Send failed: "],
+    ["\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08", "New session failed ("],
+    ["\u6700\u8FD1\u56DE\u590D\u672A\u542B ```yaml \u4EE3\u7801\u5757\u2014\u2014\u8BF7\u8BA9\u52A9\u624B\u7ED9\u51FA\u4FEE\u6539\u540E\u7684\u5B8C\u6574 YAML \u58F0\u660E\u3002", "The latest reply has no ```yaml block \u2014 ask the assistant for the full modified YAML declaration."],
+    ["\u4FEE\u6539\u9884\u89C8\uFF08", "Change preview ("],
+    [" \u5904\u53D8\u66F4\uFF09", " changes)"],
+    ["\u6279\u51C6\uFF08Apply\uFF09", "Approve (Apply)"],
+    ["\u653E\u5F03", "Discard"],
+    ["\u6B63\u5728 Apply\u2026", "Applying\u2026"],
+    ["\u5DF2 Apply\uFF08rv=", "Applied (rv="],
+    ["\u5BF9\u8BDD\u4FEE\u6539\u5DF2 Apply", "Chat edit applied"],
+    ["Apply \u5931\u8D25\uFF1A", "Apply failed: "],
+    ["\uFF08\u7248\u672C\u5DF2\u53D8\u2014\u2014\u91CD\u8BD5\u5C06\u53D6\u65B0\u7248\u672C\uFF09", " (version changed \u2014 retry fetches the new one)"],
+    ["\u8BF7\u4FEE\u6539\u5BF9\u8C61 ", "Please modify object "],
+    ["\uFF08\u5F53\u524D YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF0C\u5168\u6587\u5982\u4E0B\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A", " (current YAML declaration below is authoritative). Edit intent: "],
+    ["\u8F93\u51FA\u8981\u6C42\uFF1A\u7ED9\u51FA\u4FEE\u6539\u540E\u7684\u5B8C\u6574 YAML \u58F0\u660E\uFF0C\u653E\u5728\u4E00\u4E2A ```yaml \u4EE3\u7801\u5757\u91CC\uFF1B\u4E0D\u6539\u65E0\u5173\u5B57\u6BB5\uFF1B\u89E3\u91CA\u653E\u4EE3\u7801\u5757\u5916\u3002", "Output: the complete modified YAML declaration in one ```yaml block; do not touch unrelated fields; put explanations outside the block."]
   ];
 
   // src/core/i18n.js
@@ -11719,31 +11745,539 @@ ${text2}</tr>
     if (end < 0) return { fm: "", body: s };
     return { fm: s.slice(4, end), body: s.slice(end + 4).replace(/^\n/, "") };
   }
-  function isChipValue(v) {
-    if (v == null) return false;
-    if (Array.isArray(v)) return v.length <= 4 && v.every((x) => x == null || typeof x !== "object" || Array.isArray(x));
-    if (typeof v === "object") return false;
-    return String(v).length <= 80;
-  }
-  function schemeChips(frontmatter) {
-    const fm = String(frontmatter || "").trim();
-    if (!fm) return "";
-    const tree = loadYaml(fm);
-    if (!tree || !Object.keys(tree).length) return '<span class="scheme-chip mono">' + esc(trunc(fm, 80)) + "</span>";
-    const chips = [], complex = [];
-    Object.keys(tree).forEach((k) => {
-      const v = tree[k];
-      if (isChipValue(v)) {
-        const val = Array.isArray(v) ? v.join(", ") : String(v);
-        chips.push('<span class="scheme-chip"><span class="scheme-chip-k">' + esc(k) + '</span><span class="scheme-chip-v">' + esc(trunc(val, 80)) + "</span></span>");
-      } else complex.push([k, v]);
-    });
-    let out = '<div class="scheme-chips">' + chips.join("") + "</div>";
-    if (complex.length) {
-      const lines = complex.map(([k, v]) => k + ": " + (typeof v === "string" ? v : JSON.stringify(v, null, 2))).join("\n");
-      out += '<details class="scheme-more"><summary>' + esc(t("scheme \u8BE6\u7EC6\uFF08") + complex.length + t(" \u9879\uFF0C\u9ED8\u8BA4\u6298\u53E0\uFF09")) + '</summary><pre class="mono scheme-more-pre">' + esc(trunc(lines, 4e3)) + "</pre></details>";
+
+  // src/screens/chat-nodes.js
+  function blocksOf(content) {
+    const out = { text: "", reasoning: "", toolCalls: [] };
+    if (!Array.isArray(content)) return out;
+    for (const b of content) {
+      if (!b || typeof b !== "object") continue;
+      if (b.type === "text" && typeof b.text === "string") out.text += (out.text ? "\n" : "") + b.text;
+      else if (b.type === "reasoning" && typeof b.text === "string") out.reasoning += (out.reasoning ? "\n" : "") + b.text;
+      else if (b.type === "tool-call") out.toolCalls.push({ id: String(b.id || b.callId || ""), name: String(b.name || ""), argsRaw: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? b.args ?? "") });
     }
     return out;
+  }
+  function nodeKey(n) {
+    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
+  }
+  function resultTextOf(data) {
+    const d = data && typeof data === "object" ? data : {};
+    if (typeof d.content === "string" && d.content) return d.content;
+    const msg = d.message && typeof d.message === "object" ? d.message : null;
+    if (msg && Array.isArray(msg.content)) {
+      const text2 = msg.content.filter((b) => b && b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
+      if (text2) return text2;
+    }
+    if (d.output != null) return typeof d.output === "string" ? d.output : JSON.stringify(d.output);
+    return "";
+  }
+  function triggerOf(source) {
+    const s = source && typeof source === "object" ? source : {};
+    const kind = String(s.kind || "");
+    if (kind === "tool-jobs") return { id: "job" };
+    if (kind === "cordis-host-runner") return { id: "plugin" };
+    if (kind === "schedule") return { id: "schedule" };
+    if (kind === "subagent-settled") return { id: "subagent", stopReason: String(s.stopReason || "") };
+    if (kind === "goal") return { id: "goal" };
+    if (kind === "agent-message") return { id: "agent" };
+    if (kind === "team-message") return { id: "team" };
+    if (kind === "webhook") return String(s.provider || "") === "github" ? { id: "github" } : { id: "webhook" };
+    if (kind === "retry") return { id: "retry" };
+    const form = String(s.form || "");
+    if (form === "recall" || kind === "session-recall") return { id: "recall" };
+    return { id: "inject", form };
+  }
+  var TRIGGER_TITLES = {
+    job: () => t("\u540E\u53F0\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0"),
+    plugin: () => t("\u63D2\u4EF6\u72B6\u6001\u66F4\u65B0"),
+    schedule: () => t("\u81EA\u52A8\u5316\u4EFB\u52A1"),
+    goal: () => t("\u7EE7\u7EED\u6267\u884C\u76EE\u6807"),
+    agent: () => t("\u6536\u5230\u4EFB\u52A1\u6D88\u606F"),
+    team: () => t("\u6536\u5230\u56E2\u961F\u6D88\u606F"),
+    github: () => t("\u6536\u5230 GitHub \u4E8B\u4EF6"),
+    webhook: () => t("\u6536\u5230\u5916\u90E8\u4E8B\u4EF6"),
+    retry: () => t("\u5DF2\u8BF7\u6C42\u7EE7\u7EED\u751F\u6210"),
+    inject: () => t("\u4E0A\u4E0B\u6587\u6CE8\u5165"),
+    recall: () => t("\u8DE8\u4F1A\u8BDD\u53EC\u56DE")
+  };
+  var SUBAGENT_TITLES = {
+    completed: () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\u4EFB\u52A1"),
+    aborted: () => t("\u5B50\u667A\u80FD\u4F53\u4EFB\u52A1\u5DF2\u505C\u6B62"),
+    error: () => t("\u5B50\u667A\u80FD\u4F53\u6267\u884C\u5931\u8D25"),
+    "max-tokens": () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u8FBE token \u4E0A\u9650"),
+    refusal: () => t("\u5B50\u667A\u80FD\u4F53\u62D2\u7EDD\u6267\u884C")
+  };
+  function noticeTitle(tg) {
+    if (tg.id === "subagent") return (SUBAGENT_TITLES[tg.stopReason] || (() => t("\u5B50\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0")))();
+    return (TRIGGER_TITLES[tg.id] || TRIGGER_TITLES.inject)();
+  }
+  function noticeSummary(source) {
+    const s = source && typeof source === "object" ? source : {};
+    if (String(s.form || "") === "notice" && typeof s.summary === "string" && s.summary) {
+      const t2 = String(s.summary);
+      return t2.length > 120 ? t2.slice(0, 119) + "\u2026" : t2;
+    }
+    return "";
+  }
+  function producerLabel(source) {
+    const s = source && typeof source === "object" ? source : {};
+    if (typeof s.plugin === "string" && s.plugin) return s.plugin;
+    const kind = String(s.kind || "");
+    return kind && kind !== "user" ? kind : "";
+  }
+  function formatRunDuration(ms) {
+    const total = Math.floor(Number(ms) || 0);
+    if (total < 1e3) return "";
+    const h = Math.floor(total / 36e5);
+    const m = Math.floor(total % 36e5 / 6e4);
+    const s = Math.floor(total % 6e4 / 1e3);
+    const parts = [];
+    if (h) parts.push(h + t("\u5C0F\u65F6"));
+    if (m) parts.push(m + t("\u5206"));
+    parts.push(s + t("\u79D2"));
+    return parts.join("");
+  }
+  var pad2 = (n) => String(n).padStart(2, "0");
+  function formatClock(time, now) {
+    const d = new Date(Number(time) || 0);
+    const n = new Date(Number(now) || Date.now());
+    if (!Number(time) || isNaN(d.getTime())) return "";
+    const clock = pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+    if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) return clock;
+    const md = d.getFullYear() === n.getFullYear() ? t("{m}\u6708{d}\u65E5").replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate())) : t("{y}\u5E74{m}\u6708{d}\u65E5").replace("{y}", String(d.getFullYear())).replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate()));
+    return md + " " + clock;
+  }
+  function normalizeTurnReason(raw) {
+    if (raw && typeof raw === "object") {
+      if (raw.kind) return String(raw.kind);
+      if (raw.reason && typeof raw.reason === "object" && raw.reason.kind) return String(raw.reason.kind);
+      return "";
+    }
+    return String(raw ?? "");
+  }
+  function turnTailOf(reason, durationMs) {
+    const r = normalizeTurnReason(reason);
+    if (r === "interrupted" || r === "aborted" || r === "disposed" || r === "cancelled" || r === "canceled") {
+      return { word: t("\u5DF2\u505C\u6B62"), duration: "", hint: "", cls: "stopped" };
+    }
+    if (r === "max-tokens") return { word: t("\u5DF2\u8FBE\u5230\u8F93\u51FA token \u4E0A\u9650"), duration: "", hint: t("\u56DE\u7B54\u88AB\u622A\u65AD\uFF0C\u5DF2\u6709\u8F93\u51FA\u4FDD\u7559\u5728\u5BF9\u8BDD\u4E2D\u3002\u53D1\u9001\u300C\u7EE7\u7EED\u300D\u53EF\u8BA9\u6A21\u578B\u63A5\u7740\u8F93\u51FA\u3002"), cls: "maxtok" };
+    if (r && r !== "complete" && r !== "completed" && r !== "end_turn" && r !== "stop-sequence") {
+      return { word: t("\u5904\u7406\u5931\u8D25"), duration: "", hint: "", cls: "failed" };
+    }
+    const dur = formatRunDuration(durationMs);
+    return { word: dur ? t("\u5DF2\u5B8C\u6210\uFF0C\u7528\u65F6 ") + dur : t("\u5DF2\u5B8C\u6210"), duration: dur, hint: "", cls: "ok" };
+  }
+  function todoModel(todos) {
+    const rows = (Array.isArray(todos) ? todos : []).filter((x) => x && typeof x.content === "string");
+    const done = rows.filter((x) => x.status === "completed").length;
+    const active = rows.find((x) => x.status === "in_progress");
+    return { rows, done, total: rows.length, active: active ? active.content : "" };
+  }
+  var TOOL_TITLES = {
+    bash: () => t("\u8FD0\u884C\u547D\u4EE4"),
+    pwsh: () => t("\u8FD0\u884C\u547D\u4EE4"),
+    read: () => t("\u8BFB\u53D6"),
+    read_image: () => t("\u8BFB\u53D6\u56FE\u7247"),
+    write: () => t("\u5199\u5165"),
+    edit: () => t("\u7F16\u8F91"),
+    apply_patch: () => t("\u7F16\u8F91"),
+    grep: () => t("\u641C\u7D22\u6587\u4EF6\u5185\u5BB9"),
+    glob: () => t("\u67E5\u627E\u6587\u4EF6"),
+    web_search: () => t("\u7F51\u9875\u641C\u7D22"),
+    web_fetch: () => t("\u7F51\u9875\u83B7\u53D6"),
+    todo_write: () => t("\u66F4\u65B0\u4EFB\u52A1\u6E05\u5355"),
+    ask_user_question: () => t("\u63D0\u95EE")
+  };
+  function toolTitle(name) {
+    const fn = TOOL_TITLES[String(name || "").toLowerCase()];
+    return fn ? fn() : "";
+  }
+  var SUMMARY_KEYS = ["file_path", "path", "command", "url", "query", "pattern", "note"];
+  function toolSummary(name, argsRaw) {
+    let obj = null;
+    try {
+      obj = JSON.parse(String(argsRaw || ""));
+    } catch {
+    }
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const k of SUMMARY_KEYS) {
+        const v = obj[k];
+        if (typeof v === "string" && v.trim()) return trunc(v.trim(), 90);
+      }
+    }
+    const s = String(argsRaw || "").trim();
+    return s ? trunc(s.split("\n")[0], 90) : "";
+  }
+  function toolStateOf(hasResult, errorObj, meta, name) {
+    if (!hasResult) return "running";
+    if (meta && typeof meta === "object" && meta.stopped === true) return "stopped";
+    if (errorObj) return "error";
+    const nm = String(name || "").toLowerCase();
+    if ((nm === "bash" || nm === "pwsh") && meta && typeof meta === "object") {
+      const code = Number(meta.exitCode);
+      if (Number.isFinite(code) && code !== 0) return "error";
+      if (typeof meta.signal === "string" && meta.signal) return "error";
+    }
+    return "ok";
+  }
+  function metaSummary(name, meta) {
+    if (!meta || typeof meta !== "object") return "";
+    const nm = String(name || "").toLowerCase();
+    if (nm === "grep" || nm === "glob") {
+      if (meta.shape === "paths" && Number.isFinite(Number(meta.total))) {
+        return t("{shown} \u4E2A\u8DEF\u5F84").replace("{shown}", String(meta.truncated != null ? Number(meta.shown ?? meta.total) : Number(meta.total)));
+      }
+      if (Number.isFinite(Number(meta.total))) {
+        if (Number(meta.total) === 0) return t("\u65E0\u7ED3\u679C");
+        const files = Number.isFinite(Number(meta.files)) ? Number(meta.files) : null;
+        return t("{shown} \u5904\u5339\u914D \xB7 {files} \u4E2A\u6587\u4EF6").replace("{shown}", String(Number(meta.shown ?? meta.total))).replace("{files}", files != null ? String(files) : "\u2014");
+      }
+      return "";
+    }
+    if (nm === "read" && Array.isArray(meta.lines) && meta.lines.length) {
+      return t("{n} \u884C").replace("{n}", String(meta.lines.length));
+    }
+    if ((nm === "edit" || nm === "apply_patch" || nm === "write") && Array.isArray(meta.diffs)) {
+      return meta.diffs.length ? t("{n} \u4E2A\u6587\u4EF6\u53D8\u66F4").replace("{n}", String(meta.diffs.length)) : "";
+    }
+    if (nm === "web_fetch" && Number.isFinite(Number(meta.statusCode))) {
+      return "HTTP " + String(meta.statusCode);
+    }
+    return "";
+  }
+  function usageTotal(usage) {
+    const u = usage && typeof usage === "object" ? usage : {};
+    return ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"].reduce((sum, k) => sum + (Number.isFinite(Number(u[k])) ? Number(u[k]) : 0), 0);
+  }
+  function usageDetail(usage) {
+    const u = usage && typeof usage === "object" ? usage : {};
+    const lines = [];
+    if (Number.isFinite(Number(u.inputTokens))) lines.push(t("\u672A\u7F13\u5B58\u8F93\u5165") + " " + u.inputTokens);
+    if (Number.isFinite(Number(u.cacheReadTokens))) lines.push(t("\u7F13\u5B58\u8BFB\u53D6") + " " + u.cacheReadTokens);
+    if (Number.isFinite(Number(u.cacheWriteTokens))) lines.push(t("\u7F13\u5B58\u5199\u5165") + " " + u.cacheWriteTokens);
+    if (Number.isFinite(Number(u.outputTokens))) lines.push(t("\u8F93\u51FA") + " " + u.outputTokens);
+    if (Number.isFinite(Number(u.reasoningTokens))) lines.push(t("\uFF08\u5176\u4E2D\u63A8\u7406 {tokens}\uFF09").replace("{tokens}", String(u.reasoningTokens)));
+    return lines.join(" \xB7 ");
+  }
+  function mapTranscript(events) {
+    const nodes = [];
+    const tools = /* @__PURE__ */ new Map();
+    const order = [];
+    const rows = Array.isArray(events) ? [...events] : [];
+    rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
+    const turnStarts = /* @__PURE__ */ new Map();
+    let emittedSinceTurnStart = 0;
+    let lastBoundaryTurnStart = false;
+    for (const ev of rows) {
+      if (!ev || typeof ev !== "object") continue;
+      const type2 = String(ev.type || "");
+      const data = ev.data && typeof ev.data === "object" ? ev.data : {};
+      const seq2 = Number(ev.seq) || 0;
+      const time = Number(ev.time) || 0;
+      if (type2 === "turn/start") {
+        turnStarts.set(Number(data.turn) || 0, time);
+        emittedSinceTurnStart = 0;
+        lastBoundaryTurnStart = true;
+        continue;
+      }
+      if (type2 === "user/message") {
+        const src = data.source && typeof data.source === "object" ? data.source : null;
+        const kind = String(src && src.kind || "");
+        if (kind === "compact-checkpoint") continue;
+        const b = blocksOf(data.content);
+        if (kind !== "user") {
+          const tg = triggerOf(src);
+          const waking = lastBoundaryTurnStart && emittedSinceTurnStart === 0;
+          nodes.push({
+            kind: "notice",
+            seq: seq2,
+            time,
+            text: b.text,
+            waking,
+            trigger: tg,
+            title: noticeTitle(tg),
+            summary: noticeSummary(src),
+            producer: producerLabel(src)
+          });
+          emittedSinceTurnStart += 1;
+          lastBoundaryTurnStart = false;
+          continue;
+        }
+        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: false });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "assistant/message") {
+        const b = blocksOf(data.content);
+        for (const tc of b.toolCalls) order.push(tc.id);
+        if (!b.text && !b.reasoning && b.toolCalls.length) {
+          emittedSinceTurnStart += 1;
+          lastBoundaryTurnStart = false;
+          continue;
+        }
+        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning, usage: data.usage ?? null });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "tool/call") {
+        const id = String(data.callId || data.id || "");
+        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "", error: null, meta: null });
+        order.push(id);
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "tool/result") {
+        const id = String(data.callId || data.id || "");
+        const t2 = tools.get(id);
+        if (t2) {
+          t2.result = resultTextOf(data);
+          if (data.error && typeof data.error === "object") t2.error = { name: String(data.error.name || ""), code: String(data.error.code || "") };
+          if (data.meta && typeof data.meta === "object") t2.meta = data.meta;
+          if (!t2.error && data.message && typeof data.message === "object") {
+            const bad = Array.isArray(data.message.content) && data.message.content.some((b) => b && typeof b === "object" && b.isError === true);
+            if (bad) t2.error = { name: "", code: "" };
+          }
+        }
+      } else if (type2 === "turn/end") {
+        const turn = Number(data.turn) || 0;
+        const startedAt = turnStarts.get(turn) || 0;
+        nodes.push({ kind: "turntail", seq: seq2, time, reason: normalizeTurnReason(data.reason), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
+        emittedSinceTurnStart = 0;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "todo/write") {
+        nodes.push({ kind: "todo", seq: seq2, time, todos: Array.isArray(data.todos) ? data.todos : [] });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "llm/retry") {
+        nodes.push({ kind: "retry", seq: seq2, time, data });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      } else if (type2 === "system/message" || type2 === "developer/message") {
+        nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
+        emittedSinceTurnStart += 1;
+        lastBoundaryTurnStart = false;
+      }
+    }
+    const seenToolIds = /* @__PURE__ */ new Set();
+    let lastTurnEndSeq = 0;
+    for (const n of nodes) if (n.kind === "turntail" && Number(n.seq) > lastTurnEndSeq) lastTurnEndSeq = Number(n.seq);
+    for (const id of order) {
+      if (seenToolIds.has(id)) continue;
+      seenToolIds.add(id);
+      const t2 = tools.get(id);
+      if (!t2) continue;
+      const interrupted = !t2.result && lastTurnEndSeq > 0 && t2.seq < lastTurnEndSeq;
+      const state = interrupted ? "stopped" : toolStateOf(!!t2.result, t2.error, t2.meta, t2.name);
+      nodes.push({
+        kind: "tool",
+        seq: t2.seq,
+        time: t2.time,
+        name: t2.name || t("\u5DE5\u5177"),
+        args: t2.args,
+        result: t2.result,
+        error: t2.error,
+        meta: t2.meta,
+        state,
+        title: toolTitle(t2.name),
+        summary: toolSummary(t2.name, t2.args),
+        metaLine: metaSummary(t2.name, t2.meta)
+      });
+    }
+    nodes.sort((a, b) => a.seq - b.seq);
+    return nodes;
+  }
+
+  // src/screens/doc-chat.js
+  var SESSIONS = /* @__PURE__ */ new Map();
+  function faces2() {
+    return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
+  }
+  function extractYamlBlock(text2) {
+    const s = String(text2 || "");
+    const blocks = [...s.matchAll(/```(?:yaml|yml)?\s*\n([\s\S]*?)```/g)].map((m) => m[1]);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i].trim();
+      if (/^(apiVersion|kind|metadata):/m.test(b)) return b;
+    }
+    return "";
+  }
+  function buildEditPrompt(ref, current, intent) {
+    return t("\u8BF7\u4FEE\u6539\u5BF9\u8C61 ") + (ref ? ref.kind + "/" + (ref.scope || "global") + "/" + ref.name : "") + t("\uFF08\u5F53\u524D YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF0C\u5168\u6587\u5982\u4E0B\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A") + String(intent || "") + "\n\n```yaml\n" + String(current || "") + "\n```\n" + t("\u8F93\u51FA\u8981\u6C42\uFF1A\u7ED9\u51FA\u4FEE\u6539\u540E\u7684\u5B8C\u6574 YAML \u58F0\u660E\uFF0C\u653E\u5728\u4E00\u4E2A ```yaml \u4EE3\u7801\u5757\u91CC\uFF1B\u4E0D\u6539\u65E0\u5173\u5B57\u6BB5\uFF1B\u89E3\u91CA\u653E\u4EE3\u7801\u5757\u5916\u3002");
+  }
+  function transcriptRows(events) {
+    const rows = [];
+    (events || []).forEach((e) => {
+      if (!e || !e.type) return;
+      const d = e.data || {};
+      if (e.type === "user/message" && d.source && d.source.kind === "user") {
+        const text2 = (d.content || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n");
+        rows.push({ kind: "user", seq: e.seq, text: text2 });
+      } else if (e.type === "assistant/message") {
+        const msg = d.message || d;
+        const blocks = Array.isArray(msg.content) ? msg.content : [];
+        const reasoning = blocks.filter((b) => b.type === "reasoning").map((b) => b.text).join("\n");
+        const text2 = blocks.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+        rows.push({ kind: "assistant", seq: e.seq, text: text2, reasoning });
+      } else if (e.type === "turn/end") {
+        rows.push({ kind: "tail", seq: e.seq, tail: turnTailOf(d.reason, 0) });
+      }
+    });
+    return rows;
+  }
+  function rowsHtmlOf(rows) {
+    const list2 = rows || [];
+    if (!list2.length) return '<div class="small faint">' + esc(t("\u5C1A\u65E0\u5BF9\u8BDD\u2014\u2014\u4E0B\u65B9\u8F93\u5165\u4FEE\u6539\u610F\u56FE\u53D1\u9001\u3002")) + "</div>";
+    return list2.map((r) => {
+      if (r.kind === "user") {
+        return '<div class="dc-row dc-user"><div class="dc-bubble">' + esc(r.text) + "</div></div>";
+      }
+      if (r.kind === "assistant") {
+        const rfold = r.reasoning ? '<details class="chat-fold dc-fold"><summary><span class="ex-chev">\u25B8</span>' + esc(t("\u601D\u8003")) + '</summary><div class="ex-body">' + esc(r.reasoning) + "</div></details>" : "";
+        return '<div class="dc-row dc-assistant">' + rfold + (r.text ? '<div class="dc-text">' + esc(r.text) + "</div>" : "") + "</div>";
+      }
+      if (r.kind === "tail" && r.tail) {
+        return '<div class="dc-row dc-tail"><span class="dc-tail-' + esc(r.tail.cls || "ok") + '">' + esc(r.tail.word || "") + "</span></div>";
+      }
+      return "";
+    }).join("");
+  }
+  function panelHtml(state) {
+    const s = state || {};
+    return '<div class="dc-meta">' + (s.refLine || "") + '</div><div class="dc-transcript" data-dc-transcript>' + rowsHtmlOf(s.rows) + '</div><div data-dc-diff></div><div class="dc-composer"><textarea class="inp" data-dc-text rows="2" placeholder="' + esc(t("\u4FEE\u6539\u610F\u56FE\uFF08\u5982\uFF1A\u628A standard \u6A21\u578B\u6362\u6210 reasoning-tier\uFF09\u2014\u2014\u53D1\u9001\u540E\u52A9\u624B\u56DE\u4FEE\u6539\u540E YAML\uFF0C\u5BF9\u6BD4\u786E\u8BA4\u5373 Apply")) + '"></textarea><div class="dc-acts"><button type="button" class="btn btn-chip sm" data-dc-preview>' + esc(t("\u5BF9\u6BD4\u5E76 Apply")) + '</button><button type="button" class="btn btn-chip sm" data-dc-send>' + esc(t("\u53D1\u9001")) + '</button><button type="button" class="btn btn-ghost sm" data-dc-stop hidden>' + esc(t("\u505C\u6B62")) + '</button><span class="small faint" data-dc-msg>' + esc(s.note || "") + "</span></div></div>";
+  }
+  function openDocChat(opts) {
+    const o = opts || {};
+    const f = faces2();
+    const node = document.createElement("div");
+    node.className = "doc-chat";
+    if (!f || typeof f.send !== "function") {
+      node.innerHTML = '<div class="ob-empty">' + esc(t("\u5BF9\u8BDD\u901A\u8DEF\u672A\u6CE8\u5165\uFF08chatfaces.js \u7F3A\u5E2D\uFF09\u2014\u2014\u539F\u5730\u5BF9\u8BDD\u4FEE\u6539\u4E0D\u53EF\u7528\uFF1B\u53EF\u5728\u300C\u539F\u6587\u300D\u89C6\u56FE\u624B\u7F16\uFF0C\u6216\u7ECF\u4F1A\u8BDD\u5C4F\u5BF9\u8BDD\u3002")) + "</div>";
+      htmlModal({ title: o.title || t("\u5BF9\u8BDD\u4FEE\u6539"), wide: true, node, holder: document.body });
+      return;
+    }
+    const painted = /* @__PURE__ */ new Set();
+    let sessionId = SESSIONS.get(o.refKey || "") || "";
+    let running = false;
+    let current = String(o.current || "");
+    const state = { rows: [], refLine: "", note: "" };
+    const park = document.createElement("div");
+    node.innerHTML = panelHtml(state);
+    htmlModal({ title: o.title || t("\u5BF9\u8BDD\u4FEE\u6539"), wide: true, node, holder: park }).then(() => {
+      clearInterval(timer);
+    });
+    const paintRows = () => {
+      const box = node.querySelector("[data-dc-transcript]");
+      if (box) box.innerHTML = rowsHtmlOf(state.rows);
+      box && (box.scrollTop = box.scrollHeight);
+    };
+    const refresh3 = async () => {
+      if (!sessionId) return;
+      const r = await f.transcript(sessionId, 40);
+      if (r.status !== 200 || !Array.isArray(r.data && r.data.events)) return;
+      state.rows = transcriptRows(r.data.events);
+      paintRows();
+      const st = await f.state(sessionId);
+      running = !!(st.status === 200 && st.data && st.data.running === true);
+      const send2 = node.querySelector("[data-dc-send]");
+      const stop = node.querySelector("[data-dc-stop]");
+      if (send2) send2.disabled = running;
+      if (stop) stop.hidden = !running;
+    };
+    const ensureSession = async () => {
+      if (sessionId) return sessionId;
+      const r = await f.create();
+      if (r.status === 200 && r.data && r.data.sessionId) {
+        sessionId = String(r.data.sessionId);
+        SESSIONS.set(o.refKey || "", sessionId);
+        return sessionId;
+      }
+      throw new Error(t("\u65B0\u4F1A\u8BDD\u5931\u8D25\uFF08") + String(r.status) + t("\uFF09"));
+    };
+    const send = async () => {
+      const ta = node.querySelector("[data-dc-text]");
+      const intent = String(ta && ta.value || "").trim();
+      const msg = node.querySelector("[data-dc-msg]");
+      if (!intent) {
+        if (msg) msg.textContent = t("\u8BF7\u5148\u5199\u4FEE\u6539\u610F\u56FE");
+        return;
+      }
+      if (running) {
+        if (msg) msg.textContent = t("\u4E0A\u4E00\u8F6E\u4ECD\u5728\u8FD0\u884C\u2014\u2014\u53EF\u70B9\u505C\u6B62");
+        return;
+      }
+      try {
+        const sid = await ensureSession();
+        const first = !state.rows.length;
+        const text2 = first ? buildEditPrompt(o.ref, current, intent) : intent;
+        const r = await f.send(sid, text2, "queue");
+        if (r.status !== 200) {
+          if (msg) msg.textContent = t("\u53D1\u9001\u5931\u8D25\uFF1A") + String(r.data && r.data.error || r.status);
+          return;
+        }
+        if (ta) ta.value = "";
+        await refresh3();
+      } catch (e) {
+        if (msg) msg.textContent = String(e && e.message || e);
+      }
+    };
+    const showDiff = () => {
+      const lastAssistant = [...state.rows].reverse().find((r) => r.kind === "assistant" && r.text);
+      const modified = (o.extractApply || extractYamlBlock)(lastAssistant ? lastAssistant.text : "");
+      const diffBox = node.querySelector("[data-dc-diff]");
+      if (!modified) {
+        diffBox.innerHTML = '<div class="small faint" style="margin-top:8px">' + esc(t("\u6700\u8FD1\u56DE\u590D\u672A\u542B ```yaml \u4EE3\u7801\u5757\u2014\u2014\u8BF7\u8BA9\u52A9\u624B\u7ED9\u51FA\u4FEE\u6539\u540E\u7684\u5B8C\u6574 YAML \u58F0\u660E\u3002")) + "</div>";
+        return;
+      }
+      const hunks = hunksOf(diffLines2(current, modified));
+      diffBox.innerHTML = '<div class="card" style="margin-top:10px"><div class="card-h"><span class="h-title">' + esc(t("\u4FEE\u6539\u9884\u89C8\uFF08") + hunks.length + t(" \u5904\u53D8\u66F4\uFF09")) + '</span><span class="h-right"><button type="button" class="btn btn-primary sm" data-dc-apply>' + esc(t("\u6279\u51C6\uFF08Apply\uFF09")) + '</button> <button type="button" class="btn btn-secondary sm" data-dc-dismiss>' + esc(t("\u653E\u5F03")) + '</button></span></div><div class="card-b" style="max-height:300px;overflow:auto">' + renderDiff(diffLines2(current, modified)) + "</div></div>";
+      diffBox.querySelector("[data-dc-dismiss]").addEventListener("click", () => {
+        diffBox.innerHTML = "";
+      });
+      diffBox.querySelector("[data-dc-apply]").addEventListener("click", async () => {
+        const msg = node.querySelector("[data-dc-msg]");
+        if (msg) msg.textContent = t("\u6B63\u5728 Apply\u2026");
+        try {
+          const face = await o.ctx.api.object(o.ref.kind, o.ref.scope, o.ref.name);
+          const rv = face.ok && face.data && face.data.resourceVersion != null ? Number(face.data.resourceVersion) : o.ref.rv || 0;
+          const r = await o.ctx.api.apply({
+            kind: o.ref.kind,
+            scope: o.ref.scope || "global",
+            name: o.ref.name,
+            resourceVersion: rv,
+            content: modified,
+            fieldManager: "console:doc-chat",
+            reasonRef: "doc-chat:" + o.ref.name
+          });
+          if (r.ok) {
+            current = modified;
+            diffBox.innerHTML = "";
+            if (msg) msg.textContent = t("\u5DF2 Apply\uFF08rv=") + ((r.data && r.data.rv) != null ? r.data.rv : "?") + t("\uFF09");
+            toast(t("\u5BF9\u8BDD\u4FEE\u6539\u5DF2 Apply"), "accent");
+            if (typeof o.onApplied === "function") o.onApplied(modified);
+          } else {
+            if (msg) msg.textContent = t("Apply \u5931\u8D25\uFF1A") + String(r.error || r.status) + (String(r.status) === "409" ? t("\uFF08\u7248\u672C\u5DF2\u53D8\u2014\u2014\u91CD\u8BD5\u5C06\u53D6\u65B0\u7248\u672C\uFF09") : "");
+            toast(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + "\uFF09", "error");
+          }
+        } catch (e) {
+          if (msg) msg.textContent = String(e && e.message || e);
+        }
+      });
+    };
+    node.querySelector("[data-dc-send]").addEventListener("click", send);
+    node.querySelector("[data-dc-stop]").addEventListener("click", async () => {
+      if (sessionId) await f.stop(sessionId);
+    });
+    node.querySelector("[data-dc-text]").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        send();
+      }
+    });
+    node.querySelector("[data-dc-preview]").addEventListener("click", showDiff);
+    const timer = setInterval(() => {
+      refresh3().catch(() => {
+      });
+    }, 1800);
+    refresh3().catch(() => {
+    });
   }
 
   // src/screens/workflow-config.js
@@ -13089,8 +13623,14 @@ spec:
       });
       const chatBtn = el.querySelector("[data-wf-chatfix]");
       if (chatBtn) chatBtn.addEventListener("click", () => {
-        window.__CC_CHAT_PREFILL__ = t("\u8BF7\u4FEE\u6539\u5DE5\u4F5C\u6D41 ") + usedName + t("\uFF08YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A");
-        ctx2.go("chat/core-headless");
+        openDocChat({
+          title: t("\u5BF9\u8BDD\u4FEE\u6539 \xB7 Workflow/") + usedName,
+          refKey: "obj|Workflow|" + String(wf.scope || "global") + "|" + usedName,
+          ref: { kind: "Workflow", scope: String(wf.scope || "global"), name: usedName, rv: Number(wf.resourceVersion) || 0 },
+          current: String(wf.rawYaml || ""),
+          ctx: ctx2,
+          onApplied: () => detailScreen(el, ctx2, usedName)
+        });
       });
       hydrateDocsExportConfig(el, ctx2);
     })().catch((e) => {
@@ -13793,9 +14333,23 @@ spec:
     bindSchemeModal(el, ctx2, ref.kind, cached ? content : "");
     paintMetaHeader(el.querySelector("[data-meta-header-slot]"), ctx2, ref, cached ? content : "");
     const chatBtn = el.querySelector("[data-obj-chatfix]");
-    if (chatBtn) chatBtn.addEventListener("click", () => {
-      window.__CC_CHAT_PREFILL__ = t("\u8BF7\u4FEE\u6539\u5BF9\u8C61 ") + ref.kind + "/" + ref.scope + "/" + ref.name + t("\uFF08\u5BF9\u8C61 YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A");
-      ctx2.go("chat/core-headless");
+    if (chatBtn) chatBtn.addEventListener("click", async () => {
+      let content2 = cached ? content2 : "";
+      if (!content2) {
+        const r = await ctx2.api.object(ref.kind, ref.scope, ref.name);
+        content2 = r.ok && r.data && r.data.content != null ? String(r.data.content) : "";
+      }
+      openDocChat({
+        title: t("\u5BF9\u8BDD\u4FEE\u6539 \xB7 ") + ref.kind + "/" + ref.name,
+        refKey: "obj|" + ref.kind + "|" + (ref.scope || "global") + "|" + ref.name,
+        ref: { kind: ref.kind, scope: ref.scope, name: ref.name, rv: ref.rv },
+        current: content2,
+        ctx: ctx2,
+        onApplied: (modified) => {
+          ctx2.store.cacheDoc(ref.kind, ref.scope, ref.name, (ref.rv || 0) + 1, String(modified || ""));
+          renderScreen(el, ctx2, ref);
+        }
+      });
     });
     if (ref.kind === "Provider") hydrateProviderCreate(el, ctx2);
     if (ref.kind === "Agent") hydrateAgentProviderBinding(el, ctx2, ref);
@@ -14069,9 +14623,8 @@ spec:
       return;
     }
     el.innerHTML = ed.view === "render" ? isMarkdownDoc(ed.ref.kind, ed.ref.name) ? (function() {
-      const { fm, body } = splitFrontmatter(ed.working);
-      const fmHtml = fm ? schemeChips(fm) : "";
-      return '<div data-md-render="1">' + fmHtml + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), ed.working);
+      const { body } = splitFrontmatter(ed.working);
+      return '<div data-md-render="1">' + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), ed.working);
     })() : '<div data-md-cards="1">' + (yamlToCards(ed.working) || t('<div class="ob-empty">\uFF08\u7A7A\u58F0\u660E\uFF09</div>')) + "</div>" + rawDisclosure("YAML", ed.working) : "";
     const ta = document.querySelector("[data-ed-textarea]");
     if (ta) {
@@ -14748,345 +15301,6 @@ spec:
     paint2(box, STAGES.model, stages, STAGES.writebacks, STAGES.persistent);
   }
 
-  // src/screens/chat-nodes.js
-  function blocksOf(content) {
-    const out = { text: "", reasoning: "", toolCalls: [] };
-    if (!Array.isArray(content)) return out;
-    for (const b of content) {
-      if (!b || typeof b !== "object") continue;
-      if (b.type === "text" && typeof b.text === "string") out.text += (out.text ? "\n" : "") + b.text;
-      else if (b.type === "reasoning" && typeof b.text === "string") out.reasoning += (out.reasoning ? "\n" : "") + b.text;
-      else if (b.type === "tool-call") out.toolCalls.push({ id: String(b.id || b.callId || ""), name: String(b.name || ""), argsRaw: typeof b.arguments === "string" ? b.arguments : JSON.stringify(b.arguments ?? b.args ?? "") });
-    }
-    return out;
-  }
-  function nodeKey(n) {
-    return String(Number(n && n.seq) || 0) + ":" + String(n && n.kind || "");
-  }
-  function resultTextOf(data) {
-    const d = data && typeof data === "object" ? data : {};
-    if (typeof d.content === "string" && d.content) return d.content;
-    const msg = d.message && typeof d.message === "object" ? d.message : null;
-    if (msg && Array.isArray(msg.content)) {
-      const text2 = msg.content.filter((b) => b && b.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n");
-      if (text2) return text2;
-    }
-    if (d.output != null) return typeof d.output === "string" ? d.output : JSON.stringify(d.output);
-    return "";
-  }
-  function triggerOf(source) {
-    const s = source && typeof source === "object" ? source : {};
-    const kind = String(s.kind || "");
-    if (kind === "tool-jobs") return { id: "job" };
-    if (kind === "cordis-host-runner") return { id: "plugin" };
-    if (kind === "schedule") return { id: "schedule" };
-    if (kind === "subagent-settled") return { id: "subagent", stopReason: String(s.stopReason || "") };
-    if (kind === "goal") return { id: "goal" };
-    if (kind === "agent-message") return { id: "agent" };
-    if (kind === "team-message") return { id: "team" };
-    if (kind === "webhook") return String(s.provider || "") === "github" ? { id: "github" } : { id: "webhook" };
-    if (kind === "retry") return { id: "retry" };
-    const form = String(s.form || "");
-    if (form === "recall" || kind === "session-recall") return { id: "recall" };
-    return { id: "inject", form };
-  }
-  var TRIGGER_TITLES = {
-    job: () => t("\u540E\u53F0\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0"),
-    plugin: () => t("\u63D2\u4EF6\u72B6\u6001\u66F4\u65B0"),
-    schedule: () => t("\u81EA\u52A8\u5316\u4EFB\u52A1"),
-    goal: () => t("\u7EE7\u7EED\u6267\u884C\u76EE\u6807"),
-    agent: () => t("\u6536\u5230\u4EFB\u52A1\u6D88\u606F"),
-    team: () => t("\u6536\u5230\u56E2\u961F\u6D88\u606F"),
-    github: () => t("\u6536\u5230 GitHub \u4E8B\u4EF6"),
-    webhook: () => t("\u6536\u5230\u5916\u90E8\u4E8B\u4EF6"),
-    retry: () => t("\u5DF2\u8BF7\u6C42\u7EE7\u7EED\u751F\u6210"),
-    inject: () => t("\u4E0A\u4E0B\u6587\u6CE8\u5165"),
-    recall: () => t("\u8DE8\u4F1A\u8BDD\u53EC\u56DE")
-  };
-  var SUBAGENT_TITLES = {
-    completed: () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u5B8C\u6210\u4EFB\u52A1"),
-    aborted: () => t("\u5B50\u667A\u80FD\u4F53\u4EFB\u52A1\u5DF2\u505C\u6B62"),
-    error: () => t("\u5B50\u667A\u80FD\u4F53\u6267\u884C\u5931\u8D25"),
-    "max-tokens": () => t("\u5B50\u667A\u80FD\u4F53\u5DF2\u8FBE token \u4E0A\u9650"),
-    refusal: () => t("\u5B50\u667A\u80FD\u4F53\u62D2\u7EDD\u6267\u884C")
-  };
-  function noticeTitle(tg) {
-    if (tg.id === "subagent") return (SUBAGENT_TITLES[tg.stopReason] || (() => t("\u5B50\u4EFB\u52A1\u72B6\u6001\u66F4\u65B0")))();
-    return (TRIGGER_TITLES[tg.id] || TRIGGER_TITLES.inject)();
-  }
-  function noticeSummary(source) {
-    const s = source && typeof source === "object" ? source : {};
-    if (String(s.form || "") === "notice" && typeof s.summary === "string" && s.summary) {
-      const t2 = String(s.summary);
-      return t2.length > 120 ? t2.slice(0, 119) + "\u2026" : t2;
-    }
-    return "";
-  }
-  function producerLabel(source) {
-    const s = source && typeof source === "object" ? source : {};
-    if (typeof s.plugin === "string" && s.plugin) return s.plugin;
-    const kind = String(s.kind || "");
-    return kind && kind !== "user" ? kind : "";
-  }
-  function formatRunDuration(ms) {
-    const total = Math.floor(Number(ms) || 0);
-    if (total < 1e3) return "";
-    const h = Math.floor(total / 36e5);
-    const m = Math.floor(total % 36e5 / 6e4);
-    const s = Math.floor(total % 6e4 / 1e3);
-    const parts = [];
-    if (h) parts.push(h + t("\u5C0F\u65F6"));
-    if (m) parts.push(m + t("\u5206"));
-    parts.push(s + t("\u79D2"));
-    return parts.join("");
-  }
-  var pad2 = (n) => String(n).padStart(2, "0");
-  function formatClock(time, now) {
-    const d = new Date(Number(time) || 0);
-    const n = new Date(Number(now) || Date.now());
-    if (!Number(time) || isNaN(d.getTime())) return "";
-    const clock = pad2(d.getHours()) + ":" + pad2(d.getMinutes());
-    if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) return clock;
-    const md = d.getFullYear() === n.getFullYear() ? t("{m}\u6708{d}\u65E5").replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate())) : t("{y}\u5E74{m}\u6708{d}\u65E5").replace("{y}", String(d.getFullYear())).replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate()));
-    return md + " " + clock;
-  }
-  function normalizeTurnReason(raw) {
-    if (raw && typeof raw === "object") {
-      if (raw.kind) return String(raw.kind);
-      if (raw.reason && typeof raw.reason === "object" && raw.reason.kind) return String(raw.reason.kind);
-      return "";
-    }
-    return String(raw ?? "");
-  }
-  function turnTailOf(reason, durationMs) {
-    const r = normalizeTurnReason(reason);
-    if (r === "interrupted" || r === "aborted" || r === "disposed" || r === "cancelled" || r === "canceled") {
-      return { word: t("\u5DF2\u505C\u6B62"), duration: "", hint: "", cls: "stopped" };
-    }
-    if (r === "max-tokens") return { word: t("\u5DF2\u8FBE\u5230\u8F93\u51FA token \u4E0A\u9650"), duration: "", hint: t("\u56DE\u7B54\u88AB\u622A\u65AD\uFF0C\u5DF2\u6709\u8F93\u51FA\u4FDD\u7559\u5728\u5BF9\u8BDD\u4E2D\u3002\u53D1\u9001\u300C\u7EE7\u7EED\u300D\u53EF\u8BA9\u6A21\u578B\u63A5\u7740\u8F93\u51FA\u3002"), cls: "maxtok" };
-    if (r && r !== "complete" && r !== "completed" && r !== "end_turn" && r !== "stop-sequence") {
-      return { word: t("\u5904\u7406\u5931\u8D25"), duration: "", hint: "", cls: "failed" };
-    }
-    const dur = formatRunDuration(durationMs);
-    return { word: dur ? t("\u5DF2\u5B8C\u6210\uFF0C\u7528\u65F6 ") + dur : t("\u5DF2\u5B8C\u6210"), duration: dur, hint: "", cls: "ok" };
-  }
-  function todoModel(todos) {
-    const rows = (Array.isArray(todos) ? todos : []).filter((x) => x && typeof x.content === "string");
-    const done = rows.filter((x) => x.status === "completed").length;
-    const active = rows.find((x) => x.status === "in_progress");
-    return { rows, done, total: rows.length, active: active ? active.content : "" };
-  }
-  var TOOL_TITLES = {
-    bash: () => t("\u8FD0\u884C\u547D\u4EE4"),
-    pwsh: () => t("\u8FD0\u884C\u547D\u4EE4"),
-    read: () => t("\u8BFB\u53D6"),
-    read_image: () => t("\u8BFB\u53D6\u56FE\u7247"),
-    write: () => t("\u5199\u5165"),
-    edit: () => t("\u7F16\u8F91"),
-    apply_patch: () => t("\u7F16\u8F91"),
-    grep: () => t("\u641C\u7D22\u6587\u4EF6\u5185\u5BB9"),
-    glob: () => t("\u67E5\u627E\u6587\u4EF6"),
-    web_search: () => t("\u7F51\u9875\u641C\u7D22"),
-    web_fetch: () => t("\u7F51\u9875\u83B7\u53D6"),
-    todo_write: () => t("\u66F4\u65B0\u4EFB\u52A1\u6E05\u5355"),
-    ask_user_question: () => t("\u63D0\u95EE")
-  };
-  function toolTitle(name) {
-    const fn = TOOL_TITLES[String(name || "").toLowerCase()];
-    return fn ? fn() : "";
-  }
-  var SUMMARY_KEYS = ["file_path", "path", "command", "url", "query", "pattern", "note"];
-  function toolSummary(name, argsRaw) {
-    let obj = null;
-    try {
-      obj = JSON.parse(String(argsRaw || ""));
-    } catch {
-    }
-    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      for (const k of SUMMARY_KEYS) {
-        const v = obj[k];
-        if (typeof v === "string" && v.trim()) return trunc(v.trim(), 90);
-      }
-    }
-    const s = String(argsRaw || "").trim();
-    return s ? trunc(s.split("\n")[0], 90) : "";
-  }
-  function toolStateOf(hasResult, errorObj, meta, name) {
-    if (!hasResult) return "running";
-    if (meta && typeof meta === "object" && meta.stopped === true) return "stopped";
-    if (errorObj) return "error";
-    const nm = String(name || "").toLowerCase();
-    if ((nm === "bash" || nm === "pwsh") && meta && typeof meta === "object") {
-      const code = Number(meta.exitCode);
-      if (Number.isFinite(code) && code !== 0) return "error";
-      if (typeof meta.signal === "string" && meta.signal) return "error";
-    }
-    return "ok";
-  }
-  function metaSummary(name, meta) {
-    if (!meta || typeof meta !== "object") return "";
-    const nm = String(name || "").toLowerCase();
-    if (nm === "grep" || nm === "glob") {
-      if (meta.shape === "paths" && Number.isFinite(Number(meta.total))) {
-        return t("{shown} \u4E2A\u8DEF\u5F84").replace("{shown}", String(meta.truncated != null ? Number(meta.shown ?? meta.total) : Number(meta.total)));
-      }
-      if (Number.isFinite(Number(meta.total))) {
-        if (Number(meta.total) === 0) return t("\u65E0\u7ED3\u679C");
-        const files = Number.isFinite(Number(meta.files)) ? Number(meta.files) : null;
-        return t("{shown} \u5904\u5339\u914D \xB7 {files} \u4E2A\u6587\u4EF6").replace("{shown}", String(Number(meta.shown ?? meta.total))).replace("{files}", files != null ? String(files) : "\u2014");
-      }
-      return "";
-    }
-    if (nm === "read" && Array.isArray(meta.lines) && meta.lines.length) {
-      return t("{n} \u884C").replace("{n}", String(meta.lines.length));
-    }
-    if ((nm === "edit" || nm === "apply_patch" || nm === "write") && Array.isArray(meta.diffs)) {
-      return meta.diffs.length ? t("{n} \u4E2A\u6587\u4EF6\u53D8\u66F4").replace("{n}", String(meta.diffs.length)) : "";
-    }
-    if (nm === "web_fetch" && Number.isFinite(Number(meta.statusCode))) {
-      return "HTTP " + String(meta.statusCode);
-    }
-    return "";
-  }
-  function usageTotal(usage) {
-    const u = usage && typeof usage === "object" ? usage : {};
-    return ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"].reduce((sum, k) => sum + (Number.isFinite(Number(u[k])) ? Number(u[k]) : 0), 0);
-  }
-  function usageDetail(usage) {
-    const u = usage && typeof usage === "object" ? usage : {};
-    const lines = [];
-    if (Number.isFinite(Number(u.inputTokens))) lines.push(t("\u672A\u7F13\u5B58\u8F93\u5165") + " " + u.inputTokens);
-    if (Number.isFinite(Number(u.cacheReadTokens))) lines.push(t("\u7F13\u5B58\u8BFB\u53D6") + " " + u.cacheReadTokens);
-    if (Number.isFinite(Number(u.cacheWriteTokens))) lines.push(t("\u7F13\u5B58\u5199\u5165") + " " + u.cacheWriteTokens);
-    if (Number.isFinite(Number(u.outputTokens))) lines.push(t("\u8F93\u51FA") + " " + u.outputTokens);
-    if (Number.isFinite(Number(u.reasoningTokens))) lines.push(t("\uFF08\u5176\u4E2D\u63A8\u7406 {tokens}\uFF09").replace("{tokens}", String(u.reasoningTokens)));
-    return lines.join(" \xB7 ");
-  }
-  function mapTranscript(events) {
-    const nodes = [];
-    const tools = /* @__PURE__ */ new Map();
-    const order = [];
-    const rows = Array.isArray(events) ? [...events] : [];
-    rows.sort((a, b) => (Number(a && a.seq) || 0) - (Number(b && b.seq) || 0));
-    const turnStarts = /* @__PURE__ */ new Map();
-    let emittedSinceTurnStart = 0;
-    let lastBoundaryTurnStart = false;
-    for (const ev of rows) {
-      if (!ev || typeof ev !== "object") continue;
-      const type2 = String(ev.type || "");
-      const data = ev.data && typeof ev.data === "object" ? ev.data : {};
-      const seq2 = Number(ev.seq) || 0;
-      const time = Number(ev.time) || 0;
-      if (type2 === "turn/start") {
-        turnStarts.set(Number(data.turn) || 0, time);
-        emittedSinceTurnStart = 0;
-        lastBoundaryTurnStart = true;
-        continue;
-      }
-      if (type2 === "user/message") {
-        const src = data.source && typeof data.source === "object" ? data.source : null;
-        const kind = String(src && src.kind || "");
-        if (kind === "compact-checkpoint") continue;
-        const b = blocksOf(data.content);
-        if (kind !== "user") {
-          const tg = triggerOf(src);
-          const waking = lastBoundaryTurnStart && emittedSinceTurnStart === 0;
-          nodes.push({
-            kind: "notice",
-            seq: seq2,
-            time,
-            text: b.text,
-            waking,
-            trigger: tg,
-            title: noticeTitle(tg),
-            summary: noticeSummary(src),
-            producer: producerLabel(src)
-          });
-          emittedSinceTurnStart += 1;
-          lastBoundaryTurnStart = false;
-          continue;
-        }
-        nodes.push({ kind: "user", seq: seq2, time, text: b.text, injected: false });
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "assistant/message") {
-        const b = blocksOf(data.content);
-        for (const tc of b.toolCalls) order.push(tc.id);
-        if (!b.text && !b.reasoning && b.toolCalls.length) {
-          emittedSinceTurnStart += 1;
-          lastBoundaryTurnStart = false;
-          continue;
-        }
-        nodes.push({ kind: "assistant", seq: seq2, time, text: b.text, reasoning: b.reasoning, usage: data.usage ?? null });
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "tool/call") {
-        const id = String(data.callId || data.id || "");
-        if (!tools.has(id)) tools.set(id, { seq: seq2, time, name: String(data.name || ""), args: typeof data.arguments === "string" ? data.arguments : JSON.stringify(data.arguments ?? data.args ?? ""), result: "", error: null, meta: null });
-        order.push(id);
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "tool/result") {
-        const id = String(data.callId || data.id || "");
-        const t2 = tools.get(id);
-        if (t2) {
-          t2.result = resultTextOf(data);
-          if (data.error && typeof data.error === "object") t2.error = { name: String(data.error.name || ""), code: String(data.error.code || "") };
-          if (data.meta && typeof data.meta === "object") t2.meta = data.meta;
-          if (!t2.error && data.message && typeof data.message === "object") {
-            const bad = Array.isArray(data.message.content) && data.message.content.some((b) => b && typeof b === "object" && b.isError === true);
-            if (bad) t2.error = { name: "", code: "" };
-          }
-        }
-      } else if (type2 === "turn/end") {
-        const turn = Number(data.turn) || 0;
-        const startedAt = turnStarts.get(turn) || 0;
-        nodes.push({ kind: "turntail", seq: seq2, time, reason: normalizeTurnReason(data.reason), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
-        emittedSinceTurnStart = 0;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "todo/write") {
-        nodes.push({ kind: "todo", seq: seq2, time, todos: Array.isArray(data.todos) ? data.todos : [] });
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "llm/retry") {
-        nodes.push({ kind: "retry", seq: seq2, time, data });
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      } else if (type2 === "system/message" || type2 === "developer/message") {
-        nodes.push({ kind: "system", seq: seq2, time, text: String(data.text ?? data.content ?? ""), dev: type2 === "developer/message" });
-        emittedSinceTurnStart += 1;
-        lastBoundaryTurnStart = false;
-      }
-    }
-    const seenToolIds = /* @__PURE__ */ new Set();
-    let lastTurnEndSeq = 0;
-    for (const n of nodes) if (n.kind === "turntail" && Number(n.seq) > lastTurnEndSeq) lastTurnEndSeq = Number(n.seq);
-    for (const id of order) {
-      if (seenToolIds.has(id)) continue;
-      seenToolIds.add(id);
-      const t2 = tools.get(id);
-      if (!t2) continue;
-      const interrupted = !t2.result && lastTurnEndSeq > 0 && t2.seq < lastTurnEndSeq;
-      const state = interrupted ? "stopped" : toolStateOf(!!t2.result, t2.error, t2.meta, t2.name);
-      nodes.push({
-        kind: "tool",
-        seq: t2.seq,
-        time: t2.time,
-        name: t2.name || t("\u5DE5\u5177"),
-        args: t2.args,
-        result: t2.result,
-        error: t2.error,
-        meta: t2.meta,
-        state,
-        title: toolTitle(t2.name),
-        summary: toolSummary(t2.name, t2.args),
-        metaLine: metaSummary(t2.name, t2.meta)
-      });
-    }
-    nodes.sort((a, b) => a.seq - b.seq);
-    return nodes;
-  }
-
   // src/render/refs.js
   var REF_KINDS = "Rule|Goal|Desc|Runbook|DriftReport|DocReview|Agent|ServiceDesc|ServiceInstance|WorkService|ConnectorOps|Provider|Ref|Role|Group|Workflow|Task|Proposal|Notification|DesignDoc|BugDoc|Doc|Template|Event";
   function refRoute(kind, scope, name) {
@@ -15453,7 +15667,7 @@ spec:
   }
 
   // src/screens/chat.js
-  function faces2() {
+  function faces3() {
     return typeof window !== "undefined" && window.__CC && window.__CC.chatFaces || null;
   }
   function nextBatch(nodes, paintedKeys, firstPaint) {
@@ -15918,7 +16132,7 @@ spec:
     }
   }
   function dialogScreen(el, ctx2, sideOpen) {
-    const f = faces2();
+    const f = faces3();
     const can = !!(f && typeof f.send === "function");
     CHAT.el = el;
     el.innerHTML = screenShell(can);
@@ -16062,7 +16276,7 @@ spec:
         CHAT.timer = 0;
         return;
       }
-      const f2 = faces2();
+      const f2 = faces3();
       if (!f2) return;
       refreshTranscript(root, f2);
       refreshSessionsSoon(root, f2);
@@ -16094,7 +16308,7 @@ spec:
       CHAT.paintRefs = null;
       dialogScreen(el, ctx2, defaultSideOpen(id));
       if (id == null && agent) {
-        const f2 = faces2();
+        const f2 = faces3();
         if (f2) setTimeout(async () => {
           if (CHAT.sessionId) return;
           const r = await f2.sessions();
@@ -16107,7 +16321,7 @@ spec:
       }
       return;
     }
-    const f = faces2();
+    const f = faces3();
     if (f) refreshTranscript(el, f);
   }
 

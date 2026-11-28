@@ -10,7 +10,7 @@
 
 import { esc, trunc, relAge } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, docRoute } from '../render/chips.js';
-import { renderMarkdown, yamlToCards, rawDisclosure, splitFrontmatter, schemeChips } from '../render/md.js';
+import { renderMarkdown, yamlToCards, rawDisclosure, splitFrontmatter } from '../render/md.js';
 import { paintMetaHeader } from '../render/meta-header.js';
 import { diffLines, renderDiff, diffStats, hunksOf } from '../render/diff.js';
 
@@ -149,9 +149,10 @@ function paintBody(key) {
   el.innerHTML = ed.view === 'render'
     ? (isMarkdownDoc(ed.ref.kind, ed.ref.name)
       ? (function () {
-          const { fm, body } = splitFrontmatter(ed.working);
-          const fmHtml = fm ? schemeChips(fm) : '';
-          return '<div data-md-render="1">' + fmHtml + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), ed.working);
+          // R-UX-10 正文先行（2026-11-28 评审补洞）：markdown 渲染视图不再铺 frontmatter chips
+          // （元数据 header 组件已在头部承担）。
+          const { body } = splitFrontmatter(ed.working);
+          return '<div data-md-render="1">' + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), ed.working);
         })()
       : '<div data-md-cards="1">' + (yamlToCards(ed.working) || tr('<div class="ob-empty">（空声明）</div>')) + '</div>' + rawDisclosure('YAML', ed.working))
     : '';

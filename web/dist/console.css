@@ -2391,6 +2391,68 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+.cc-app .doc-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cc-app .doc-chat .dc-transcript {
+  max-height: 320px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+  background: var(--ds-bg-subtle, rgba(0, 0, 0, 0.02));
+}
+.cc-app .doc-chat .dc-row.dc-user {
+  display: flex;
+  justify-content: flex-end;
+}
+.cc-app .doc-chat .dc-bubble {
+  max-width: 78%;
+  background: var(--ds-accent-dim, rgba(77, 107, 254, 0.08));
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cc-app .doc-chat .dc-assistant .dc-text {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cc-app .doc-chat .dc-fold {
+  margin-bottom: 4px;
+}
+.cc-app .doc-chat .dc-tail-ok {
+  color: var(--ds-ok, #18a058);
+  font-size: 12px;
+}
+.cc-app .doc-chat .dc-tail-stopped {
+  color: var(--ds-warn, #d97706);
+  font-size: 12px;
+}
+.cc-app .doc-chat .dc-tail-failed {
+  color: var(--danger, #d03050);
+  font-size: 12px;
+}
+.cc-app .doc-chat .dc-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cc-app .doc-chat .dc-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 /* styles/chat.css */
 .cc-app .chat-screen {

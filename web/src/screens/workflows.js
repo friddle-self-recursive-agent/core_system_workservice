@@ -6,6 +6,7 @@ import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 import { yamlTextView } from '../render/md.js';
 import { htmlModal } from './modal.js';
+import { openDocChat } from './doc-chat.js';
 import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
 
 export function wfAnchorOfRoute(route) {
@@ -574,11 +575,17 @@ function detailScreen(el, ctx, name) {
       if (!studio) { toast(tr('配置详情缺席（该 workflow 无可配置 studio）'), 'error'); return; }
       htmlModal({ title: tr('配置详情 · ') + usedName, wide: true, node: studio, holder: studioHolder });
     });
-    // 对话修改=主通路：预填 composer → 会话屏（LLM 改文档→Apply；上下文带本 workflow ref）。
+    // 对话修改=主通路（R-UX-10 二次裁决：不跳转——原地嵌入面板，rawYaml 为基准，Apply 走对象 rv 锁）。
     const chatBtn = el.querySelector('[data-wf-chatfix]');
     if (chatBtn) chatBtn.addEventListener('click', () => {
-      window.__CC_CHAT_PREFILL__ = tr('请修改工作流 ') + usedName + tr('（YAML 声明为权威源）。修改意图：');
-      ctx.go('chat/core-headless');
+      openDocChat({
+        title: tr('对话修改 · Workflow/') + usedName,
+        refKey: 'obj|Workflow|' + String(wf.scope || 'global') + '|' + usedName,
+        ref: { kind: 'Workflow', scope: String(wf.scope || 'global'), name: usedName, rv: Number(wf.resourceVersion) || 0 },
+        current: String(wf.rawYaml || ''),
+        ctx,
+        onApplied: () => detailScreen(el, ctx, usedName),
+      });
     });
     hydrateDocsExportConfig(el, ctx);
   })().catch((e) => {

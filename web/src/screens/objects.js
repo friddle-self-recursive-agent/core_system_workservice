@@ -8,9 +8,10 @@
 
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
-import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips, yamlTextView, dumpYaml } from '../render/md.js';
+import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, yamlTextView, dumpYaml } from '../render/md.js';
 import { paintMetaHeader } from '../render/meta-header.js';
 import { htmlModal } from './modal.js';
+import { openDocChat } from './doc-chat.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ---------- 相关任务与会话（R-UX-10 2026-11-28 用户裁决：内容优先+周边信息直达） ----------
@@ -391,10 +392,25 @@ function renderScreen(el, ctx, ref) {
   // 元数据 header（2026-11-28 用户裁决：metadatainfo 侧车上屏——tag/创建/提交人/refs 公用组件）。
   paintMetaHeader(el.querySelector('[data-meta-header-slot]'), ctx, ref, cached ? content : '');
   const chatBtn = el.querySelector('[data-obj-chatfix]');
-  if (chatBtn) chatBtn.addEventListener('click', () => {
-    window.__CC_CHAT_PREFILL__ = tr('请修改对象 ') + ref.kind + '/' + ref.scope + '/' + ref.name +
-      tr('（对象 YAML 声明为权威源）。修改意图：');
-    ctx.go('chat/core-headless');
+  if (chatBtn) chatBtn.addEventListener('click', async () => {
+    // R-UX-10 二次裁决（2026-11-28）：不跳转——原地嵌入对话修改面板（同对象续跑同会话，
+    // 首条自带当前 YAML+意图，助手回 yaml 块→对比→人审 Apply）。
+    let content = cached ? content : '';
+    if (!content) {
+      const r = await ctx.api.object(ref.kind, ref.scope, ref.name);
+      content = (r.ok && r.data && r.data.content != null) ? String(r.data.content) : '';
+    }
+    openDocChat({
+      title: tr('对话修改 · ') + ref.kind + '/' + ref.name,
+      refKey: 'obj|' + ref.kind + '|' + (ref.scope || 'global') + '|' + ref.name,
+      ref: { kind: ref.kind, scope: ref.scope, name: ref.name, rv: ref.rv },
+      current: content,
+      ctx,
+      onApplied: (modified) => {
+        ctx.store.cacheDoc(ref.kind, ref.scope, ref.name, (ref.rv || 0) + 1, String(modified || ''));
+        renderScreen(el, ctx, ref);
+      },
+    });
   });
 
   // Provider 工作台增强（2026-11-27 用户指令：页面上添加 Provider+配置 openai key）。
