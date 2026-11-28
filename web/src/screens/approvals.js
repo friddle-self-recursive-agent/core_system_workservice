@@ -126,6 +126,8 @@ function itemHtml(ctx, it, idx, focused = false) {
       '<span class="h-right">' + chip(String(r.phase || 'AwaitingApproval'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || tr('工作流闸锚挂起——等待审批信号')), 160)) + '</div>' +
       '<div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div>' +
+      '<div data-apverdict="' + esc(apKeyOf({ kind: 'Workflow', scope: String(r.owner || 'global'), name: String(r.workflow || '') })) +
+      '"><div class="small faint" style="margin-top:8px">' + esc(tr('判决文档（ops_core_inner_agent）现读中…')) + '</div></div>' +
       '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
       chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(String(r.workflow || '')) + (no ? '/r/' + encodeURIComponent(no) : ''), 'acc', true, tr('运行详情——批闸锚')) +
       '</div>' +
@@ -222,25 +224,36 @@ async function hydrateDiff(ctx, d) {
 }
 
 /** 判决文档注水（2026-11-28 用户裁定 ops_core_inner_agent：审批裁定走小内置 agent 整理
- * DocumentDiff 生成 Diff 文档——引擎人审挂起即生成，同名幂等 docdiff-<kind>-<name>；
- * 在册=渲染判决正文；缺席=诚实词形（生成中/未生成，不编造））。 */
+ * DocumentDiff 生成 Diff 文档——引擎人审挂起即生成）。名字解析：d.run 携带=per-run 名
+ * docdiff-<kind>-<name>-run<N> 优先（每次挂起各自一份——幂等域=run），旧名不带 run 后缀
+ * 回退（历史档）；在册=渲染判决正文；全缺席=诚实词形（生成中/未生成，不编造）。 */
+export function verdictDocNames(d) {
+  const base = 'docdiff-' + String(d.kind + '-' + d.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return (d.run != null && d.run !== '' && Number(d.run) > 0 ? [base + '-run' + Number(d.run), base] : [base]);
+}
+
 async function hydrateVerdict(ctx, d) {
   try {
-    const ddName = 'docdiff-' + String(d.kind + '-' + d.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const ddR = await ctx.api.object('DocumentDiff', 'global', ddName);
+    const candidates = verdictDocNames(d);
+    let hit = null;
+    for (const nm of candidates) {
+      const r = await ctx.api.object('DocumentDiff', 'global', nm);
+      if (r && r.ok && r.data && r.data.content) { hit = { name: nm, content: String(r.data.content) }; break; }
+    }
     const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
     if (!vbox) return;
-    if (ddR.ok && ddR.data && ddR.data.content) {
-      const raw = String(ddR.data.content);
+    if (hit) {
+      const raw = hit.content;
       const vm = raw.match(/verdict:\s*\|\n([\s\S]*?)(?:\n  [a-zA-Z]|\n\w|$)/);
       const cm = raw.match(/changed:\s*"?([^"\n]+)"?/);
       const verdict = vm ? vm[1].trim() : raw;
       vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' +
         esc(tr('Diff 判决 · ops_core_inner_agent')) + '</span><span class="h-right">' + esc(cm ? cm[1] : '') + '</span></div>' +
         '<div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div>' +
-        '<div class="small faint" style="margin-top:6px">' + esc(tr('对象 DocumentDiff/global/')) + esc(ddName) + '</div></div></div>';
+        '<div class="small faint" style="margin-top:6px">' + esc(tr('对象 DocumentDiff/global/')) + esc(hit.name) + '</div></div></div>';
     } else {
-      vbox.innerHTML = '<div class="small faint">' + esc(tr('判决文档尚未生成（DocumentDiff/global/') + esc(ddName) + tr(' 缺席——引擎人审挂起即自动生成；缺席=未到生成窗口，不编造')) + '</div></div>';
+      vbox.innerHTML = '<div class="small faint" style="margin-top:8px">' + esc(tr('判决文档尚未生成（DocumentDiff/global/')) + esc(candidates.join('、')) +
+        esc(tr(' 缺席——引擎人审挂起即自动生成；缺席=未到生成窗口，不编造')) + '</div>';
     }
   } catch (e) { /* 判决注水失败不挡 diff 主面 */ }
 }
@@ -436,6 +449,12 @@ function approvalsScreen(el, ctx) {
     '</div>';
 
   items.filter((x) => x.kind === 'draft').forEach((x) => hydrateDiff(ctx, x.draft));
+  // run 审批卡判决注水（2026-11-28 用户裁定「审批为空」——run 卡此前无判决容器；
+  // d.run 携带=per-run 名优先 docdiff-<kind>-<name>-run<N>，旧名回退）
+  items.filter((x) => x.kind === 'run').forEach((x) => hydrateVerdict(ctx, {
+    kind: 'Workflow', scope: String(x.run.owner || 'global'), name: String(x.run.workflow || ''),
+    run: x.run.run,
+  }));
   hydrateLedger(ctx);
   if (focus && matched.length) {
     const hit = el.querySelector('[data-ap-focused="1"]');

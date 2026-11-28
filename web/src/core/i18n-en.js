@@ -1033,4 +1033,9 @@ export const enEntries = [
   ["时间线拉取失败：", "Timeline fetch failed: "],
   ["归档窗内暂无本任务事件。", "No events for this task in the archive window."],
   ["未命名事件", "Unnamed event"],
+  ["判决文档（ops_core_inner_agent）现读中…", "Loading verdict doc (ops_core_inner_agent)…"],
+  ["判决文档尚未生成（DocumentDiff/global/", "Verdict doc not generated yet (DocumentDiff/global/"],
+  [" 缺席——引擎人审挂起即自动生成；缺席=未到生成窗口，不编造", " absent — generated automatically on human-approval suspension; absence means the window has not been reached (never fabricated)"],
+  ["Diff 判决 · ops_core_inner_agent", "Diff verdict · ops_core_inner_agent"],
+  ["对象 DocumentDiff/global/", "Object DocumentDiff/global/"],
 ];

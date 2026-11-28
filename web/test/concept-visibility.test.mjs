@@ -24,7 +24,7 @@ import { depRoute, depChips, phaseChip, groupOf, statusOf, taskPhaseOf } from '.
 import { tagGroups, tagVocabFromKinds, tagsOfDoc } from '../src/screens/objects.js';
 import { frontmatterTags, tagsOfRef, aggregateTags, groupByType } from '../src/screens/tags.js';
 import { sessBacklinksHtml } from '../src/screens/chat.js';
-import { matchesApprovalFocus } from '../src/screens/approvals.js';
+import { matchesApprovalFocus, verdictDocNames } from '../src/screens/approvals.js';
 import { docHistoryRowsHtml } from '../src/screens/editor.js';
 import { renderAuditPayload } from '../src/screens/audit.js';
 import { templatesSectionHtml } from '../src/screens/workflows.js';
@@ -265,4 +265,19 @@ test('taskPhaseOf：TaskStateChanged dedupKey 词尾=相位词；非 task: 前�
   assert.equal(taskPhaseOf({ dedupKey: 'service-session:wf:1:n' }), '');
   assert.equal(taskPhaseOf({}), '');
   assert.equal(taskPhaseOf(null), '');
+});
+
+test('verdictDocNames：per-run 名优先+旧名回退；run 缺席=仅旧名（稿批准卡路径）', () => {
+  assert.deepEqual(
+    verdictDocNames({ kind: 'Workflow', name: 'gh-issue-trigger', run: 83 }),
+    ['docdiff-workflow-gh-issue-trigger-run83', 'docdiff-workflow-gh-issue-trigger'],
+  );
+  assert.deepEqual(
+    verdictDocNames({ kind: 'Workflow', name: 'core-system-developer-loop' }),
+    ['docdiff-workflow-core-system-developer-loop'],
+  );
+  assert.deepEqual(
+    verdictDocNames({ kind: 'Workflow', name: 'gh_issue.trigger', run: 0 }),
+    ['docdiff-workflow-gh-issue-trigger'],
+  );
 });

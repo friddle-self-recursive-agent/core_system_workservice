@@ -1056,7 +1056,12 @@ var CoreConsoleWeb = (() => {
     ["\u751F\u547D\u5468\u671F\uFF08\u4E8B\u4EF6\u5F52\u6863\u73B0\u8BFB\uFF09", "Lifecycle (read live from event archive)"],
     ["\u65F6\u95F4\u7EBF\u62C9\u53D6\u5931\u8D25\uFF1A", "Timeline fetch failed: "],
     ["\u5F52\u6863\u7A97\u5185\u6682\u65E0\u672C\u4EFB\u52A1\u4E8B\u4EF6\u3002", "No events for this task in the archive window."],
-    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"]
+    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"],
+    ["\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026", "Loading verdict doc (ops_core_inner_agent)\u2026"],
+    ["\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/", "Verdict doc not generated yet (DocumentDiff/global/"],
+    [" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020", " absent \u2014 generated automatically on human-approval suspension; absence means the window has not been reached (never fabricated)"],
+    ["Diff \u5224\u51B3 \xB7 ops_core_inner_agent", "Diff verdict \xB7 ops_core_inner_agent"],
+    ["\u5BF9\u8C61 DocumentDiff/global/", "Object DocumentDiff/global/"]
   ];
 
   // src/core/i18n.js
@@ -3069,7 +3074,7 @@ var CoreConsoleWeb = (() => {
       const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
       const no = String(r.run != null ? r.run : "");
       const info = runApprovalInfoHtml(runApprovalInfoOf(ctx2.store, String(r.workflow || ""), String(r.owner || "global"), no, String(r.startedAt || "")));
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div data-apverdict="' + esc(apKeyOf({ kind: "Workflow", scope: String(r.owner || "global"), name: String(r.workflow || "") })) + '"><div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
     }
     if (it.kind === "proposal") {
       const p = it.proposal;
@@ -3118,20 +3123,31 @@ var CoreConsoleWeb = (() => {
     box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div><div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>";
     hydrateVerdict(ctx2, d);
   }
+  function verdictDocNames(d) {
+    const base = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return d.run != null && d.run !== "" && Number(d.run) > 0 ? [base + "-run" + Number(d.run), base] : [base];
+  }
   async function hydrateVerdict(ctx2, d) {
     try {
-      const ddName = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const ddR = await ctx2.api.object("DocumentDiff", "global", ddName);
+      const candidates = verdictDocNames(d);
+      let hit = null;
+      for (const nm of candidates) {
+        const r = await ctx2.api.object("DocumentDiff", "global", nm);
+        if (r && r.ok && r.data && r.data.content) {
+          hit = { name: nm, content: String(r.data.content) };
+          break;
+        }
+      }
       const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
       if (!vbox) return;
-      if (ddR.ok && ddR.data && ddR.data.content) {
-        const raw = String(ddR.data.content);
+      if (hit) {
+        const raw = hit.content;
         const vm = raw.match(/verdict:\s*\|\n([\s\S]*?)(?:\n  [a-zA-Z]|\n\w|$)/);
         const cm = raw.match(/changed:\s*"?([^"\n]+)"?/);
         const verdict = vm ? vm[1].trim() : raw;
-        vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' + esc(t("Diff \u5224\u51B3 \xB7 ops_core_inner_agent")) + '</span><span class="h-right">' + esc(cm ? cm[1] : "") + '</span></div><div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div><div class="small faint" style="margin-top:6px">' + esc(t("\u5BF9\u8C61 DocumentDiff/global/")) + esc(ddName) + "</div></div></div>";
+        vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' + esc(t("Diff \u5224\u51B3 \xB7 ops_core_inner_agent")) + '</span><span class="h-right">' + esc(cm ? cm[1] : "") + '</span></div><div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div><div class="small faint" style="margin-top:6px">' + esc(t("\u5BF9\u8C61 DocumentDiff/global/")) + esc(hit.name) + "</div></div></div>";
       } else {
-        vbox.innerHTML = '<div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/") + esc(ddName) + t(" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020")) + "</div></div>";
+        vbox.innerHTML = '<div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/")) + esc(candidates.join("\u3001")) + esc(t(" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020")) + "</div>";
       }
     } catch (e) {
     }
@@ -3301,6 +3317,12 @@ var CoreConsoleWeb = (() => {
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
     ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
+    items.filter((x) => x.kind === "run").forEach((x) => hydrateVerdict(ctx2, {
+      kind: "Workflow",
+      scope: String(x.run.owner || "global"),
+      name: String(x.run.workflow || ""),
+      run: x.run.run
+    }));
     hydrateLedger(ctx2);
     if (focus && matched.length) {
       const hit = el.querySelector('[data-ap-focused="1"]');
