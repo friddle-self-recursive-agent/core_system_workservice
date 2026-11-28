@@ -20,7 +20,7 @@ import { createApi } from '../src/core/api.js';
 import { setLocale, t as tr } from '../src/core/i18n.js';
 import { tagRoute, syncBadge } from '../src/render/chips.js';
 import * as refsMod from '../src/render/refs.js';
-import { depRoute, depChips, phaseChip, groupOf, statusOf, taskPhaseOf } from '../src/screens/tasks.js';
+import { depRoute, depChips, phaseChip, groupOf, statusOf, taskPhaseOf, taskHref, taskRow } from '../src/screens/tasks.js';
 import { tagGroups, tagVocabFromKinds, tagsOfDoc } from '../src/screens/objects.js';
 import { frontmatterTags, tagsOfRef, aggregateTags, groupByType } from '../src/screens/tags.js';
 import { sessBacklinksHtml } from '../src/screens/chat.js';
@@ -54,6 +54,19 @@ test('V-01/14/16/18 路由词形：docs/tag/:tag、tags、prop/:name、approvals
   assert.equal(h5.r.pattern, 'audit');
 
   assert.equal(tagRoute('domain:core'), 'docs/tag/domain%3Acore');
+});
+
+test('R-UX 任务行链接语义：行主区真 <a href="#/task/:id">，中键/复制深链/键盘/读屏可达，动作区不嵌套', () => {
+  const t = { scope: 'global', name: 'row/link', spec: { title: '行链接' }, status: { phase: 'queued' } };
+  // 深链与 ctx.go('task/'+encodeURIComponent(id)) / router '#/' 前缀同词形（整段单次编码）。
+  assert.equal(taskHref(t), 'task/global%2Frow%2Flink');
+  const html = taskRow(t);
+  assert.ok(html.includes('<a class="task-main lk" href="#/task/global%2Frow%2Flink"'), '行主区必须是真链接');
+  assert.ok(html.includes('title='), '链接应有可读 title 供读屏/悬浮');
+  assert.ok(html.indexOf('</a>') < html.indexOf('data-task-cancel'), '取消按钮不得嵌在 <a> 内');
+  assert.ok(html.includes('class="task-acts"'), '动作区仍独立在链接外');
+  // 链接关闭标签恰好一个（无遗漏/多写）。
+  assert.equal((html.match(/<\/a>/g) || []).length, 1);
 });
 
 test('V-03 依赖深链：depRoute/depChips 覆盖 Task/Workflow 大小写与简写，未知词形不编造', () => {
