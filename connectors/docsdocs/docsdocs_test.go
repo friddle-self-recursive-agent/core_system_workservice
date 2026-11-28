@@ -44,7 +44,7 @@ func newRepo(t *testing.T, sch *scheme.Scheme) repository.Repository {
 
 func TestApplyConfigAndGitPush(t *testing.T) {
 	ctx := context.Background()
-	sch := mustSch()
+	sch := mustSch(t)
 	repo := newRepo(t, sch)
 	if _, _, err := repo.Write(ctx, &repository.Object{Kind: "Agent", Scope: "global", Name: "a1", Content: []byte("apiVersion: core/v1\nkind: Agent\nmetadata:\n  name: a1\n  scope: global\nspec:\n  mode: chat\n")}, "fm", ""); err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestApplyConfigAndGitPush(t *testing.T) {
 
 func TestReleasePublishGhAbsentFailsExplicit(t *testing.T) {
 	ctx := context.Background()
-	sch := mustSch()
+	sch := mustSch(t)
 	c := New(newRepo(t, sch), sch)
 	if err := c.ApplyConfig([]byte(`{"dir": "` + t.TempDir() + `"}`)); err != nil {
 		t.Fatal(err)
