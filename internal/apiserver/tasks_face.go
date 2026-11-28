@@ -17,6 +17,18 @@ import (
 // taskKind 读面锚（scheme.yaml kind: Task——未注册=旧声明面，404）。
 const taskKind = "Task"
 
+// taskRowSpec #16 关联面回投：spec.agent=最强关联字段（哪个 agent 做的），
+// title/summary/source/sourceRef=对象页文本匹配 hay——此前 taskRow 只投 name/title，
+// objects.js 的 spec.* 全 undefined，匹配退化成两项。ownerRefs=归属对象引用反查。
+type taskRowSpec struct {
+	Title     string   `json:"title,omitempty"`
+	Summary   string   `json:"summary,omitempty"`
+	Source    string   `json:"source,omitempty"`
+	SourceRef string   `json:"sourceRef,omitempty"`
+	Agent     string   `json:"agent,omitempty"`
+	OwnerRefs []string `json:"ownerRefs,omitempty"`
+}
+
 // taskRow 列表瘦身行（status 投影简表——排队原因/在做什么/谁在做一屏可见）。
 type taskRow struct {
 	Name            string   `json:"name"`
@@ -30,6 +42,10 @@ type taskRow struct {
 	DependsOn       []string `json:"dependsOn"`
 	LastAction      string   `json:"lastAction,omitempty"`
 	LastError       string   `json:"lastError,omitempty"`
+	// #16 关联面顶层镜像（扁平快照行兼容——前端两种词形都读得到）：
+	Agent     string      `json:"agent,omitempty"`
+	OwnerRefs []string    `json:"ownerRefs,omitempty"`
+	Spec      taskRowSpec `json:"spec"`
 }
 
 // sortTasks 确定性投影：phase 活动态优先（running/verifying 在前）→ priority 权重 →
@@ -59,7 +75,8 @@ func sortTasks(rows []taskRow) {
 
 // taskRowOf 对象 → 瘦身行（解析失败=零值行照出——读面不放大声明形变；详情原文兜底可查）。
 func taskRowOf(name, scope string, rv int64, content []byte) taskRow {
-	r := taskRow{Name: name, Scope: scope, ResourceVersion: rv, DependsOn: []string{}}
+	r := taskRow{Name: name, Scope: scope, ResourceVersion: rv, DependsOn: []string{}, OwnerRefs: []string{},
+		Spec: taskRowSpec{OwnerRefs: []string{}}}
 	spec, st, ok := scheduler.Parse(content)
 	if !ok {
 		return r
@@ -67,6 +84,13 @@ func taskRowOf(name, scope string, rv int64, content []byte) taskRow {
 	r.Title, r.Priority, r.Phase = spec.Title, spec.Priority, st.Phase
 	r.Attempts, r.AgentSession = st.Attempts, st.AgentSession
 	r.LastAction, r.LastError = st.LastAction, st.LastError
+	// #16 关联面：最强字段 spec.agent + ownerRefs 回投（顶层镜像与嵌套 spec 同值，
+	// 快照扁平行与嵌套行两词形前端均可直读）。
+	r.Agent, r.OwnerRefs = spec.Agent, spec.OwnerRefs
+	r.Spec = taskRowSpec{
+		Title: spec.Title, Summary: spec.Summary, Source: spec.Source, SourceRef: spec.SourceRef,
+		Agent: spec.Agent, OwnerRefs: spec.OwnerRefs,
+	}
 	if len(st.DependsOn) > 0 {
 		r.DependsOn = st.DependsOn
 	}
@@ -90,6 +114,7 @@ func taskDetail(o *repository.Object) map[string]any {
 			"title": spec.Title, "summary": spec.Summary, "source": spec.Source,
 			"sourceRef": spec.SourceRef, "scopeRef": spec.ScopeRef,
 			"dependsOn": dependsOn, "priority": spec.Priority, "agent": spec.Agent,
+			"ownerRefs": spec.OwnerRefs,
 			"touches": map[string]any{
 				"repos": spec.Touches.Repos, "paths": spec.Touches.Paths,
 				"objects": spec.Touches.Objects, "exclusive": spec.Touches.Exclusive,

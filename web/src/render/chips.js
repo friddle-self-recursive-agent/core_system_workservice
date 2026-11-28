@@ -64,6 +64,16 @@ export function objRoute(kind, scope, name) {
   return 'obj/' + encSeg(kind) + '/' + encSeg(scope || 'global') + '/' + encSeg(name);
 }
 
+/** #16 agentSession 词形 → 深链目标：真 sessionId（session-*）走 session；
+ * 任务键 hint（<scope>/<task>——spawn 受理回填）走 task 详情（防「看会话」断链）。 */
+export function sessionTargetOf(sess) {
+  const s = String(sess == null ? '' : sess).trim();
+  if (!s) return '';
+  if (/^session[-_]/i.test(s)) return 'session/' + encSeg(s);
+  if (s.includes('/')) return 'task/' + encSeg(s);
+  return 'session/' + encSeg(s); // 裸 id=既有词形兜底
+}
+
 /** tag 深链（V-01）：docs/tag/:tag——docs 屏第三段=tag 过滤预填。 */
 export function tagRoute(tag) {
   return 'docs/tag/' + encSeg(tag);

@@ -1243,7 +1243,7 @@ var CoreConsoleWeb = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -1257,7 +1257,7 @@ var CoreConsoleWeb = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -1384,7 +1384,7 @@ var CoreConsoleWeb = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -1704,7 +1704,7 @@ var CoreConsoleWeb = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -1874,7 +1874,7 @@ var CoreConsoleWeb = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -2718,6 +2718,13 @@ var CoreConsoleWeb = (() => {
   function objRoute(kind, scope, name) {
     return "obj/" + encSeg(kind) + "/" + encSeg(scope || "global") + "/" + encSeg(name);
   }
+  function sessionTargetOf(sess) {
+    const s = String(sess == null ? "" : sess).trim();
+    if (!s) return "";
+    if (/^session[-_]/i.test(s)) return "session/" + encSeg(s);
+    if (s.includes("/")) return "task/" + encSeg(s);
+    return "session/" + encSeg(s);
+  }
   function tagRoute(tag2) {
     return "docs/tag/" + encSeg(tag2);
   }
@@ -2798,7 +2805,7 @@ var CoreConsoleWeb = (() => {
     return chip("\u540C\u6B65\u4E2D", "acc");
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -3000,7 +3007,7 @@ var CoreConsoleWeb = (() => {
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -4027,9 +4034,18 @@ var CoreConsoleWeb = (() => {
       [t("\u6807\u9898"), esc(taskTitle(t2))],
       ["id", esc(taskIdOf(t2))]
     ];
-    if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
+    if (spec.agent || s.agent) {
+      const ag = String(s.agent || spec.agent).trim();
+      const seg = ag.split("/");
+      const scope = seg.length > 1 ? seg[0] : "global";
+      const name = seg.length > 1 ? seg.slice(1).join("/") : ag;
+      rows.push([t("\u8D1F\u8D23"), chipGo(ag, objRoute("Agent", scope, name), "mute", true, t("\u6253\u5F00 Agent \u5BF9\u8C61\u9875"))]);
+    }
     const sessId = String(s.agentSession || s.sessionId || "").trim();
-    if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    if (sessId) {
+      const sessTarget = sessionTargetOf(sessId);
+      rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), sessTarget, "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
+    }
     if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u65E5\u5FD7\uFF09"))]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
@@ -4121,7 +4137,7 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -6257,7 +6273,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -8406,7 +8422,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -14039,20 +14055,31 @@ spec:
   }
 
   // src/screens/objects.js
+  function taskHintMentions(sess, low) {
+    const s = String(sess || "").trim().toLowerCase();
+    if (!s || s.length < 4 || !s.includes("/") || /^session[-_]/i.test(s)) return false;
+    return s === low || s.endsWith("/" + low) || s.includes(low);
+  }
   function relatedTasksOf(name, tasks) {
-    const n = String(name || "");
+    const n = String(name || "").trim();
     if (!n) return [];
+    const low = n.toLowerCase();
     const out = [];
     (tasks || []).forEach((t2) => {
       if (!t2) return;
       const spec = t2.spec || {};
       const st = t2.status || t2;
       const id = (t2.scope || "global") + "/" + String(t2.name || "");
-      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef, t2.title].map((x) => String(x || "").toLowerCase()).join(" \n");
-      const isSelf = String(t2.name || "") === n;
-      const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
-      if (!isSelf && !mentioned) return;
       const sess = String(st.agentSession || st.sessionId || "").trim();
+      const isSelf = String(t2.name || "") === n;
+      const agent = String(spec.agent || t2.agent || "").trim().toLowerCase();
+      const owners = (spec.ownerRefs || t2.ownerRefs || []).map((x) => String(x || "").trim().toLowerCase());
+      const byAgent = !!agent && agent === low;
+      const byOwner = owners.some((r) => r === low || r.endsWith("/" + low));
+      const byHint = taskHintMentions(sess, low);
+      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef, t2.title].map((x) => String(x || "").toLowerCase()).join(" \n");
+      const byText = !isSelf && low.length >= 4 && hay.includes(low);
+      if (!isSelf && !byAgent && !byOwner && !byHint && !byText) return;
       out.push({
         id,
         self: isSelf,
@@ -14068,12 +14095,44 @@ spec:
   function relatedRunsOf(name, runs) {
     const n = String(name || "").toLowerCase();
     if (!n || n.length < 4) return [];
-    return (runs || []).filter((r) => String(r && r.involved || "").toLowerCase().includes(n)).slice(0, 8).map((r) => ({
+    return (runs || []).filter((r) => {
+      if (!r) return false;
+      const a = String(r.agent || "").trim().toLowerCase();
+      if (a && (a === n || a.endsWith("/" + n))) return true;
+      return String(r.involved || "").toLowerCase().includes(n);
+    }).slice(0, 8).map((r) => ({
       workflow: String(r && (r.workflow || r.name) || ""),
       run: r && (r.run != null ? r.run : r.no != null ? r.no : ""),
       phase: String(r && r.phase || ""),
       status: String(r && r.status || "")
     }));
+  }
+  function relatedEventsOf(name, events) {
+    const n = String(name || "").toLowerCase();
+    if (!n || n.length < 4) return [];
+    return (events || []).filter((e) => {
+      if (!e) return false;
+      const inv = String(e.involved || "").toLowerCase();
+      const who = String(e.agent || e.owner || "").trim().toLowerCase();
+      return inv.includes(n) || !!who && (who === n || who.endsWith("/" + n));
+    }).slice(0, 8).map((e) => ({
+      type: String(e.type || ""),
+      eventId: String(e.eventId || e.id || ""),
+      at: String(e.ts || e.at || "")
+    }));
+  }
+  function currentSessionOf(content) {
+    let src = String(content || "");
+    if (!src.trim()) return "";
+    if (src.startsWith("---")) {
+      const end = src.indexOf("\n---", 3);
+      if (end > 3) src = src.slice(3, end);
+    }
+    const d = loadYaml(src);
+    const cur = d && d.status && d.status.currentSession || d && d.currentSession;
+    if (!cur) return "";
+    const id = typeof cur === "string" ? cur : cur.id || cur.sessionId || cur.session || "";
+    return String(id || "").trim();
   }
   var PHASE_CHIP = {
     running: ["\u6B63\u5728\u505A", "acc"],
@@ -14093,17 +14152,33 @@ spec:
     const v = PHASE_CHIP[String(p || "")];
     return v ? chip(v[0], v[1]) : chip(String(p || t("\u72B6\u6001\u672A\u77E5")), "mute");
   }
-  function relatedPanelHtml(tasks, runs) {
-    if (!tasks.length && !runs.length) {
-      return t('<div class="ob-empty">\u65E0\u76F8\u5173\u4EFB\u52A1\u4E0E\u5DE5\u4F5C\u6D41\u8FD0\u884C\uFF08\u5FEB\u7167\u4EFB\u52A1/\u8FD0\u884C\u8BB0\u5F55\u63D0\u53CA\u672C\u5BF9\u8C61\u540D\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002</div>');
+  function sessionChipHtml(sess) {
+    const target = sessionTargetOf(sess);
+    if (!target) return "";
+    const isTask = target.startsWith("task/");
+    return chipGo(
+      isTask ? t("\u770B\u4EFB\u52A1") : t("\u770B\u4F1A\u8BDD"),
+      target,
+      "acc",
+      true,
+      isTask ? t("\u4EFB\u52A1\u952E\u4F1A\u8BDD\u63D0\u793A\u2014\u2014\u94FE\u4EFB\u52A1\u8BE6\u60C5") : t("\u67E5\u770B\u6267\u884C\u4F1A\u8BDD")
+    );
+  }
+  function relatedPanelHtml(tasks, runs, currentSess, events) {
+    if (!tasks.length && !runs.length && !currentSess && !events.length) {
+      return t('<div class="ob-empty">\u65E0\u76F8\u5173\u4EFB\u52A1/\u4F1A\u8BDD/\u8FD0\u884C/\u4E8B\u4EF6\uFF08\u5FEB\u7167\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002</div>');
     }
     const taskRows = tasks.map(
-      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + " <b>" + esc(trunc(x.title, 44)) + "</b> " + (x.agent ? chip(t("\u8D1F\u8D23 ") + x.agent, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(x.id, 48)) + (x.lastAction ? " \xB7 " + esc(trunc(x.lastAction, 60)) : "") + '</div></div><span class="w-ev-time">' + (x.session ? chipGo(t("\u770B\u4F1A\u8BDD"), "session/" + encodeURIComponent(x.session), "acc", true, t("\u67E5\u770B\u6267\u884C\u4F1A\u8BDD")) : "") + " " + chipGo(t("\u4EFB\u52A1\u8BE6\u60C5"), "task/" + encodeURIComponent(x.id), "mute", true) + "</span></div>"
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + " <b>" + esc(trunc(x.title, 44)) + "</b> " + (x.agent ? chip(t("\u8D1F\u8D23 ") + x.agent, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(x.id, 48)) + (x.lastAction ? " \xB7 " + esc(trunc(x.lastAction, 60)) : "") + '</div></div><span class="w-ev-time">' + (x.session ? sessionChipHtml(x.session) : "") + " " + chipGo(t("\u4EFB\u52A1\u8BE6\u60C5"), "task/" + encodeURIComponent(x.id), "mute", true) + "</span></div>"
     ).join("");
+    const sessHtml = currentSess ? '<div class="mini-row"><div class="mr-main"><div>' + chip(t("\u5F53\u524D\u4F1A\u8BDD"), "acc") + ' <span class="mono">' + esc(trunc(currentSess, 56)) + '</span></div></div><span class="w-ev-time">' + sessionChipHtml(currentSess) + "</span></div>" : "";
     const runRows = runs.map(
       (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase || x.status) + " <b>" + esc(x.workflow) + "</b> " + chip("run #" + String(x.run != null ? x.run : "?"), "mono") + '</div></div><span class="w-ev-time">' + chipGo(t("\u770B\u8FD0\u884C"), "wf/" + encodeURIComponent(x.workflow) + "/r/" + encodeURIComponent(String(x.run != null ? x.run : "")), "mute", true) + "</span></div>"
     ).join("");
-    return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u76F8\u5173\u4EFB\u52A1")) + "</div>" + taskRows : "") + (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C")) + "</div>" + runRows : "");
+    const eventRows = events.map(
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + chip(t("\u4E8B\u4EF6"), "mute") + " <b>" + esc(trunc(x.type, 44)) + "</b> " + (x.eventId ? chip("#" + String(x.eventId), "mono") : "") + '</div></div><span class="w-ev-time">' + esc(trunc(x.at, 20)) + "</span></div>"
+    ).join("");
+    return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u76F8\u5173\u4EFB\u52A1")) + "</div>" + taskRows : "") + (sessHtml ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u5F53\u524D\u4F1A\u8BDD")) + "</div>" + sessHtml : "") + (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C")) + "</div>" + runRows : "") + (eventRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u4E8B\u4EF6")) + "</div>" + eventRows : "");
   }
   function tagVocabFromKinds(kinds) {
     const rows = Array.isArray(kinds) ? kinds : [];
@@ -14319,7 +14394,10 @@ spec:
     const ruleState = rulesPending.get(ref.kind + "|" + ref.name) || null;
     const related = relatedPanelHtml(
       relatedTasksOf(ref.name, ctx2.store.tasks()),
-      relatedRunsOf(ref.name, ctx2.store.runs())
+      relatedRunsOf(ref.name, ctx2.store.runs()),
+      currentSessionOf(content),
+      // #16 ④ 对象自身 status.currentSession
+      relatedEventsOf(ref.name, ctx2.store.events())
     );
     el.innerHTML = '<div class="view-inner">' + screenHead(
       ref.name,

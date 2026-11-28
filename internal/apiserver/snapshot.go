@@ -149,7 +149,7 @@ func runsSummary(st workflow.RunState) map[string]any {
 	for _, r := range recent {
 		rows = append(rows, map[string]any{
 			"run": r.Run, "workflow": r.Workflow, "phase": r.Phase, "status": r.Status,
-			"eventId": r.EventID, "involved": r.Involved,
+			"eventId": r.EventID, "involved": r.Involved, "agent": r.Agent,
 			"startedAt": r.StartedAt.UTC().Format(time.RFC3339Nano),
 		})
 	}

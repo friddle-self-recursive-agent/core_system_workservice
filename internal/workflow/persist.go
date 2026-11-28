@@ -88,7 +88,7 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 			"autoCriteria": run.ApprovalPolicy.AutoCriteria, "maxRiskLevel": run.ApprovalPolicy.MaxRiskLevel,
 			"diffAgent": run.ApprovalPolicy.DiffAgent, "diffProvider": run.ApprovalPolicy.DiffProvider,
 			"parentRun": fmt.Sprint(run.ParentRun), "subRuns": mustJSON(run.SubRuns),
-			"fanoutPlan": run.FanoutPlan,
+			"fanoutPlan": run.FanoutPlan, "agent": run.Agent,
 		}),
 		HistoryJSON: mustJSON(run.History), // F-04 运行轨迹写穿透（空轨迹=null 词形）
 		TriggerSeq:  run.TriggerSeq, EventID: run.EventID, Type: run.Type,
@@ -112,7 +112,7 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 		},
 		TriggerSeq:   r.TriggerSeq, EventID: r.EventID, Type: r.Type,
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
-		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
+		Involved: r.Involved, StartedAt: parseNano(r.StartedAt), Agent: spec["agent"],
 		SessionID: r.SessionID, Verify: verifyFromJSON(r.VerifyJSON),
 		ParentRun: parentRunFromSpec(spec["parentRun"]), FanoutPlan: spec["fanoutPlan"],
 	}
