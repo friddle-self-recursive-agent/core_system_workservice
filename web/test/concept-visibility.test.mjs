@@ -24,7 +24,7 @@ import { depRoute, depChips, phaseChip, groupOf, statusOf, taskPhaseOf } from '.
 import { tagGroups, tagVocabFromKinds, tagsOfDoc } from '../src/screens/objects.js';
 import { frontmatterTags, tagsOfRef, aggregateTags, groupByType } from '../src/screens/tags.js';
 import { sessBacklinksHtml } from '../src/screens/chat.js';
-import { matchesApprovalFocus, verdictDocNames } from '../src/screens/approvals.js';
+import { matchesApprovalFocus, verdictDocNames, verdictAnchorOf, apVerdictKeyOf } from '../src/screens/approvals.js';
 import { docHistoryRowsHtml } from '../src/screens/editor.js';
 import { renderAuditPayload } from '../src/screens/audit.js';
 import { templatesSectionHtml } from '../src/screens/workflows.js';
@@ -280,4 +280,26 @@ test('verdictDocNames：per-run 名优先+旧名回退；run 缺席=仅旧名（
     verdictDocNames({ kind: 'Workflow', name: 'gh_issue.trigger', run: 0 }),
     ['docdiff-workflow-gh-issue-trigger'],
   );
+});
+
+test('verdictAnchorOf：involved 三段键=实际挂起对象（非卡头编排器名）；缺席回退卡头', () => {
+  assert.deepEqual(
+    verdictAnchorOf({ workflow: 'core-workflow', owner: 'global', run: 83, involved: 'Workflow/global/gh-issue-trigger' }),
+    { kind: 'Workflow', scope: 'global', name: 'gh-issue-trigger' },
+  );
+  assert.deepEqual(
+    verdictAnchorOf({ workflow: 'wf-x', owner: 'global', involved: 'Workflow/global/wf-x,extra' }),
+    { kind: 'Workflow', scope: 'global', name: 'wf-x' },
+  );
+  assert.deepEqual(
+    verdictAnchorOf({ workflow: 'wf-x', owner: 'global' }),
+    { kind: 'Workflow', scope: 'global', name: 'wf-x' },
+  );
+});
+
+test('apVerdictKeyOf：per-run 唯一（同对象多 run 不撞首卡）；稿卡无 run=退化为对象键', () => {
+  const a = verdictAnchorOf({ involved: 'Workflow/global/gh-issue-trigger' });
+  assert.equal(apVerdictKeyOf({ run: 83 }, a), 'Workflow_global_gh_issue_trigger-run83');
+  assert.equal(apVerdictKeyOf({ run: 84 }, a), 'Workflow_global_gh_issue_trigger-run84');
+  assert.equal(apVerdictKeyOf({ run: null }, a), 'Workflow_global_gh_issue_trigger');
 });

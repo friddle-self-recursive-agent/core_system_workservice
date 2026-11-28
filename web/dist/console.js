@@ -3118,10 +3118,11 @@ var CoreConsoleWeb = (() => {
     const hl = focused ? ' data-ap-focused="1" style="outline:2px solid var(--accent)"' : "";
     if (it.kind === "run") {
       const r = it.run;
+      const a0 = verdictAnchorOf(r);
       const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
       const no = String(r.run != null ? r.run : "");
       const info = runApprovalInfoHtml(runApprovalInfoOf(ctx2.store, String(r.workflow || ""), String(r.owner || "global"), no, String(r.startedAt || "")));
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div data-apverdict="' + esc(apKeyOf({ kind: "Workflow", scope: String(r.owner || "global"), name: String(r.workflow || "") })) + '"><div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div data-apverdict="' + esc(apVerdictKeyOf(r, a0)) + '"><div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
     }
     if (it.kind === "proposal") {
       const p = it.proposal;
@@ -3174,6 +3175,17 @@ var CoreConsoleWeb = (() => {
     const base = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     return d.run != null && d.run !== "" && Number(d.run) > 0 ? [base + "-run" + Number(d.run), base] : [base];
   }
+  function verdictAnchorOf(r) {
+    const inv = String(r && r.involved || "").split(",")[0].trim();
+    const m = /^(Workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(inv);
+    if (m) return { kind: m[1], scope: m[2], name: m[3] };
+    return { kind: "Workflow", scope: String(r && r.owner || "global"), name: String(r && r.workflow || "") };
+  }
+  function apVerdictKeyOf(r, anchor) {
+    const base = apKeyOf(anchor || verdictAnchorOf(r));
+    const no = String(r && r.run != null ? r.run : "");
+    return no ? base + "-run" + no : base;
+  }
   async function hydrateVerdict(ctx2, d) {
     try {
       const candidates = verdictDocNames(d);
@@ -3185,7 +3197,8 @@ var CoreConsoleWeb = (() => {
           break;
         }
       }
-      const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
+      const vkey = d.apVerdictKey || apKeyOf(d);
+      const vbox = document.querySelector('[data-apverdict="' + CSS.escape(vkey) + '"]');
       if (!vbox) return;
       if (hit) {
         const raw = hit.content;
@@ -3364,12 +3377,16 @@ var CoreConsoleWeb = (() => {
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
     ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
-    items.filter((x) => x.kind === "run").forEach((x) => hydrateVerdict(ctx2, {
-      kind: "Workflow",
-      scope: String(x.run.owner || "global"),
-      name: String(x.run.workflow || ""),
-      run: x.run.run
-    }));
+    items.filter((x) => x.kind === "run").forEach((x) => {
+      const a = verdictAnchorOf(x.run);
+      hydrateVerdict(ctx2, {
+        kind: a.kind,
+        scope: a.scope,
+        name: a.name,
+        run: x.run.run,
+        apVerdictKey: apVerdictKeyOf(x.run, a)
+      });
+    });
     hydrateLedger(ctx2);
     if (focus && matched.length) {
       const hit = el.querySelector('[data-ap-focused="1"]');

@@ -118,6 +118,7 @@ function itemHtml(ctx, it, idx, focused = false) {
     // ApprovalGranted/ApprovalRejected；锚词形与 §19 R3 批闸语义同源）。
     // 审批信息面（三次裁决）：批准前展示已更新文档/待批稿/闸前判断摘要——不再裸按钮。
     const r = it.run;
+    const a0 = verdictAnchorOf(r);
     const anchor = 'Workflow/' + String(r.owner || 'global') + '/' + String(r.workflow || '');
     const no = String(r.run != null ? r.run : '');
     const info = runApprovalInfoHtml(runApprovalInfoOf(ctx.store, String(r.workflow || ''), String(r.owner || 'global'), no, String(r.startedAt || '')));
@@ -126,7 +127,7 @@ function itemHtml(ctx, it, idx, focused = false) {
       '<span class="h-right">' + chip(String(r.phase || 'AwaitingApproval'), 'warn') + '</span></div>' +
       '<div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || tr('工作流闸锚挂起——等待审批信号')), 160)) + '</div>' +
       '<div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div>' +
-      '<div data-apverdict="' + esc(apKeyOf({ kind: 'Workflow', scope: String(r.owner || 'global'), name: String(r.workflow || '') })) +
+      '<div data-apverdict="' + esc(apVerdictKeyOf(r, a0)) +
       '"><div class="small faint" style="margin-top:8px">' + esc(tr('判决文档（ops_core_inner_agent）现读中…')) + '</div></div>' +
       '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
       chipGo(tr('锚 ') + anchor, 'wf/' + encodeURIComponent(String(r.workflow || '')) + (no ? '/r/' + encodeURIComponent(no) : ''), 'acc', true, tr('运行详情——批闸锚')) +
@@ -232,6 +233,25 @@ export function verdictDocNames(d) {
   return (d.run != null && d.run !== '' && Number(d.run) > 0 ? [base + '-run' + Number(d.run), base] : [base]);
 }
 
+/** 判决锚=run.Involved（后端 Generator.OnApprovalSuspended 消费的权威键——勿用卡头 r.workflow：
+ * 编排器 core-workflow ≠ 挂起对象 gh-issue-trigger，用错=判决名必然 404）。involved 形
+ * `Workflow/global/gh-issue-trigger`（可带后续逗号段），解析三段对象键；非 Workflow 词形
+ * 回退卡头 r.workflow（防御——不冒充）。 */
+export function verdictAnchorOf(r) {
+  const inv = String((r && r.involved) || '').split(',')[0].trim();
+  const m = /^(Workflow)\/([^/\s]+)\/([^/\s]+)$/.exec(inv);
+  if (m) return { kind: m[1], scope: m[2], name: m[3] };
+  return { kind: 'Workflow', scope: String((r && r.owner) || 'global'), name: String((r && r.workflow) || '') };
+}
+
+/** 判决容器键（per-run 唯一——同一 Workflow 多 run 挂起时避免 querySelector 只命中首卡）。
+ * 稿批准卡无 run 号=退化为 apKeyOf(d)（单容器）。 */
+export function apVerdictKeyOf(r, anchor) {
+  const base = apKeyOf(anchor || verdictAnchorOf(r));
+  const no = String((r && r.run != null) ? r.run : '');
+  return no ? base + '-run' + no : base;
+}
+
 async function hydrateVerdict(ctx, d) {
   try {
     const candidates = verdictDocNames(d);
@@ -240,7 +260,8 @@ async function hydrateVerdict(ctx, d) {
       const r = await ctx.api.object('DocumentDiff', 'global', nm);
       if (r && r.ok && r.data && r.data.content) { hit = { name: nm, content: String(r.data.content) }; break; }
     }
-    const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
+    const vkey = d.apVerdictKey || apKeyOf(d);
+    const vbox = document.querySelector('[data-apverdict="' + CSS.escape(vkey) + '"]');
     if (!vbox) return;
     if (hit) {
       const raw = hit.content;
@@ -450,11 +471,15 @@ function approvalsScreen(el, ctx) {
 
   items.filter((x) => x.kind === 'draft').forEach((x) => hydrateDiff(ctx, x.draft));
   // run 审批卡判决注水（2026-11-28 用户裁定「审批为空」——run 卡此前无判决容器；
-  // d.run 携带=per-run 名优先 docdiff-<kind>-<name>-run<N>，旧名回退）
-  items.filter((x) => x.kind === 'run').forEach((x) => hydrateVerdict(ctx, {
-    kind: 'Workflow', scope: String(x.run.owner || 'global'), name: String(x.run.workflow || ''),
-    run: x.run.run,
-  }));
+  // 锚=run.Involved 解析的实际挂起对象（非卡头编排器名——后端 Generator 权威键同款），
+  // per-run 名优先 docdiff-<kind>-<name>-run<N>，旧名回退）
+  items.filter((x) => x.kind === 'run').forEach((x) => {
+    const a = verdictAnchorOf(x.run);
+    hydrateVerdict(ctx, {
+      kind: a.kind, scope: a.scope, name: a.name, run: x.run.run,
+      apVerdictKey: apVerdictKeyOf(x.run, a),
+    });
+  });
   hydrateLedger(ctx);
   if (focus && matched.length) {
     const hit = el.querySelector('[data-ap-focused="1"]');
