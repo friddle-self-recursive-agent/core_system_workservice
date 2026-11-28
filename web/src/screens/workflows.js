@@ -5,7 +5,7 @@ import { depChips } from './tasks.js';
 import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 import { loadYaml, yamlTextView } from '../render/md.js';
-import { workflowStudioHtml, bindWorkflowStudio, wfGraphHtml } from './workflow-config.js';
+import { workflowStudioHtml, bindWorkflowStudio, wfGraphHtml, WF_TERMINAL_STATUS } from './workflow-config.js';
 import { htmlModal } from './modal.js';
 import { openDocChat } from './doc-chat.js';
 
@@ -314,28 +314,34 @@ function wfSessionChip(sid, label) {
   return chipGo((label ? tr(label) + ' ' : '') + trunc(s, 24), 'session/' + encodeURIComponent(s), 'acc', true, s);
 }
 
-/** 节点聚合（当前相位/到过次数/失败数）。 */
+/** 节点聚合（当前相位/到过次数）——只按 spec.phases 相位词统计。
+ * run 终态词（Failed）不属相位链（workflow.md 规则 14 / F-04）：不计入任何相位节点，
+ * 另以「failed ×N」徽标出链展示（#25）。 */
 function wfNodeStats(runs, phases) {
   const stats = new Map();
-  for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+  for (const p of phases) stats.set(p, { cur: 0, visited: 0 });
   for (const r of runs) {
     const cur = String(r.phase || '');
     if (stats.has(cur)) stats.get(cur).cur++;
     const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String((h && h.to) || '')));
     for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
-    if (String(r.status || '') === 'failed' && stats.has('Failed')) stats.get('Failed').failed++;
   }
   return stats;
 }
 
 /** 节点图（2026-11-28 用户裁决「workflow 页面展示一致强调的是图。因为肯定有交叉出口」：
  * 线性链退役——声明原文可解析即走 wfGraphHtml 真图（分叉边带判断词标签——advance/判断词
- * 交叉出口一图可见）；rawYaml 缺席（纯 builtin 无原文）回退线性链。 */
+ * 交叉出口一图可见）；rawYaml 缺席（纯 builtin 无原文）回退线性链。
+ * 2026-11-28 #25：Failed 是 run 终态词（状态词≠相位词，规则 14/F-04），不占相位链节点位——
+ * 只按 spec.phases 相位词渲染链，终态以「failed ×N」徽标出链展示，计数不跨词域混算。 */
 export function wfNodeGraphHtml(wf, runs) {
-  const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+  const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String)
+    .filter((p) => !WF_TERMINAL_STATUS.has(p));
   const failed = runs.filter((r) => String(r.status || '') === 'failed').length;
-  const list = phases.concat(failed && !phases.includes('Failed') ? ['Failed'] : []);
-  if (!list.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>';
+  const terminalBadge = failed
+    ? '<div class="wf-terminal-badge" style="margin-top:6px"><span class="chip danger tiny" title="' + esc(tr('run 终态统计——状态词不占相位链节点')) + '">' + esc(tr('落终态 failed ×' + failed)) + '</span></div>'
+    : '';
+  if (!phases.length) return '<div class="small faint">' + esc(tr('该 workflow 未投影相位链。')) + '</div>' + terminalBadge;
   // 分叉图优先（声明原文=transitions 真相源——rawYaml 在场才可解析）。
   const raw = String(wf && wf.rawYaml || '');
   if (raw) {
@@ -345,21 +351,23 @@ export function wfNodeGraphHtml(wf, runs) {
       const transitions = Array.isArray(doc && doc.spec && doc.spec.transitions) ? doc.spec.transitions : [];
       if (transitions.length) {
         const phasesRich = phasesRaw.map((n) => (typeof n === 'string' ? { name: n, phase: n } : n))
-          .filter((n) => n && (n.phase || n.name));
+          .filter((n) => n && (n.phase || n.name) && !WF_TERMINAL_STATUS.has(String(n.phase || n.name)));
+        // wfGraphHtml 已把触及终态词的迁移边出链（Failed 不生成链上/侧轨节点）。
         const graph = wfGraphHtml(phasesRich, transitions);
         if (graph) {
           return '<div class="small faint" style="margin-bottom:6px">' + esc(tr('相位图——交叉出口=判断分叉边（边上词形=判断词；judge 会话 [decision:词] 标记或判定域 connectops-jev 回传点火，未命中=advance 兜底）。')) + '</div>' +
             '<div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div>' +
+            terminalBadge +
             '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
             '<div data-wf-node-drawer class="wf-node-drawer"></div>';
         }
       }
     } catch (e) { /* 原文不可解析=回退线性链（诚实降级不冒充图） */ }
   }
-  const stats = wfNodeStats(runs, list);
-  const body = list.map((p) => {
-    const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
-    const cls = 'pg-node' + (s.cur ? ' active' : '') + ((s.visited || s.failed) ? ' done' : '') + (p === 'Failed' ? ' fail' : '');
+  const stats = wfNodeStats(runs, phases);
+  const body = phases.map((p) => {
+    const s = stats.get(p) || { cur: 0, visited: 0 };
+    const cls = 'pg-node' + (s.cur ? ' active' : '') + (s.visited ? ' done' : '');
     return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button">' +
       '<div class="pg-dot"></div><div class="pg-name">' + esc(p) + '</div>' +
       (s.cur ? '<span class="chip acc tiny">' + esc(tr('当前') + ' ' + s.cur) + '</span>' : '') +
@@ -367,6 +375,7 @@ export function wfNodeGraphHtml(wf, runs) {
       '</div>';
   }).join('<span class="pg-edge">→</span>');
   return '<div class="pg-wrap">' + body + '</div>' +
+    terminalBadge +
     '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
     '<div data-wf-node-drawer class="wf-node-drawer"></div>';
 }

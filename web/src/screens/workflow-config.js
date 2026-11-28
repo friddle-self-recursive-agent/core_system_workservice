@@ -11,6 +11,10 @@ import { esc } from '../core/format.js';
 import { chip, chipGo, docRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
+/** run 终态词（Failed 终点锚 / RunRecord.Status=failed）——状态词≠相位词（workflow.md 规则 14 / F-04）。
+ * 相位链图只渲染 spec.phases 相位词；终态词不占链上节点位，另以徽标出链展示（#25）。 */
+export const WF_TERMINAL_STATUS = new Set(['Failed']);
+
 /** 默认 core-system-developer-loop 8 节点解释器声明骨架 */
 export function defaultLoopSpec(name = 'core-system-developer-loop', existing = {}) {
   const s = existing && typeof existing === 'object' ? existing : {};
@@ -374,7 +378,9 @@ function readNodeFields(root, base) {
 
 /** 节点相位链图（2026-11-27 三次裁决：多起点徽章/条件分叉边带 on 词形标签/侧轨虚线；
  * 纯渲染——输入 phases+transitions → HTML+SVG；节点盒 data-graph-node=点击弹窗编辑锚）。
- * 图键=相位词（transitions from/to=phase 词汇；节点盒显示 name/phase 双词形）。 */
+ * 图键=相位词（transitions from/to=phase 词汇；节点盒显示 name/phase 双词形）。
+ * 2026-11-28 #25：run 终态词（Failed）不渲染成链上节点——触及终态词的迁移边出链（声明原文/YAML
+ * 仍保留该边供引擎驳回语义，仅图上不画）。 */
 export function wfGraphHtml(phases, transitions) {
   /* 节点键=节点名（同相位多节点全部入图——子链复用父链相位词不再折叠；2026-11-28 用户裁决
    * 「workflow 页面展示一致强调的是图。因为肯定有交叉出口」）。列=相位（层化），列内节点堆叠；
@@ -397,6 +403,8 @@ export function wfGraphHtml(phases, transitions) {
   const edges = [];
   (transitions || []).forEach((t) => {
     if (!t || !t.from || !t.to || t.from === t.to) return;
+    // 终态词出链（#25）：Failed 是 run 状态词不是相位，不生成链上/侧轨节点与边
+    if (WF_TERMINAL_STATUS.has(String(t.from)) || WF_TERMINAL_STATUS.has(String(t.to))) return;
     [t.from, t.to].forEach((k) => {
       if (!phaseFirst.has(k)) {
         const key = k + '#side';

@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { wfTaskKey, wfRealSession, wfRunNodesHtml, wfNodeGraphHtml, wfFlowNodesHtml } from '../src/screens/workflows.js'
-import { defaultLoopSpec, buildWorkflowYaml, workflowStudioHtml } from '../src/screens/workflow-config.js'
+import { defaultLoopSpec, buildWorkflowYaml, workflowStudioHtml, wfGraphHtml } from '../src/screens/workflow-config.js'
 
 test('wfTaskKey：只解析 Task/scope/name 三段 involved', () => {
   assert.equal(wfTaskKey('Task/self-recursive-core/console-audit-20261126'), 'self-recursive-core/console-audit-20261126')
@@ -49,6 +49,32 @@ test('wfNodeGraphHtml：声明相位+真实运行统计；零运行仍展示定�
   assert.match(html, /当前 1/)
   assert.match(html, /到过 1/)
   assert.match(html, /当前 1/)
+})
+
+test('wfNodeGraphHtml：Failed 终态词不冒充相位——出链徽标 failed ×N，当前/到过不跨词域混入 (#25)', () => {
+  const wf = { phases: ['log-event', 'agent-judge', 'approval-gate', 'doc-apply', 'developer-system', 'verify', 'deploy-system', 'report-archive'] }
+  const runs = Array.from({ length: 21 }, (_, i) => ({
+    status: 'failed', phase: 'Failed',
+    history: [{ to: 'log-event' }, ...(i < 19 ? [{ to: 'agent-judge' }] : [])],
+  }))
+  const html = wfNodeGraphHtml(wf, runs)
+  assert.doesNotMatch(html, /data-wf-node="Failed"/, 'Failed 不作相位链节点')
+  assert.doesNotMatch(html, /pg-name">Failed/, 'Failed 不作链上末站')
+  assert.match(html, /failed ×21/, '终态计数以独立徽标出链展示')
+  assert.match(html, /wf-terminal-badge/, '徽标与相位链分离')
+  assert.match(html, /data-wf-node="log-event"/, '相位链仍按 spec.phases 渲染')
+  assert.match(html, /data-wf-node="report-archive"/, '链上末站是真实相位而非 Failed')
+  assert.doesNotMatch(html, /当前 21/, '终态 run 数不冒充某相位的「当前」计数')
+  assert.match(html, /到过 19/, '到过计数仍只按相位 history 词域统计')
+})
+
+test('wfGraphHtml：builtin 老 Failed 边不在相位链图上生成 Failed 节点 (#25)', () => {
+  const cfg = defaultLoopSpec('core-system-developer-loop', {})
+  assert.ok(cfg.transitions.some((t) => String(t.to) === 'Failed'), '声明仍保留驳回终态边（引擎语义不丢）')
+  const graph = wfGraphHtml(cfg.phases, cfg.transitions)
+  assert.doesNotMatch(graph, /data-graph-node="Failed"/, '相位链图不画 Failed 终态节点')
+  assert.doesNotMatch(graph, /ApprovalRejected/, '终态边不画在图上（YAML 声明仍可查）')
+  assert.match(graph, /data-graph-node="approval-gate"/, '其它相位节点照常渲染')
 })
 
 test('wfFlowNodesHtml：ConnectorOps 骨架真实节点；缺席=显式未绑定', () => {
