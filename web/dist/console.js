@@ -12053,21 +12053,37 @@ ${actionLines || "      []"}
     return n;
   }
   function wfGraphHtml(phases, transitions) {
-    const byPhase = /* @__PURE__ */ new Map();
+    const nodes = [];
+    const seenKeys = /* @__PURE__ */ new Set();
+    const phaseFirst = /* @__PURE__ */ new Map();
     (phases || []).forEach((n) => {
-      if (!n || !n.phase && !n.name) return;
-      const key = String(n.phase || n.name);
-      if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || "", unit: n.unit || "connectops", entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+      let name, phase;
+      if (typeof n === "string") {
+        name = n;
+        phase = n;
+      } else if (!n || !n.phase && !n.name) return;
+      else {
+        name = String(n.name || "");
+        phase = String(n.phase || n.name || "");
+      }
+      if (!phase) return;
+      let key = name && !seenKeys.has(name) ? name : phase + "#" + nodes.length;
+      while (seenKeys.has(key)) key = key + "#";
+      seenKeys.add(key);
+      nodes.push({ key, name: name || phase, phase, title: typeof n === "object" ? n.title || "" : "", unit: typeof n === "object" && n.unit ? n.unit : "connectops", entry: typeof n === "object" && Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+      if (!phaseFirst.has(phase)) phaseFirst.set(phase, key);
     });
-    const nodes = [...byPhase.values()];
-    const known = new Set(nodes.map((n) => n.key));
     const edges = [];
     (transitions || []).forEach((t2) => {
       if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
       [t2.from, t2.to].forEach((k) => {
-        if (!known.has(k)) {
-          nodes.push({ key: k, name: k, title: t("\u4FA7\u8F68\u6001\uFF08\u975E\u6B63\u5411\u4E3B\u7EBF\uFF09"), unit: "side", entry: false });
-          known.add(k);
+        if (!phaseFirst.has(k)) {
+          const key = k + "#side";
+          if (!seenKeys.has(key)) {
+            nodes.push({ key, name: k, phase: k, title: t("\u4FA7\u8F68\u6001\uFF08\u975E\u6B63\u5411\u4E3B\u7EBF\uFF09"), unit: "side", entry: false });
+            seenKeys.add(key);
+            phaseFirst.set(k, key);
+          }
         }
       });
       edges.push({ from: t2.from, on: String(t2.on || "advance"), to: t2.to });
@@ -12083,14 +12099,15 @@ ${actionLines || "      []"}
       drawn.push(e);
     });
     if (!nodes.length) return "";
-    const level = new Map(nodes.map((n) => [n.key, 0]));
+    const phaseLevel = /* @__PURE__ */ new Map();
+    phaseFirst.forEach((k, ph) => phaseLevel.set(ph, 0));
     for (let pass = 0; pass < nodes.length; pass++) {
       let changed = false;
       drawn.forEach((e) => {
-        const lf = level.get(e.from) || 0;
-        const lt = level.get(e.to) || 0;
+        const lf = phaseLevel.get(e.from) || 0;
+        const lt = phaseLevel.get(e.to) || 0;
         if (lt < lf + 1 && lf + 1 < nodes.length) {
-          level.set(e.to, lf + 1);
+          phaseLevel.set(e.to, lf + 1);
           changed = true;
         }
       });
@@ -12101,8 +12118,10 @@ ${actionLines || "      []"}
       if (n.entry) n.entryLabel = t("\u5165\u53E3") + ++entryNo;
     });
     const cols = /* @__PURE__ */ new Map();
+    const nodeLevel = /* @__PURE__ */ new Map();
     nodes.forEach((n) => {
-      const lv = level.get(n.key) || 0;
+      const lv = phaseLevel.get(n.phase) || 0;
+      nodeLevel.set(n.key, lv);
       if (!cols.has(lv)) cols.set(lv, []);
       cols.get(lv).push(n);
     });
@@ -12127,7 +12146,7 @@ ${actionLines || "      []"}
       return '<div class="wf-graph-node' + (n.unit === "side" ? " wf-graph-side" : "") + '" style="left:' + p.x + "px;top:" + p.y + "px;width:" + NW + "px;height:" + NH + 'px" data-graph-node="' + esc(n.name) + '" title="' + esc((n.title || n.name) + " \xB7 " + n.key) + '"><div class="wf-graph-unit"><span class="chip ' + unitCls + ' tiny">' + esc(unitLabel) + "</span>" + (n.entryLabel ? ' <span class="chip acc tiny">' + esc(n.entryLabel) + "</span>" : "") + '</div><div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + "</span></div></div>";
     };
     const svg2 = drawn.map((e) => {
-      const a = pos.get(e.from), b = pos.get(e.to);
+      const a = pos.get(phaseFirst.get(e.from)), b = pos.get(phaseFirst.get(e.to));
       if (!a || !b) return "";
       const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
       const mx = (x1 + x2) / 2;

@@ -376,21 +376,35 @@ function readNodeFields(root, base) {
  * 纯渲染——输入 phases+transitions → HTML+SVG；节点盒 data-graph-node=点击弹窗编辑锚）。
  * 图键=相位词（transitions from/to=phase 词汇；节点盒显示 name/phase 双词形）。 */
 export function wfGraphHtml(phases, transitions) {
-  const byPhase = new Map();
+  /* 节点键=节点名（同相位多节点全部入图——子链复用父链相位词不再折叠；2026-11-28 用户裁决
+   * 「workflow 页面展示一致强调的是图。因为肯定有交叉出口」）。列=相位（层化），列内节点堆叠；
+   * 边=相位词→该相位首个节点（链锚）。 */
+  const nodes = [];
+  const seenKeys = new Set();
+  const phaseFirst = new Map(); // 相位 → 首个节点 key（边端点锚——链语义首者胜）
   (phases || []).forEach((n) => {
-    if (!n || (!n.phase && !n.name)) return;
-    const key = String(n.phase || n.name);
-    if (!byPhase.has(key)) byPhase.set(key, { key, name: String(n.name || n.phase), title: n.title || '', unit: n.unit || 'connectops', entry: Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+    let name, phase;
+    if (typeof n === 'string') { name = n; phase = n; }
+    else if (!n || (!n.phase && !n.name)) return;
+    else { name = String(n.name || ''); phase = String(n.phase || n.name || ''); }
+    if (!phase) return;
+    let key = name && !seenKeys.has(name) ? name : phase + '#' + nodes.length;
+    while (seenKeys.has(key)) key = key + '#';
+    seenKeys.add(key);
+    nodes.push({ key, name: name || phase, phase, title: typeof n === 'object' ? (n.title || '') : '', unit: typeof n === 'object' && n.unit ? n.unit : 'connectops', entry: typeof n === 'object' && Array.isArray(n.entryEvents) && n.entryEvents.length > 0 });
+    if (!phaseFirst.has(phase)) phaseFirst.set(phase, key);
   });
-  const nodes = [...byPhase.values()];
-  const known = new Set(nodes.map((n) => n.key));
   const edges = [];
   (transitions || []).forEach((t) => {
     if (!t || !t.from || !t.to || t.from === t.to) return;
     [t.from, t.to].forEach((k) => {
-      if (!known.has(k)) {
-        nodes.push({ key: k, name: k, title: tr('侧轨态（非正向主线）'), unit: 'side', entry: false });
-        known.add(k);
+      if (!phaseFirst.has(k)) {
+        const key = k + '#side';
+        if (!seenKeys.has(key)) {
+          nodes.push({ key, name: k, phase: k, title: tr('侧轨态（非正向主线）'), unit: 'side', entry: false });
+          seenKeys.add(key);
+          phaseFirst.set(k, key);
+        }
       }
     });
     edges.push({ from: t.from, on: String(t.on || 'advance'), to: t.to });
@@ -407,21 +421,28 @@ export function wfGraphHtml(phases, transitions) {
     drawn.push(e);
   });
   if (!nodes.length) return '';
-  /* 最长路径层化（入度松弛，环边自然收敛——层封顶节点数） */
-  const level = new Map(nodes.map((n) => [n.key, 0]));
+  /* 层化按相位（入度松弛，环边自然收敛）；列=相位、列内节点堆叠 */
+  const phaseLevel = new Map();
+  phaseFirst.forEach((k, ph) => phaseLevel.set(ph, 0));
   for (let pass = 0; pass < nodes.length; pass++) {
     let changed = false;
     drawn.forEach((e) => {
-      const lf = level.get(e.from) || 0;
-      const lt = level.get(e.to) || 0;
-      if (lt < lf + 1 && lf + 1 < nodes.length) { level.set(e.to, lf + 1); changed = true; }
+      const lf = phaseLevel.get(e.from) || 0;
+      const lt = phaseLevel.get(e.to) || 0;
+      if (lt < lf + 1 && lf + 1 < nodes.length) { phaseLevel.set(e.to, lf + 1); changed = true; }
     });
     if (!changed) break;
   }
   let entryNo = 0;
   nodes.forEach((n) => { if (n.entry) n.entryLabel = tr('入口') + (++entryNo); });
-  const cols = new Map();
-  nodes.forEach((n) => { const lv = level.get(n.key) || 0; if (!cols.has(lv)) cols.set(lv, []); cols.get(lv).push(n); });
+  const cols = new Map(); // level → [node...]
+  const nodeLevel = new Map();
+  nodes.forEach((n) => {
+    const lv = phaseLevel.get(n.phase) || 0;
+    nodeLevel.set(n.key, lv);
+    if (!cols.has(lv)) cols.set(lv, []);
+    cols.get(lv).push(n);
+  });
   const NW = 190, NH = 56, GX = 108, GY = 28;
   let maxRows = 1;
   cols.forEach((rows) => { maxRows = Math.max(maxRows, rows.length); });
@@ -443,7 +464,7 @@ export function wfGraphHtml(phases, transitions) {
       '<div class="wf-graph-name mono">' + esc(n.name) + ' <span class="faint small">' + esc(n.key) + '</span></div></div>';
   };
   const svg = drawn.map((e) => {
-    const a = pos.get(e.from), b = pos.get(e.to);
+    const a = pos.get(phaseFirst.get(e.from)), b = pos.get(phaseFirst.get(e.to));
     if (!a || !b) return '';
     const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2;
     const mx = (x1 + x2) / 2;
