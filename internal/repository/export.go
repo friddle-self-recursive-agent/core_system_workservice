@@ -264,6 +264,21 @@ func extractObjectDocType(raw []byte) string {
 	return doc.Spec.DocType
 }
 
+// splitCSV 逗号分隔串→切片（空=空切片；两侧空白修剪）——session_config.go 与导出过滤共用词形。
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // pruneStale 删除工作树中 DB 快照之外的文件（删除只在导出提交中体现）；`<对象路径>.metadatainfo`
 // 侧车随对象路径保留（R-DOC-6/7：同目录同提交，搬文档=搬侧车；生成逻辑在 DocIndex/打标面，
 // 导出侧只随行不发明不篡改）；对象已不在册 → 其侧车随行删除（删对象=删侧车，R-DOC-10 同口径）。
