@@ -11819,6 +11819,7 @@ ${text2}</tr>
   }
 
   // src/screens/workflow-config.js
+  var WF_TERMINAL_STATUS = /* @__PURE__ */ new Set(["Failed"]);
   function defaultLoopSpec(name = "core-system-developer-loop", existing = {}) {
     const s = existing && typeof existing === "object" ? existing : {};
     const logSrc = s.logSource || {};
@@ -12150,6 +12151,7 @@ ${actionLines || "      []"}
     const edges = [];
     (transitions || []).forEach((t2) => {
       if (!t2 || !t2.from || !t2.to || t2.from === t2.to) return;
+      if (WF_TERMINAL_STATUS.has(String(t2.from)) || WF_TERMINAL_STATUS.has(String(t2.to))) return;
       [t2.from, t2.to].forEach((k) => {
         if (!phaseFirst.has(k)) {
           const key = k + "#side";
@@ -13503,21 +13505,20 @@ spec:
   }
   function wfNodeStats(runs, phases) {
     const stats = /* @__PURE__ */ new Map();
-    for (const p of phases) stats.set(p, { cur: 0, visited: 0, failed: 0 });
+    for (const p of phases) stats.set(p, { cur: 0, visited: 0 });
     for (const r of runs) {
       const cur = String(r.phase || "");
       if (stats.has(cur)) stats.get(cur).cur++;
       const seen = new Set((Array.isArray(r.history) ? r.history : []).map((h) => String(h && h.to || "")));
       for (const p of seen) if (stats.has(p)) stats.get(p).visited++;
-      if (String(r.status || "") === "failed" && stats.has("Failed")) stats.get("Failed").failed++;
     }
     return stats;
   }
   function wfNodeGraphHtml(wf, runs) {
-    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String);
+    const phases = (Array.isArray(wf && wf.phases) ? wf.phases : []).map(String).filter((p) => !WF_TERMINAL_STATUS.has(p));
     const failed = runs.filter((r) => String(r.status || "") === "failed").length;
-    const list2 = phases.concat(failed && !phases.includes("Failed") ? ["Failed"] : []);
-    if (!list2.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>";
+    const terminalBadge = failed ? '<div class="wf-terminal-badge" style="margin-top:6px"><span class="chip danger tiny" title="' + esc(t("run \u7EC8\u6001\u7EDF\u8BA1\u2014\u2014\u72B6\u6001\u8BCD\u4E0D\u5360\u76F8\u4F4D\u94FE\u8282\u70B9")) + '">' + esc(t("\u843D\u7EC8\u6001 failed \xD7" + failed)) + "</span></div>" : "";
+    if (!phases.length) return '<div class="small faint">' + esc(t("\u8BE5 workflow \u672A\u6295\u5F71\u76F8\u4F4D\u94FE\u3002")) + "</div>" + terminalBadge;
     const raw = String(wf && wf.rawYaml || "");
     if (raw) {
       try {
@@ -13525,22 +13526,22 @@ spec:
         const phasesRaw = Array.isArray(doc && doc.spec && doc.spec.phases) ? doc.spec.phases : [];
         const transitions = Array.isArray(doc && doc.spec && doc.spec.transitions) ? doc.spec.transitions : [];
         if (transitions.length) {
-          const phasesRich = phasesRaw.map((n) => typeof n === "string" ? { name: n, phase: n } : n).filter((n) => n && (n.phase || n.name));
+          const phasesRich = phasesRaw.map((n) => typeof n === "string" ? { name: n, phase: n } : n).filter((n) => n && (n.phase || n.name) && !WF_TERMINAL_STATUS.has(String(n.phase || n.name)));
           const graph = wfGraphHtml(phasesRich, transitions);
           if (graph) {
-            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + '</div><div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + '</div><div style="overflow-x:auto;padding-bottom:4px">' + graph + "</div>" + terminalBadge + '<div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
           }
         }
       } catch (e) {
       }
     }
-    const stats = wfNodeStats(runs, list2);
-    const body = list2.map((p) => {
-      const s = stats.get(p) || { cur: 0, visited: 0, failed: 0 };
-      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited || s.failed ? " done" : "") + (p === "Failed" ? " fail" : "");
+    const stats = wfNodeStats(runs, phases);
+    const body = phases.map((p) => {
+      const s = stats.get(p) || { cur: 0, visited: 0 };
+      const cls = "pg-node" + (s.cur ? " active" : "") + (s.visited ? " done" : "");
       return '<div class="' + cls + '" data-wf-node="' + esc(p) + '" role="button"><div class="pg-dot"></div><div class="pg-name">' + esc(p) + "</div>" + (s.cur ? '<span class="chip acc tiny">' + esc(t("\u5F53\u524D") + " " + s.cur) + "</span>" : "") + (s.visited ? '<span class="chip mute tiny">' + esc(t("\u5230\u8FC7") + " " + s.visited) + "</span>" : "") + "</div>";
     }).join('<span class="pg-edge">\u2192</span>');
-    return '<div class="pg-wrap">' + body + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+    return '<div class="pg-wrap">' + body + "</div>" + terminalBadge + '<div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
   }
   function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
     el.querySelectorAll("[data-wf-node],[data-graph-node]").forEach((n) => {
