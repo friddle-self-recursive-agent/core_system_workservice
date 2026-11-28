@@ -510,6 +510,18 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			judgeQ = append(judgeQ, *sp)
 		}
 	}
+	// connectops 落点钩子（2026-11-28 opsrun.go）：受理首步直落 connectops 执行单元且
+	// ConnectOpsRunner 已挂接 → 与 Advance 同一挂起-派发落面（首步不走 landAfterAdvanceLocked
+	// 的历史缺口——入口节点=connectops 的声明词形如 gh-issue-fetch 原先机械越过不执行）。
+	// 窄口=仅 ops（service/fanout 首步既有行为面不动——landAfter 复用会连带翻转）。
+	if nr.Status == RunRunning && r.opts.ConnectOpsRunner != nil && Phase(nr.Phase) != AwaitingApproval {
+		if node, ok := opsNodeOf(nr.Nodes, nr.Phase); ok {
+			nr.History = append(nr.History, HistoryRow{From: nr.Phase, To: nr.Phase, On: EdgeOpsRun, At: stampNano(rec.ReceivedAt)})
+			nr.Status = RunSuspended
+			nr.SuspendWhy = SuspendOps
+			judgeQ = append(judgeQ, spawnReq{kind: spawnKindOps, run: nr, node: node})
+		}
+	}
 	r.ring = append(r.ring, nr)
 	// 写穿透（R-ENG §1）：run 落环同步 upsert 至挂接的 Store（run 是可演化投影——同 run
 	// id 覆写最新词形；锁内同步落库与投影同序，失败只注记不翻转行为）。
