@@ -90,6 +90,7 @@ type Scheduler struct {
 	mu                   sync.Mutex
 	readySince           map[string]time.Time // ready 起算（等待时长排序输入）
 	leases               map[string]time.Time // 租约起点（taskId → 本轮拉起时刻）
+	leaseRV              map[string]int64     // 租约锚定的对象 rv（Task watchdog 规则12：rv 推进=活性，2026-11-28）
 	backoff              map[string]time.Time // spawn 退避（taskId → 下次允许尝试时刻）
 	spawnFails           map[string]int       // spawn 连败计数（退避步进；成功清零）
 	cancelPending        map[string]bool      // 已请求取消、等自然结束的任务
@@ -134,6 +135,7 @@ func New(repo repository.Repository, bus *eventbus.Bus, sch *scheme.Scheme, canc
 		repo: repo, bus: bus, sch: sch, cancels: cancels, applies: applies, sessions: opts.Sessions,
 		url: url, hc: &http.Client{Timeout: SpawnTimeout}, tick: tick, now: now, logf: logf,
 		readySince: map[string]time.Time{}, leases: map[string]time.Time{},
+		leaseRV:      map[string]int64{},
 		orphanOrders: map[string]time.Time{},
 		backoff:      map[string]time.Time{}, spawnFails: map[string]int{},
 		cancelPending: map[string]bool{}, cancelSeen: map[string]bool{},
@@ -197,6 +199,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 			DependsOn: spec.DependsOn, Touches: spec.Touches, Service: spec.ScopeRef,
 			Attempts: st.Attempts, Workspace: spec.Workspace, Agent: spec.Agent,
 			MaxConcurrent: spec.MaxConcurrent, Timeout: spec.Timeout,
+			RV: o.ResourceVersion,
 		}
 		views = append(views, v)
 		byObj[id] = o
@@ -206,6 +209,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	}
 	s.trackReady(byPhase, now)
 	s.adoptOrphanLeases(ctx, views, now) // 孤儿租约认领（首拍扫档——重启前在途 running 不悬空）
+	s.watchLeases(views, now)            // Task watchdog 规则12（2026-11-28）：rv 推进=活性心跳，租约续期/首见认领
 	s.scanCancels()
 	s.applyCancels(ctx, byObj, byPhase)
 	s.recoverLeases(ctx, byObj, byView, cfg, now)
@@ -323,12 +327,14 @@ func (s *Scheduler) recoverLeases(ctx context.Context, byObj map[string]*reposit
 		if !ok {
 			s.mu.Lock()
 			delete(s.leases, id) // 对象不在册——租约影子清理
+			delete(s.leaseRV, id)
 			s.mu.Unlock()
 			continue
 		}
 		if v.Phase != PhaseRunning {
 			s.mu.Lock()
 			delete(s.leases, id) // 已离场（verifying/done/...）——租约终止
+			delete(s.leaseRV, id)
 			s.mu.Unlock()
 			continue
 		}
@@ -350,7 +356,39 @@ func (s *Scheduler) recoverLeases(ctx context.Context, byObj map[string]*reposit
 		s.logf("任务 %s %s（%s）", id, d.Phase, d.Reason)
 		s.mu.Lock()
 		delete(s.leases, id)
+		delete(s.leaseRV, id)
 		s.mu.Unlock()
+	}
+}
+
+// watchLeases Task watchdog 规则12 首段（2026-11-28 用户裁定「服务启动后应有 watchdog 遍历
+// 未结束的 agent，自动保活」/ workservice issue #1）：租约活性改账目真相源——docs 对象
+// resourceVersion 推进=活性心跳（执行体/runner 任何 status 写面都推 rv），租约随之续期；
+// rv 停更超 leaseTtl=悬挂（不管哪个 core 拉起的——loop-87 跨域 running 盲区由此收口：
+// orphan_lease 的「跨域不认领」在 rv 面下不再存在，authority 照常回收他 core 拉起的死任务）。
+// 首见 running 无租约条目=认领（起点=now，给满一个 TTL 观察窗——不冒充知道历史起点）。
+func (s *Scheduler) watchLeases(views []TaskView, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	adopted := 0
+	for _, v := range views {
+		if v.Phase != PhaseRunning {
+			continue
+		}
+		prevRV, seen := s.leaseRV[v.ID]
+		if _, leased := s.leases[v.ID]; !leased {
+			s.leases[v.ID] = now // 首见认领（TTL 全窗观察）
+			s.leaseRV[v.ID] = v.RV
+			adopted++
+			continue
+		}
+		if seen && prevRV != v.RV {
+			s.leases[v.ID] = now // rv 推进=活——续期
+		}
+		s.leaseRV[v.ID] = v.RV
+	}
+	if adopted > 0 {
+		s.logf("Task watchdog：认领 %d 个在途 running 进租约观察（规则12 账目真相源——含跨域/重启孤儿）", adopted)
 	}
 }
 

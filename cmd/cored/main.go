@@ -458,6 +458,17 @@ func run() error {
 	if svcBridge != nil {
 		triggers.BindServiceSignals(svcBridge) // service 完成信号面（SessionCompleted→翻终态+续行）
 	}
+	// Task watchdog 规则14c 启动遍历之自审批清账（2026-11-28 用户裁定「builtin workflow 的
+	// llm agent 全自己审批」/ workservice #4）：装配完成后扫一遍存量 agent 模式闸锚挂起 run
+	// 逐条派发真判（重启孤儿/历史积压清账；human 模式挂起不碰——人工闸语义不变）。
+	if runOpts.ApprovalJudge != nil {
+		go func() {
+			defer func() { _ = recover() }()
+			time.Sleep(3 * time.Second) // 订阅面/恢复重放先落位再清账
+			d, skip := runs.JudgeSuspendedApprovals(50)
+			fmt.Fprintf(os.Stderr, "cored: 自审批启动清账=派发 %d 跳过 %d（存量 agent 模式挂起 run 真判——DocumentDiff 判决留痕）\n", d, skip)
+		}()
+	}
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：
 	// **只在推进总闸开启时挂接**（推进总闸旗标 interval>0）——总闸关断=事件拍缺席，事件驱动源
