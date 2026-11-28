@@ -14850,9 +14850,19 @@ spec:
     const md = d.getFullYear() === n.getFullYear() ? t("{m}\u6708{d}\u65E5").replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate())) : t("{y}\u5E74{m}\u6708{d}\u65E5").replace("{y}", String(d.getFullYear())).replace("{m}", String(d.getMonth() + 1)).replace("{d}", String(d.getDate()));
     return md + " " + clock;
   }
+  function normalizeTurnReason(raw) {
+    if (raw && typeof raw === "object") {
+      if (raw.kind) return String(raw.kind);
+      if (raw.reason && typeof raw.reason === "object" && raw.reason.kind) return String(raw.reason.kind);
+      return "";
+    }
+    return String(raw ?? "");
+  }
   function turnTailOf(reason, durationMs) {
-    const r = String(reason || "");
-    if (r === "interrupted") return { word: t("\u5DF2\u505C\u6B62"), duration: "", hint: "", cls: "stopped" };
+    const r = normalizeTurnReason(reason);
+    if (r === "interrupted" || r === "aborted" || r === "disposed" || r === "cancelled" || r === "canceled") {
+      return { word: t("\u5DF2\u505C\u6B62"), duration: "", hint: "", cls: "stopped" };
+    }
     if (r === "max-tokens") return { word: t("\u5DF2\u8FBE\u5230\u8F93\u51FA token \u4E0A\u9650"), duration: "", hint: t("\u56DE\u7B54\u88AB\u622A\u65AD\uFF0C\u5DF2\u6709\u8F93\u51FA\u4FDD\u7559\u5728\u5BF9\u8BDD\u4E2D\u3002\u53D1\u9001\u300C\u7EE7\u7EED\u300D\u53EF\u8BA9\u6A21\u578B\u63A5\u7740\u8F93\u51FA\u3002"), cls: "maxtok" };
     if (r && r !== "complete" && r !== "completed" && r !== "end_turn" && r !== "stop-sequence") {
       return { word: t("\u5904\u7406\u5931\u8D25"), duration: "", hint: "", cls: "failed" };
@@ -15031,7 +15041,7 @@ spec:
       } else if (type2 === "turn/end") {
         const turn = Number(data.turn) || 0;
         const startedAt = turnStarts.get(turn) || 0;
-        nodes.push({ kind: "turntail", seq: seq2, time, reason: String(data.reason ?? ""), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
+        nodes.push({ kind: "turntail", seq: seq2, time, reason: normalizeTurnReason(data.reason), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
         emittedSinceTurnStart = 0;
         lastBoundaryTurnStart = false;
       } else if (type2 === "todo/write") {

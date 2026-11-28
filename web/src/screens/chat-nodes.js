@@ -139,10 +139,24 @@ export function formatClock(time, now) {
   return md + ' ' + clock;
 }
 
+/** turn/end reason 归一化（2026-11-28 修复：会话账 reason=嵌套对象 {kind:'completed'}|
+ * {kind:'aborted',reason:{kind:'disposed'}}——naive String() 变 "[object Object]"
+ * 恒落「处理失败」。取 kind 族词形；字符串词形直通。纯函数 node 直测。 */
+export function normalizeTurnReason(raw) {
+  if (raw && typeof raw === 'object') {
+    if (raw.kind) return String(raw.kind);
+    if (raw.reason && typeof raw.reason === 'object' && raw.reason.kind) return String(raw.reason.kind);
+    return '';
+  }
+  return String(raw ?? '');
+}
+
 /** turn/end → 汇总词形 {word, duration, hint, cls}（上游 TurnProcessNodeView）。 */
 export function turnTailOf(reason, durationMs) {
-  const r = String(reason || '');
-  if (r === 'interrupted') return { word: tr('已停止'), duration: '', hint: '', cls: 'stopped' };
+  const r = normalizeTurnReason(reason);
+  if (r === 'interrupted' || r === 'aborted' || r === 'disposed' || r === 'cancelled' || r === 'canceled') {
+    return { word: tr('已停止'), duration: '', hint: '', cls: 'stopped' };
+  }
   if (r === 'max-tokens') return { word: tr('已达到输出 token 上限'), duration: '', hint: tr('回答被截断，已有输出保留在对话中。发送「继续」可让模型接着输出。'), cls: 'maxtok' };
   if (r && r !== 'complete' && r !== 'completed' && r !== 'end_turn' && r !== 'stop-sequence') {
     return { word: tr('处理失败'), duration: '', hint: '', cls: 'failed' };
@@ -335,7 +349,7 @@ export function mapTranscript(events) {
     } else if (type === 'turn/end') {
       const turn = Number(data.turn) || 0;
       const startedAt = turnStarts.get(turn) || 0;
-      nodes.push({ kind: 'turntail', seq, time, reason: String(data.reason ?? ''), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
+      nodes.push({ kind: 'turntail', seq, time, reason: normalizeTurnReason(data.reason), durationMs: startedAt ? Math.max(0, time - startedAt) : 0 });
       emittedSinceTurnStart = 0;
       lastBoundaryTurnStart = false;
     } else if (type === 'todo/write') {
