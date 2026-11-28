@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -36,6 +37,8 @@ type Generator struct {
 	Provider string                 // 缺省 openai-default（openai 兼容账号包：baseUrl+secret+low 档模型）
 	Timeout  time.Duration          // 单次 LLM 调用超时（缺省 30s）
 	Logf     func(format string, args ...any)
+	// Sleep 退避注入口（测试可注零延时；缺省 time.Sleep）——瞬态 502 指数退避同一口径。
+	Sleep func(time.Duration)
 }
 
 // providerCfg Provider 对象解析投影（config.baseUrl/auth.secret.source/config.models.low）。
@@ -143,7 +146,25 @@ func (g *Generator) callLLM(ctx context.Context, base, working, kind, name strin
 	return g.chat(ctx, cfg, cfg.Model, sys, user)
 }
 
-// chat HTTP 交互内核（502/503 退避重试×2——BugDoc #3 同源瞬态病）。
+// chat HTTP 交互内核（code=0 空 reply 的 502=可重试瞬态；指数退避 3s→6s→上限
+// Escalate——BugDoc bug-workflow-agent-502-20261127 / bug-gh-issue-3-502-retry-20261127
+// 同源瞬态病，绝不静默退进程/编造判决）。
+const (
+	chatAttempts = 3
+	chatBackoff  = 3 * time.Second
+)
+
+// transientReply 网关瞬态判据：HTTP 502/503 或 body 明示 code=0 + 空 reply/stream。
+func transientReply(status int, body []byte) bool {
+	if status == http.StatusBadGateway || status == http.StatusServiceUnavailable {
+		return true
+	}
+	text := string(body)
+	return (strings.Contains(text, `"code"`) && strings.Contains(text, `0`) &&
+		(strings.Contains(text, `"reply"`) || strings.Contains(text, "empty") || strings.Contains(text, "did not stream"))) ||
+		(strings.Contains(text, `code=0`) && (strings.Contains(text, "empty") || strings.Contains(text, "did not stream")))
+}
+
 func (g *Generator) chat(ctx context.Context, cfg providerCfg, model, sys, user string) string {
 	payload := map[string]any{
 		"model": cfg.Model,
@@ -155,63 +176,76 @@ func (g *Generator) chat(ctx context.Context, cfg providerCfg, model, sys, user 
 	}
 	buf, _ := json.Marshal(payload)
 	url := strings.TrimRight(cfg.BaseURL, "/") + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+	newReq := func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if cfg.SecretSrc != "" {
+			key, kerr := connectors.ResolveSecret(cfg.SecretSrc, g.Secrets, nil)
+			if kerr != nil {
+				return nil, fmt.Errorf("密钥解析失败——%w（引用=%s）", kerr, cfg.SecretSrc)
+			}
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
+		return req, nil
+	}
+	req, err := newReq()
 	if err != nil {
 		return "（LLM 请求构造失败——" + err.Error() + "）"
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if cfg.SecretSrc != "" {
-		key, kerr := connectors.ResolveSecret(cfg.SecretSrc, g.Secrets, nil)
-		if kerr != nil {
-			return "（密钥解析失败——" + kerr.Error() + "；引用=" + cfg.SecretSrc + "）"
-		}
-		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	timeout := g.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 	cli := &http.Client{Timeout: timeout}
-	// 502/瞬态重试（BugDoc bug-workflow-agent-502-20261127 #3 同源——网关偶发 502 空流
-	// 是在册 bug；判决小 agent 侧带退避重试 2 次，重试上限后走失败词形不编造）。
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
 	g.trace("http-do url=" + url + " model=" + cfg.Model)
 	var resp *http.Response
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 3 * time.Second)
-			req, _ = http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
-			req.Header.Set("Content-Type", "application/json")
-			if cfg.SecretSrc != "" {
-				if key, kerr := connectors.ResolveSecret(cfg.SecretSrc, g.Secrets, nil); kerr == nil {
-					req.Header.Set("Authorization", "Bearer "+key)
-				}
+	var body []byte
+	for attempt := 1; attempt <= chatAttempts; attempt++ {
+		if attempt > 1 {
+			delay := chatBackoff << (attempt - 2) // 3s, 6s——指数退避（封顶由 attempt 上界承担）
+			g.trace("http-retry attempt=" + fmt.Sprint(attempt) + " backoff=" + delay.String())
+			sleep(delay)
+			req, err = newReq()
+			if err != nil {
+				return "（LLM 请求重建失败——" + err.Error() + "）"
 			}
 		}
-		var doErr error
-		resp, doErr = cli.Do(req)
-		err = doErr
-		g.trace("http-done attempt=" + fmt.Sprint(attempt) + " err=" + fmt.Sprint(err != nil))
-		if err == nil && resp.StatusCode != http.StatusBadGateway && resp.StatusCode != http.StatusServiceUnavailable {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
+		resp, err = cli.Do(req)
+		if err != nil {
+			g.trace("http-done attempt=" + fmt.Sprint(attempt) + " err=" + err.Error())
 			resp = nil
+		} else {
+			body, _ = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			resp.Body.Close()
+			g.trace("http-done attempt=" + fmt.Sprint(attempt) + " status=" + fmt.Sprint(resp.StatusCode))
+			if !transientReply(resp.StatusCode, body) {
+				break // 非瞬态=退出重试（成功或永久失败都不再退避）
+			}
+			resp = nil // 瞬态=本轮作废，下轮重建请求
 		}
 	}
 	if err != nil || resp == nil {
-		return "（LLM 调用失败——" + fmt.Sprint(err) + "）"
+		g.trace("escalate 网关瞬态上限（attempts=" + fmt.Sprint(chatAttempts) + "）：返回失败词形不编造")
+		return "（LLM 调用失败——网关瞬态 502/code=0 空 reply 重试 " + fmt.Sprint(chatAttempts) +
+			" 次仍不可用，已升级 Escalate；判决不编造）"
 	}
-	defer resp.Body.Close()
 	var out struct {
+		Code    int `json:"code"`
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Choices) == 0 {
-		return "（LLM 响应不可解析——status=" + fmt.Sprint(resp.StatusCode) + "）"
+	if jerr := json.Unmarshal(body, &out); jerr != nil || len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
+		return "（LLM 响应不可解析/空 reply——status=" + fmt.Sprint(resp.StatusCode) + "；升级 Escalate，不编造）"
 	}
 	return strings.TrimSpace(out.Choices[0].Message.Content)
 }
