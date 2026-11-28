@@ -237,7 +237,8 @@ async function hydrateDesignDoc(el, ctx, repo, path) {
   // 元数据 header（2026-11-28 用户裁决）：metadatainfo 侧车上屏公用组件（HEAD 文档账=sha 诚实）。
   box.innerHTML = '<div data-meta-header-slot style="margin-bottom:8px"></div><div data-dd-bodywrap></div>';
   paintMetaHeader(box.querySelector('[data-meta-header-slot]'), ctx,
-    { kind: 'DesignDoc', scope: repo, name: path }, content, { head: true, headSha: String(data.sha || '') });
+    { kind: 'DesignDoc', scope: repo, name: path }, content,
+    { head: true, headSha: String(data.sha || ''), sidecar: (data.meta && typeof data.meta === 'object') ? data.meta : null });
   box.querySelector('[data-dd-bodywrap]').innerHTML =
     '<div data-md-render="1">' + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文（HEAD）'), content) +
     '<div class="small faint" style="margin-top:6px">' + (data.sha ? 'HEAD ' + esc(String(data.sha).slice(0, 8)) : 'HEAD') +

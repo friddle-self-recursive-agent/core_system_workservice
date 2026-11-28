@@ -188,6 +188,17 @@ func registerDesignDocRoutes(mux *http.ServeMux, designDocs DesignDocs, drafts D
 			out["lastCommit"] = map[string]any{"sha": d.LastCommit.Sha, "subject": d.LastCommit.Subject,
 				"at": d.LastCommit.At.UTC().Format(time.RFC3339Nano)}
 		}
+		// 侧车元数据投影（2026-11-28 用户裁决：metadatainfo 上屏）——`<path>.metadatainfo`
+		// HEAD 现读（tags/importance）；缺席=不带 meta 键零编造。
+		if side, serr := designDocs.Read(repo, path+".metadatainfo"); serr == nil {
+			if tags, imp, ok := repository.ParseSidecarMeta(side.ContentStr); ok {
+				metaMap := map[string]any{"importance": imp}
+				if tags != nil {
+					metaMap["tags"] = tags
+				}
+				out["meta"] = metaMap
+			}
+		}
 		writeJSON(w, http.StatusOK, out)
 	})
 	// 应用史投影面：apply_log 行（obj=DesignDoc/<repo>/<path> 精确过滤——rv 恒 0，按时刻降序）。

@@ -46,10 +46,17 @@ export function frontMetaOf(content, kindHint, scopeHint, nameHint) {
   };
 }
 
-/** 元数据 header HTML（纯函数）。history={createdAt,lastAt,lastBy,head,rv} 缺席成员整项不渲染。 */
+/** 元数据 header HTML（纯函数）。history={createdAt,lastAt,lastBy,head,headSha,rv,sidecar} 缺席成员整项不渲染。
+ * sidecar={tags,importance}（git 设计文档 R-DOC-6 侧车 /v1/design-docs meta 投影）——frontmatter
+ * 缺 tags/importance 时补源（2026-11-28 用户裁决：所有文档都有 metadatainfo，都要展示）。 */
 export function metaHeaderHtml(meta, history) {
   const m = meta || {};
   const h = history || {};
+  const side = (h.sidecar && typeof h.sidecar === 'object') ? h.sidecar : null;
+  const tags = (m.tags && m.tags.length) ? m.tags
+    : (side && Array.isArray(side.tags) ? side.tags.map((x) => (x && typeof x === 'object' && x.tag)
+      ? { tag: String(x.tag), type: String(x.tag_type || '') } : { tag: String(x || ''), type: '' }).filter((x) => x.tag) : []);
+  const importance = m.importance != null ? m.importance : (side && Number.isFinite(Number(side.importance)) && Number(side.importance) > 0 ? Number(side.importance) : null);
   const parts = [];
   // 行 1：身份（名+kind/docType 徽+scope+版本锚）
   const ident = [];
@@ -71,12 +78,12 @@ export function metaHeaderHtml(meta, history) {
     ledger.push('<span>' + seg + '</span>');
   }
   if (ledger.length) parts.push('<div class="mh-ledger small faint">' + ledger.join(' <span class="mh-dot">·</span> ') + '</div>');
-  // 行 3：tags + importance（tag 可点跳聚合页）
-  if ((m.tags && m.tags.length) || m.importance != null) {
-    const tagHtml = (m.tags || []).map((x) =>
+  // 行 3：tags + importance（tag 可点跳聚合页；frontmatter 缺=侧车补源）
+  if ((tags && tags.length) || importance != null) {
+    const tagHtml = (tags || []).map((x) =>
       chipGo('#' + x.tag, tagRoute(x.tag), 'mute', true, x.type ? 'tagType: ' + x.type : tr('看同 tag 文档'))
     ).join(' ');
-    const imp = m.importance != null ? chip(tr('重要度 ') + m.importance, Number(m.importance) >= 80 ? 'warn' : 'mute') : '';
+    const imp = importance != null ? chip(tr('重要度 ') + importance, Number(importance) >= 80 ? 'warn' : 'mute') : '';
     parts.push('<div class="mh-tags">' + [imp, tagHtml].filter(Boolean).join(' ') + '</div>');
   }
   // 行 4：ownerRefs（归属引用——可点对象工作台）
@@ -90,11 +97,13 @@ export function metaHeaderHtml(meta, history) {
 }
 
 /** paintMetaHeader DOM 助手：即paint frontmatter 元数据 → doc-history 异步补账（创建/最近提交）。
+ * headInfo={head,headSha,sidecar}（git 设计文档带 HEAD 词形+侧车 meta 投影）。
  * 槽缺席（无 DOM）安全 no-op；对象无 frontmatter（纯 YAML 对象）=只画身份+账两行。 */
 export function paintMetaHeader(slot, ctx, ref, content, headInfo) {
   if (!slot) return;
   const meta = frontMetaOf(content, ref && ref.kind, ref && ref.scope, ref && ref.name);
   const base = (headInfo && headInfo.head) ? { head: true, headSha: headInfo.headSha } : { rv: ref ? ref.rv : null };
+  if (headInfo && headInfo.sidecar) base.sidecar = headInfo.sidecar;
   slot.innerHTML = metaHeaderHtml(meta, base);
   slot.querySelectorAll('[data-go]').forEach((n) => {
     n.addEventListener('click', (ev) => {

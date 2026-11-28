@@ -13418,6 +13418,9 @@ spec:
   function metaHeaderHtml(meta, history) {
     const m = meta || {};
     const h = history || {};
+    const side = h.sidecar && typeof h.sidecar === "object" ? h.sidecar : null;
+    const tags = m.tags && m.tags.length ? m.tags : side && Array.isArray(side.tags) ? side.tags.map((x) => x && typeof x === "object" && x.tag ? { tag: String(x.tag), type: String(x.tag_type || "") } : { tag: String(x || ""), type: "" }).filter((x) => x.tag) : [];
+    const importance = m.importance != null ? m.importance : side && Number.isFinite(Number(side.importance)) && Number(side.importance) > 0 ? Number(side.importance) : null;
     const parts = [];
     const ident = [];
     if (m.title && m.title !== m.name) ident.push("<b>" + esc(trunc(m.title, 60)) + "</b>");
@@ -13435,11 +13438,11 @@ spec:
       ledger.push("<span>" + seg + "</span>");
     }
     if (ledger.length) parts.push('<div class="mh-ledger small faint">' + ledger.join(' <span class="mh-dot">\xB7</span> ') + "</div>");
-    if (m.tags && m.tags.length || m.importance != null) {
-      const tagHtml = (m.tags || []).map(
+    if (tags && tags.length || importance != null) {
+      const tagHtml = (tags || []).map(
         (x) => chipGo("#" + x.tag, tagRoute(x.tag), "mute", true, x.type ? "tagType: " + x.type : t("\u770B\u540C tag \u6587\u6863"))
       ).join(" ");
-      const imp = m.importance != null ? chip(t("\u91CD\u8981\u5EA6 ") + m.importance, Number(m.importance) >= 80 ? "warn" : "mute") : "";
+      const imp = importance != null ? chip(t("\u91CD\u8981\u5EA6 ") + importance, Number(importance) >= 80 ? "warn" : "mute") : "";
       parts.push('<div class="mh-tags">' + [imp, tagHtml].filter(Boolean).join(" ") + "</div>");
     }
     if (m.ownerRefs && m.ownerRefs.length) {
@@ -13454,6 +13457,7 @@ spec:
     if (!slot) return;
     const meta = frontMetaOf(content, ref && ref.kind, ref && ref.scope, ref && ref.name);
     const base = headInfo && headInfo.head ? { head: true, headSha: headInfo.headSha } : { rv: ref ? ref.rv : null };
+    if (headInfo && headInfo.sidecar) base.sidecar = headInfo.sidecar;
     slot.innerHTML = metaHeaderHtml(meta, base);
     slot.querySelectorAll("[data-go]").forEach((n) => {
       n.addEventListener("click", (ev) => {
@@ -16422,7 +16426,7 @@ spec:
       ctx2,
       { kind: "DesignDoc", scope: repo, name: path },
       content,
-      { head: true, headSha: String(data.sha || "") }
+      { head: true, headSha: String(data.sha || ""), sidecar: data.meta && typeof data.meta === "object" ? data.meta : null }
     );
     box.querySelector("[data-dd-bodywrap]").innerHTML = '<div data-md-render="1">' + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587\uFF08HEAD\uFF09"), content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc(String(data.sha).slice(0, 8)) : "HEAD") + t("\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>");
   }

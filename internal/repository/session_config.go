@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -212,6 +213,82 @@ func (r *SQLiteRepo) LastSessionWritebacks(ctx context.Context, n int) ([]Sessio
 		out = append(out, wb)
 	}
 	return out, rows.Err()
+}
+
+// SidecarTag 侧车 tag 行投影（tags 面读出词形 {tag, tag_type}——tagType 缺省可空）。
+type SidecarTag struct {
+	Tag     string `json:"tag"`
+	TagType string `json:"tag_type,omitempty"`
+}
+
+// parseSidecarTagItem 单行 tag 项（三词形：{tag: x, tag_type: y} / bare / domain:b）。
+func parseSidecarTagItem(raw string) (SidecarTag, bool) {
+	item := strings.TrimSpace(raw)
+	item = strings.TrimPrefix(item, "- ")
+	item = strings.TrimSpace(item)
+	item = strings.Trim(item, "{}")
+	var tag, tt string
+	if i := strings.Index(item, "tag_type:"); i >= 0 {
+		tt = strings.Trim(strings.TrimSpace(item[i+len("tag_type:"):]), `",`)
+		item = strings.TrimSpace(item[:i])
+		item = strings.TrimSuffix(strings.TrimSpace(item), ",")
+	}
+	if i := strings.Index(item, "tag:"); i >= 0 {
+		tag = strings.Trim(strings.TrimSpace(item[i+len("tag:"):]), `",`)
+	} else {
+		tag = strings.Trim(item, `",`)
+		if j := strings.Index(tag, ":"); j > 0 { // domain:b 裸前缀词形
+			tt, tag = tag[:j], tag[j+1:]
+		}
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return SidecarTag{}, false
+	}
+	return SidecarTag{Tag: tag, TagType: strings.TrimSpace(tt)}, true
+}
+
+// ParseSidecarMeta 侧车只读投影（2026-11-28 用户裁决：metadatainfo 上屏——console 元数据
+// header 组件数据源）：`<文件>.metadatainfo` 内容 → (tags, importance, ok)。行级解析
+// （与 Bump/Merge 同族零 yaml 依赖）：`tags:` 块逐项收、`importance: N` 整数。
+// 两缺=ok=false（诚实不冒充）；importance 缺席而 tags 在=0。
+func ParseSidecarMeta(content string) ([]SidecarTag, int, bool) {
+	var tags []SidecarTag
+	importance := -1
+	inTags := false
+	for _, ln := range strings.Split(content, "\n") {
+		if strings.HasPrefix(ln, "tags:") {
+			inTags = true
+			continue
+		}
+		if inTags {
+			trimmed := strings.TrimSpace(ln)
+			if strings.HasPrefix(ln, "  - ") || strings.HasPrefix(ln, "- ") {
+				if t, ok := parseSidecarTagItem(ln); ok {
+					tags = append(tags, t)
+				}
+				continue
+			}
+			if trimmed != "" { // 顶格键=块结束——本行落回主流程继续判 importance
+				inTags = false
+			} else {
+				continue // 空行仍在块内（容忍空行）
+			}
+		}
+		trimmed := strings.TrimSpace(ln)
+		if strings.HasPrefix(trimmed, "importance:") {
+			if n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "importance:"))); err == nil {
+				importance = n
+			}
+		}
+	}
+	if len(tags) == 0 && importance < 0 {
+		return nil, 0, false
+	}
+	if importance < 0 {
+		importance = 0
+	}
+	return tags, importance, true
 }
 
 // BumpSidecarImportance 第三段规则版侧车手术（纯函数）：importance 行 +delta 封顶 100。
