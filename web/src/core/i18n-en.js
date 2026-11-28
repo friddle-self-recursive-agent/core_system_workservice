@@ -57,6 +57,7 @@ export const enEntries = [
   ['待审区为空', 'No pending reviews (explicit empty state)'],
   ['收件箱', 'Inbox'],
   ['待你处理', 'awaiting you'],
+  ['件（与总览收件箱同源）', 'item(s) — same source as the Overview inbox'],
   ['进行中任务', 'Running tasks'],
   ['任务中心', 'Task Center'],
   ['kinds 摘要', 'kinds summary'],
