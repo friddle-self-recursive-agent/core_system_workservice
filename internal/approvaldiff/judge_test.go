@@ -1,6 +1,7 @@
 package approvaldiff
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -44,9 +45,24 @@ func TestParseVerdictJSON(t *testing.T) {
 func TestParseVerdictDocIdempotentRead(t *testing.T) {
 	v := workflow.ApprovalVerdict{Granted: false, Risk: "medium", Reason: "涉及权限"}
 	doc := approvalVerdictDoc(workflow.RunRecord{Run: 42}, "Workflow/global/x", approvalJudgeDocName(42),
-		workflow.ApprovalPolicy{AutoCriteria: "准则", MaxRiskLevel: "low"}, "escalate", v)
+		workflow.ApprovalPolicy{AutoCriteria: "准则", MaxRiskLevel: "low"}, "escalate", v, "标题: 探针\n正文:\n内容")
 	got, ok := parseVerdictDoc(doc)
 	if !ok || got.Granted || got.Risk != "medium" || !strings.Contains(got.Reason, "涉及权限") {
 		t.Fatalf("幂等回读不符: ok=%v v=%+v\ndoc=%s", ok, got, doc)
+	}
+	if !strings.Contains(doc, "subject: |") || !strings.Contains(doc, "标题: 探针") {
+		t.Fatalf("判决文档应带被审物 subject 块（人审兜底信息面——2026-11-28 用户裁定）:\n%s", doc)
+	}
+}
+
+func TestGhIssueSubjectAndReadSubject(t *testing.T) {
+	// repo#n 词形解析：合法词形返回非占位（公共仓真实拉取走网络，单测只验词形分派与占位兜底）。
+	if s := ghIssueSubject("bad-format"); s != "" {
+		t.Fatalf("非 repo#n 词形应返回空串走 readBase/占位: %q", s)
+	}
+	g := &Generator{}
+	// 非对象、非 issue 词形 → 占位词形（不冒充空串——2026-11-28「待批内容为空」缺陷锚）。
+	if s := g.readSubject(context.Background(), "NoSuch/none/x"); s == "" {
+		t.Fatal("被审物不可读应有显式占位")
 	}
 }
