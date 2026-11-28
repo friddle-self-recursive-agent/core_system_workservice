@@ -14334,16 +14334,16 @@ spec:
     paintMetaHeader(el.querySelector("[data-meta-header-slot]"), ctx2, ref, cached ? content : "");
     const chatBtn = el.querySelector("[data-obj-chatfix]");
     if (chatBtn) chatBtn.addEventListener("click", async () => {
-      let content2 = cached ? content2 : "";
-      if (!content2) {
+      let cur = cached ? content : "";
+      if (!cur) {
         const r = await ctx2.api.object(ref.kind, ref.scope, ref.name);
-        content2 = r.ok && r.data && r.data.content != null ? String(r.data.content) : "";
+        cur = r.ok && r.data && r.data.content != null ? String(r.data.content) : "";
       }
       openDocChat({
         title: t("\u5BF9\u8BDD\u4FEE\u6539 \xB7 ") + ref.kind + "/" + ref.name,
         refKey: "obj|" + ref.kind + "|" + (ref.scope || "global") + "|" + ref.name,
         ref: { kind: ref.kind, scope: ref.scope, name: ref.name, rv: ref.rv },
-        current: content2,
+        current: cur,
         ctx: ctx2,
         onApplied: (modified) => {
           ctx2.store.cacheDoc(ref.kind, ref.scope, ref.name, (ref.rv || 0) + 1, String(modified || ""));

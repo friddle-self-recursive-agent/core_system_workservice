@@ -395,16 +395,16 @@ function renderScreen(el, ctx, ref) {
   if (chatBtn) chatBtn.addEventListener('click', async () => {
     // R-UX-10 二次裁决（2026-11-28）：不跳转——原地嵌入对话修改面板（同对象续跑同会话，
     // 首条自带当前 YAML+意图，助手回 yaml 块→对比→人审 Apply）。
-    let content = cached ? content : '';
-    if (!content) {
+    let cur = cached ? content : '';
+    if (!cur) {
       const r = await ctx.api.object(ref.kind, ref.scope, ref.name);
-      content = (r.ok && r.data && r.data.content != null) ? String(r.data.content) : '';
+      cur = (r.ok && r.data && r.data.content != null) ? String(r.data.content) : '';
     }
     openDocChat({
       title: tr('对话修改 · ') + ref.kind + '/' + ref.name,
       refKey: 'obj|' + ref.kind + '|' + (ref.scope || 'global') + '|' + ref.name,
       ref: { kind: ref.kind, scope: ref.scope, name: ref.name, rv: ref.rv },
-      current: content,
+      current: cur,
       ctx,
       onApplied: (modified) => {
         ctx.store.cacheDoc(ref.kind, ref.scope, ref.name, (ref.rv || 0) + 1, String(modified || ''));
