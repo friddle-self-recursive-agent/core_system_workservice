@@ -5,6 +5,7 @@ import { depChips } from './tasks.js';
 import { confirmModal, toast } from './modal.js';
 import { t as tr } from '../core/i18n.js';
 import { yamlTextView } from '../render/md.js';
+import { htmlModal } from './modal.js';
 import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
 
 export function wfAnchorOfRoute(route) {
@@ -540,10 +541,10 @@ function detailScreen(el, ctx, name) {
       '<div class="rh-meta"><span>' + esc(tr('定义/运行/任务均为现读真实数据')) + '</span>' +
       (latest ? '<span>' + esc(tr('最近运行') + ' ') + runChip(latest) + '</span>' : '') + '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div>' +
-      '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('定义')) + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
-      // 2026-11-28 用户裁决：workflow 定义看优先=YAML 纯文本全文（rawYaml 现读真源；缺席=不装假不建卡）。
-      (String(wf.rawYaml || '') ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('YAML 声明')) + '</span></div><div class="card-b">' +
-        yamlTextView(String(wf.rawYaml)) + '</div></div>' : '') +
+      '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('定义')) + '</span><span class="h-right">' +
+      // R-UX-10 2026-11-28：YAML 声明=弹窗按需（人不主动看 scheme——fixed 卡退役为按钮）。
+      (String(wf.rawYaml || '') ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(tr('YAML 声明')) + '</button>' : '') +
+      '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
       workflowStudioHtml(wf, usedName) +
@@ -554,6 +555,10 @@ function detailScreen(el, ctx, name) {
         '</div></div></div>');
     bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
     bindWorkflowStudio(el, ctx, wf, usedName, () => detailScreen(el, ctx, usedName));
+    const yamlBtn = el.querySelector('[data-wf-yaml-btn]');
+    if (yamlBtn) yamlBtn.addEventListener('click', () => {
+      htmlModal({ title: tr('YAML 声明 · ') + usedName, wide: true, html: yamlTextView(String(wf.rawYaml || '')) });
+    });
     hydrateDocsExportConfig(el, ctx);
   })().catch((e) => {
     if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;

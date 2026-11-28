@@ -1057,11 +1057,30 @@ var CoreConsoleWeb = (() => {
     ["\u65F6\u95F4\u7EBF\u62C9\u53D6\u5931\u8D25\uFF1A", "Timeline fetch failed: "],
     ["\u5F52\u6863\u7A97\u5185\u6682\u65E0\u672C\u4EFB\u52A1\u4E8B\u4EF6\u3002", "No events for this task in the archive window."],
     ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"],
-    ["\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026", "Loading verdict doc (ops_core_inner_agent)\u2026"],
-    ["\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/", "Verdict doc not generated yet (DocumentDiff/global/"],
-    [" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020", " absent \u2014 generated automatically on human-approval suspension; absence means the window has not been reached (never fabricated)"],
-    ["Diff \u5224\u51B3 \xB7 ops_core_inner_agent", "Diff verdict \xB7 ops_core_inner_agent"],
-    ["\u5BF9\u8C61 DocumentDiff/global/", "Object DocumentDiff/global/"]
+    /* ── R-UX-10 内容优先批（2026-11-28）── */
+    ["\u5185\u5BB9\u4F18\u5148\uFF1A\u6B63\u6587\u4E0E\u76F8\u5173\u4EFB\u52A1\u4F1A\u8BDD\u76F4\u8FBE\uFF1Bscheme \u7ECF\u6309\u94AE\u6309\u9700\u67E5\u770B", "Content first: body & related tasks/sessions up front; scheme on demand via button"],
+    ["\u5185\u5BB9\u4F18\u5148\uFF1A\u6B63\u6587/\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD/\u6807\u7B7E/\u89C4\u5219/\u64CD\u4F5C\uFF1Bscheme \u5F39\u7A97\u6309\u9700", "Content first: body / related tasks & sessions / tags / rules / ops; scheme on demand in modal"],
+    ["\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD", "Related tasks & sessions"],
+    ["\u65E0\u76F8\u5173\u4EFB\u52A1\u4E0E\u5DE5\u4F5C\u6D41\u8FD0\u884C\uFF08\u5FEB\u7167\u4EFB\u52A1/\u8FD0\u884C\u8BB0\u5F55\u63D0\u53CA\u672C\u5BF9\u8C61\u540D\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002", "No related tasks or workflow runs (name not mentioned in task/run snapshots \u2014 nothing fabricated)."],
+    ["\u76F8\u5173\u4EFB\u52A1", "Related tasks"],
+    ["\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C", "Related workflow runs"],
+    ["\u770B\u4F1A\u8BDD", "View session"],
+    ["\u4EFB\u52A1\u8BE6\u60C5", "Task detail"],
+    ["\u770B\u8FD0\u884C", "View run"],
+    ["\u67E5\u770B\u6267\u884C\u4F1A\u8BDD", "View execution session"],
+    ["\u5DF2\u6536\u655B", "Converged"],
+    ["\u6267\u884C\u4E2D", "Executing"],
+    ["\u6302\u8D77", "Suspended"],
+    ["scheme \u5B9A\u4E49\uFF08\u5F39\u7A97\u6309\u9700\u67E5\u770B\uFF09", "Scheme definition (view on demand in modal)"],
+    ["scheme \xB7 ", "Scheme \xB7 "],
+    ["kind \u5B9A\u4E49\uFF08YAML \u7EAF\u6587\u672C\uFF09", "Kind definition (YAML plain text)"],
+    ["\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002", "This kind declares no spec fields."],
+    ["\u65E0\u4ED3\u5E93\u76F4\u8FBE\u58F0\u660E\uFF08connector.download/scope \u8BCD\u5F62\u96F6\u547D\u4E2D\uFF09\u3002", "No repo links declared (no connector.download/scope hits)."],
+    ["YAML \u58F0\u660E \xB7 ", "YAML \xB7 "],
+    ["\u6267\u884C\u7684\u4EFB\u52A1\uFF08\u672C\u4F1A\u8BDD\u7531\u4EFB\u52A1\u62C9\u8D77\u2014\u2014\u80CC\u666F\u5982\u4E0B\uFF09", "Task behind this session (spawned this session \u2014 background below)"],
+    ["\u6765\u6E90\uFF1A", "Source: "],
+    ["\u5173\u8054\u4E8B\u4EF6\uFF1A", "Related events: "],
+    ["\u5FEB\u7167\u53CD\u67E5\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002", "Snapshot reverse lookup (Task.agentSession \u222A events agentSession) found no registered links \u2014 standalone conversation session (nothing fabricated)."]
   ];
 
   // src/core/i18n.js
@@ -2567,6 +2586,29 @@ var CoreConsoleWeb = (() => {
       if (ok) ok.focus();
     });
   }
+  function htmlModal(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+      const modal = document.createElement("div");
+      modal.className = "chat-modal";
+      modal.setAttribute("data-cc-modal", "1");
+      const w = o.wide ? "width:640px;max-width:calc(100vw - 48px)" : "width:420px;max-width:calc(100vw - 48px)";
+      modal.innerHTML = '<div class="chat-modal-mask" data-cc-modal-mask></div><div class="chat-modal-panel" style="' + w + '"><div class="chat-modal-head"><div class="chat-modal-title">' + esc(t(o.title || t("\u8BE6\u60C5"))) + '</div><button type="button" class="btn btn-ghost sm" data-cc-modal-x aria-label="close">\u2715</button></div><div class="chat-modal-body" style="max-height:70vh;overflow:auto">' + (o.html || "") + "</div></div>";
+      const done = () => {
+        modal.remove();
+        document.removeEventListener("keydown", onKey, true);
+        resolve();
+      };
+      const onKey = (e) => {
+        if (e.key === "Escape") done();
+      };
+      const x = modal.querySelector("[data-cc-modal-x]");
+      if (x) x.addEventListener("click", done);
+      modal.querySelector("[data-cc-modal-mask]").addEventListener("click", done);
+      document.addEventListener("keydown", onKey, true);
+      document.body.appendChild(modal);
+    });
+  }
   function toast(message, kind) {
     let wrap = document.querySelector(".chat-toast-wrap");
     if (!wrap) {
@@ -3074,7 +3116,7 @@ var CoreConsoleWeb = (() => {
       const anchor = "Workflow/" + String(r.owner || "global") + "/" + String(r.workflow || "");
       const no = String(r.run != null ? r.run : "");
       const info = runApprovalInfoHtml(runApprovalInfoOf(ctx2.store, String(r.workflow || ""), String(r.owner || "global"), no, String(r.startedAt || "")));
-      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div data-apverdict="' + esc(apKeyOf({ kind: "Workflow", scope: String(r.owner || "global"), name: String(r.workflow || "") })) + '"><div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + '</div></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
+      return '<div class="card ap-item"' + hl + '><div class="card-h"><span class="h-title mono">' + esc(String(r.workflow || "\u2014")) + (no ? " #" + esc(no) : "") + '</span><span class="h-right">' + chip(String(r.phase || "AwaitingApproval"), "warn") + '</span></div><div class="card-b"><div class="small">' + esc(trunc(String(r.involved || r.route || t("\u5DE5\u4F5C\u6D41\u95F8\u951A\u6302\u8D77\u2014\u2014\u7B49\u5F85\u5BA1\u6279\u4FE1\u53F7")), 160)) + '</div><div class="small" style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">' + info + '</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chipGo(t("\u951A ") + anchor, "wf/" + encodeURIComponent(String(r.workflow || "")) + (no ? "/r/" + encodeURIComponent(no) : ""), "acc", true, t("\u8FD0\u884C\u8BE6\u60C5\u2014\u2014\u6279\u95F8\u951A")) + '</div><div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-grant="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u6279\u51C6\u7EE7\u7EED")) + '</button> <button class="btn btn-ghost btn-danger sm" data-ap-reject="' + esc(it.key) + '" data-ap-anchor="' + esc(anchor) + '" data-ap-run="' + esc(no) + '">' + esc(t("\u9A73\u56DE\u7EC8\u6B62")) + "</button></div></div></div>";
     }
     if (it.kind === "proposal") {
       const p = it.proposal;
@@ -3123,31 +3165,20 @@ var CoreConsoleWeb = (() => {
     box.innerHTML = renderDiff(diffLines2(base, working), 26) + '<div class="small faint" style="margin-top:4px">' + esc(baseNote) + t(" \xB7 \u7A3F ") + working.length + t("B vs \u843D\u5E93\u503C ") + base.length + t("B\uFF08\u73B0\u8BFB\uFF0C\u4E0D\u7F13\u5B58\uFF09 \xB7 ") + '<span class="chip ok tiny">+' + stats.add + '</span> <span class="chip esc tiny">-' + stats.del + '</span></div><div data-apverdict="' + esc(apKeyOf(d)) + '"><div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\uFF08ops_core_inner_agent\uFF09\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>";
     hydrateVerdict(ctx2, d);
   }
-  function verdictDocNames(d) {
-    const base = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return d.run != null && d.run !== "" && Number(d.run) > 0 ? [base + "-run" + Number(d.run), base] : [base];
-  }
   async function hydrateVerdict(ctx2, d) {
     try {
-      const candidates = verdictDocNames(d);
-      let hit = null;
-      for (const nm of candidates) {
-        const r = await ctx2.api.object("DocumentDiff", "global", nm);
-        if (r && r.ok && r.data && r.data.content) {
-          hit = { name: nm, content: String(r.data.content) };
-          break;
-        }
-      }
+      const ddName = "docdiff-" + String(d.kind + "-" + d.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const ddR = await ctx2.api.object("DocumentDiff", "global", ddName);
       const vbox = document.querySelector('[data-apverdict="' + CSS.escape(apKeyOf(d)) + '"]');
       if (!vbox) return;
-      if (hit) {
-        const raw = hit.content;
+      if (ddR.ok && ddR.data && ddR.data.content) {
+        const raw = String(ddR.data.content);
         const vm = raw.match(/verdict:\s*\|\n([\s\S]*?)(?:\n  [a-zA-Z]|\n\w|$)/);
         const cm = raw.match(/changed:\s*"?([^"\n]+)"?/);
         const verdict = vm ? vm[1].trim() : raw;
-        vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' + esc(t("Diff \u5224\u51B3 \xB7 ops_core_inner_agent")) + '</span><span class="h-right">' + esc(cm ? cm[1] : "") + '</span></div><div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div><div class="small faint" style="margin-top:6px">' + esc(t("\u5BF9\u8C61 DocumentDiff/global/")) + esc(hit.name) + "</div></div></div>";
+        vbox.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-top:8px"><div class="card-h"><span class="h-title">' + esc(t("Diff \u5224\u51B3 \xB7 ops_core_inner_agent")) + '</span><span class="h-right">' + esc(cm ? cm[1] : "") + '</span></div><div class="card-b"><div class="small" style="white-space:pre-wrap">' + esc(verdict) + '</div><div class="small faint" style="margin-top:6px">' + esc(t("\u5BF9\u8C61 DocumentDiff/global/")) + esc(ddName) + "</div></div></div>";
       } else {
-        vbox.innerHTML = '<div class="small faint" style="margin-top:8px">' + esc(t("\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/")) + esc(candidates.join("\u3001")) + esc(t(" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020")) + "</div>";
+        vbox.innerHTML = '<div class="small faint">' + esc(t("\u5224\u51B3\u6587\u6863\u5C1A\u672A\u751F\u6210\uFF08DocumentDiff/global/") + esc(ddName) + t(" \u7F3A\u5E2D\u2014\u2014\u5F15\u64CE\u4EBA\u5BA1\u6302\u8D77\u5373\u81EA\u52A8\u751F\u6210\uFF1B\u7F3A\u5E2D=\u672A\u5230\u751F\u6210\u7A97\u53E3\uFF0C\u4E0D\u7F16\u9020")) + "</div></div>";
       }
     } catch (e) {
     }
@@ -3317,12 +3348,6 @@ var CoreConsoleWeb = (() => {
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
     ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
-    items.filter((x) => x.kind === "run").forEach((x) => hydrateVerdict(ctx2, {
-      kind: "Workflow",
-      scope: String(x.run.owner || "global"),
-      name: String(x.run.workflow || ""),
-      run: x.run.run
-    }));
     hydrateLedger(ctx2);
     if (focus && matched.length) {
       const hit = el.querySelector('[data-ap-focused="1"]');
@@ -12969,10 +12994,14 @@ spec:
       ];
       const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
       const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
-      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span></div><div class="card-b">' + kv(kvRows) + "</div></div>" + // 2026-11-28 用户裁决：workflow 定义看优先=YAML 纯文本全文（rawYaml 现读真源；缺席=不装假不建卡）。
-      (String(wf.rawYaml || "") ? '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("YAML \u58F0\u660E")) + '</span></div><div class="card-b">' + yamlTextView(String(wf.rawYaml)) + "</div></div>" : "") + '<h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span><span class="h-right">' + // R-UX-10 2026-11-28：YAML 声明=弹窗按需（人不主动看 scheme——fixed 卡退役为按钮）。
+      (String(wf.rawYaml || "") ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(t("YAML \u58F0\u660E")) + "</button>" : "") + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
       bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
       bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
+      const yamlBtn = el.querySelector("[data-wf-yaml-btn]");
+      if (yamlBtn) yamlBtn.addEventListener("click", () => {
+        htmlModal({ title: t("YAML \u58F0\u660E \xB7 ") + usedName, wide: true, html: yamlTextView(String(wf.rawYaml || "")) });
+      });
       hydrateDocsExportConfig(el, ctx2);
     })().catch((e) => {
       if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
@@ -13262,6 +13291,72 @@ spec:
   }
 
   // src/screens/objects.js
+  function relatedTasksOf(name, tasks) {
+    const n = String(name || "");
+    if (!n) return [];
+    const out = [];
+    (tasks || []).forEach((t2) => {
+      if (!t2) return;
+      const id = (t2.scope || "global") + "/" + String(t2.name || "");
+      const spec = t2.spec || {};
+      const st = t2.status || {};
+      const hay = [t2.name, spec.title, spec.summary, spec.source, spec.sourceRef].map((x) => String(x || "").toLowerCase()).join(" \n");
+      const isSelf = String(t2.name || "") === n;
+      const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
+      if (!isSelf && !mentioned) return;
+      const sess = String(st.agentSession || st.sessionId || "").trim();
+      out.push({
+        id,
+        self: isSelf,
+        title: String(spec.title || t2.name || id),
+        phase: String(st.phase || ""),
+        agent: String(spec.agent || ""),
+        session: sess,
+        lastAction: String(st.lastAction || "")
+      });
+    });
+    return out.sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)).slice(0, 8);
+  }
+  function relatedRunsOf(name, runs) {
+    const n = String(name || "").toLowerCase();
+    if (!n || n.length < 4) return [];
+    return (runs || []).filter((r) => String(r && r.involved || "").toLowerCase().includes(n)).slice(0, 8).map((r) => ({
+      workflow: String(r && (r.workflow || r.name) || ""),
+      run: r && (r.run != null ? r.run : r.no != null ? r.no : ""),
+      phase: String(r && r.phase || ""),
+      status: String(r && r.status || "")
+    }));
+  }
+  var PHASE_CHIP = {
+    running: ["\u6B63\u5728\u505A", "acc"],
+    verifying: ["\u9A8C\u8BC1\u4E2D", "acc"],
+    queued: ["\u6392\u961F\u4E2D", "mute"],
+    ready: ["\u5F85\u542F\u52A8", "mute"],
+    pending: ["\u7B49\u5F85\u62C9\u8D77", "mute"],
+    blocked: ["\u53D7\u963B", "warn"],
+    failed: ["\u5931\u8D25", "esc"],
+    done: ["\u5DF2\u5B8C\u6210", "ok"],
+    converged: ["\u5DF2\u6536\u655B", "ok"],
+    executing: ["\u6267\u884C\u4E2D", "acc"],
+    suspended: ["\u6302\u8D77", "warn"],
+    canceled: ["\u5DF2\u53D6\u6D88", "mute"]
+  };
+  function phaseChipText(p) {
+    const v = PHASE_CHIP[String(p || "")];
+    return v ? chip(v[0], v[1]) : chip(String(p || t("\u72B6\u6001\u672A\u77E5")), "mute");
+  }
+  function relatedPanelHtml(tasks, runs) {
+    if (!tasks.length && !runs.length) {
+      return t('<div class="ob-empty">\u65E0\u76F8\u5173\u4EFB\u52A1\u4E0E\u5DE5\u4F5C\u6D41\u8FD0\u884C\uFF08\u5FEB\u7167\u4EFB\u52A1/\u8FD0\u884C\u8BB0\u5F55\u63D0\u53CA\u672C\u5BF9\u8C61\u540D\u96F6\u547D\u4E2D\u2014\u2014\u4E0D\u7F16\u9020\uFF09\u3002</div>');
+    }
+    const taskRows = tasks.map(
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + " <b>" + esc(trunc(x.title, 44)) + "</b> " + (x.agent ? chip(t("\u8D1F\u8D23 ") + x.agent, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(x.id, 48)) + (x.lastAction ? " \xB7 " + esc(trunc(x.lastAction, 60)) : "") + '</div></div><span class="w-ev-time">' + (x.session ? chipGo(t("\u770B\u4F1A\u8BDD"), "session/" + encodeURIComponent(x.session), "acc", true, t("\u67E5\u770B\u6267\u884C\u4F1A\u8BDD")) : "") + " " + chipGo(t("\u4EFB\u52A1\u8BE6\u60C5"), "task/" + encodeURIComponent(x.id), "mute", true) + "</span></div>"
+    ).join("");
+    const runRows = runs.map(
+      (x) => '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase || x.status) + " <b>" + esc(x.workflow) + "</b> " + chip("run #" + String(x.run != null ? x.run : "?"), "mono") + '</div></div><span class="w-ev-time">' + chipGo(t("\u770B\u8FD0\u884C"), "wf/" + encodeURIComponent(x.workflow) + "/r/" + encodeURIComponent(String(x.run != null ? x.run : "")), "mute", true) + "</span></div>"
+    ).join("");
+    return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u76F8\u5173\u4EFB\u52A1")) + "</div>" + taskRows : "") + (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(t("\u76F8\u5173\u5DE5\u4F5C\u6D41\u8FD0\u884C")) + "</div>" + runRows : "");
+  }
   function tagVocabFromKinds(kinds) {
     const rows = Array.isArray(kinds) ? kinds : [];
     for (const k of rows) {
@@ -13383,15 +13478,12 @@ spec:
       (h, i) => '<details class="ob-rule"><summary><span class="lk mono" data-go="' + esc("designdoc/core_design/" + encodeURIComponent(String(h.ref.replace(/^[^/]+\/([^#]+).*/, "$1") + ".md"))) + '">' + esc(h.ref) + '</span></summary><div class="ob-rule-why small">' + h.why.map((w) => chip(w, "mute")).join(" ") + "</div></details>"
     ).join("");
   }
-  function ctxPanel(rv) {
-    return '<div class="ob-ctx">' + chip(t("\u5DF2\u540C\u6B65"), "ok") + ' <span class="small">\u7248\u672C r' + esc(String(rv || 0)) + t("</span>") + " " + chipGo(t("\u5728\u6587\u6863\u5E93\u4E2D\u6253\u5F00"), "docs", "mute", true) + "</div>";
-  }
   function opsPanel(ref, content) {
     let downloadRef = "";
     const m = /download:\s*"?(pkg:\/\/[^"\s}]+)/.exec(String(content || ""));
     if (m) downloadRef = m[1];
     const repoChips = [downloadRef, ref.scope, ref.name].map((x) => repoLinkChip(String(x || ""), String(x || ""))).filter(Boolean).join(" ");
-    return '<div><button class="btn btn-secondary sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + t('">\u7F16\u8F91\u5668</button> ') + '<button class="btn btn-ghost sm" data-go="' + esc("s/" + encodeURIComponent(ref.scope)) + t('">\u6240\u5C5E scope</button> ') + (repoChips ? '<div class="ob-ctx" style="margin-top:8px">' + repoChips + "</div>" : "") + "</div>";
+    return repoChips ? '<div class="ob-ctx">' + repoChips + "</div>" : t('<div class="ob-empty">\u65E0\u4ED3\u5E93\u76F4\u8FBE\u58F0\u660E\uFF08connector.download/scope \u8BCD\u5F62\u96F6\u547D\u4E2D\uFF09\u3002</div>');
   }
   function schemePanel(kindReg, content) {
     if (!kindReg) return t('<div class="ob-empty">scheme \u6682\u4E0D\u53EF\u8FBE\uFF08kinds \u805A\u5408\u7F3A\u5E2D\uFF09\u3002</div>');
@@ -13404,34 +13496,36 @@ spec:
     if (kindReg.spec != null) row.spec = kindReg.spec;
     const yamlText = dumpYaml(row);
     if (!yamlText && !comp) return "";
-    return (comp ? '<div class="ob-seccomp">' + comp + "</div>" : "") + (yamlText ? yamlTextView(yamlText, t("kind \u5B9A\u4E49\uFF08YAML \u7EAF\u6587\u672C\uFF09")) : t('<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>'));
+    return (comp ? '<div class="ob-seccomp" style="margin-bottom:8px">' + comp + "</div>" : "") + (yamlText ? yamlTextView(yamlText, t("kind \u5B9A\u4E49\uFF08YAML \u7EAF\u6587\u672C\uFF09")) : t('<div class="ob-empty">\u8BE5 kind \u65E0\u5B57\u6BB5\u58F0\u660E\uFF08spec \u7F3A\u5E2D\uFF09\u3002</div>'));
   }
-  function hydrateSchemePanel(el, ctx2, kind, content) {
-    const box = el.querySelector("[data-panel-scheme]");
-    if (!box) return;
-    const paint3 = (kinds) => {
-      const k = (kinds || []).find((x) => x && x.name === kind);
-      if (!k) return;
-      box.innerHTML = schemePanel(k, content || "");
-    };
-    const snapKinds = ctx2.store.kinds();
-    if (snapKinds.length) {
-      paint3(snapKinds);
-      return;
-    }
-    if (ctx2.api && typeof ctx2.api.kinds === "function") {
-      ctx2.api.kinds().then((r) => {
-        if (!el.isConnected) return;
-        if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint3(r.data.kinds);
-      }).catch(() => {
-      });
-    }
+  function bindSchemeModal(el, ctx2, kind, content) {
+    const btn = el.querySelector("[data-obj-scheme]");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      const paint3 = (kinds) => {
+        const k = (kinds || []).find((x) => x && x.name === kind) || null;
+        htmlModal({ title: t("scheme \xB7 ") + kind, wide: true, html: schemePanel(k, content || "") });
+      };
+      const snapKinds = ctx2.store.kinds();
+      if (snapKinds.length) {
+        paint3(snapKinds);
+        return;
+      }
+      if (ctx2.api && typeof ctx2.api.kinds === "function") {
+        try {
+          const r = await ctx2.api.kinds();
+          paint3(r && r.ok && r.data && Array.isArray(r.data.kinds) ? r.data.kinds : []);
+        } catch {
+          paint3([]);
+        }
+      } else paint3([]);
+    });
   }
   function contentPanel(kind, name, content) {
     if (!String(content || "").trim()) return t('<div class="ob-empty">\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002</div>');
     if (isMarkdownDoc(kind, name)) {
-      const { fm, body } = splitFrontmatter(content);
-      return '<div data-md-render="1">' + (fm ? schemeChips(fm) : "") + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
+      const { body } = splitFrontmatter(content);
+      return '<div data-md-render="1">' + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
     }
     return yamlTextView(content, t("YAML \u58F0\u660E\uFF08\u7EAF\u6587\u672C\u5168\u6587\uFF09"));
   }
@@ -13471,16 +13565,19 @@ spec:
   }
   function renderScreen(el, ctx2, ref) {
     const kinds = ctx2.store.kinds();
-    const kindReg = kinds.find((k) => k && k.name === ref.kind) || null;
     const cached = ctx2.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
     const content = cached ? cached.content : "";
     const tags = tagsOfDoc(content);
     const ruleState = rulesPending.get(ref.kind + "|" + ref.name) || null;
+    const related = relatedPanelHtml(
+      relatedTasksOf(ref.name, ctx2.store.tasks()),
+      relatedRunsOf(ref.name, ctx2.store.runs())
+    );
     el.innerHTML = '<div class="view-inner">' + screenHead(
       ref.name,
-      t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0\uFF08\u516D\u7247\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme\uFF09"),
-      kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute")
-    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + (ref.kind === "Provider" ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(t("\u65B0\u5EFA Provider \u5BF9\u8C61\uFF08openai \u517C\u5BB9\u7F51\u5173/\u8D26\u53F7/\u5BC6\u94A5\u5F15\u7528/\u6A21\u578B\u5206\u7EA7\uFF09")) + '">+ ' + esc(t("\u6DFB\u52A0 Provider")) + "</button>" : "") + "</div>" : "") + "<div data-provider-create></div>" + (ref.kind === "Agent" ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>" : "") + '<div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u4E0A\u4E0B\u6587</span></div><div class="card-b">') + ctxPanel(ref.rv) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u64CD\u4F5C</span></div><div class="card-b">') + opsPanel(ref, cached ? content : "") + "</div></section>" + t('<section class="card obj-content"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + '</div></section><section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + "</div></section></div></div>";
+      t("\u5185\u5BB9\u4F18\u5148\uFF1A\u6B63\u6587\u4E0E\u76F8\u5173\u4EFB\u52A1\u4F1A\u8BDD\u76F4\u8FBE\uFF1Bscheme \u7ECF\u6309\u94AE\u6309\u9700\u67E5\u770B"),
+      kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute") + ' <button type="button" class="btn btn-chip sm" data-obj-scheme title="' + esc(t("scheme \u5B9A\u4E49\uFF08\u5F39\u7A97\u6309\u9700\u67E5\u770B\uFF09")) + '">scheme</button>'
+    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + (ref.kind === "Provider" ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(t("\u65B0\u5EFA Provider \u5BF9\u8C61\uFF08openai \u517C\u5BB9\u7F51\u5173/\u8D26\u53F7/\u5BC6\u94A5\u5F15\u7528/\u6A21\u578B\u5206\u7EA7\uFF09")) + '">+ ' + esc(t("\u6DFB\u52A0 Provider")) + "</button>" : "") + "</div>" : "") + "<div data-provider-create></div>" + (ref.kind === "Agent" ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>" : "") + t('<section class="card obj-content" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute(ref.kind, ref.scope, ref.name), "mute", true) + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD</span><span class="h-right">') + chipGo(t("\u6240\u5C5E scope"), "s/" + encodeURIComponent(ref.scope), "mute", true) + '</span></div><div class="card-b">' + related + '</div></section><div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + '</div></section></div><div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(t("\u64CD\u4F5C")) + '</span></div><div class="card-b">' + opsPanel(ref, cached ? content : "") + "</div></div></div>";
     const picker = el.querySelector("[data-obj-picker]");
     if (picker) {
       picker.addEventListener("change", () => {
@@ -13488,7 +13585,7 @@ spec:
         if (v) ctx2.go(v);
       });
     }
-    hydrateSchemePanel(el, ctx2, ref.kind, cached ? cached.content : "");
+    bindSchemeModal(el, ctx2, ref.kind, cached ? content : "");
     if (ref.kind === "Provider") hydrateProviderCreate(el, ctx2);
     if (ref.kind === "Agent") hydrateAgentProviderBinding(el, ctx2, ref);
     if (!cached) {
@@ -13535,7 +13632,7 @@ spec:
     }
     if (!ref) {
       const hint = p.kind ? "kind\u300C" + p.kind + "\u300D" : t("\u5FEB\u7167");
-      el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), t("\u516D\u7247\u56FA\u5B9A\uFF1A\u6807\u7B7E/\u89C4\u5219/\u4E0A\u4E0B\u6587/\u64CD\u4F5C/\u5185\u5BB9/scheme")) + emptyBox(hint + t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61"), t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61\u3002")) + "</div>";
+      el.innerHTML = '<div class="view-inner">' + screenHead(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), t("\u5185\u5BB9\u4F18\u5148\uFF1A\u6B63\u6587/\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD/\u6807\u7B7E/\u89C4\u5219/\u64CD\u4F5C\uFF1Bscheme \u5F39\u7A97\u6309\u9700")) + emptyBox(hint + t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61"), t("\u6682\u65E0\u5728\u518C\u5BF9\u8C61\u3002")) + "</div>";
       return;
     }
     renderScreen(el, ctx2, ref);
@@ -14005,25 +14102,35 @@ spec:
   }
 
   // src/screens/chat-links.js
+  function sessionTasksOf(store2, sessionId) {
+    const sid = String(sessionId || "");
+    if (!sid) return [];
+    return (store2.tasks() || []).filter(
+      (t2) => String(t2 && t2.status && (t2.status.agentSession || t2.status.sessionId) || "") === sid
+    ).slice(0, 3).map((t2) => ({
+      id: String(t2 && t2.scope || "global") + "/" + String(t2 && t2.name || ""),
+      title: String(t2 && t2.spec && t2.spec.title || t2 && t2.name || ""),
+      phase: String(t2 && t2.status && (t2.status.phase || t2.status) || ""),
+      summary: String(t2 && t2.spec && (t2.spec.summary || t2.spec.title) || ""),
+      source: String(t2 && t2.spec && (t2.spec.source || t2.spec.sourceRef) || "")
+    }));
+  }
   function sessBacklinksHtml(store2, sessionId) {
     const sid = String(sessionId || "");
     if (!sid) return "";
-    const tasks = (store2.tasks() || []).filter((t2) => String(t2 && t2.status && (t2.status.agentSession || t2.status.sessionId) || "") === sid);
+    const tasks = sessionTasksOf(store2, sid);
     const evs = (store2.events() || []).filter((e) => {
       const s = String(e && (e.agentSession || e.session) || "");
       return s === sid;
     }).slice(0, 4);
-    const taskChips = tasks.slice(0, 3).map((t2) => {
-      const id = String(t2 && t2.scope || "global") + "/" + String(t2 && t2.name || "");
-      const title = String(t2 && t2.spec && t2.spec.title || t2 && t2.name || id);
-      const ph = String(t2 && t2.status && (t2.status.phase || t2.status) || "");
-      return '<span class="chip acc tiny click" data-go="task/' + encodeURIComponent(id) + '" title="' + esc(id) + t("\u2014\u2014\u4EFB\u52A1\u8BE6\u60C5") + '">Task: ' + esc(trunc(title, 22)) + (ph ? " \xB7 " + esc(ph) : "") + "</span>";
-    }).join(" ");
+    const taskCards = tasks.map(
+      (t2) => '<div class="mini-row"><div class="mr-main"><div>' + (t2.phase ? '<span class="chip acc tiny">' + esc(t2.phase) + "</span> " : "") + "<b>" + esc(trunc(t2.title || t2.id, 44)) + '</b></div><div class="mr-sub small">' + (t2.summary && t2.summary !== t2.title ? esc(trunc(t2.summary, 120)) + "<br>" : "") + (t2.source ? esc(t("\u6765\u6E90\uFF1A")) + '<span class="mono">' + esc(trunc(t2.source, 64)) + "</span> \xB7 " : "") + esc(t("id ")) + '<span class="mono">' + esc(trunc(t2.id, 48)) + '</span></div></div><span class="w-ev-time"><span class="chip acc tiny click" data-go="task/' + encodeURIComponent(t2.id) + '" title="' + esc(t2.id) + t("\u2014\u2014\u4EFB\u52A1\u8BE6\u60C5") + '">' + esc(t("\u4EFB\u52A1\u8BE6\u60C5")) + "</span></span></div>"
+    ).join("");
     const evChips = evs.map((e) => '<span class="chip mute tiny click" data-go="event/' + encodeURIComponent(String(e.id ?? "")) + '" title="' + esc(t("\u4E8B\u4EF6\u8BE6\u60C5")) + '">' + esc(trunc(String(e.type || ""), 26)) + "</span>").join(" ");
-    if (!taskChips && !evChips) {
-      return '<div class="small faint" data-sess-backlinks="1">' + esc(t("\u5FEB\u7167\u4E09\u6E90\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u53CD\u67E5\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002")) + "</div>";
+    if (!taskCards && !evChips) {
+      return '<div class="small faint" data-sess-backlinks="1">' + esc(t("\u5FEB\u7167\u53CD\u67E5\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002")) + "</div>";
     }
-    return '<div class="small" data-sess-backlinks="1"><span class="faint">' + esc(t("\u5173\u8054\uFF1A")) + "</span> " + taskChips + " " + evChips + "</div>";
+    return '<div data-sess-backlinks="1">' + (taskCards ? '<div class="small faint" style="margin-bottom:4px">' + esc(t("\u6267\u884C\u7684\u4EFB\u52A1\uFF08\u672C\u4F1A\u8BDD\u7531\u4EFB\u52A1\u62C9\u8D77\u2014\u2014\u80CC\u666F\u5982\u4E0B\uFF09")) + "</div>" + taskCards : "") + (evChips ? '<div class="small" style="margin-top:' + (taskCards ? "8" : "0") + 'px"><span class="faint">' + esc(t("\u5173\u8054\u4E8B\u4EF6\uFF1A")) + "</span> " + evChips + "</div>" : "") + "</div>";
   }
 
   // src/screens/sessionctx.js
@@ -15032,8 +15139,8 @@ spec:
     return { ok: true, content, repo: hit.repo, path: hit.path };
   }
   function renderDocBody(content) {
-    const { fm, body } = splitFrontmatter(content);
-    return '<div data-md-render="1">' + (fm ? schemeChips(fm) : "") + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
+    const { body } = splitFrontmatter(content);
+    return '<div data-md-render="1">' + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587"), content);
   }
   function mountRefs(el, ctxc) {
     const slot = el.querySelector("[data-cc-refs]");
@@ -16085,8 +16192,8 @@ spec:
     }
     const data = res.data && typeof res.data === "object" ? res.data : {};
     const content = data.content != null ? String(data.content) : typeof res.data === "string" ? res.data : "";
-    const { fm, body } = splitFrontmatter(content);
-    box.innerHTML = '<div data-md-render="1">' + (fm ? schemeChips(fm) : "") + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587\uFF08HEAD\uFF09"), content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc(String(data.sha).slice(0, 8)) : "HEAD") + t("\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>");
+    const { body } = splitFrontmatter(content);
+    box.innerHTML = '<div data-md-render="1">' + renderMarkdown(body) + "</div>" + rawDisclosure(t("\u539F\u6587\uFF08HEAD\uFF09"), content) + '<div class="small faint" style="margin-top:6px">' + (data.sha ? "HEAD " + esc(String(data.sha).slice(0, 8)) : "HEAD") + t("\uFF08git \u6743\u5A01\u96F6\u7F13\u5B58\uFF09 \xB7 \u8349\u7A3F/Apply \u901A\u8DEF\u7ECF\u7F16\u8F91\u5668\u5C4F\uFF08doc/\u2026\uFF09\u3002</div>");
   }
   function designDocScreen(el, ctx2) {
     const repo = ctx2.params && ctx2.params.repo;

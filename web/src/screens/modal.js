@@ -43,6 +43,37 @@ export function confirmModal(opts) {
   });
 }
 
+/* htmlModal 内容弹窗（R-UX-10 2026-11-28：scheme 按需查看的默认形态——人不主动看 scheme，
+ * 只有需要修改时才看；内容调用方拼好——一切动态文本过 esc 后传入）。{title, html, wide}
+ * → Promise<void>（关闭即 resolve）；Esc/点 mask/✕=关。wide=true 宽体（scheme 全文 640px）。
+ * 复用 .chat-modal 族 token，零新样式类。 */
+export function htmlModal(opts) {
+  const o = opts || {};
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'chat-modal';
+    modal.setAttribute('data-cc-modal', '1');
+    const w = o.wide ? 'width:640px;max-width:calc(100vw - 48px)' : 'width:420px;max-width:calc(100vw - 48px)';
+    modal.innerHTML = '<div class="chat-modal-mask" data-cc-modal-mask></div>' +
+      '<div class="chat-modal-panel" style="' + w + '">' +
+      '<div class="chat-modal-head"><div class="chat-modal-title">' + esc(tr(o.title || tr('详情'))) + '</div>' +
+      '<button type="button" class="btn btn-ghost sm" data-cc-modal-x aria-label="close">✕</button></div>' +
+      '<div class="chat-modal-body" style="max-height:70vh;overflow:auto">' + (o.html || '') + '</div>' +
+      '</div>';
+    const done = () => {
+      modal.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(); };
+    const x = modal.querySelector('[data-cc-modal-x]');
+    if (x) x.addEventListener('click', done);
+    modal.querySelector('[data-cc-modal-mask]').addEventListener('click', done);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(modal);
+  });
+}
+
 /* toast 非阻断提示：toast(message, kind)——kind: error（--danger 语义条，缺省）| accent（成功/强调）。
  * 右上浮层 3.5s 自动消散（style.md §3.3——结果/错误不抢主操作焦点）；同帧多条纵向堆叠；
  * 容器懒建一次全局复用（.chat-toast-wrap fixed）。消息文本调用方已拼好（可含 esc 后的片段）。 */

@@ -1,4 +1,5 @@
-/* objects.js —— 通用对象工作台（六片固定：标签 / 适用规则 / 上下文 / 操作 / 内容 / scheme）。
+/* objects.js —— 通用对象工作台（R-UX-10 2026-11-28 内容优先：内容 → 相关任务与会话 →
+ * 标签 / 适用规则 → 操作；scheme=按钮弹窗按需——人不主动看 scheme，需要修改时才看，修改主通路=对话）。
  * 语义移植旧 console-obj.js（代码全部重写为 ESM+库）。缺片显式「无」不装假（诚实空态词形）。
  * 单一真相：对象枚举/kinds=快照（store）；对象正文=docCache(rv 缓存)+api.object 现读。
  * 规则命中=确定性纯函数 rulesFor()（tag/kind/scope/正文引用四路——命中来源显式标注；
@@ -8,7 +9,87 @@
 import { esc, trunc } from '../core/format.js';
 import { chip, chipGo, kv, emptyBox, screenHead, kindBadge, objRoute, docRoute, repoLinkChip, tagRoute } from '../render/chips.js';
 import { loadYaml, renderMarkdown, rawDisclosure, splitFrontmatter, schemeChips, yamlTextView, dumpYaml } from '../render/md.js';
+import { htmlModal } from './modal.js';
 import { t as tr } from '../core/i18n.js';
+
+/* ---------- 相关任务与会话（R-UX-10 2026-11-28 用户裁决：内容优先+周边信息直达） ----------
+ * 确定性纯函数（机械直测）：对象名在任务字段（name/spec.title/summary/source/sourceRef）提及
+ * 即命中；run 的 involved 提及即命中。状态人话、session 可点直达。零编造——不在册=诚实空态。 */
+
+/** 相关任务行匹配（纯函数）：Task 对象同名精确 + 他类对象字段提及；行=可点任务+可点会话。 */
+export function relatedTasksOf(name, tasks) {
+  const n = String(name || '');
+  if (!n) return [];
+  const out = [];
+  (tasks || []).forEach((t) => {
+    if (!t) return;
+    const id = (t.scope || 'global') + '/' + String(t.name || '');
+    const spec = t.spec || {};
+    const st = t.status || {};
+    const hay = [t.name, spec.title, spec.summary, spec.source, spec.sourceRef]
+      .map((x) => String(x || '').toLowerCase()).join(' \n');
+    const isSelf = String(t.name || '') === n;
+    const mentioned = !isSelf && n.length >= 4 && hay.includes(n.toLowerCase());
+    if (!isSelf && !mentioned) return;
+    const sess = String(st.agentSession || st.sessionId || '').trim();
+    out.push({
+      id, self: isSelf,
+      title: String(spec.title || t.name || id),
+      phase: String(st.phase || ''),
+      agent: String(spec.agent || ''),
+      session: sess,
+      lastAction: String(st.lastAction || ''),
+    });
+  });
+  return out.sort((a, b) => (b.self ? 1 : 0) - (a.self ? 1 : 0)).slice(0, 8);
+}
+
+/** 相关 run 行匹配（纯函数）：run.involved 提及对象名即命中；行=可点 workflow run。 */
+export function relatedRunsOf(name, runs) {
+  const n = String(name || '').toLowerCase();
+  if (!n || n.length < 4) return [];
+  return (runs || []).filter((r) => String((r && r.involved) || '').toLowerCase().includes(n))
+    .slice(0, 8).map((r) => ({
+      workflow: String((r && (r.workflow || r.name)) || ''),
+      run: r && (r.run != null ? r.run : (r.no != null ? r.no : '')),
+      phase: String((r && r.phase) || ''),
+      status: String((r && r.status) || ''),
+    }));
+}
+
+const PHASE_CHIP = {
+  running: ['正在做', 'acc'], verifying: ['验证中', 'acc'],
+  queued: ['排队中', 'mute'], ready: ['待启动', 'mute'], pending: ['等待拉起', 'mute'],
+  blocked: ['受阻', 'warn'], failed: ['失败', 'esc'], done: ['已完成', 'ok'],
+  converged: ['已收敛', 'ok'], executing: ['执行中', 'acc'], suspended: ['挂起', 'warn'],
+  canceled: ['已取消', 'mute'],
+};
+function phaseChipText(p) {
+  const v = PHASE_CHIP[String(p || '')];
+  return v ? chip(v[0], v[1]) : chip(String(p || tr('状态未知')), 'mute');
+}
+
+function relatedPanelHtml(tasks, runs) {
+  if (!tasks.length && !runs.length) {
+    return tr('<div class="ob-empty">无相关任务与工作流运行（快照任务/运行记录提及本对象名零命中——不编造）。</div>');
+  }
+  const taskRows = tasks.map((x) =>
+    '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase) + ' <b>' + esc(trunc(x.title, 44)) + '</b> ' +
+    (x.agent ? chip(tr('负责 ') + x.agent, 'mute') : '') + '</div>' +
+    '<div class="mr-sub small mono">' + esc(trunc(x.id, 48)) +
+    (x.lastAction ? ' · ' + esc(trunc(x.lastAction, 60)) : '') + '</div></div>' +
+    '<span class="w-ev-time">' +
+    (x.session ? chipGo(tr('看会话'), 'session/' + encodeURIComponent(x.session), 'acc', true, tr('查看执行会话')) : '') + ' ' +
+    chipGo(tr('任务详情'), 'task/' + encodeURIComponent(x.id), 'mute', true) + '</span></div>'
+  ).join('');
+  const runRows = runs.map((x) =>
+    '<div class="mini-row"><div class="mr-main"><div>' + phaseChipText(x.phase || x.status) + ' <b>' +
+    esc(x.workflow) + '</b> ' + chip('run #' + String(x.run != null ? x.run : '?'), 'mono') + '</div></div>' +
+    '<span class="w-ev-time">' + chipGo(tr('看运行'), 'wf/' + encodeURIComponent(x.workflow) + '/r/' + encodeURIComponent(String(x.run != null ? x.run : '')), 'mute', true) + '</span></div>'
+  ).join('');
+  return (taskRows ? '<div class="small faint" style="margin-bottom:4px">' + esc(tr('相关任务')) + '</div>' + taskRows : '') +
+    (runRows ? '<div class="small faint" style="margin:8px 0 4px">' + esc(tr('相关工作流运行')) + '</div>' + runRows : '');
+}
 
 /** tagType 词表提取（V-16：读 scheme kinds 内 metadata.tagTypes 声明；缺席=空表全落未分组）。
  * F-08 ③：词表读 /v1/scheme/kinds 行（store.kinds 快照聚合缺席=空表降级——不再「暂不可达」）。 */
@@ -131,7 +212,7 @@ export function isMarkdownDoc(kind, name) {
   return /(^|[-_])(README|design|report|notes)([-_.]|$)/i.test(String(name || ''));
 }
 
-/* ---------- 六片渲染 ---------- */
+/* ---------- 展示片渲染 ---------- */
 function tagPanel(groups) {
   if (!groups || !groups.length) {
     return tr('<div class="ob-empty">暂无标签——对象正文未声明 spec.metadata.tags（声明经 Apply 落库后此处现读）。</div>');
@@ -155,27 +236,20 @@ function rulePanel(res) {
   ).join('');
 }
 
-function ctxPanel(rv) {
-  return '<div class="ob-ctx">' + chip(tr('已同步'), 'ok') +
-    ' <span class="small">版本 r' + esc(String(rv || 0)) + tr('</span>') +
-    ' ' + chipGo(tr('在文档库中打开'), 'docs', 'mute', true) + '</div>';
-}
+/* （R-UX-10：上下文片退役——版本 rv 徽章已在头部，文档库入口=编辑器 chip。） */
 
 function opsPanel(ref, content) {
   // 代码 ref 直达仓库（2026-11-26 用户裁决——内部仓与外部仓都可 [ref] 打开代码仓库地址）。
   // N-02 接线补充：connector.download 词形（pkg://<仓>/<子路径>）优先——对象 connector 声明
   // 携带真实仓库路径；缺失=scope/name 词形降级（仓家族名才出 chip，不编造外链）。
+  // R-UX-10：编辑器/所属 scope 已前置到内容卡与相关卡头部——操作片只剩仓库直达。
   let downloadRef = '';
   const m = /download:\s*"?(pkg:\/\/[^"\s}]+)/.exec(String(content || ''));
   if (m) downloadRef = m[1];
   const repoChips = [downloadRef, ref.scope, ref.name]
     .map((x) => repoLinkChip(String(x || ''), String(x || '')))
     .filter(Boolean).join(' ');
-  return '<div>' +
-    '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(ref.kind, ref.scope, ref.name)) + tr('">编辑器</button> ') +
-    '<button class="btn btn-ghost sm" data-go="' + esc('s/' + encodeURIComponent(ref.scope)) + tr('">所属 scope</button> ') +
-    (repoChips ? '<div class="ob-ctx" style="margin-top:8px">' + repoChips + '</div>' : '') +
-    '</div>';
+  return repoChips ? '<div class="ob-ctx">' + repoChips + '</div>' : tr('<div class="ob-empty">无仓库直达声明（connector.download/scope 词形零命中）。</div>');
 }
 
 function schemePanel(kindReg, content) {
@@ -189,36 +263,37 @@ function schemePanel(kindReg, content) {
   if (kindReg.spec != null) row.spec = kindReg.spec;
   const yamlText = dumpYaml(row);
   if (!yamlText && !comp) return '';
-  return (comp ? '<div class="ob-seccomp">' + comp + '</div>' : '') +
+  return (comp ? '<div class="ob-seccomp" style="margin-bottom:8px">' + comp + '</div>' : '') +
     (yamlText ? yamlTextView(yamlText, tr('kind 定义（YAML 纯文本）')) : tr('<div class="ob-empty">该 kind 无字段声明（spec 缺席）。</div>'));
 }
 
-/** F-08 ③：scheme 片活体注水（store.kinds 快照聚合缺席时现读 /v1/scheme/kinds——
- * 快照带 kinds 键零请求；缺键旧快照=拉真 Kind 定义渲染 YAML 文本，不再「暂不可达」）。
- * 注水时补正文（cached 优先——必填段完成度勾缺要对着真正文判，不冒缺）。 */
-function hydrateSchemePanel(el, ctx, kind, content) {
-  const box = el.querySelector('[data-panel-scheme]');
-  if (!box) return;
-  const paint = (kinds) => {
-    const k = (kinds || []).find((x) => x && x.name === kind);
-    if (!k) return; // 未注册 kind=保留快照词形（不编造定义）
-    box.innerHTML = schemePanel(k, content || '');
-  };
-  const snapKinds = ctx.store.kinds();
-  if (snapKinds.length) { paint(snapKinds); return; }
-  if (ctx.api && typeof ctx.api.kinds === 'function') {
-    ctx.api.kinds().then((r) => {
-      if (!el.isConnected) return;
-      if (r && r.ok && Array.isArray(r.data && r.data.kinds)) paint(r.data.kinds);
-    }).catch(() => { /* 快照词形保留 */ });
-  }
+/** R-UX-10：scheme=弹窗按需（人不主动看 scheme，需要修改时才看——修改主通路=对话）。
+ * 点击「scheme」按钮现读 kind 定义（快照 kinds 优先，缺席=现读 /v1/scheme/kinds）→ htmlModal 宽体。 */
+function bindSchemeModal(el, ctx, kind, content) {
+  const btn = el.querySelector('[data-obj-scheme]');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const paint = (kinds) => {
+      const k = (kinds || []).find((x) => x && x.name === kind) || null;
+      htmlModal({ title: tr('scheme · ') + kind, wide: true, html: schemePanel(k, content || '') });
+    };
+    const snapKinds = ctx.store.kinds();
+    if (snapKinds.length) { paint(snapKinds); return; }
+    if (ctx.api && typeof ctx.api.kinds === 'function') {
+      try {
+        const r = await ctx.api.kinds();
+        paint(r && r.ok && r.data && Array.isArray(r.data.kinds) ? r.data.kinds : []);
+      } catch { paint([]); }
+    } else paint([]);
+  });
 }
 
 export function contentPanel(kind, name, content) {
   if (!String(content || '').trim()) return tr('<div class="ob-empty">本文档暂无正文。</div>');
   if (isMarkdownDoc(kind, name)) {
-    const { fm, body } = splitFrontmatter(content);
-    return '<div data-md-render="1">' + (fm ? schemeChips(fm) : '') + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), content);
+    // R-UX-10：正文先行——frontmatter scheme chips 不再占首屏（scheme 经按钮弹窗按需看）。
+    const { body } = splitFrontmatter(content);
+    return '<div data-md-render="1">' + renderMarkdown(body) + '</div>' + rawDisclosure(tr('原文'), content);
   }
   // 2026-11-28 用户裁决：scheme 看优先=text-area 纯文本 YAML 全文（结构化视图信息密度太低——
   // 结构化只在编辑器编辑态出现；修改主通路=对话修改）。
@@ -263,33 +338,40 @@ async function hydrateRules(el, ctx) {
   return rules;
 }
 
-/** 对象工作台渲染（六片）。 */
+/** 对象工作台渲染（R-UX-10 内容优先版：内容 → 相关任务与会话 → 标签/规则 → 操作；scheme=按钮弹窗按需）。 */
 function renderScreen(el, ctx, ref) {
   const kinds = ctx.store.kinds();
-  const kindReg = kinds.find((k) => k && (k.name === ref.kind)) || null;
   const cached = ctx.store.cachedDoc(ref.kind, ref.scope, ref.name, ref.rv);
   const content = cached ? cached.content : '';
   const tags = tagsOfDoc(content);
   const ruleState = rulesPending.get(ref.kind + '|' + ref.name) || null;
+  const related = relatedPanelHtml(
+    relatedTasksOf(ref.name, ctx.store.tasks()),
+    relatedRunsOf(ref.name, ctx.store.runs()));
 
   el.innerHTML = '<div class="view-inner">' +
-    screenHead(ref.name, tr('对象工作台（六片：标签/规则/上下文/操作/内容/scheme）'),
-      kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute')) +
+    screenHead(ref.name, tr('内容优先：正文与相关任务会话直达；scheme 经按钮按需查看'),
+      kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute') +
+      ' <button type="button" class="btn btn-chip sm" data-obj-scheme title="' + esc(tr('scheme 定义（弹窗按需查看）')) + '">scheme</button>') +
     (pickerHtml(el, ctx, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx, ref) +
       (ref.kind === 'Provider' ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(tr('新建 Provider 对象（openai 兼容网关/账号/密钥引用/模型分级）')) + '">+ ' + esc(tr('添加 Provider')) + '</button>' : '') +
       '</div>' : '') +
     '<div data-provider-create></div>' +
     (ref.kind === 'Agent' ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(tr('Provider 绑定现读中…')) + '</div></div>' : '') +
+    tr('<section class="card obj-content" style="margin-bottom:12px"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') +
+    chip('scope: ' + ref.scope, 'mute') + ' ' + chipGo(tr('编辑器'), docRoute(ref.kind, ref.scope, ref.name), 'mute', true) + '</span></div>' +
+    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
+    tr('<section class="card" style="margin-bottom:12px"><div class="card-h"><span class="h-title">相关任务与会话</span><span class="h-right">') +
+    chipGo(tr('所属 scope'), 's/' + encodeURIComponent(ref.scope), 'mute', true) + '</span></div>' +
+    '<div class="card-b">' + related + '</div></section>' +
     '<div class="obj-grid">' +
     tr('<section class="card"><div class="card-h"><span class="h-title">标签</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + '</div></section>' +
     tr('<section class="card"><div class="card-h"><span class="h-title">适用规则</span></div><div class="card-b" data-panel="rules">') +
     (ruleState ? rulePanel(ruleState) : tr('<div class="small faint">规则命中判定中…</div>')) + '</div></section>' +
-    tr('<section class="card"><div class="card-h"><span class="h-title">上下文</span></div><div class="card-b">') + ctxPanel(ref.rv) + '</div></section>' +
-    tr('<section class="card"><div class="card-h"><span class="h-title">操作</span></div><div class="card-b">') + opsPanel(ref, cached ? content : '') + '</div></section>' +
-    tr('<section class="card obj-content"><div class="card-h"><span class="h-title">内容</span><span class="h-right">') + chip('scope: ' + ref.scope, 'mute') + '</span></div>' +
-    '<div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : tr('<div class="small faint">正文现读中…</div>')) + '</div></section>' +
-    '<section class="card"><div class="card-h"><span class="h-title">scheme</span></div><div class="card-b" data-panel-scheme>' + schemePanel(kindReg, content) + '</div></section>' +
-    '</div></div>';
+    '</div>' +
+    '<div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(tr('操作')) + '</span></div><div class="card-b">' +
+    opsPanel(ref, cached ? content : '') + '</div></div>' +
+    '</div>';
 
   // F-08 ⑤：切换器换选即深链（router data-go 不吃 select——change 事件直接 go）。
   const picker = el.querySelector('[data-obj-picker]');
@@ -300,8 +382,8 @@ function renderScreen(el, ctx, ref) {
     });
   }
 
-  // F-08 ③：scheme 片活体注水（快照 kinds 缺席=现读 /v1/scheme/kinds）。
-  hydrateSchemePanel(el, ctx, ref.kind, cached ? cached.content : '');
+  // R-UX-10：scheme=按钮弹窗按需。
+  bindSchemeModal(el, ctx, ref.kind, cached ? content : '');
 
   // Provider 工作台增强（2026-11-27 用户指令：页面上添加 Provider+配置 openai key）。
   if (ref.kind === 'Provider') hydrateProviderCreate(el, ctx);
@@ -360,7 +442,7 @@ export function render(el, ctx) {
   }
   if (!ref) {
     const hint = p.kind ? 'kind「' + p.kind + '」' : tr('快照');
-    el.innerHTML = '<div class="view-inner">' + screenHead(tr('对象工作台'), tr('六片固定：标签/规则/上下文/操作/内容/scheme')) +
+    el.innerHTML = '<div class="view-inner">' + screenHead(tr('对象工作台'), tr('内容优先：正文/相关任务与会话/标签/规则/操作；scheme 弹窗按需')) +
       emptyBox(hint + tr('暂无在册对象'), tr('暂无在册对象。')) + '</div>';
     return;
   }

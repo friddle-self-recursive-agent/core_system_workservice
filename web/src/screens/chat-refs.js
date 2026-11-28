@@ -9,7 +9,7 @@
 
 import { esc, trunc } from '../core/format.js';
 import { REF_KINDS, refRoute } from '../render/refs.js';
-import { renderMarkdown, splitFrontmatter, schemeChips, rawDisclosure } from '../render/md.js';
+import { renderMarkdown, splitFrontmatter, rawDisclosure } from '../render/md.js';
 import { t as tr } from '../core/i18n.js';
 
 /* ---------- B1：引用抽取（纯函数） ---------- */
@@ -198,8 +198,9 @@ async function fetchFileContent(ctxc, ref, tree) {
 }
 
 function renderDocBody(content) {
-  const { fm, body } = splitFrontmatter(content);
-  return '<div data-md-render="1">' + (fm ? schemeChips(fm) : '') + renderMarkdown(body) + '</div>' +
+  // R-UX-10：正文先行——frontmatter 不占首屏（原文折叠可查；scheme=对话修改通路）。
+  const { body } = splitFrontmatter(content);
+  return '<div data-md-render="1">' + renderMarkdown(body) + '</div>' +
     rawDisclosure(tr('原文'), content);
 }
 
