@@ -362,6 +362,10 @@ func run() error {
 	if repo != nil {
 		diffGen.Repo = repo
 		runOpts.DiffSummarizer = diffGen
+		// 自审批真判面（2026-11-28 #4）：mode=agent 闸锚挂起后由 ops_core_inner_agent 按
+		// autoCriteria 真判+DocumentDiff 留痕（inneragent-approval-run<N>），超险回退人审。
+		// nil=旧词形零翻转（未挂文档库时 agent 仍盲放行，缺口可见）。
+		runOpts.ApprovalJudge = diffGen
 	}
 	// 内置轻量 agent 执行面（2026-11-28 用户裁定「doc-apply 的审批以及部分服务运行起来可以
 	// 使用内置的 agent 来做润滑剂。即低智商要求的可以使用内置 agent」）：executor=inner 的
@@ -438,10 +442,10 @@ func run() error {
 	// gate 缺席缺口可见）。判定在推进拍锁外执行（checker 时长不阻塞订阅主干）。
 	if vg := newVerifyGate(verifyGateConfig{sch: sch, target: *verifyTarget,
 		schemeDir: filepath.Dir(sch.Source)}); vg != nil {
-		runOpts.VerifyGate = vg
-		runOpts.OnVerifyBlocked = verifyEscalatePublisher(bus, sch, func(f string, a ...any) {
+		// VerifyGate 装配后挂接（RunLog 已构建——setter 是权威挂接点，旧 runOpts 赋值不生效）。
+		runs.SetVerifyGate(vg, verifyEscalatePublisher(bus, sch, func(f string, a ...any) {
 			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
-		})
+		}))
 		fmt.Fprintf(os.Stderr, "cored: Verify 硬 gate=on（--verify-target %s；connectops-code-audit audit op 真实审核—— "+
 			"error findings/unbound=卡 Verify 不放行+Escalate source=core；R-TYPE-3 ruleChecks 三行接线）\n", *verifyTarget)
 	} else {

@@ -146,7 +146,7 @@ func (g *Generator) callLLM(ctx context.Context, base, working, kind, name strin
 // chat HTTP 交互内核（502/503 退避重试×2——BugDoc #3 同源瞬态病）。
 func (g *Generator) chat(ctx context.Context, cfg providerCfg, model, sys, user string) string {
 	payload := map[string]any{
-		"model": cfg.Model,
+		"model": model, // taskModelMapping[op] 真名优先（cfg.Model=low 档兜底；旧词形忽略 model 参数已修）
 		"messages": []map[string]string{
 			{"role": "system", "content": sys},
 			{"role": "user", "content": user},
@@ -319,6 +319,12 @@ func diffDocName(kind, name string, rv int64) string {
 func diffDocNameForRun(kind, name string, run int64) string {
 	base := strings.ToLower(strings.NewReplacer("_", "-", "/", "-", ".", "-").Replace(kind + "-" + name))
 	return fmt.Sprintf("docdiff-%s-run%d", base, run)
+}
+
+// approvalJudgeDocName 自审批真判决 DocumentDiff 名（2026-11-28 #4：inneragent-approval-run<N>
+// ——同名幂等；per-run 隔离，与 inneragent-<node>-run<N> 润滑剂产物分域）。
+func approvalJudgeDocName(run int64) string {
+	return fmt.Sprintf("inneragent-approval-run%d", run)
 }
 
 func readBase(repo repository.Repository, ctx context.Context, kind, scope, name string) string {

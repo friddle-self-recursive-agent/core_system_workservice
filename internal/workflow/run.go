@@ -155,6 +155,7 @@ type RunRecord struct {
 	Phases       []string        // 声明相位序列（builtin 命中或 object 源声明 spec.phases 时投影；未声明=空）
 	Transitions  []TransitionRow // 声明迁移表投影（v0.25 显式迁移表首段：builtin=物化相邻行+审批边；v0.27/v0.28 对象自声明 spec 解析：object 源=文档库 spec.transitions 投影）
 	ApprovalMode string          // 审批策略投影（2026-11-26「Agent 节点自动级别」："auto"=闸锚自动通过；空=human 缺省=闸锚挂起等人。新载荷键=代际判别器）
+	ApprovalPolicy ApprovalPolicy // 审批策略全投影（autoCriteria/maxRiskLevel/approvalDiff——2026-11-28 自审批真判消费；零值=未声明）
 	Phase        string          // 当前相位投影（v0.23 迁移判定首段：受理即沿声明序列前进一步=第二相位；v0.24 审批提升落闸锚/批准续行/驳回落终点锚；v0.25 判定器改查表；v0.28 object 源随声明 phases 参与同一查表判定）
 	Status       string          // run 状态（v0.24 词汇四值：triggered 受理/running 首步进行中/suspended 闸锚挂起/failed 驳回终态；相位未投影 run 恒 triggered）
 	Brakes       BrakeView       // 生效刹车值投影（v0.32 刹车首段：声明→留痕面——spec.brakes 钳定后的每锚生效值；新载荷键=代际判别器）
@@ -198,6 +199,7 @@ type RunState struct {
 	Capped   int64       // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
 	Disabled int64       // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
 	Gated    int64       // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
+	SelfApproved int64   // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
 	Runs     []RunRecord // 环内 run 投影（旧→新）
 }
 
@@ -268,6 +270,23 @@ type RunOptions struct {
 	// （suspendWhy=inner-agent）+ 锁外派发 RunInner（引擎内直调 Provider 轻量 LLM——不拉
 	// session）；实现完成调 InnerDone 续行（on=inner-resume 轨迹行）。
 	InnerAgent InnerAgentRunner
+	// ApprovalJudge 自审批真判面（2026-11-28 用户裁定「自审批未接线」修复 / workservice #4
+	// ——可选能力，nil=旧词形零翻转：mode=agent 仍盲放行）。挂接后 mode=agent 落闸锚即
+	// 挂起（suspendWhy=self-approve）+ 锁外派发 ops_core_inner_agent 真判决；判决回执
+	// ApprovalVerdictDone 沿声明表续行/终态/回退人审。
+	ApprovalJudge ApprovalJudge
+	// OnApprovalVerdict 判决留痕上报钩子（nil=只落 run history；装配层可发布
+	// ApprovalGranted/ApprovalRejected 事件进 event_log 审计账）。锁外调用。
+	OnApprovalVerdict func(run RunRecord, v ApprovalVerdict)
+}
+
+// SetVerifyGate 装配后挂接 Verify 硬 gate（cored 构造序：RunLog 先于 verify 配置就绪——
+// 旧写法改 runOpts 不生效（opts 已拷入），本 setter 为唯一权威挂接点；nil=关断）。
+func (r *RunLog) SetVerifyGate(g VerifyGate, onBlocked func(run RunRecord, v VerifyVerdict)) {
+	r.mu.Lock()
+	r.opts.VerifyGate = g
+	r.opts.OnVerifyBlocked = onBlocked
+	r.mu.Unlock()
 }
 
 // InnerAgentRunner 内置轻量 agent 契约（ops_core_inner_agent 词形——润滑剂：低智商环节
@@ -296,6 +315,8 @@ type RunLog struct {
 	capped       int64                // 累计推进拍上限拦阻 run·步数（v0.32 刹车首段——新载荷键=代际判别器）
 	disabled     int64                // 累计 enabled=false 锚拦阻触发数（v0.58b enabled honoring——新载荷键=代际判别器）
 	gated        int64                // 累计 Verify 硬 gate 卡 Verify 拦阻 run·步数（G-09/G-12——新载荷键=代际判别器）
+	selfApproved int64                // 累计自审批判决消费数（2026-11-28 #4——新载荷键=代际判别器）
+	selfApproveInFlight map[int64]bool // 自审批判决在途防重（同 run 重复挂起/重启不重复调 LLM）
 	lastAccepted map[string]time.Time // 冷却门键→最新受理时刻（刹车闸挂接时维护；v0.32）
 }
 
@@ -310,6 +331,7 @@ func NewRunLog(opts *RunOptions) *RunLog {
 		r.opts.RingSize = 256
 	}
 	r.lastAccepted = map[string]time.Time{}
+	r.selfApproveInFlight = map[int64]bool{}
 	if r.opts.Store != nil {
 		rows := loadRunRows(r.opts.Store)
 		if len(rows) > 0 {
@@ -353,6 +375,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	// 推进语义）；未声明 phases 的对象=零投影（phases 恒空），三条判定路径零动作防御面
 	// 原样生效，既有行为面零翻转。
 	approvalMode := "" // 空=human 缺省（审批策略声明走对象 spec）
+	var approvalPolicy ApprovalPolicy
 	var nodes []NodeView
 	if r.opts.Specs != nil {
 		view := r.opts.Specs.ResolveSpec(wf)
@@ -369,6 +392,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		// docs 权威种子的富节点 unit:service 声明仍供拉起面——纯 builtin 无文档对象=零投影
 		// 零翻转；文档词形与 builtin 相位词汇分歧时 serviceNodeOf 查不中=天然零动作防御）。
 		nodes = view.Nodes
+		approvalPolicy = view.Approval
 		if view.ApprovalMode != "" {
 			approvalMode = view.ApprovalMode // spec.approval.mode=auto|agent 投影（Agent 节点自动判断/自动级别）
 		}
@@ -394,7 +418,13 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		}
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var judgeQ []spawnReq // 自审批判决派发请求（锁内收集、出锁派发——LLM 不持 run 锁）
+	defer func() {
+		r.mu.Unlock()
+		for _, sp := range judgeQ {
+			r.dispatchSpawnReq(sp)
+		}
+	}()
 	if r.opts.Brakes.Enabled && brk.Cooldown > 0 {
 		key := brakeKey(wf, rec.Involved)
 		if last, ok := r.lastAccepted[key]; ok && rec.ReceivedAt.Sub(last) < brk.Cooldown {
@@ -430,8 +460,9 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 			phase, status = next, RunRunning
 		}
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
-		// workflows 规则 13 第一层判定；auto/agent 模式闸锚自动判断放行不挂起）。
-		if status == RunRunning && Phase(phase) == AwaitingApproval && !isAutoPassApproval(approvalMode) {
+		// workflows 规则 13 第一层判定；auto 盲放行；agent 挂接 judge=真判决挂起，
+		// judge 缺席=旧词形零翻转盲放行）。
+		if status == RunRunning && Phase(phase) == AwaitingApproval && !r.gateAutoPass(approvalMode) {
 			status = RunSuspended
 		}
 	}
@@ -441,13 +472,19 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	if trans == nil {
 		trans = []TransitionRow{} // object 源不投影声明表：载荷形状归一同口径（新键可 len）
 	}
-	r.ring = append(r.ring, RunRecord{
+	nr := RunRecord{
 		Run: r.seq, Workflow: wf, SpecSource: source, Phases: phases, Transitions: trans,
-		ApprovalMode: approvalMode, Nodes: nodes,
+		ApprovalMode: approvalMode, ApprovalPolicy: approvalPolicy, Nodes: nodes,
 		Phase: phase, Status: status, Brakes: brk, History: hist,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
-	})
+	}
+	if nr.Status == RunSuspended && Phase(nr.Phase) == AwaitingApproval && r.selfApproveMode(nr.ApprovalMode) {
+		if sp := r.beginSelfApproveLocked(&nr); sp != nil {
+			judgeQ = append(judgeQ, *sp)
+		}
+	}
+	r.ring = append(r.ring, nr)
 	// 写穿透（R-ENG §1）：run 落环同步 upsert 至挂接的 Store（run 是可演化投影——同 run
 	// id 覆写最新词形；锁内同步落库与投影同序，失败只注记不翻转行为）。
 	if r.opts.Store != nil {
@@ -476,7 +513,13 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 		return
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	var judgeQ []spawnReq // 审批提升触发的真判决派发（出锁后 dispatch）
+	defer func() {
+		r.mu.Unlock()
+		for _, sp := range judgeQ {
+			r.dispatchSpawnReq(sp)
+		}
+	}()
 	// 定向 run（TargetRun>0，console 批闸行携带）：只作用该序号 run——per-run 批准/驳回
 	// 不再落到「同锚最新挂起 run」（多 run 同锚挂起时 UI 行与事件目标必须一致）。
 	target := rec.TargetRun
@@ -489,8 +532,8 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			continue // 锚不符 / 相位未投影（未声明 phases 的 object 源）无从迁移
 		}
 		switch action {
-		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作；auto/agent 模式=提升不挂起——闸锚自动通过）
-			if isAutoPassApproval(run.ApprovalMode) {
+		case "suspend": // 审批提升：相位落闸锚挂起（终态/已挂起=零动作；声明无闸锚=零动作；auto 盲放行不挂起；agent 挂 judge=真判决）
+			if r.gateAutoPass(run.ApprovalMode) {
 				return
 			}
 			if run.Status == RunFailed || run.Status == RunSuspended ||
@@ -499,6 +542,11 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			}
 			histAppend(run, run.Phase, string(AwaitingApproval), SignalSuspend)
 			run.Phase, run.Status = string(AwaitingApproval), RunSuspended
+			if r.selfApproveMode(run.ApprovalMode) {
+				if sp := r.beginSelfApproveLocked(run); sp != nil {
+					judgeQ = append(judgeQ, *sp)
+				}
+			}
 		case "resume": // 批准：查表命中审批边（闸锚 on=ApprovalGranted）沿表续行（非挂起态=继续扫描更旧 run——同锚最新 run 已终态时不挡旧挂起 run 的恢复；表无批准边=零动作防御）
 			if run.Status != RunSuspended || Phase(run.Phase) != AwaitingApproval {
 				continue
@@ -604,7 +652,7 @@ func (r *RunLog) State() RunState {
 	defer r.mu.Unlock()
 	runs := make([]RunRecord, len(r.ring))
 	copy(runs, r.ring)
-	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Disabled: r.disabled, Gated: r.gated, Runs: runs}
+	return RunState{Started: r.started, Dropped: r.dropped, Advances: r.advances, Braked: r.braked, Capped: r.capped, Disabled: r.disabled, Gated: r.gated, SelfApproved: r.selfApproved, Runs: runs}
 }
 
 // stepByTable 迁移判定（v0.25 显式迁移表首段，workflows 规则 14——纯查表）：声明表内命中

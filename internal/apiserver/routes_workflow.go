@@ -339,6 +339,10 @@ func runsPayload(st workflow.RunState) map[string]any {
 			// 审批策略投影（2026-11-26「Workflow 可设置 Agent 节点是否自动级别」）：
 			// "auto"=闸锚自动通过；空=human 缺省（闸锚挂起等人）。新载荷键=代际判别器。
 			"approvalMode": r.ApprovalMode,
+			"approvalPolicy": map[string]any{
+				"autoCriteria": r.ApprovalPolicy.AutoCriteria, "maxRiskLevel": r.ApprovalPolicy.MaxRiskLevel,
+			},
+			"suspendWhy":  r.SuspendWhy,               // 挂起细分（self-approve|service|inner-agent|fanout|空=人审）
 			// F-04 运行轨迹投影（2026-11-26：静态迁移规则表 transitions 与运行轨迹 history
 			// 分离——UI 节点图按 history 标绿已走过的真实节点，静态表不再当事件时间线展示。
 			// 零轨迹=nil 词形缺席语义）。新载荷键=代际判别器。
@@ -352,6 +356,7 @@ func runsPayload(st workflow.RunState) map[string]any {
 		"braked":   st.Braked,   // v0.32 刹车首段：累计冷却门拦阻触发数（新载荷键=代际判别器）
 		"capped":   st.Capped,   // v0.32 刹车首段：累计推进拍上限拦阻 run·步数（新载荷键=代际判别器）
 		"disabled": st.Disabled, // v0.58b enabled honoring：累计 enabled=false 锚拦阻触发数（新载荷键=代际判别器）
+		"selfApproved": st.SelfApproved, // 2026-11-28 #4：累计自审批真判消费数
 		"runs":     items,
 	}
 }

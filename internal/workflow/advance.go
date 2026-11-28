@@ -184,7 +184,7 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 	run.Phase = next
 	switch Phase(next) {
 	case AwaitingApproval: // 落闸锚=挂起（迁移判定落点即判定——规则 13 第一层通用化）
-		if !isAutoPassApproval(run.ApprovalMode) { // auto/agent=闸锚自动通过（spec.approval.mode——Agent 节点自动判断级别；直续行不挂起）
+		if !r.gateAutoPass(run.ApprovalMode) { // auto 盲放行；agent 挂 judge=真判决挂起；judge 缺席=旧词形零翻转
 			run.Status = RunSuspended
 		}
 	case Failed: // 落侧轨终点锚=终态（仅声明仍携带 Failed 词形的旧对象 spec 可达——非引擎失败语义）
@@ -196,9 +196,10 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 // 的中转词形）。kind 区分落点类型：service=拉起执行单元；diffdoc=审批判决文档生成
 // （2026-11-28 用户裁定 ops_core_inner_agent）。
 const (
-	spawnKindService = "service"
-	spawnKindDiffDoc = "diffdoc"
-	spawnKindInner   = "inner"
+	spawnKindService       = "service"
+	spawnKindDiffDoc       = "diffdoc"
+	spawnKindInner         = "inner"
+	spawnKindApprovalJudge = "approval-judge"
 )
 
 type spawnReq struct {
@@ -225,16 +226,24 @@ func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
 		}
 	}
 	r.applyAdvanceLocked(run, next)
-	// 审批判决文档触发窗口：本拍刚落人审挂起（挂起 run 后续拍被 Status!=RunRunning 跳过，
-	// 本函数是唯一命中点）；auto/agent 直续（Status 仍 running）不触发。
-	if r.opts.DiffSummarizer != nil && Phase(run.Phase) == AwaitingApproval && run.Status == RunSuspended {
-		return &spawnReq{kind: spawnKindDiffDoc, run: *run}
+	// 审批判决触发窗口：本拍刚落人审/自审挂起（挂起 run 后续拍被 Status!=RunRunning 跳过，
+	// 本函数是唯一命中点）。agent 模式挂 judge=真判决派发（ops_core_inner_agent 按
+	// autoCriteria 判+DocumentDiff 留痕）；其余（human）=人审判决文档生成。
+	if Phase(run.Phase) == AwaitingApproval && run.Status == RunSuspended {
+		if r.selfApproveMode(run.ApprovalMode) {
+			if sp := r.beginSelfApproveLocked(run); sp != nil {
+				return sp
+			}
+		}
+		if r.opts.DiffSummarizer != nil {
+			return &spawnReq{kind: spawnKindDiffDoc, run: *run}
+		}
 	}
 	return nil
 }
 
 func isAutoPassApproval(mode string) bool {
-	return mode == "auto" || mode == "agent"
+	return mode == "auto" // agent=真判决（judge 缺席时 gateAutoPass 保留旧词形零翻转）
 }
 
 // indexOfRunLocked 按 run 序号定位环内下标（-1=已被环挤出/不在册）。
@@ -317,9 +326,11 @@ func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
 		}
 		go func(run RunRecord, objKey string) {
 			// panic 屏蔽：判决文档是旁路面——引擎主环零阻断（实现侧自行记日志）。
-			_ = recover()
+			defer func() { _ = recover() }()
 			r.opts.DiffSummarizer.OnApprovalSuspended(run, objKey)
 		}(sp.run, sp.run.Involved)
+	case spawnKindApprovalJudge:
+		r.dispatchApprovalJudge(sp)
 	case spawnKindInner:
 		if r.opts.InnerAgent == nil {
 			return

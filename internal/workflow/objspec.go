@@ -31,20 +31,43 @@ type PostActionView struct {
 	Title         string `json:"title,omitempty" yaml:"title"`
 }
 
+// ApprovalPolicy 审批策略声明投影（2026-11-28 用户裁定「自审批真判」——spec.approval
+// mode/autoCriteria/maxRiskLevel 随对象 spec 一次解析随行；mode=agent 不再是盲放行，
+// 引擎按 autoCriteria 拉 ops_core_inner_agent 真判决，maxRiskLevel 超限回退人审）。
+type ApprovalPolicy struct {
+	Mode          string `json:"mode,omitempty"`          // human（缺省）| auto（全自动放行）| agent（真判）
+	AutoCriteria  string `json:"autoCriteria,omitempty"`  // agent 模式判决准则（判决小 agent 的 user prompt 输入）
+	MaxRiskLevel  string `json:"maxRiskLevel,omitempty"`  // low|medium|high（缺省 low；超限转人工）
+	DiffEnabled   bool   `json:"diffEnabled,omitempty"`   // spec.approvalDiff.enabled（缺省 true）
+	DiffAgent     string `json:"diffAgent,omitempty"`     // spec.approvalDiff.agent（缺省 ops_core_inner_agent）
+	DiffProvider  string `json:"diffProvider,omitempty"`  // spec.approvalDiff.provider（缺省 openai-default）
+}
+
+// FanoutView 扇出声明投影（2026-11-28 用户裁定第四词形 unit=workflow——节点按
+// fanout.from/key 读执行计划，扇出 N 个子 run，父 run join 挂起等全部子 run 终态后
+// fanout-complete 迁移到 merge-results 汇聚）。
+type FanoutView struct {
+	From     string `json:"from,omitempty"`     // 执行计划文档名/字段（batch-judge 产物）
+	Key      string `json:"key,omitempty"`      // 计划项数组键（缺省 items）
+	Entry    string `json:"entry,omitempty"`    // 子 run 入口事件（缺省 sub:plan-item）
+	Workflow string `json:"workflow,omitempty"` // 子 run 目标 workflow（缺省父 workflow）
+}
+
 // NodeView 节点声明投影（2026-11-27 service session 裁决「builtin 的 service 的 agent 可以用
 // session 来解决」——引擎消费的最小字段集）：unit=service 的节点在 run 推进落点触发
 // ServiceSpawn session 拉起面（serviceexec.go）；其余声明字段（refDocs/contextPassing/…）
 // 对象 spec 透传不在本投影（消费方=文档面/前端节点表）。
 type NodeView struct {
-	Name          string   `json:"name"`                    // 节点名（富声明 name；标量相位=相位名同词）
-	Phase         string   `json:"phase"`                   // 相位锚（run.Phase 同词域）
-	Unit          string   `json:"unit,omitempty"`          // connectops|agent|service|gate（空=未声明——旧词形透传）
-	Executor      string   `json:"executor,omitempty"`      // dsh（缺省，重型通路）| inner（2026-11-28 用户裁定「低智商要求的可以使用内置 agent」——引擎内置轻量 LLM 通路 ops_core_inner_agent，不拉 session 零拉起开销）
-	Service       string   `json:"service,omitempty"`       // unit=service：目标系统名（developer-system…）
-	Op            string   `json:"op,omitempty"`            // 调用 op（develop|acceptance|release…）
-	Role          string   `json:"role,omitempty"`          // permissionRole（P7 权限随文档——随载荷透传给执行通路）
-	ContextFields []string `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
-	EntryEvents   []string `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
+	Name          string      `json:"name"`                    // 节点名（富声明 name；标量相位=相位名同词）
+	Phase         string      `json:"phase"`                   // 相位锚（run.Phase 同词域）
+	Unit          string      `json:"unit,omitempty"`          // connectops|agent|service|workflow|gate（空=未声明——旧词形透传）
+	Executor      string      `json:"executor,omitempty"`      // dsh（缺省，重型通路）| inner（2026-11-28 用户裁定「低智商要求的可以使用内置 agent」——引擎内置轻量 LLM 通路 ops_core_inner_agent，不拉 session 零拉起开销）
+	Service       string      `json:"service,omitempty"`       // unit=service：目标系统名（developer-system…）
+	Op            string      `json:"op,omitempty"`            // 调用 op（develop|acceptance|release…）
+	Role          string      `json:"role,omitempty"`          // permissionRole（P7 权限随文档——随载荷透传给执行通路）
+	ContextFields []string    `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
+	EntryEvents   []string    `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
+	Fanout        *FanoutView `json:"fanout,omitempty"`        // unit=workflow 扇出声明（第四词形）
 }
 
 // SpecView 对象 spec 投影（v0.28 相位投影段——同一份对象声明的两面一次解析：相位序列
@@ -54,6 +77,7 @@ type SpecView struct {
 	Phases       []string         // 声明相位序列投影（spec.phases 原样顺序保留；空=未声明）
 	Transitions  []TransitionRow  // 声明迁移表投影（spec.transitions 原样顺序保留；空=未声明）
 	ApprovalMode string           // 审批策略投影（spec.approval.mode=auto|agent 时闸锚自动通过；空=human 缺省）
+	Approval     ApprovalPolicy   // 审批策略全投影（autoCriteria/maxRiskLevel/approvalDiff——自审批真判消费）
 	BugDocPolicy string           // 临时 BugDoc 收尾策略投影（invalidate|delete|keep）
 	PostActions  []PostActionView // 解释器通用收尾动作清单
 	Nodes        []NodeView       // 节点声明投影（富节点 unit/service/op/role——service session 拉起面消费）
@@ -91,8 +115,15 @@ type docsSpecDecl struct {
 			To   string `yaml:"to"`
 		} `yaml:"transitions"`
 		Approval struct {
-			Mode string `yaml:"mode"` // auto|agent|human（其余词形=未声明，human 缺省）
+			Mode         string `yaml:"mode"` // auto|agent|human（其余词形=未声明，human 缺省）
+			AutoCriteria string `yaml:"autoCriteria"`
+			MaxRiskLevel string `yaml:"maxRiskLevel"`
 		} `yaml:"approval"`
+		ApprovalDiff struct {
+			Enabled  *bool  `yaml:"enabled"`
+			Agent    string `yaml:"agent"`
+			Provider string `yaml:"provider"`
+		} `yaml:"approvalDiff"`
 		Regression struct {
 			BugDocPolicy    string           `yaml:"bugDocPolicy"` // invalidate|delete|keep
 			CleanTempBugDoc *bool            `yaml:"cleanTempBugDoc"`
@@ -124,6 +155,12 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 				Fields        []string `yaml:"fields"`
 			} `yaml:"contextPassing"`
 			EntryEvents []string `yaml:"entryEvents"`
+			Fanout      struct {
+				From     string `yaml:"from"`
+				Key      string `yaml:"key"`
+				Entry    string `yaml:"entry"`
+				Workflow string `yaml:"workflow"`
+			} `yaml:"fanout"`
 		}
 		if err := n.Decode(&m); err != nil {
 			return NodeView{}, false
@@ -135,8 +172,13 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 		if p == "" {
 			p = m.Title
 		}
+		var fanout *FanoutView
+		if m.Fanout.From != "" || m.Fanout.Key != "" || m.Fanout.Entry != "" || m.Fanout.Workflow != "" {
+			fanout = &FanoutView{From: m.Fanout.From, Key: m.Fanout.Key, Entry: m.Fanout.Entry, Workflow: m.Fanout.Workflow}
+		}
 		return NodeView{Name: m.Name, Phase: p, Unit: m.Unit, Service: m.Service, Op: m.Op, Role: m.Role,
-			Executor: m.Executor, ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents}, p != ""
+			Executor: m.Executor, ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents,
+			Fanout: fanout}, p != ""
 	}
 	return NodeView{}, false
 }
@@ -167,6 +209,23 @@ func (d DocsSpecs) ResolveSpec(name string) SpecView {
 	switch doc.Spec.Approval.Mode {
 	case "auto", "agent":
 		view.ApprovalMode = doc.Spec.Approval.Mode
+	}
+	view.Approval = ApprovalPolicy{
+		Mode: doc.Spec.Approval.Mode, AutoCriteria: doc.Spec.Approval.AutoCriteria,
+		MaxRiskLevel: doc.Spec.Approval.MaxRiskLevel, DiffEnabled: true,
+		DiffAgent: "ops_core_inner_agent", DiffProvider: "openai-default",
+	}
+	if view.Approval.MaxRiskLevel == "" && view.Approval.Mode == "agent" {
+		view.Approval.MaxRiskLevel = "low" // scheme approvalGate 缺省：low 超险回退人审
+	}
+	if d := doc.Spec.ApprovalDiff; d.Enabled != nil {
+		view.Approval.DiffEnabled = *d.Enabled
+	}
+	if doc.Spec.ApprovalDiff.Agent != "" {
+		view.Approval.DiffAgent = doc.Spec.ApprovalDiff.Agent
+	}
+	if doc.Spec.ApprovalDiff.Provider != "" {
+		view.Approval.DiffProvider = doc.Spec.ApprovalDiff.Provider
 	}
 	nodeToPhase := map[string]string{}
 	type entryBinding struct {

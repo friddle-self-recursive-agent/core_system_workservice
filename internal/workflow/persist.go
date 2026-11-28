@@ -82,7 +82,11 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 		Run: run.Run, Workflow: run.Workflow, SpecSource: run.SpecSource,
 		PhasesJSON: mustJSON(run.Phases), TransitionsJSON: mustJSON(run.Transitions),
 		Phase: run.Phase, Status: run.Status, BrakesJSON: mustJSON(run.Brakes),
-		SpecJSON:    mustJSON(map[string]string{"approvalMode": run.ApprovalMode, "suspendWhy": run.SuspendWhy}),
+		SpecJSON: mustJSON(map[string]string{
+			"approvalMode": run.ApprovalMode, "suspendWhy": run.SuspendWhy,
+			"autoCriteria": run.ApprovalPolicy.AutoCriteria, "maxRiskLevel": run.ApprovalPolicy.MaxRiskLevel,
+			"diffAgent": run.ApprovalPolicy.DiffAgent, "diffProvider": run.ApprovalPolicy.DiffProvider,
+		}),
 		HistoryJSON: mustJSON(run.History), // F-04 运行轨迹写穿透（空轨迹=null 词形）
 		TriggerSeq:  run.TriggerSeq, EventID: run.EventID, Type: run.Type,
 		DedupKey: run.DedupKey, Route: run.Route, Owner: run.Owner, Target: run.Target,
@@ -99,6 +103,10 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 		Phase: r.Phase, Status: r.Status,
 		ApprovalMode: spec["approvalMode"],
 		SuspendWhy:   spec["suspendWhy"],
+		ApprovalPolicy: ApprovalPolicy{
+			Mode: spec["approvalMode"], AutoCriteria: spec["autoCriteria"], MaxRiskLevel: spec["maxRiskLevel"],
+			DiffEnabled: true, DiffAgent: spec["diffAgent"], DiffProvider: spec["diffProvider"],
+		},
 		TriggerSeq:   r.TriggerSeq, EventID: r.EventID, Type: r.Type,
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
 		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
