@@ -114,6 +114,15 @@ const (
 	SpecObject  = "object"  // 平台对象引用（Workflow 对象，spec 随文档面；run 只留锚）
 )
 
+// SubRunRef 子 run 投影（fanout 扇出——状态随子 run 终态回填；子 run 被环挤出后本行仍是
+// join 判据的唯一权威，不依赖回查子 run 投影）。
+type SubRunRef struct {
+	Run     int64  `json:"run"`               // 子 run 序号
+	ItemKey string `json:"itemKey,omitempty"` // 执行计划项键（幂等 dedup 锚）
+	Status  string `json:"status"`            // spawned|converged|failed
+	Session string `json:"session,omitempty"` // 子 run 会话锚（若回填）
+}
+
 // TransitionRow 迁移表行投影（v0.25 显式迁移表首段——查询面载荷词汇：from/on/to 小写键，
 // 表行可回指声明面；物化口径见 MaterializeTransitions）。
 type TransitionRow struct {
@@ -176,6 +185,9 @@ type RunRecord struct {
 	// History 运行期实际轨迹（2026-11-26 F-04——workflow.md 规则 14：静态迁移规则表
 	// transitions 与运行轨迹 history 分离；UI 节点图按 history 标绿已走过的真实节点，
 	// 不按数组下标盲标）。行=每次真实迁移追加（受理首步/推进/批准/驳回/收束同口径）。
+	FanoutPlan   string          `json:"fanoutPlan,omitempty"` // 执行计划文档锚（batch-judge 产物；观测面）
+	ParentRun    int64           `json:"parentRun,omitempty"`  // 子 run 的父 run 序号（0=非子 run；2026-11-28 #6）
+	SubRuns      []SubRunRef     `json:"subRuns,omitempty"`    // 父 run 扇出的子 run 行集（join 判据）
 	History   []HistoryRow `json:"history,omitempty"`
 	StartedAt time.Time    `json:"startedAt"` // run 起始时刻（收到留痕同刻）
 	// Nodes 节点声明投影快照（2026-11-27 service session 裁决——新载荷键=代际判别器）：
@@ -278,6 +290,12 @@ type RunOptions struct {
 	// OnApprovalVerdict 判决留痕上报钩子（nil=只落 run history；装配层可发布
 	// ApprovalGranted/ApprovalRejected 事件进 event_log 审计账）。锁外调用。
 	OnApprovalVerdict func(run RunRecord, v ApprovalVerdict)
+	// FanoutLauncher 第四词形 unit=workflow 的扇出执行面（2026-11-28 #6——可选能力，
+	// nil=零翻转：unit=workflow 节点照旧纯查表推进）。挂接后落扇出节点挂起+锁外读执行计划
+	// 建子 run，父 run join 等全部子 run 终态后 fanout-complete 迁移到汇聚相位。
+	FanoutLauncher FanoutLauncher
+	// OnFanoutLaunched 扇出回执钩子（nil=只落 run history；装配层可发通知/审计）。锁外调用。
+	OnFanoutLaunched func(run RunRecord, refs []SubRunRef)
 }
 
 // SetVerifyGate 装配后挂接 Verify 硬 gate（cored 构造序：RunLog 先于 verify 配置就绪——
@@ -478,6 +496,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		Phase: phase, Status: status, Brakes: brk, History: hist,
 		TriggerSeq: rec.Seq, EventID: rec.EventID, Type: rec.Type, DedupKey: rec.DedupKey,
 		Route: rec.Route, Owner: rec.Owner, Target: b.Target, Involved: rec.Involved, StartedAt: rec.ReceivedAt,
+		ParentRun: rec.ParentRun,
 	}
 	if nr.Status == RunSuspended && Phase(nr.Phase) == AwaitingApproval && r.selfApproveMode(nr.ApprovalMode) {
 		if sp := r.beginSelfApproveLocked(&nr); sp != nil {
@@ -571,6 +590,7 @@ func (r *RunLog) ResumeSignal(rec TriggerRecord) {
 			}
 			histAppend(run, run.Phase, to, SignalReject)
 			run.Phase, run.Status = to, RunFailed
+			r.notifyParentLocked(run) // 子 run 驳回终态→父 join（#6）
 		}
 		// 写穿透（R-ENG §1）：审批信号迁移同步 upsert（可演化投影——恢复取迁移后词形）。
 		if r.opts.Store != nil {

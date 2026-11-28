@@ -73,6 +73,7 @@ func (r *RunLog) Advance() int {
 				if r.opts.Store != nil {
 					persistAppend("run 收束", r.opts.Store.AppendRun(runToRow(*run)))
 				}
+				r.notifyParentLocked(run) // 子 run 终态→父 run join（fanout #6）
 			}
 			continue
 		}
@@ -189,6 +190,7 @@ func (r *RunLog) applyAdvanceLocked(run *RunRecord, next string) {
 		}
 	case Failed: // 落侧轨终点锚=终态（仅声明仍携带 Failed 词形的旧对象 spec 可达——非引擎失败语义）
 		run.Status = RunFailed
+		r.notifyParentLocked(run) // 子 run 失败终态同样唤醒父 join（#6）
 	}
 }
 
@@ -200,6 +202,7 @@ const (
 	spawnKindDiffDoc       = "diffdoc"
 	spawnKindInner         = "inner"
 	spawnKindApprovalJudge = "approval-judge"
+	spawnKindFanout        = "fanout"
 )
 
 type spawnReq struct {
@@ -215,6 +218,19 @@ type spawnReq struct {
 // → 返回判决文档生成请求；其余落点=applyAdvanceLocked 既有语义（返回 nil）。调用方持 r.mu。
 // 两个能力面缺席（nil）=零翻转：既有行为面不变。
 func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
+	// 第四词形 unit=workflow（2026-11-28 #6）：落扇出节点即挂起（suspendWhy=fanout），
+	// 锁外由 FanoutLauncher 读执行计划扇出 N 个子 run；父 run join 等全部子 run 终态。
+	if r.opts.FanoutLauncher != nil {
+		if node, ok := nodeOfPhase(run.Nodes, next); ok && node.Unit == "workflow" && node.Fanout != nil {
+			at := stampNano(time.Now())
+			run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: EdgeFanoutSpawn, At: at})
+			run.Phase = next
+			run.Status = RunSuspended
+			run.SuspendWhy = SuspendFanout
+			run.FanoutPlan = node.Fanout.From
+			return &spawnReq{kind: spawnKindFanout, run: *run, node: node}
+		}
+	}
 	if r.opts.ServiceSpawns != nil {
 		if node, ok := serviceNodeOf(run.Nodes, next); ok {
 			at := stampNano(time.Now())
@@ -331,6 +347,8 @@ func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
 		}(sp.run, sp.run.Involved)
 	case spawnKindApprovalJudge:
 		r.dispatchApprovalJudge(sp)
+	case spawnKindFanout:
+		r.dispatchFanout(sp)
 	case spawnKindInner:
 		if r.opts.InnerAgent == nil {
 			return

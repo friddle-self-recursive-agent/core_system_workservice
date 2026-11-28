@@ -141,6 +141,7 @@ func (r *RunLog) ApprovalVerdictDone(runID int64, v ApprovalVerdict) bool {
 		if to, ok := stepByTable(run.Transitions, run.Phase, SignalReject); ok {
 			histAppend(run, run.Phase, to, SignalReject)
 			run.Phase, run.Status = to, RunFailed
+			r.notifyParentLocked(run) // 子 run 自审批驳回→父 join（#6）
 		} else {
 			run.SuspendWhy = "" // 缺驳回边=保持挂起转人工（不冒充终态）
 			fallback = &spawnReq{kind: spawnKindDiffDoc, run: *run}

@@ -9,6 +9,7 @@ package workflow
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -86,6 +87,8 @@ func runToRow(run RunRecord) runtimestore.RunRow {
 			"approvalMode": run.ApprovalMode, "suspendWhy": run.SuspendWhy,
 			"autoCriteria": run.ApprovalPolicy.AutoCriteria, "maxRiskLevel": run.ApprovalPolicy.MaxRiskLevel,
 			"diffAgent": run.ApprovalPolicy.DiffAgent, "diffProvider": run.ApprovalPolicy.DiffProvider,
+			"parentRun": fmt.Sprint(run.ParentRun), "subRuns": mustJSON(run.SubRuns),
+			"fanoutPlan": run.FanoutPlan,
 		}),
 		HistoryJSON: mustJSON(run.History), // F-04 运行轨迹写穿透（空轨迹=null 词形）
 		TriggerSeq:  run.TriggerSeq, EventID: run.EventID, Type: run.Type,
@@ -111,12 +114,23 @@ func runFromRow(r runtimestore.RunRow) RunRecord {
 		DedupKey: r.DedupKey, Route: r.Route, Owner: r.Owner, Target: r.Target,
 		Involved: r.Involved, StartedAt: parseNano(r.StartedAt),
 		SessionID: r.SessionID, Verify: verifyFromJSON(r.VerifyJSON),
+		ParentRun: parentRunFromSpec(spec["parentRun"]), FanoutPlan: spec["fanoutPlan"],
 	}
+	_ = json.Unmarshal([]byte(spec["subRuns"]), &run.SubRuns)
 	_ = json.Unmarshal([]byte(r.PhasesJSON), &run.Phases)
 	_ = json.Unmarshal([]byte(r.TransitionsJSON), &run.Transitions)
 	_ = json.Unmarshal([]byte(r.BrakesJSON), &run.Brakes)
 	_ = json.Unmarshal([]byte(r.HistoryJSON), &run.History) // F-04 轨迹恢复（空/损坏列=零轨迹——诚实降级）
 	return run
+}
+
+// parentRunFromSpec spec 侧车父 run 序号（空/损坏=0——诚实降级，非子 run）。
+func parentRunFromSpec(s string) int64 {
+	var n int64
+	if s == "" || json.Unmarshal([]byte(s), &n) != nil {
+		return 0
+	}
+	return n
 }
 
 // specFromJSON spec 侧车 JSON 列 → map（空列/损坏=空 map——诚实降级不冒充声明）。
