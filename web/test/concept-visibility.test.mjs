@@ -20,7 +20,7 @@ import { createApi } from '../src/core/api.js';
 import { setLocale, t as tr } from '../src/core/i18n.js';
 import { tagRoute, syncBadge } from '../src/render/chips.js';
 import * as refsMod from '../src/render/refs.js';
-import { depRoute, depChips, phaseChip, groupOf, statusOf } from '../src/screens/tasks.js';
+import { depRoute, depChips, phaseChip, groupOf, statusOf, taskPhaseOf } from '../src/screens/tasks.js';
 import { tagGroups, tagVocabFromKinds, tagsOfDoc } from '../src/screens/objects.js';
 import { frontmatterTags, tagsOfRef, aggregateTags, groupByType } from '../src/screens/tags.js';
 import { sessBacklinksHtml } from '../src/screens/chat.js';
@@ -257,4 +257,12 @@ test('V-22 i18n：幽灵词条「补标」已销，「未分组/代码审核」�
   } finally {
     setLocale('zh');
   }
+});
+
+test('taskPhaseOf：TaskStateChanged dedupKey 词尾=相位词；非 task: 前缀=空（不冒充相位词）', () => {
+  assert.equal(taskPhaseOf({ dedupKey: 'task:self-recursive-core/align-docs-reality-20261127:running' }), 'running');
+  assert.equal(taskPhaseOf({ dedupKey: 'task:t/a:done' }), 'done');
+  assert.equal(taskPhaseOf({ dedupKey: 'service-session:wf:1:n' }), '');
+  assert.equal(taskPhaseOf({}), '');
+  assert.equal(taskPhaseOf(null), '');
 });

@@ -5,7 +5,7 @@
  *      （未知词形=不可点不冒充）+ 数据可信度注脚；
  *   ③ 数据纪律：零前端自建状态；读取失败=显式降级词形（零命中不装假）。 */
 
-import { esc, trunc } from '../core/format.js';
+import { esc, relAge, trunc } from '../core/format.js';
 import { confirmModal, toast } from './modal.js';
 import { chip, chipGo, kv, emptyBox, screenHead, involvedRoute } from '../render/chips.js';
 import { hydrateLoop } from './welcome.js';
@@ -171,7 +171,7 @@ function taskRow(t) {
     chip(id, 'mute') +
     (depList.length ? depChips(depList.slice(0, 3), 'task') + (depList.length > 3 ? chip('+' + (depList.length - 3), 'mute') : '') : '') +
     (agent ? chip(tr('负责 ') + agent, 'mute') : '') + '</div>' +
-    '<div class="task-sub small">' + esc(last || tr('最近动作：—')) +
+    '<div class="task-sub small">' + esc(trunc(last, 100) || tr('最近动作：—')) +
     (String(s.lastError || '').trim() ? ' ' + chip(trunc(String(s.lastError), 60), 'esc') : '') +
     '</div>' +
     (unknown ? '<div class="task-sub small faint">' + esc(tr('状态未知（可取消或进详情核查）')) + '</div>' : '') +
@@ -223,6 +223,46 @@ function tasksScreen(el, ctx) {
   });
 }
 
+/* ---------- 最近动作结构化卡（2026-11-28 用户裁定「最近动作没有结构化。暂时为空」）----------
+ * 生命周期时间行：类型+相位词（TaskStateChanged dedupKey=task:<id>:<phase>——taskId 不含
+ * ':'，lastIndexOf 取尾段即相位词；其余类型无相位词不冒充）+级别点+时刻。 */
+function taskPhaseOf(e) {
+  const dk = String((e && e.dedupKey) || '');
+  if (!/^task:/.test(dk)) return '';
+  return dk.slice(dk.lastIndexOf(':') + 1);
+}
+export { taskPhaseOf };
+
+function taskEvRow(e) {
+  const phase = taskPhaseOf(e);
+  const pv = PHASE_VIEW[phase];
+  const ts = e && (e.ts || e.at || e.time);
+  return '<div class="mini-row">' +
+    '<span class="w-ev-dot" data-level="' + esc(String(e && e.level || 'info')) + '"></span>' +
+    '<div class="mr-main"><div>' + esc(String(e && e.type || tr('未命名事件'))) +
+      (pv ? ' ' + chip(pv.label, pv.chip) : (phase ? ' ' + chip(phase, 'mute') : '')) + '</div>' +
+      '<div class="mr-sub small mono">' + esc(trunc(String((e && e.dedupKey) || (e && e.eventId) || ''), 64)) + '</div></div>' +
+    '<span class="w-ev-time mono" title="' + esc(String(ts || '')) + '">' + esc(relAge(ts) || '—') + '</span>' +
+    '</div>';
+}
+
+/** 生命周期时间线现读（GET /v1/events?involved=Task/<id>——归档权威直查，非快照 50 行窗；
+ * 失败/空=显式词形不装内容）。 */
+async function hydrateTaskTimeline(box, ctx, id) {
+  const r = await ctx.api.events(60, { involved: 'Task/' + id });
+  if (!box.isConnected) return; // 已切屏=弃投（不覆写他屏 DOM）
+  if (!r || !r.ok) {
+    box.innerHTML = '<div class="small faint">' + esc(tr('时间线拉取失败：')) +
+      esc(String((r && (r.error || r.status)) || tr('网络异常'))) + '</div>';
+    return;
+  }
+  const d = (r && r.data) || {};
+  const rows = Array.isArray(d) ? d : (Array.isArray(d.events) ? d.events : []);
+  box.innerHTML = rows.length
+    ? rows.map(taskEvRow).join('')
+    : '<div class="small faint">' + esc(tr('归档窗内暂无本任务事件。')) + '</div>';
+}
+
 /** 任务详情（store 在册投影；不在册=诚实空态——URL 手输名不冒充）。 */
 function taskDetailScreen(el, ctx, id) {
   const tasks = ctx.store.tasks();
@@ -242,22 +282,53 @@ function taskDetailScreen(el, ctx, id) {
   if (spec.agent || s.agent) rows.push([tr('负责'), esc(String(s.agent || spec.agent))]);
   const sessId = String(s.agentSession || s.sessionId || '').trim();
   if (sessId) rows.push([tr('会话'), chipGo(trunc(sessId, 24), 'session/' + encodeURIComponent(sessId), 'acc', true, tr('关联会话'))]);
-  if (s.lastAction) rows.push([tr('最近动作'), esc(trunc(String(s.lastAction), 200))]);
-  if (s.lastError) rows.push([tr('最近错误'), chip(trunc(String(s.lastError), 120), 'esc')]);
   if (!String(s.phase || '')) rows.push([tr('注记'), esc(tr('状态未知（可取消或核查调度日志）'))]);
   const deps = spec.dependsOn || s.dependsOn || [];
   if (deps.length) rows.push([tr('依赖'), depChips(deps, 'task')]);
   if (cancelReq.has(taskIdOf(t))) rows.push([tr('取消'), chip(tr('取消请求已发布'), 'warn')]);
+  // 最近动作结构化卡三源：①结果注记（lastAction 全文 wrap + lastError）②关联会话现势
+  // （快照心跳行——不在册=诚实注记）③生命周期时间线（事件归档 involved 直查——异步注水）。
+  const lastA = String(s.lastAction || '').trim();
+  const lastE = String(s.lastError || '').trim();
+  const sessLive = sessId ? (ctx.store.sessions() || []).find((x) => String((x && x.sessionId) || '') === sessId) : null;
+  const sessLiveHtml = sessId ?
+    '<div class="mini-row">' +
+      '<span class="w-ev-dot" data-level="' + esc(/escalated|suspected-stall/.test(String(sessLive && sessLive.state)) ? 'error' : 'info') + '"></span>' +
+      '<div class="mr-main"><div>' + esc(tr('关联会话现势')) + ' ' +
+        (sessLive
+          ? chip(String(sessLive.state || tr('在册')), /escalated|suspected-stall/.test(String(sessLive.state)) ? 'esc' : 'acc')
+          : chip(tr('不在心跳在册'), 'mute')) +
+        (sessLive && sessLive.phase ? chip(String(sessLive.phase), 'mute') : '') +
+        (sessLive && sessLive.lastAction ? '<span class="small"> ' + esc(trunc(String(sessLive.lastAction), 80)) + '</span>' : '') +
+      '</div>' +
+      '<div class="mr-sub small mono">' + esc(trunc(sessId, 48)) +
+        (sessLive && sessLive.lastBeat ? ' · ' + esc(tr('最近心跳 ')) + esc(relAge(sessLive.lastBeat)) : '') + '</div></div>' +
+      '<span class="w-ev-time">' + chipGo(tr('对话'), 'session/' + encodeURIComponent(sessId), 'mute', true, tr('关联会话')) + '</span>' +
+    '</div>' : '';
+  const resultHtml = (lastA || lastE) ?
+    '<div style="margin:8px 0">' +
+      (lastA ? '<div class="small" style="white-space:pre-wrap;word-break:break-word">' +
+        '<b>' + esc(tr('结果注记')) + '</b> <span title="' + esc(lastA) + '">' + esc(trunc(lastA, 4000)) + '</span></div>' : '') +
+      (lastE ? '<div style="margin-top:6px">' + chip(trunc(lastE, 160), 'esc') + '</div>' : '') +
+    '</div>' : '';
   el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' +
     kv(rows) +
     (cancellable(t) && !cancelReq.has(taskIdOf(t))
       ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t)) + '">' + esc(tr('取消')) + '</button>' +
         '<span class="small faint" style="margin-left:8px">' + esc(tr('发布 TaskCancelRequested——调度器归档面消费')) + '</span></div>'
       : '') +
+    '</div></div>' +
+    '<div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(tr('最近动作')) + '</span>' +
+      chip(tr('结果 · 会话现势 · 生命周期时间线'), 'mute') + '</div><div class="card-b">' +
+      resultHtml + sessLiveHtml +
+      '<div class="small faint" style="margin-top:6px">' + esc(tr('生命周期（事件归档现读）')) + '</div>' +
+      '<div data-task-tl="' + esc(taskIdOf(t)) + '"><div class="small faint">' + esc(tr('现读中…')) + '</div></div>' +
     '</div></div></div>';
   el.querySelectorAll('[data-task-cancel]').forEach((btn) => {
     btn.addEventListener('click', () => requestCancel(el, ctx, t));
   });
+  const tlBox = el.querySelector('[data-task-tl]');
+  if (tlBox) hydrateTaskTimeline(tlBox, ctx, taskIdOf(t));
 }
 
 /* ---------- 关注报告（R-UX-6：attention 排序 + 证据路由 + 循环卡 + 可信度注脚） ---------- */

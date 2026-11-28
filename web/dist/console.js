@@ -1046,7 +1046,17 @@ var CoreConsoleWeb = (() => {
     ["\u672C\u6587\u6863\u6682\u65E0\u6B63\u6587\u3002", "This document has no body yet."],
     ["\u672A\u5728\u6587\u6863\u5E93\u547D\u4E2D\uFF08design-docs \u767D\u540D\u5355\u4ED3\u6811\u65E0\u6B64\u8DEF\u5F84\uFF09\u2014\u2014\u6765\u6E90\u6458\u5F55\u89C1\u5BF9\u8BDD\u539F\u6587\u3002", "Not found in the doc library (no such path in the design-docs whitelist tree) \u2014 see the source excerpt in the thread."],
     ["\u5BF9\u8C61\u9762\u6682\u4E0D\u53EF\u8BFB\uFF08", "Object face unreadable ("],
-    ["\u6587\u6863\u76F4\u8BFB\u5931\u8D25\uFF08", "Doc read failed ("]
+    ["\u6587\u6863\u76F4\u8BFB\u5931\u8D25\uFF08", "Doc read failed ("],
+    ["\u4EFB\u52A1\u8BE6\u60C5\xB7\u6700\u8FD1\u52A8\u4F5C\u7ED3\u6784\u5316\u5361\uFF082026-11-28\uFF09", "Task detail structured action card (2026-11-28)"],
+    ["\u7ED3\u679C \xB7 \u4F1A\u8BDD\u73B0\u52BF \xB7 \u751F\u547D\u5468\u671F\u65F6\u95F4\u7EBF", "Result \xB7 Session liveness \xB7 Lifecycle timeline"],
+    ["\u7ED3\u679C\u6CE8\u8BB0", "Result note"],
+    ["\u5173\u8054\u4F1A\u8BDD\u73B0\u52BF", "Session liveness"],
+    ["\u4E0D\u5728\u5FC3\u8DF3\u5728\u518C", "Not in heartbeat ledger"],
+    ["\u6700\u8FD1\u5FC3\u8DF3 ", "Last beat "],
+    ["\u751F\u547D\u5468\u671F\uFF08\u4E8B\u4EF6\u5F52\u6863\u73B0\u8BFB\uFF09", "Lifecycle (read live from event archive)"],
+    ["\u65F6\u95F4\u7EBF\u62C9\u53D6\u5931\u8D25\uFF1A", "Timeline fetch failed: "],
+    ["\u5F52\u6863\u7A97\u5185\u6682\u65E0\u672C\u4EFB\u52A1\u4E8B\u4EF6\u3002", "No events for this task in the archive window."],
+    ["\u672A\u547D\u540D\u4E8B\u4EF6", "Unnamed event"]
   ];
 
   // src/core/i18n.js
@@ -2048,7 +2058,14 @@ var CoreConsoleWeb = (() => {
       kinds: () => request("v1/scheme/kinds"),
       drafts: () => request("v1/drafts"),
       draft: (kind, name, scope) => request("v1/drafts/" + enc(kind) + "/" + enc(name) + (scope && scope !== "global" ? "?scope=" + enc(scope) : "")),
-      events: (limit = 200) => request("v1/events?limit=" + Number(limit)),
+      events: (limit = 200, params = {}) => {
+        const q = new URLSearchParams({ limit: String(Number(limit) || 200) });
+        Object.keys(params || {}).forEach((k) => {
+          const v = params[k];
+          if (v != null && v !== "") q.set(k, String(v));
+        });
+        return request("v1/events?" + q.toString());
+      },
       workflows: () => request("v1/workflows"),
       workflowRuns: () => request("v1/workflows/runs"),
       tasks: () => request("v1/tasks"),
@@ -3792,7 +3809,7 @@ var CoreConsoleWeb = (() => {
     const sess = String(s.agentSession || s.sessionId || "").trim();
     const last = String(s.lastAction || "").trim();
     const unknown = !String(s.phase || "");
-    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(last || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
+    return '<div class="task-row"><div class="task-main"><div class="task-title"><b>' + esc(taskTitle(t2)) + "</b>" + phaseChip(t2) + chip(id, "mute") + (depList.length ? depChips(depList.slice(0, 3), "task") + (depList.length > 3 ? chip("+" + (depList.length - 3), "mute") : "") : "") + (agent ? chip(t("\u8D1F\u8D23 ") + agent, "mute") : "") + '</div><div class="task-sub small">' + esc(trunc(last, 100) || t("\u6700\u8FD1\u52A8\u4F5C\uFF1A\u2014")) + (String(s.lastError || "").trim() ? " " + chip(trunc(String(s.lastError), 60), "esc") : "") + "</div>" + (unknown ? '<div class="task-sub small faint">' + esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u8FDB\u8BE6\u60C5\u6838\u67E5\uFF09")) + "</div>" : "") + '</div><div class="task-acts">' + (sess ? chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sess), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) : "") + cancelBtnHtml(t2) + "</div></div>";
   }
   function tasksScreen(el, ctx2) {
     const tasks = ctx2.store.tasks();
@@ -3827,6 +3844,28 @@ var CoreConsoleWeb = (() => {
       });
     });
   }
+  function taskPhaseOf2(e) {
+    const dk = String(e && e.dedupKey || "");
+    if (!/^task:/.test(dk)) return "";
+    return dk.slice(dk.lastIndexOf(":") + 1);
+  }
+  function taskEvRow(e) {
+    const phase = taskPhaseOf2(e);
+    const pv = PHASE_VIEW[phase];
+    const ts = e && (e.ts || e.at || e.time);
+    return '<div class="mini-row"><span class="w-ev-dot" data-level="' + esc(String(e && e.level || "info")) + '"></span><div class="mr-main"><div>' + esc(String(e && e.type || t("\u672A\u547D\u540D\u4E8B\u4EF6"))) + (pv ? " " + chip(pv.label, pv.chip) : phase ? " " + chip(phase, "mute") : "") + '</div><div class="mr-sub small mono">' + esc(trunc(String(e && e.dedupKey || e && e.eventId || ""), 64)) + '</div></div><span class="w-ev-time mono" title="' + esc(String(ts || "")) + '">' + esc(relAge(ts) || "\u2014") + "</span></div>";
+  }
+  async function hydrateTaskTimeline(box, ctx2, id) {
+    const r = await ctx2.api.events(60, { involved: "Task/" + id });
+    if (!box.isConnected) return;
+    if (!r || !r.ok) {
+      box.innerHTML = '<div class="small faint">' + esc(t("\u65F6\u95F4\u7EBF\u62C9\u53D6\u5931\u8D25\uFF1A")) + esc(String(r && (r.error || r.status) || t("\u7F51\u7EDC\u5F02\u5E38"))) + "</div>";
+      return;
+    }
+    const d = r && r.data || {};
+    const rows = Array.isArray(d) ? d : Array.isArray(d.events) ? d.events : [];
+    box.innerHTML = rows.length ? rows.map(taskEvRow).join("") : '<div class="small faint">' + esc(t("\u5F52\u6863\u7A97\u5185\u6682\u65E0\u672C\u4EFB\u52A1\u4E8B\u4EF6\u3002")) + "</div>";
+  }
   function taskDetailScreen(el, ctx2, id) {
     const tasks = ctx2.store.tasks();
     const t2 = tasks.find((x) => taskIdOf(x) === String(id));
@@ -3845,16 +3884,21 @@ var CoreConsoleWeb = (() => {
     if (spec.agent || s.agent) rows.push([t("\u8D1F\u8D23"), esc(String(s.agent || spec.agent))]);
     const sessId = String(s.agentSession || s.sessionId || "").trim();
     if (sessId) rows.push([t("\u4F1A\u8BDD"), chipGo(trunc(sessId, 24), "session/" + encodeURIComponent(sessId), "acc", true, t("\u5173\u8054\u4F1A\u8BDD"))]);
-    if (s.lastAction) rows.push([t("\u6700\u8FD1\u52A8\u4F5C"), esc(trunc(String(s.lastAction), 200))]);
-    if (s.lastError) rows.push([t("\u6700\u8FD1\u9519\u8BEF"), chip(trunc(String(s.lastError), 120), "esc")]);
     if (!String(s.phase || "")) rows.push([t("\u6CE8\u8BB0"), esc(t("\u72B6\u6001\u672A\u77E5\uFF08\u53EF\u53D6\u6D88\u6216\u6838\u67E5\u8C03\u5EA6\u65E5\u5FD7\uFF09"))]);
     const deps = spec.dependsOn || s.dependsOn || [];
     if (deps.length) rows.push([t("\u4F9D\u8D56"), depChips(deps, "task")]);
     if (cancelReq.has(taskIdOf(t2))) rows.push([t("\u53D6\u6D88"), chip(t("\u53D6\u6D88\u8BF7\u6C42\u5DF2\u53D1\u5E03"), "warn")]);
-    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + (cancellable(t2) && !cancelReq.has(taskIdOf(t2)) ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t2)) + '">' + esc(t("\u53D6\u6D88")) + '</button><span class="small faint" style="margin-left:8px">' + esc(t("\u53D1\u5E03 TaskCancelRequested\u2014\u2014\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39")) + "</span></div>" : "") + "</div></div></div>";
+    const lastA = String(s.lastAction || "").trim();
+    const lastE = String(s.lastError || "").trim();
+    const sessLive = sessId ? (ctx2.store.sessions() || []).find((x) => String(x && x.sessionId || "") === sessId) : null;
+    const sessLiveHtml2 = sessId ? '<div class="mini-row"><span class="w-ev-dot" data-level="' + esc(/escalated|suspected-stall/.test(String(sessLive && sessLive.state)) ? "error" : "info") + '"></span><div class="mr-main"><div>' + esc(t("\u5173\u8054\u4F1A\u8BDD\u73B0\u52BF")) + " " + (sessLive ? chip(String(sessLive.state || t("\u5728\u518C")), /escalated|suspected-stall/.test(String(sessLive.state)) ? "esc" : "acc") : chip(t("\u4E0D\u5728\u5FC3\u8DF3\u5728\u518C"), "mute")) + (sessLive && sessLive.phase ? chip(String(sessLive.phase), "mute") : "") + (sessLive && sessLive.lastAction ? '<span class="small"> ' + esc(trunc(String(sessLive.lastAction), 80)) + "</span>" : "") + '</div><div class="mr-sub small mono">' + esc(trunc(sessId, 48)) + (sessLive && sessLive.lastBeat ? " \xB7 " + esc(t("\u6700\u8FD1\u5FC3\u8DF3 ")) + esc(relAge(sessLive.lastBeat)) : "") + '</div></div><span class="w-ev-time">' + chipGo(t("\u5BF9\u8BDD"), "session/" + encodeURIComponent(sessId), "mute", true, t("\u5173\u8054\u4F1A\u8BDD")) + "</span></div>" : "";
+    const resultHtml = lastA || lastE ? '<div style="margin:8px 0">' + (lastA ? '<div class="small" style="white-space:pre-wrap;word-break:break-word"><b>' + esc(t("\u7ED3\u679C\u6CE8\u8BB0")) + '</b> <span title="' + esc(lastA) + '">' + esc(trunc(lastA, 4e3)) + "</span></div>" : "") + (lastE ? '<div style="margin-top:6px">' + chip(trunc(lastE, 160), "esc") + "</div>" : "") + "</div>" : "";
+    el.innerHTML = '<div class="view-inner">' + head + '<div class="card"><div class="card-b">' + kv(rows) + (cancellable(t2) && !cancelReq.has(taskIdOf(t2)) ? '<div style="margin-top:10px"><button class="btn btn-ghost btn-danger sm" data-task-cancel="' + esc(taskIdOf(t2)) + '">' + esc(t("\u53D6\u6D88")) + '</button><span class="small faint" style="margin-left:8px">' + esc(t("\u53D1\u5E03 TaskCancelRequested\u2014\u2014\u8C03\u5EA6\u5668\u5F52\u6863\u9762\u6D88\u8D39")) + "</span></div>" : "") + '</div></div><div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(t("\u6700\u8FD1\u52A8\u4F5C")) + "</span>" + chip(t("\u7ED3\u679C \xB7 \u4F1A\u8BDD\u73B0\u52BF \xB7 \u751F\u547D\u5468\u671F\u65F6\u95F4\u7EBF"), "mute") + '</div><div class="card-b">' + resultHtml + sessLiveHtml2 + '<div class="small faint" style="margin-top:6px">' + esc(t("\u751F\u547D\u5468\u671F\uFF08\u4E8B\u4EF6\u5F52\u6863\u73B0\u8BFB\uFF09")) + '</div><div data-task-tl="' + esc(taskIdOf(t2)) + '"><div class="small faint">' + esc(t("\u73B0\u8BFB\u4E2D\u2026")) + "</div></div></div></div></div>";
     el.querySelectorAll("[data-task-cancel]").forEach((btn) => {
       btn.addEventListener("click", () => requestCancel(el, ctx2, t2));
     });
+    const tlBox = el.querySelector("[data-task-tl]");
+    if (tlBox) hydrateTaskTimeline(tlBox, ctx2, taskIdOf(t2));
   }
   var SEV_VIEW = { critical: { label: t("\u4E25\u91CD"), chip: "esc" }, high: { label: t("\u91CD\u8981"), chip: "warn" }, medium: { label: t("\u4E00\u822C"), chip: "mute" } };
   function sevView(sev) {

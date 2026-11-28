@@ -67,7 +67,14 @@ export function createApi(base = '', paths = {}) {
     drafts: () => request('v1/drafts'),
     draft: (kind, name, scope) =>
       request('v1/drafts/' + enc(kind) + '/' + enc(name) + (scope && scope !== 'global' ? '?scope=' + enc(scope) : '')),
-    events: (limit = 200) => request('v1/events?limit=' + Number(limit)),
+    events: (limit = 200, params = {}) => {
+      const q = new URLSearchParams({ limit: String(Number(limit) || 200) });
+      Object.keys(params || {}).forEach((k) => {
+        const v = params[k];
+        if (v != null && v !== '') q.set(k, String(v)); // involved/type/level/since/until 六参透传（routes_events.go 同名形参）
+      });
+      return request('v1/events?' + q.toString());
+    },
     workflows: () => request('v1/workflows'),
     workflowRuns: () => request('v1/workflows/runs'),
     tasks: () => request('v1/tasks'),
