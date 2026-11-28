@@ -6,6 +6,7 @@ package apiserver
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -246,7 +247,11 @@ func registerWorkflowRoutes(d *deps, mux *http.ServeMux) {
 				"aliases":  d.sch.WorkflowAliases(),
 				"adapters": d.sch.WorkflowAdapters(),
 				"llm":      d.sch.LLMRuntime(),
-				"workflows": items,
+				// 2026-11-28 #21：connectops 引擎挂接态现读投影（与 cmd/cored 装配同一
+				// CORE_SYSTEM_CONNECTOPS_RUN=on 判据）——决策面执行状态三值（bound/partial/
+				// unbound）的引擎门输入。缺席/on 之外的取值一律 false（不冒充已挂接）。
+				"connectopsRun": os.Getenv("CORE_SYSTEM_CONNECTOPS_RUN") == "on",
+				"workflows":     items,
 			})
 		})
 	}
