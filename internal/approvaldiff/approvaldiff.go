@@ -64,8 +64,10 @@ func (g *Generator) OnApprovalSuspended(run workflow.RunRecord, objKey string) {
 		return
 	}
 	ctx := context.Background()
-	docName := diffDocName(kind, name, 0)
-	// 幂等：同对象同 rv 判决已在册=跳过（防重——引擎不重试但部署重启可能重挂）。
+	docName := diffDocNameForRun(kind, name, run.Run)
+	// 幂等：同 run 同对象判决已在册=跳过（防重——引擎不重试但部署重启可能重挂；幂等域=
+	// run——2026-11-28 用户裁定「还是审批为空」纠偏：旧的不带 run 后缀一对象一名让后续
+	// 全部 idempotent-skip，新挂起的待批稿永远读到首份陈旧判决——per-run 各自一份）。
 	if _, err := g.Repo.Get(ctx, "DocumentDiff", "global", docName); err == nil {
 		g.trace("idempotent-skip " + docName)
 		return
@@ -309,6 +311,14 @@ func diffDocName(kind, name string, rv int64) string {
 		return fmt.Sprintf("docdiff-%s-rv%d", base, rv)
 	}
 	return "docdiff-" + base
+}
+
+// diffDocNameForRun 判决文档名（per-run：docdiff-<kind>-<name>-run<N>——每次人审挂起各自
+// 一份判决，幂等域=run；2026-11-28 用户裁定纠偏——旧一对象一名让后续挂起全部 skip，
+// 新待批稿永远读到首份陈旧判决）。同 run 内二次挂起（多闸锚对象）复用同份=幂等窗口。
+func diffDocNameForRun(kind, name string, run int64) string {
+	base := strings.ToLower(strings.NewReplacer("_", "-", "/", "-", ".", "-").Replace(kind + "-" + name))
+	return fmt.Sprintf("docdiff-%s-run%d", base, run)
 }
 
 func readBase(repo repository.Repository, ctx context.Context, kind, scope, name string) string {
