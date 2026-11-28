@@ -59,7 +59,8 @@ func (r *Runner) RunInner(run workflow.RunRecord, node workflow.NodeView) (strin
 
 // generic 通用形（既有行为面——未知 op 的轻量执行：一句话任务+执行结论落稿）。
 func (r *Runner) generic(run workflow.RunRecord, node workflow.NodeView) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
 	cfg, err := r.G.provider()
 	if err != nil {
 		r.G.trace("inner provider-fail " + err.Error())
@@ -109,7 +110,8 @@ func planDocName(run int64) string { return fmt.Sprintf("plan-run%d", run) }
 // runJudge 批量合判（父链 Analyzing 相位）：读 issue 批 → LLM 判定下发集 → WorkflowPlan
 // 落库 + run 上下文账回填 → decision 词（worth_fixing/ignore）。
 func (r *Runner) runJudge(run workflow.RunRecord, node workflow.NodeView) (string, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
 	// 幂等回读：计划实体在册=重启/重放不重复调 LLM（判决与 items 从实体还原）。
 	if o, err := r.planRepo().Get(ctx, "WorkflowPlan", "global", planDocName(run.Run)); err == nil && o != nil {
 		if d, sum, items, ok := parsePlanDoc(string(o.Content)); ok {
@@ -326,7 +328,8 @@ func (r *Runner) memoSetPlan(run int64, decision, summary string, items []planIt
 // Planning defer 边直达回评——「不做也有反馈」子链半边）；fix 项=修复要点落稿（developer-system
 // 会话的输入实体——会话 briefing 读本稿+计划项）。产物幂等锚=inneragent-doc-apply-run<N>。
 func (r *Runner) runApplyDoc(run workflow.RunRecord, node workflow.NodeView) (string, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
 	item := r.childItem(run)
 	if item == nil {
 		return "", fmt.Errorf("apply-doc: 计划项缺席（子 run 上下文未绑定——launcher 绑定缺口可见）")
@@ -393,7 +396,8 @@ func (r *Runner) childItem(run workflow.RunRecord) *planItem {
 // 过滤）+计划对照 → 汇总落稿 → decision=release（大规模批完成才发版）或空词（默认跳过发版
 // 机械收束）。
 func (r *Runner) runMerge(run workflow.RunRecord, node workflow.NodeView) (string, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
 	docName := fmt.Sprintf("inneragent-%s-run%d", node.Name, run.Run)
 	// 幂等回读（汇总稿在册=不重复调 LLM；decision 从稿面还原）。
 	if o, err := r.planRepo().Get(ctx, "DocumentDiff", "global", docName); err == nil && o != nil {

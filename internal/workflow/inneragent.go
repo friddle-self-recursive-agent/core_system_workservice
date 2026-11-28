@@ -23,6 +23,25 @@ const (
 // SuspendInner 挂起因由词（RunRecord.SuspendWhy——内置轻量 agent 执行窗口）。
 const SuspendInner = "inner-agent"
 
+// innerSuspendTimeout inner 挂起超时阈值（Advance 超时闸——宽于 LLM 重试族合法耗时；
+// 2026-11-28 run176 活体：无闸=网关黑洞时 run 永久挂死 join 永不满足）。
+const innerSuspendTimeout = 15 * time.Minute
+
+// innerSuspendedTooLong inner 挂起时长判定（History 末个 inner-spawn 行起算——纯查投影；
+// 无 inner-spawn 行=不判超时防御）。行 At=RFC3339Nano。
+func innerSuspendedTooLong(hist []HistoryRow, limit time.Duration) bool {
+	for i := len(hist) - 1; i >= 0; i-- {
+		if hist[i].On == EdgeInnerSpawn {
+			at, err := time.Parse(time.RFC3339Nano, hist[i].At)
+			if err != nil {
+				return false
+			}
+			return time.Since(at) > limit
+		}
+	}
+	return false
+}
+
 // innerGateLocked 停留门：当前相位=executor=inner 的 agent/service 节点且未执行过
 // （History 无 inner-spawn 行）→挂起（suspendWhy=inner-agent）+派发请求。执行完成
 // InnerDone 翻 running，下拍本门放行（History 标记防重）沿表 advance 离开。

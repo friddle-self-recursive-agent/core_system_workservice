@@ -54,6 +54,19 @@ func (r *RunLog) Advance() int {
 	r.mu.Lock()
 	for i := range r.ring {
 		run := &r.ring[i]
+		// inner 挂起超时闸（2026-11-28 E2E 活体缺口三——inner LLM 调用无界挂死 run176
+		// doc-apply 15:01 挂起无回执实证）：SuspendWhy=inner-agent 挂起超限=实现侧调用
+		// 已死（HTTP 无 deadline/网关黑洞）→ 失败终态（join 按失败如实计，不冒充完成不
+		// 永久卡 join）。阈值宽于 LLM 重试窗口（15min——重试族合法耗时数分钟）。
+		if run.Status == RunSuspended && run.SuspendWhy == SuspendInner && r.opts.InnerAgent != nil && innerSuspendedTooLong(run.History, innerSuspendTimeout) {
+			run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: "inner-timeout", At: stampNano(time.Now()), Note: "inner 执行挂起超限（LLM 调用无回执——失败终态，缺口可见）"})
+			run.Status = RunFailed
+			if r.opts.Store != nil {
+				persistAppend("run inner 超时终态", r.opts.Store.AppendRun(runToRow(*run)))
+			}
+			r.notifyParentLocked(run) // 子 run 失败终态→父 join（fanout #6）
+			continue
+		}
 		if len(run.Phases) == 0 || run.Status != RunRunning {
 			continue // 相位未投影（未声明 phases 的 object 源）/ 非进行中（triggered/suspended/failed）=零动作
 		}
