@@ -2170,8 +2170,6 @@ var CoreConsoleWeb = (() => {
       revContent: (kind, scope, name, rv) => request("v1/rev-content/" + enc(kind) + "/" + enc(name) + "?scope=" + enc(scope || "global") + "&rv=" + enc(String(rv))),
       deliveries: () => request("v1/notifications/deliveries"),
       codeAuditFindings: () => request("v1/code-audit/findings"),
-      exportConfig: () => request("v1/docs-export/config"),
-      saveExportConfig: (payload) => request("v1/docs-export/config", { method: "PUT", body: payload }),
       /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
       apply: (payload) => request(P.apply, { method: "POST", body: payload }),
       saveDraft: (payload) => request(P.drafts, { method: "POST", body: payload }),
@@ -13236,35 +13234,6 @@ spec:
       if (msg) msg.textContent = r.ok ? t("OpenAIProvider \u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + (r.data && r.data.rv) + ")") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
     });
   }
-  async function hydrateDocsExportConfig(el, ctx2) {
-    const slot = el.querySelector("[data-wf-export-cfg]");
-    if (!slot || !ctx2.api.exportConfig) return;
-    const r = await ctx2.api.exportConfig();
-    if (!r.ok || !el.isConnected) return;
-    const cfg = r.data || {};
-    const excl = Array.isArray(cfg.excludeDocTypes) ? cfg.excludeDocTypes.join(", ") : "BugDoc, DriftReport, PlanDoc, SessionLog";
-    slot.innerHTML = `
-  <div class="card">
-    <div class="card-h"><span class="h-title">${esc(t("\u6587\u6863 Git \u5BFC\u51FA\u72EC\u7ACB\u914D\u7F6E\uFF08\u6570\u636E\u5E93 docs_export_config\uFF0C\u975E\u4EE3\u7801\u786C\u7F16\u7801\uFF09"))}</span></div>
-    <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" data-exp-inc ${cfg.includeRuntimeDocs ? "checked" : ""} />
-        <span>${esc(t("\u5BFC\u51FA\u65F6\u5305\u542B\u8FD0\u884C\u65F6\u4E34\u65F6\u6587\u6863 (includeRuntimeDocs)"))}</span>
-      </label>
-      <span class="small faint">${esc(t("\u9ED8\u8BA4\u6392\u9664\u7684\u8FD0\u884C\u65F6 docTypes\uFF1A"))}</span>
-      <input class="inp mono" data-exp-types value="${esc(excl)}" style="min-width:280px;flex:1" />
-      <button type="button" class="btn tiny acc" data-exp-save>${esc(t("\u4FDD\u5B58\u5BFC\u51FA\u914D\u7F6E"))}</button>
-      <span class="small faint" data-exp-msg></span>
-    </div>
-  </div>`;
-    slot.querySelector("[data-exp-save]")?.addEventListener("click", async () => {
-      const inc = Boolean(slot.querySelector("[data-exp-inc]")?.checked);
-      const types2 = String(slot.querySelector("[data-exp-types]")?.value || "").split(",").map((x) => x.trim()).filter(Boolean);
-      const msg = slot.querySelector("[data-exp-msg]");
-      const res = await ctx2.api.saveExportConfig({ includeRuntimeDocs: inc, excludeDocTypes: types2, excludeKinds: cfg.excludeKinds || [] });
-      if (msg) msg.textContent = res.ok ? t("\u5BFC\u51FA\u914D\u7F6E\u5DF2\u66F4\u65B0\u5165\u5E93") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(res.error || res.status);
-    });
-  }
 
   // src/screens/workflows.js
   function wfAnchorOfRoute(route) {
@@ -13336,9 +13305,8 @@ spec:
       t("\u5DE5\u4F5C\u6D41"),
       t("\u4E09\u533A=\u5728\u518C\u6CE8\u518C\u8868\uFF08GET /v1/workflows \u73B0\u8BFB\uFF09\u222A \u8FD0\u884C\u8BB0\u5F55\uFF08GET /v1/workflows/runs+\u5FEB\u7167\u805A\u5408\u5E76\u663E\uFF09\u222A \u6A21\u677F\uFF08\xA79b \u8BBE\u8BA1\u5361\uFF09\u3002"),
       chipGo(t("\u8BBE\u8BA1\u6587\u6863"), wfDesignRoute(), "mute", true, t("workflow.md \xA79b"))
-    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + '<div data-wf-export-cfg style="margin-top:18px"></div></div>';
+    ) + '<h2 class="sec-title">' + esc(t("\u5728\u518C\u5DE5\u4F5C\u6D41")) + '</h2><div data-wf-reg><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u6CE8\u518C\u8868\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u8FD0\u884C\u8BB0\u5F55")) + '</h2><div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8FD0\u884C\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026")) + '</div></div></div></div><h2 class="sec-title" style="margin-top:18px">' + esc(t("\u6A21\u677F")) + "</h2>" + templatesSectionHtml(ctx2) + "</div>";
     paintRuns();
-    hydrateDocsExportConfig(el, ctx2);
     (async () => {
       const stamp = typeof location !== "undefined" ? location.hash : "";
       const slot = el.querySelector("[data-wf-reg]");
@@ -13604,7 +13572,7 @@ spec:
       const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
       const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
       detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span><span class="h-right">' + // R-UX-10 2026-11-28：YAML 声明=弹窗按需（人不主动看 scheme——fixed 卡退役为按钮）。
-      (String(wf.rawYaml || "") ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(t("YAML \u58F0\u660E")) + "</button>" : "") + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div><div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div><div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      (String(wf.rawYaml || "") ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(t("YAML \u58F0\u660E")) + "</button>" : "") + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div><div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + "</div>" + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
       bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
       bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
       const yamlBtn = el.querySelector("[data-wf-yaml-btn]");
@@ -13632,7 +13600,6 @@ spec:
           onApplied: () => detailScreen(el, ctx2, usedName)
         });
       });
-      hydrateDocsExportConfig(el, ctx2);
     })().catch((e) => {
       if (!el.isConnected || el.getAttribute("data-wf-detail-stamp") !== stamp) return;
       const detail = el.querySelector("[data-wf-detail]");

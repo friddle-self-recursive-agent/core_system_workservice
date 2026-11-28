@@ -35,12 +35,12 @@ type PostActionView struct {
 // mode/autoCriteria/maxRiskLevel 随对象 spec 一次解析随行；mode=agent 不再是盲放行，
 // 引擎按 autoCriteria 拉 ops_core_inner_agent 真判决，maxRiskLevel 超限回退人审）。
 type ApprovalPolicy struct {
-	Mode          string `json:"mode,omitempty"`          // human（缺省）| auto（全自动放行）| agent（真判）
-	AutoCriteria  string `json:"autoCriteria,omitempty"`  // agent 模式判决准则（判决小 agent 的 user prompt 输入）
-	MaxRiskLevel  string `json:"maxRiskLevel,omitempty"`  // low|medium|high（缺省 low；超限转人工）
-	DiffEnabled   bool   `json:"diffEnabled,omitempty"`   // spec.approvalDiff.enabled（缺省 true）
-	DiffAgent     string `json:"diffAgent,omitempty"`     // spec.approvalDiff.agent（缺省 ops_core_inner_agent）
-	DiffProvider  string `json:"diffProvider,omitempty"`  // spec.approvalDiff.provider（缺省 openai-default）
+	Mode         string `json:"mode,omitempty"`         // human（缺省）| auto（全自动放行）| agent（真判）
+	AutoCriteria string `json:"autoCriteria,omitempty"` // agent 模式判决准则（判决小 agent 的 user prompt 输入）
+	MaxRiskLevel string `json:"maxRiskLevel,omitempty"` // low|medium|high（缺省 low；超限转人工）
+	DiffEnabled  bool   `json:"diffEnabled,omitempty"`  // spec.approvalDiff.enabled（缺省 true）
+	DiffAgent    string `json:"diffAgent,omitempty"`    // spec.approvalDiff.agent（缺省 ops_core_inner_agent）
+	DiffProvider string `json:"diffProvider,omitempty"` // spec.approvalDiff.provider（缺省 openai-default）
 }
 
 // FanoutView 扇出声明投影（2026-11-28 用户裁定第四词形 unit=workflow——节点按
@@ -58,16 +58,18 @@ type FanoutView struct {
 // ServiceSpawn session 拉起面（serviceexec.go）；其余声明字段（refDocs/contextPassing/…）
 // 对象 spec 透传不在本投影（消费方=文档面/前端节点表）。
 type NodeView struct {
-	Name          string      `json:"name"`                    // 节点名（富声明 name；标量相位=相位名同词）
-	Phase         string      `json:"phase"`                   // 相位锚（run.Phase 同词域）
-	Unit          string      `json:"unit,omitempty"`          // connectops|agent|service|workflow|gate（空=未声明——旧词形透传）
-	Executor      string      `json:"executor,omitempty"`      // dsh（缺省，重型通路）| inner（2026-11-28 用户裁定「低智商要求的可以使用内置 agent」——引擎内置轻量 LLM 通路 ops_core_inner_agent，不拉 session 零拉起开销）
-	Service       string      `json:"service,omitempty"`       // unit=service：目标系统名（developer-system…）
-	Op            string      `json:"op,omitempty"`            // 调用 op（develop|acceptance|release…）
-	Role          string      `json:"role,omitempty"`          // permissionRole（P7 权限随文档——随载荷透传给执行通路）
-	ContextFields []string    `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
-	EntryEvents   []string    `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
-	Fanout        *FanoutView `json:"fanout,omitempty"`        // unit=workflow 扇出声明（第四词形）
+	Name          string         `json:"name"`                    // 节点名（富声明 name；标量相位=相位名同词）
+	Phase         string         `json:"phase"`                   // 相位锚（run.Phase 同词域）
+	Unit          string         `json:"unit,omitempty"`          // connectops|agent|service|workflow|gate（空=未声明——旧词形透传）
+	Executor      string         `json:"executor,omitempty"`      // dsh（缺省，重型通路）| inner（2026-11-28 用户裁定「低智商要求的可以使用内置 agent」——引擎内置轻量 LLM 通路 ops_core_inner_agent，不拉 session 零拉起开销）
+	Service       string         `json:"service,omitempty"`       // unit=service：目标系统名（developer-system…）
+	Op            string         `json:"op,omitempty"`            // 调用 op（develop|acceptance|release…）
+	Connector     string         `json:"connector,omitempty"`     // unit=connectops：ops 连接器名（connectops-gh/connectops-docs…——2026-11-28 opsrun.go 执行面消费，新载荷键=代际判别器）
+	Params        map[string]any `json:"params,omitempty"`        // unit=connectops：op 静态参数（声明值——owner/repo/tag 等；动态溯源=实现侧按 run.Involved 派生）
+	Role          string         `json:"role,omitempty"`          // permissionRole（P7 权限随文档——随载荷透传给执行通路）
+	ContextFields []string       `json:"contextFields,omitempty"` // contextPassing.fields（上一轮上下文声明字段——首轮注入载荷）
+	EntryEvents   []string       `json:"entryEvents,omitempty"`   // 入口事件（多入口投影，与 entry: 迁移行同源）
+	Fanout        *FanoutView    `json:"fanout,omitempty"`        // unit=workflow 扇出声明（第四词形）
 }
 
 // SpecView 对象 spec 投影（v0.28 相位投影段——同一份对象声明的两面一次解析：相位序列
@@ -142,14 +144,16 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 	}
 	if n.Kind == yaml.MappingNode {
 		var m struct {
-			Name           string `yaml:"name"`
-			Phase          string `yaml:"phase"`
-			Title          string `yaml:"title"`
-			Unit           string `yaml:"unit"`
-			Service        string `yaml:"service"`
-			Op             string `yaml:"op"`
-			Executor       string `yaml:"executor"`
-			Role           string `yaml:"permissionRole"`
+			Name           string         `yaml:"name"`
+			Phase          string         `yaml:"phase"`
+			Title          string         `yaml:"title"`
+			Unit           string         `yaml:"unit"`
+			Service        string         `yaml:"service"`
+			Op             string         `yaml:"op"`
+			Connector      string         `yaml:"connector"`
+			Params         map[string]any `yaml:"params"`
+			Executor       string         `yaml:"executor"`
+			Role           string         `yaml:"permissionRole"`
 			ContextPassing struct {
 				PreviousRound bool     `yaml:"previousRound"`
 				Fields        []string `yaml:"fields"`
@@ -176,9 +180,9 @@ func parsePhaseNode(n yaml.Node) (NodeView, bool) {
 		if m.Fanout.From != "" || m.Fanout.Key != "" || m.Fanout.Entry != "" || m.Fanout.Workflow != "" {
 			fanout = &FanoutView{From: m.Fanout.From, Key: m.Fanout.Key, Entry: m.Fanout.Entry, Workflow: m.Fanout.Workflow}
 		}
-		return NodeView{Name: m.Name, Phase: p, Unit: m.Unit, Service: m.Service, Op: m.Op, Role: m.Role,
-			Executor: m.Executor, ContextFields: m.ContextPassing.Fields, EntryEvents: m.EntryEvents,
-			Fanout: fanout}, p != ""
+		return NodeView{Name: m.Name, Phase: p, Unit: m.Unit, Service: m.Service, Op: m.Op, Connector: m.Connector,
+			Params: m.Params, Role: m.Role, Executor: m.Executor, ContextFields: m.ContextPassing.Fields,
+			EntryEvents: m.EntryEvents, Fanout: fanout}, p != ""
 	}
 	return NodeView{}, false
 }

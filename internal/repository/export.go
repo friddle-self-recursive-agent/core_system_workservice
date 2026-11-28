@@ -1,9 +1,15 @@
-// export.go —— sqlite→git 定时导出器（R-DOC-7 规则 2：git=导出/公开 output/public——
-// 周期快照，不是逐次写账本；逐次正文账=doc_history，见 sqlite.go）。设计依据：
-// instance 仓 runtime/docs-export.md（导出=读侧派生任务：水位无变化跳过=幂等零提交；
-// 失败只告警不回滚 DB 不崩 cored；no force-push；布局=既有 git 导入导出格式不发明第二套）。
+// export.go —— sqlite→git 导出机制（R-DOC-7 规则 2：git=导出/公开 output/public——
+// 周期快照形态，不是逐次写账本；逐次正文账=doc_history，见 sqlite.go）。
 //
-// 单向 output 红线：导出器只读 docs DB（Repository 读半边）→ 按对象规范路径写目标工作树 →
+// 2026-11-28 用户裁决「git提交这个不是功能。删掉功能。做成workflow的一个节点。即gh-release
+// 包括git push/release[scheme调用]」：**导出不再是常驻定时器功能**（旧 Run 定时拍+docs_export_config
+// 独立配置面已删）——导出作为 release 域 op 的实现机制保留（connectops-docs 的 git-push /
+// release-publish，装配在 cmd/cored），只在 workflow 节点执行时拍一发一（gh-release 节点=
+// docs git push + release 一步走）。设计依据沿用：instance 仓 runtime/docs-export.md（水位
+// 无变化跳过=幂等零提交；失败显式报错不回滚 DB 不崩 cored；no force-push；布局=既有 git
+// 导入导出格式不发明第二套）。
+//
+// 单向 output 红线：导出只读 docs DB（Repository 读半边）→ 按对象规范路径写目标工作树 →
 // 有变化才 git add -A + commit → 显式配置了 remote 才 push；**绝不从工作树回导 DB**
 // （回导=SeedFromLayout，仅部署侧 --docs 显式一次性迁移通道）。sidecar（R-DOC-6
 // `<文件>.metadatainfo`）随行导出：生成逻辑在 DocIndex/打标面（不在本仓），导出侧只
@@ -28,20 +34,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ExportConfig 文档导出独立配置项（存储在 sqlite docs DB 的 docs_export_config 表，
-// 初值从 scheme.yaml docTypes[].exportDefault / category=runtime 派生，绝不在代码中硬编码某类型）。
+// ExportConfig 导出过滤投影（scheme 派生——category=runtime 文档类型缺省排除；2026-11-28
+// 用户裁决后**无数据库独立配置面**（旧 docs_export_config 表/读写 API 已删）：过滤=声明面
+// scheme.yaml docTypes 唯一真相源，零运行期可写口）。
 type ExportConfig struct {
 	IncludeRuntimeDocs bool     `json:"includeRuntimeDocs"`
 	ExcludeDocTypes    []string `json:"excludeDocTypes"`
 	ExcludeKinds       []string `json:"excludeKinds"`
 	RuntimeDocTypes    []string `json:"runtimeDocTypes"`
-	UpdatedAt          string   `json:"updatedAt,omitempty"`
-}
-
-// ExportConfigStore 文档导出配置持久化接口（SQLiteRepo 实现；独立配置项读写）。
-type ExportConfigStore interface {
-	GetExportConfig(ctx context.Context) (ExportConfig, error)
-	SetExportConfig(ctx context.Context, cfg ExportConfig) (ExportConfig, error)
 }
 
 // DefaultExportConfig 从 scheme 注册表派生默认导出配置（仅读取 scheme.docTypes 声明的
@@ -68,16 +68,17 @@ func DefaultExportConfig(sch *scheme.Scheme) ExportConfig {
 	}
 }
 
-// Exporter sqlite→git 导出器。单实例对应一个目标工作树；cored 装配层经 Run 挂定时拍
-// （CORE_SYSTEM_DOCS_EXPORT_INTERVAL 开关/间隔 × CORE_SYSTEM_DOCS_EXPORT_DIR 必填 ×
-// CORE_SYSTEM_DOCS_EXPORT_REMOTE 可选 push）。Export 可独立调用（手动触发面）。
+// Exporter sqlite→git 导出器。单实例对应一个目标工作树；装配层（cmd/cored connectops-docs
+// 连接器）按 op 调用拍一发一（2026-11-28 用户裁决——导出=release 节点执行面，非常驻定时器；
+// dir/remote 由 ConnectorOps connectops-docs spec.config 声明）。Export 幂等：水位无变化=
+// 零提交零推送。
 type Exporter struct {
 	repo   Repository // 只读消费（List 半边；写路径零触碰——导出不参与 Apply/权限/事件链）
 	sch    *scheme.Scheme
 	dir    string // 目标工作树（output/public；导出根可被 SeedFromLayout 回放）
 	remote string // 可选 push 远程（空=本地 commit 止步；no force-push）
 
-	mu sync.Mutex // Export 串行化（Run 定时拍与手动触发并存时防交叠写树）
+	mu sync.Mutex // Export 串行化（多 op 并发调用时防交叠写树）
 }
 
 // NewExporter 构建导出器（dir 必填；remote 可选）。不在此建目录/初始化 git（首次 Export 拍
@@ -90,7 +91,7 @@ func NewExporter(repo Repository, sch *scheme.Scheme, dir, remote string) (*Expo
 		return nil, errors.New("repository: 导出器需 scheme 注册表（对象规范路径解析面）")
 	}
 	if strings.TrimSpace(dir) == "" {
-		return nil, errors.New("repository: 导出器需目标工作树（CORE_SYSTEM_DOCS_EXPORT_DIR 必填才启动）")
+		return nil, errors.New("repository: 导出器需目标工作树（connectops-docs spec.config.dir 声明）")
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -106,29 +107,6 @@ type ExportResult struct {
 	Committed bool   // 本拍是否产生 commit（水位相同=幂等零提交）
 	Pushed    bool   // 是否已 push（remote 未配置=恒 false）
 	Commit    string // commit 短 sha（未提交=空）
-}
-
-// Run 定时导出拍（cored goroutine 装配）：每拍 Export；失败只记 stderr（导出失败不回滚
-// sqlite 写、不崩 cored——R-DOC-7 规则 5，下拍重试即自愈）；ctx 取消即退场。
-func (e *Exporter) Run(ctx context.Context, interval time.Duration) {
-	tk := time.NewTicker(interval)
-	defer tk.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tk.C:
-			res, err := e.Export(ctx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "repository: docs 导出失败（只告警不回滚不崩——R-DOC-7 规则 5，下拍重试）: %v\n", err)
-				continue
-			}
-			if res.Committed {
-				fmt.Fprintf(os.Stderr, "repository: docs 导出提交 %s（objects=%d rv=%d pushed=%v；git 历史=导出快照非逐次账）\n",
-					res.Commit, res.Objects, res.HighWater, res.Pushed)
-			}
-		}
-	}
 }
 
 // exportItem 单对象导出条目（布局相对路径 ↔ 对象一一对应——storage 模板唯一具体分支）。
@@ -213,11 +191,6 @@ func (e *Exporter) Export(ctx context.Context) (ExportResult, error) {
 // 对象（写路径闸门后的理论不可达态）跳过不致命——导出为 best-effort 读侧派生任务。
 func (e *Exporter) enumerate(ctx context.Context) ([]exportItem, error) {
 	cfg := DefaultExportConfig(e.sch)
-	if store, ok := e.repo.(ExportConfigStore); ok {
-		if dbCfg, err := store.GetExportConfig(ctx); err == nil {
-			cfg = dbCfg
-		}
-	}
 	exclKinds := make(map[string]bool, len(cfg.ExcludeKinds))
 	for _, k := range cfg.ExcludeKinds {
 		if s := strings.TrimSpace(k); s != "" {
@@ -289,82 +262,6 @@ func extractObjectDocType(raw []byte) string {
 		return doc.Metadata.DocType
 	}
 	return doc.Spec.DocType
-}
-
-// ensureExportConfigTable 确保 sqlite docs_export_config 表存在并按 scheme 种子化默认行。
-func (r *SQLiteRepo) ensureExportConfigTable(ctx context.Context) error {
-	const ddl = `CREATE TABLE IF NOT EXISTS docs_export_config (
-		id                   INTEGER PRIMARY KEY CHECK (id = 1),
-		include_runtime_docs INTEGER NOT NULL DEFAULT 0,
-		exclude_doc_types    TEXT NOT NULL DEFAULT '',
-		exclude_kinds        TEXT NOT NULL DEFAULT '',
-		updated_at           TEXT NOT NULL
-	);`
-	if _, err := r.db.ExecContext(ctx, ddl); err != nil {
-		return err
-	}
-	def := DefaultExportConfig(r.sch)
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO docs_export_config (id, include_runtime_docs, exclude_doc_types, exclude_kinds, updated_at) VALUES (1, 0, ?, '', ?)`,
-		strings.Join(def.ExcludeDocTypes, ","), now)
-	return err
-}
-
-// GetExportConfig 读取数据库中的文档导出独立配置。
-func (r *SQLiteRepo) GetExportConfig(ctx context.Context) (ExportConfig, error) {
-	if err := r.ensureExportConfigTable(ctx); err != nil {
-		return DefaultExportConfig(r.sch), err
-	}
-	var inc int
-	var exclDT, exclK, updatedAt string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT include_runtime_docs, exclude_doc_types, exclude_kinds, updated_at FROM docs_export_config WHERE id = 1`).
-		Scan(&inc, &exclDT, &exclK, &updatedAt)
-	if err != nil {
-		return DefaultExportConfig(r.sch), err
-	}
-	def := DefaultExportConfig(r.sch)
-	return ExportConfig{
-		IncludeRuntimeDocs: inc != 0,
-		ExcludeDocTypes:    splitCSV(exclDT),
-		ExcludeKinds:       splitCSV(exclK),
-		RuntimeDocTypes:    def.RuntimeDocTypes,
-		UpdatedAt:          updatedAt,
-	}, nil
-}
-
-// SetExportConfig 更新数据库中的文档导出独立配置。
-func (r *SQLiteRepo) SetExportConfig(ctx context.Context, cfg ExportConfig) (ExportConfig, error) {
-	if err := r.ensureExportConfigTable(ctx); err != nil {
-		return ExportConfig{}, err
-	}
-	inc := 0
-	if cfg.IncludeRuntimeDocs {
-		inc = 1
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE docs_export_config SET include_runtime_docs = ?, exclude_doc_types = ?, exclude_kinds = ?, updated_at = ? WHERE id = 1`,
-		inc, strings.Join(cfg.ExcludeDocTypes, ","), strings.Join(cfg.ExcludeKinds, ","), now)
-	if err != nil {
-		return ExportConfig{}, err
-	}
-	return r.GetExportConfig(ctx)
-}
-
-func splitCSV(s string) []string {
-	if strings.TrimSpace(s) == "" {
-		return []string{}
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
 }
 
 // pruneStale 删除工作树中 DB 快照之外的文件（删除只在导出提交中体现）；`<对象路径>.metadatainfo`

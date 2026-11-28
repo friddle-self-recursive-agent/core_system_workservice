@@ -1,12 +1,11 @@
 /* workflow-config.js —— 以人为本 Workflow 全节点可视化配置工作台 + OpenAIProvider 点击即配
- * + 数据库独立文档导出配置面板（2026-11-27 用户裁决）：
  *   1. 「Workflow 文档 + Scheme = 声明层，代码 = 通用解释器」：原独立临时 BugDoc 闭环失效，
  *      所有节点参数、日志过滤、ConnectorOps 收集、审批模式（human|agent|auto）、验收条件增删、
  *      收尾 postActions（临时 BugDoc 标记失效 invalidate / 删除 delete / 保留不删除 keep，可增删）
  *      全部声明在 Workflow YAML 与 Scheme Adapter 层，前端可视化编辑并经 POST /v1/apply 落库。
  *   2. 点击任意 Provider 徽章（默认 openai-default）弹出 OpenAIProvider 配置抽屉：
  *      配置账号/密钥引用、baseUrl、模型清单及按任务/ConnectorOps 智商档位（low/standard/high）映射。
- *   3. 文档导出独立配置面板（GET/PUT /v1/docs-export/config）：数据库 docs_export_config 独立存储。 */
+ * 3. 2026-11-28 用户裁决：文档导出独立配置面板已删——导出=release 节点执行面（connectops-docs），非常驻功能。 */
 
 import { esc } from '../core/format.js';
 import { chip, chipGo, docRoute } from '../render/chips.js';
@@ -1061,33 +1060,3 @@ spec:
   });
 }
 
-/** 数据库独立文档导出配置面板（GET/PUT /v1/docs-export/config —— 默认不导出 BugDoc 等运行时文档） */
-export async function hydrateDocsExportConfig(el, ctx) {
-  const slot = el.querySelector('[data-wf-export-cfg]');
-  if (!slot || !ctx.api.exportConfig) return;
-  const r = await ctx.api.exportConfig();
-  if (!r.ok || !el.isConnected) return;
-  const cfg = r.data || {};
-  const excl = Array.isArray(cfg.excludeDocTypes) ? cfg.excludeDocTypes.join(', ') : 'BugDoc, DriftReport, PlanDoc, SessionLog';
-  slot.innerHTML = `
-  <div class="card">
-    <div class="card-h"><span class="h-title">${esc(tr('文档 Git 导出独立配置（数据库 docs_export_config，非代码硬编码）'))}</span></div>
-    <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" data-exp-inc ${cfg.includeRuntimeDocs ? 'checked' : ''} />
-        <span>${esc(tr('导出时包含运行时临时文档 (includeRuntimeDocs)'))}</span>
-      </label>
-      <span class="small faint">${esc(tr('默认排除的运行时 docTypes：'))}</span>
-      <input class="inp mono" data-exp-types value="${esc(excl)}" style="min-width:280px;flex:1" />
-      <button type="button" class="btn tiny acc" data-exp-save>${esc(tr('保存导出配置'))}</button>
-      <span class="small faint" data-exp-msg></span>
-    </div>
-  </div>`;
-  slot.querySelector('[data-exp-save]')?.addEventListener('click', async () => {
-    const inc = Boolean(slot.querySelector('[data-exp-inc]')?.checked);
-    const types = String(slot.querySelector('[data-exp-types]')?.value || '').split(',').map((x) => x.trim()).filter(Boolean);
-    const msg = slot.querySelector('[data-exp-msg]');
-    const res = await ctx.api.saveExportConfig({ includeRuntimeDocs: inc, excludeDocTypes: types, excludeKinds: cfg.excludeKinds || [] });
-    if (msg) msg.textContent = res.ok ? tr('导出配置已更新入库') : (tr('保存失败：') + String(res.error || res.status));
-  });
-}

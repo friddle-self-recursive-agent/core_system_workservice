@@ -19,3 +19,7 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+require github.com/friddle-self-recursive-agent/connectops-gh v0.0.0
+
+replace github.com/friddle-self-recursive-agent/connectops-gh => ../connectops-gh

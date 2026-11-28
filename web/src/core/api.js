@@ -104,8 +104,6 @@ export function createApi(base = '', paths = {}) {
       request('v1/rev-content/' + enc(kind) + '/' + enc(name) + '?scope=' + enc(scope || 'global') + '&rv=' + enc(String(rv))),
     deliveries: () => request('v1/notifications/deliveries'),
     codeAuditFindings: () => request('v1/code-audit/findings'),
-    exportConfig: () => request('v1/docs-export/config'),
-    saveExportConfig: (payload) => request('v1/docs-export/config', { method: 'PUT', body: payload }),
     /* ---------- 写通路（唯一入口——客户端零旁路） ---------- */
     apply: (payload) => request(P.apply, { method: 'POST', body: payload }),
     saveDraft: (payload) => request(P.drafts, { method: 'POST', body: payload }),

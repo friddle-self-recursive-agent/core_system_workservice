@@ -7,7 +7,7 @@ import { t as tr } from '../core/i18n.js';
 import { yamlTextView } from '../render/md.js';
 import { htmlModal } from './modal.js';
 import { openDocChat } from './doc-chat.js';
-import { workflowStudioHtml, bindWorkflowStudio, hydrateDocsExportConfig } from './workflow-config.js';
+import { workflowStudioHtml, bindWorkflowStudio } from './workflow-config.js';
 
 export function wfAnchorOfRoute(route) {
   const r = String(route || '');
@@ -182,11 +182,9 @@ function listScreen(el, ctx) {
     '<div data-wf-runs><div class="card"><div class="card-b"><div class="small faint">' + esc(tr('运行记录现读中…')) + '</div></div></div></div>' +
     '<h2 class="sec-title" style="margin-top:18px">' + esc(tr('模板')) + '</h2>' +
     templatesSectionHtml(ctx) +
-    '<div data-wf-export-cfg style="margin-top:18px"></div>' +
     '</div>';
 
   paintRuns();
-  hydrateDocsExportConfig(el, ctx);
 
   /* 注册表现读（活体面——不再读快照 workflows 键） */
   (async () => {
@@ -556,7 +554,6 @@ function detailScreen(el, ctx, name) {
       // R-UX-10 二次收紧（2026-11-28）：配置详情表单（studio A–F 节+YAML 手改）默认不展示——
       // DOM 整体挂隐藏位，「配置详情」按钮点击移入弹窗（绑定随节点保留，关闭归位）。
       '<div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div>' +
-      '<div data-wf-export-cfg style="margin-top:14px"></div>' +
       (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
       (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
         esc(tr('该 workflow 暂无运行记录——')) + (exec.state === 'unbound' ? esc(tr('执行面未绑定（ConnectorOps 骨架缺席），任务不会拉起 run。')) : '') +
@@ -587,7 +584,6 @@ function detailScreen(el, ctx, name) {
         onApplied: () => detailScreen(el, ctx, usedName),
       });
     });
-    hydrateDocsExportConfig(el, ctx);
   })().catch((e) => {
     if (!el.isConnected || el.getAttribute('data-wf-detail-stamp') !== stamp) return;
     const detail = el.querySelector('[data-wf-detail]');

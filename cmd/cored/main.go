@@ -20,7 +20,9 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/friddle-self-recursive-agent/connectops-gh/gh" // connectops-gh 注册（init 自注册——2026-11-28 opsrun.go 执行面消费）
 	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors"
+	"github.com/friddle-self-recursive-agent/core_system_workservice/connectors/docsdocs"
 	apiserver "github.com/friddle-self-recursive-agent/core_system_workservice/internal/apiserver"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/apply"
 	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/approvaldiff"
@@ -266,15 +268,9 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "cored: 上下文索引=on（/v1/context/index|find|relevance 与 /v1/trace 读面——读侧派生零落库；分片 stale 阈值 env CORE_SYSTEM_CTX_REBUILD_THRESHOLD 缺省 75）\n")
 	}
 
-	// sqlite→git 定时导出器（R-DOC-7 规则 2：git=导出/公开 output/public——周期快照非逐次
-	// 账，逐次正文账=doc_history）。env 三键（部署侧配置，R-PUB-2——键名入库、实际值不入）：
-	// CORE_SYSTEM_DOCS_EXPORT_INTERVAL 控制开关与间隔（如 30m；未设=不启动，不可解析/非正=
-	// 缺口 stderr 可见不启动）；CORE_SYSTEM_DOCS_EXPORT_DIR 必填才启动（目标工作树）；
-	// CORE_SYSTEM_DOCS_EXPORT_REMOTE 设了才 push（no force-push，认证走部署侧凭据不入库）。
-	// 仅 sqlite 后端装配（git 后端自身已是布局权威，无导出语义）。导出=只读派生任务：每拍
-	// 全量快照按对象规范路径写目标树→有变化才 commit→可选 push；失败只告警不回滚 sqlite 写、
-	// 不崩 cored（下拍重试自愈）；绝不回导（回导=--docs 显式一次性迁移通道）。
-	maybeStartDocsExporter(repo, sch)
+	// 2026-11-28 用户裁决「git提交这个不是功能。删掉功能。做成workflow的一个节点」：常驻
+	// docs 导出器（maybeStartDocsExporter/旧三 env 键）已删——导出=connectops-docs 连接器的
+	// git-push/release-publish op（workflow 节点执行时拍一发一；过滤=scheme docTypes 声明）。
 
 	// 事件总线 + 写路径引擎（--allow-apply 才暴露；缺省只读）。
 	bus := eventbus.NewBus(&eventbus.Options{Ops: store})
@@ -393,6 +389,25 @@ func run() error {
 		runOpts.ServiceSpawns = svcBridge
 		svcSpawnState = "on(" + addr + ")（run 落 service 节点挂起+session 拉起；完成信号 ServiceSessionCompleted 续行）"
 	}
+	// connectops 节点 op 执行面（2026-11-28 用户裁决「做成workflow的一个节点。即gh-release
+	// 包括git push/release[scheme调用]」——opsrun.go/ops_bridge.go）：CORE_SYSTEM_CONNECTOPS_RUN=on
+	// 即挂接（run 落 unit=connectops 节点挂起+按 node.Connector 查注册表 Invoke；回执直接续行
+	// on=connectops-resume / 失败 on=connectops-error 留挂起）；缺席=零翻转口径（connectops
+	// 节点照旧纯查表推进）。docs 域连接器（connectops-docs——git-push/release-publish）随注册
+	// 在位；ConnectorOps 对象 spec.config 声明值经 ApplyConfig 注入（registry 可配置契约）。
+	var opsBridge *opsRunBridge
+	opsSpawnState := "off（零翻转——connectops 节点照旧纯查表推进；CORE_SYSTEM_CONNECTOPS_RUN 缺席）"
+	if repo != nil && sch != nil {
+		connectors.RegisterOpsConnector(docsdocs.New(repo, sch))
+		applyConnectorConfigs(repo)
+		if os.Getenv("CORE_SYSTEM_CONNECTOPS_RUN") == "on" {
+			opsBridge = &opsRunBridge{logf: func(f string, a ...any) {
+				fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
+			}}
+			runOpts.ConnectOpsRunner = opsBridge
+			opsSpawnState = "on（run 落 connectops 节点挂起+注册表 Invoke；回执续行 connectops-resume/error）"
+		}
+	}
 	objSpecState := "off（未挂文档库——object 源表不投影）"
 	brakesResolverState := "defaults"
 	if repo != nil {
@@ -406,6 +421,9 @@ func run() error {
 	runs := workflow.NewRunLog(runOpts)
 	if svcBridge != nil {
 		svcBridge.runs = runs // 完成信号续行面注入（构造序：runOpts 需桥、桥需 runs——后注入解环）
+	}
+	if opsBridge != nil {
+		opsBridge.runs = runs // connectops 回执续行面注入（同上解环；opsrun.go/ops_bridge.go）
 	}
 	// 通知门链接线（v0.35 KI-001 通知段——阶段门+dedup/minLevel 落地）：判定器
 	// NotifyPhaseGate（人注意终态族放行 ∧ 其余事件须 involved owner 现势 run 相位终态背书
@@ -425,6 +443,7 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "cored: wake 桥=off（纯投影；CORE_SYSTEM_WAKE_ADDR 缺席）")
 	}
 	fmt.Fprintf(os.Stderr, "cored: service 桥=%s（2026-11-27 session 裁决——builtin service 的 agent 用 session 执行；投影面恒在 GET /v1/workflows/service-spawns）\n", svcSpawnState)
+	fmt.Fprintf(os.Stderr, "cored: connectops 执行=%s（2026-11-28 用户裁决「做成workflow的一个节点」——unit=connectops 真执行：挂起→注册表 Invoke→回执续行；调试面 POST /v1/connectops/{name}/{op}）\n", opsSpawnState)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
 	outboundState := "off（送达止于受理投影）"
 	if dlOpts.Outbound != nil {

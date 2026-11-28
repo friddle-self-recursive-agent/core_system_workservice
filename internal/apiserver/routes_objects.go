@@ -143,43 +143,9 @@ func registerObjectRoutes(d *deps, mux *http.ServeMux) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "kind": kind, "scope": scope, "name": name, "resourceVersion": rv})
 	})
-	// 文档导出独立配置面（2026-11-27 用户裁决：文档导出作为独立配置项存储在数据库 docs_export_config，
-	// 初值由 scheme.yaml docTypes[].exportDefault 派生，绝不在导出器代码中硬编码过滤某类型）：
-	// GET 恒开（存储未实现 ExportConfigStore 时返回 scheme 派生默认配置）；PUT 随 --allow-apply 门控。
-	mux.HandleFunc("GET /v1/docs-export/config", func(w http.ResponseWriter, r *http.Request) {
-		if store, ok := objects.(repository.ExportConfigStore); ok {
-			cfg, err := store.GetExportConfig(r.Context())
-			if err != nil {
-				writeObjErr(w, err)
-				return
-			}
-			writeJSON(w, http.StatusOK, cfg)
-			return
-		}
-		writeJSON(w, http.StatusOK, repository.DefaultExportConfig(sch))
-	})
-	mux.HandleFunc("PUT /v1/docs-export/config", func(w http.ResponseWriter, r *http.Request) {
-		if applier == nil {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "导出配置写路径未开启（cored 缺 --allow-apply；缺省只读）"})
-			return
-		}
-		store, ok := objects.(repository.ExportConfigStore)
-		if !ok {
-			writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "当前存储后端不支持持久化导出配置（需 sqlite docs DB）"})
-			return
-		}
-		var req repository.ExportConfig
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("请求体不可解析: %v", err)})
-			return
-		}
-		saved, err := store.SetExportConfig(r.Context(), req)
-		if err != nil {
-			writeObjErr(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, saved)
-	})
+	// 2026-11-28 用户裁决：文档导出独立配置面（GET/PUT /v1/docs-export/config）已删——
+	// 「git提交这个不是功能。做成workflow的一个节点」：导出=release 节点执行面
+	// （connectops-docs git-push/release-publish），过滤=scheme.yaml docTypes 声明唯一真相源。
 	// 写入口（缺省关闭）：POST /v1/apply——收敛到 apply 管线三步闸门，不旁路存储。
 	// 未开启（applier=nil）时恒 405，缺省只读面语义不变。
 	// 主体（v0.9 请求级）：请求体 subject 字段（优先）或 X-Core-Subject 头（同形 JSON）；

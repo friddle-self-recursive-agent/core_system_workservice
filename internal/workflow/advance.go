@@ -203,6 +203,7 @@ const (
 	spawnKindInner         = "inner"
 	spawnKindApprovalJudge = "approval-judge"
 	spawnKindFanout        = "fanout"
+	spawnKindOps           = "connectops"
 )
 
 type spawnReq struct {
@@ -239,6 +240,20 @@ func (r *RunLog) landAfterAdvanceLocked(run *RunRecord, next string) *spawnReq {
 			run.Status = RunSuspended
 			run.SuspendWhy = SuspendService
 			return &spawnReq{kind: spawnKindService, run: *run, node: node}
+		}
+	}
+	// connectops 执行单元真执行（2026-11-28 用户裁定「做成workflow的一个节点。即gh-release
+	// 包括git push/release[scheme调用]」——opsrun.go）：落 connectops 节点即挂起
+	// （suspendWhy=connectops）+ 锁外派发 RunOp（实现侧按 node.Connector 查 ops 注册表
+	// Invoke）；完成回执 OpsSignal 续行（on=connectops-resume / connectops-error）。
+	if r.opts.ConnectOpsRunner != nil {
+		if node, ok := opsNodeOf(run.Nodes, next); ok {
+			at := stampNano(time.Now())
+			run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: EdgeOpsRun, At: at})
+			run.Phase = next
+			run.Status = RunSuspended
+			run.SuspendWhy = SuspendOps
+			return &spawnReq{kind: spawnKindOps, run: *run, node: node}
 		}
 	}
 	r.applyAdvanceLocked(run, next)
@@ -359,6 +374,14 @@ func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
 				return // 失败=留挂起（run.status.lastError 由实现侧写；续行靠重试/人介入）
 			}
 			r.InnerDone(run.Run, "inner:"+node.Name)
+		}(sp.run, sp.node)
+	case spawnKindOps:
+		if r.opts.ConnectOpsRunner == nil {
+			return
+		}
+		go func(run RunRecord, node NodeView) {
+			defer func() { _ = recover() }() // panic 不崩引擎（实现侧 trace 自记——回执失败态留挂起）
+			r.opts.ConnectOpsRunner.RunOp(run, node)
 		}(sp.run, sp.node)
 	default:
 		if r.opts.ServiceSpawns != nil {

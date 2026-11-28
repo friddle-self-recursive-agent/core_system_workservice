@@ -1,7 +1,8 @@
-// export_test.go —— sqlite→git 导出器验收（R-DOC-7 规则 2：git=导出/公开 output/public——
-// 周期快照非逐次账）：真 git 仓（t.TempDir）上验证 commit 产生与内容字节恒等、消息带对象数+rv、
-// 同水位幂等零提交、陈旧文件删除、sidecar 随行保留、Run 定时拍可启停。不测 push（远端属
-// 部署侧——remote 未配置=本地 commit 止步，no force-push 语义在部署侧凭据面）。
+// export_test.go —— sqlite→git 导出机制验收（R-DOC-7 规则 2：git=导出/公开 output/public——
+// 2026-11-28 用户裁决后=release 节点 op 执行机制，非常驻定时器）：真 git 仓（t.TempDir）上
+// 验证 commit 产生与内容字节恒等、消息带对象数+rv、同水位幂等零提交、陈旧文件删除、sidecar
+// 随行保留、过滤=scheme docTypes 声明派生。不测 push（远端属部署侧——remote 未配置=本地
+// commit 止步，no force-push 语义在部署侧凭据面）。
 package repository
 
 import (
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/friddle-self-recursive-agent/core_system_workservice/internal/scheme"
 )
 
 func newExporter(t *testing.T, r *SQLiteRepo, dir string) *Exporter {
@@ -182,47 +185,6 @@ func TestExporterPruneStaleAndKeepSidecar(t *testing.T) {
 	}
 }
 
-func TestExporterRunStartsAndStops(t *testing.T) {
-	r, _ := newSQLiteRepo(t)
-	ctx := context.Background()
-	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "run-a", Content: agentYAML("run-a", "")}, "fm", ""); err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	e := newExporter(t, r, dir)
-	runCtx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		e.Run(runCtx, 10*time.Millisecond)
-	}()
-	// 定时拍应在窗口内产生首个导出提交。
-	deadline := time.Now().Add(3 * time.Second)
-	for commitCountOut(dir) == 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("Run 定时拍未产生导出提交（3s 超时）")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Run 未随 ctx 取消退场")
-	}
-}
-
-// commitCountOut 容错计数（空仓=0）。
-func commitCountOut(dir string) int {
-	out, err := gitInOut(dir, "rev-list", "--count", "HEAD")
-	if err != nil {
-		return 0
-	}
-	var n int
-	_, _ = fmt.Sscanf(out, "%d", &n)
-	return n
-}
-
 func TestNewExporterGuards(t *testing.T) {
 	r, _ := newSQLiteRepo(t)
 	if _, err := NewExporter(nil, mustScheme(t), t.TempDir(), ""); err == nil {
@@ -236,10 +198,17 @@ func TestNewExporterGuards(t *testing.T) {
 	}
 }
 
-func TestExportConfigExcludesRuntimeDocTypesFromDB(t *testing.T) {
-	r, _ := newSQLiteRepo(t)
+func TestExportExcludesRuntimeDocTypesFromScheme(t *testing.T) {
+	// 2026-11-28 用户裁决：docs_export_config 独立配置面已删——导出过滤=scheme docTypes 声明
+	// 唯一真相源（category=runtime 缺省排除，零运行期可写口）。
 	ctx := context.Background()
-	// 写入普通对象与带 docType: BugDoc 的运行时文档对象
+	sch := mustSchemeWithRuntimeDocType(t, "BugDoc")
+	ops := &memOps{}
+	r, err := OpenSQLite(t.TempDir()+"/docs.db", sch, &Options{Ops: ops}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
 	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "design-a", Content: agentYAML("design-a", "")}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -247,35 +216,28 @@ func TestExportConfigExcludesRuntimeDocTypesFromDB(t *testing.T) {
 	if _, _, err := r.Write(ctx, &Object{Kind: "Agent", Scope: "global", Name: "bug-temp", Content: bugContent}, "fm", ""); err != nil {
 		t.Fatal(err)
 	}
-	// 数据库独立配置项设置排除 BugDoc（默认不导出运行时文档）
-	if _, err := r.SetExportConfig(ctx, ExportConfig{
-		IncludeRuntimeDocs: false,
-		ExcludeDocTypes:    []string{"BugDoc"},
-	}); err != nil {
+	dir := t.TempDir()
+	exp, err := NewExporter(r, sch, dir, "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	e := newExporter(t, r, dir)
-	res, err := e.Export(ctx)
+	res, err := exp.Export(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Objects != 1 {
-		t.Fatalf("BugDoc 应按数据库导出配置排除，只导出 1 个对象，得 %+v", res)
-	}
-	// 开启 IncludeRuntimeDocs=true 后再次导出，BugDoc 随配置被纳入
-	if _, err := r.SetExportConfig(ctx, ExportConfig{
-		IncludeRuntimeDocs: true,
-		ExcludeDocTypes:    []string{"BugDoc"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	res2, err := e.Export(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res2.Objects != 2 {
-		t.Fatalf("开启 IncludeRuntimeDocs 后应导出 2 个对象，得 %+v", res2)
+		t.Fatalf("category=runtime docType 应按 scheme 声明排除（只导出 1 个对象），得 %+v", res)
 	}
 }
 
+// mustSchemeWithRuntimeDocType 测试 scheme（testScheme 基础+docTypes 声明一条 category=runtime
+// 类型——scheme 派生导出过滤的判据面）。
+func mustSchemeWithRuntimeDocType(t *testing.T, name string) *scheme.Scheme {
+	t.Helper()
+	base := strings.Replace(testScheme, "spec:\n", "spec:\n  docTypes:\n    - {name: "+name+", category: runtime}\n", 1)
+	s, err := scheme.Load([]byte(base))
+	if err != nil {
+		t.Fatalf("载入测试 scheme: %v", err)
+	}
+	return s
+}

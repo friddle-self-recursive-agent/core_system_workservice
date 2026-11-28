@@ -148,6 +148,7 @@ type HistoryRow struct {
 	On        string `json:"on"`                  // 迁移事件（advance/ApprovalGranted/ApprovalRejected/converged）
 	At        string `json:"at"`                  // 迁移时刻（RFC3339Nano）
 	SessionID string `json:"sessionId,omitempty"` // 迁移时刻 run 会话锚（空=未回填——诚实缺席，不编造节点会话）
+	Note      string `json:"note,omitempty"`      // 迁移注记（2026-11-28 connectops 执行面——op 结果摘要/显式错误；新载荷键=代际判别器）
 }
 
 // ReconcileWorkflow 对账锚的循环本体锚（owner 对账 workflow → core-workflow）。
@@ -296,6 +297,12 @@ type RunOptions struct {
 	FanoutLauncher FanoutLauncher
 	// OnFanoutLaunched 扇出回执钩子（nil=只落 run history；装配层可发通知/审计）。锁外调用。
 	OnFanoutLaunched func(run RunRecord, refs []SubRunRef)
+	// ConnectOpsRunner connectops 节点 op 执行面（2026-11-28 用户裁定「做成workflow的一个节点。
+	// 即gh-release包括git push/release[scheme调用]」——可选能力，nil=零翻转：connectops 节点
+	// 照旧纯查表推进）。挂接后 run 推进落 unit=connectops 节点即挂起（suspendWhy=connectops）
+	// + 锁外派发 RunOp（实现侧按 node.Connector 查 ops 注册表 Invoke）；完成回执经 OpsSignal
+	// 续行（on=connectops-resume；失败 on=connectops-error 留挂起缺口可见）。
+	ConnectOpsRunner ConnectOpsRunner
 }
 
 // SetVerifyGate 装配后挂接 Verify 硬 gate（cored 构造序：RunLog 先于 verify 配置就绪——
@@ -641,6 +648,42 @@ func (r *RunLog) ServiceSignal(rec TriggerRecord, session string) {
 		// 写穿透（R-ENG §1）：续行同步 upsert（可演化投影——恢复取续行后词形）。
 		if r.opts.Store != nil {
 			persistAppend("run service 续行", r.opts.Store.AppendRun(runToRow(*run)))
+		}
+		return
+	}
+}
+
+// OpsSignal connectops op 完成回执续行（2026-11-28 opsrun.go——进程内直接调用，不走事件面：
+// 完成源与引擎同进程，service 完成源在宿主进程故走事件注入，两路径各自的诚实边界）。
+// ok=true → 续行（history 行 on=connectops-resume，Note=结果摘要）；ok=false → 保持挂起
+// （history 行 on=connectops-error，Note=显式错误——缺口可见不静默，service 失败同口径）。
+func (r *RunLog) OpsSignal(run int64, workflowName, note string, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.ring) - 1; i >= 0; i-- {
+		rg := &r.ring[i]
+		if run > 0 && rg.Run != run {
+			continue
+		}
+		if rg.Workflow != workflowName || len(rg.Phases) == 0 {
+			continue
+		}
+		if rg.Status != RunSuspended || rg.SuspendWhy != SuspendOps {
+			continue // 非 connectops 挂起态（审批挂起/终态/在途）不作用——继续扫描更旧 run
+		}
+		edge := EdgeOpsResume
+		if !ok {
+			edge = EdgeOpsError
+		}
+		histAppend(rg, rg.Phase, rg.Phase, edge)
+		rg.History[len(rg.History)-1].Note = note
+		if ok {
+			rg.Status = RunRunning
+			rg.SuspendWhy = ""
+		}
+		// 写穿透（R-ENG §1）：回执同步 upsert（可演化投影——恢复取回执后词形；失败态同样留账）。
+		if r.opts.Store != nil {
+			persistAppend("run connectops 回执", r.opts.Store.AppendRun(runToRow(*rg)))
 		}
 		return
 	}

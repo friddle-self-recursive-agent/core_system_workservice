@@ -268,46 +268,6 @@ func (b *selfHealHTTPBridge) Bounce(sessionID string) error {
 
 func (b *selfHealHTTPBridge) InjectWord() string { return b.word }
 
-// maybeStartDocsExporter sqlite→git 定时导出器装配（R-DOC-7 规则 2：git=导出/公开
-// output/public——周期快照非逐次账，逐次正文账=doc_history）。env 三键（部署侧配置，
-// R-PUB-2——键名入库、实际值不入）：CORE_SYSTEM_DOCS_EXPORT_INTERVAL 控制开关与间隔
-// （如 30m；未设=不启动，不可解析/非正=缺口 stderr 可见不启动）；CORE_SYSTEM_DOCS_EXPORT_DIR
-// 必填才启动（目标工作树）；CORE_SYSTEM_DOCS_EXPORT_REMOTE 设了才 push（no force-push，
-// 认证走部署侧凭据不入库）。仅 sqlite 后端装配（git 后端自身已是布局权威，无导出语义）。
-// 导出=只读派生任务：每拍全量快照按对象规范路径写目标树→有变化才 commit→可选 push；失败只
-// 告警不回滚 sqlite 写、不崩 cored（下拍重试自愈）；绝不回导（回导=--docs 显式一次性迁移通道）。
-func maybeStartDocsExporter(repo repository.Repository, sch *scheme.Scheme) {
-	if _, ok := repo.(*repository.SQLiteRepo); !ok {
-		return
-	}
-	iv := strings.TrimSpace(os.Getenv("CORE_SYSTEM_DOCS_EXPORT_INTERVAL"))
-	if iv == "" {
-		return
-	}
-	d, perr := time.ParseDuration(iv)
-	switch {
-	case perr != nil || d <= 0:
-		fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（CORE_SYSTEM_DOCS_EXPORT_INTERVAL=%q 不可解析/非正——缺口可见不启动）\n", iv)
-	case os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR") == "":
-		fmt.Fprintf(os.Stderr, "cored: docs 导出器=off（interval=%s 已设但 CORE_SYSTEM_DOCS_EXPORT_DIR 缺席——必填才启动）\n", d)
-	default:
-		exp, err := repository.NewExporter(repo, sch, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE"))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "cored: docs 导出器装配失败（读面不受影响——导出是只读派生任务）: %v\n", err)
-			return
-		}
-		expCtx, cancelExp := context.WithCancel(context.Background())
-		defer cancelExp()
-		go exp.Run(expCtx, d)
-		pushState := "off（本地 commit 止步）"
-		if os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") != "" {
-			pushState = "on（push " + os.Getenv("CORE_SYSTEM_DOCS_EXPORT_REMOTE") + "）"
-		}
-		fmt.Fprintf(os.Stderr, "cored: docs 导出器=on(%s → %s push=%s)（sqlite→git 周期快照——git 历史=导出快照非逐次账；失败只告警不回滚不崩；绝不回导）\n",
-			d, os.Getenv("CORE_SYSTEM_DOCS_EXPORT_DIR"), pushState)
-	}
-}
-
 // setupSessionWatchdog 会话活性 watchdog 装配（KI-003，event.md 规则 14/14b 引擎内部源第六段；
 // agent-session.md §7）：装配层定时扫描 ops DB session_heartbeat——超阈值无心跳自产
 // SessionStalled（判定态词=SuspectedStall；dedupKey=session:<id>）→自愈固定顺序（第一动作=
