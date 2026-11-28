@@ -61,6 +61,47 @@ func (r *RunLog) Advance() int {
 			r.capped++ // 超限本拍零动作（下拍续推——level-triggered 不丢拍）
 			continue
 		}
+		// fanout 停留门（2026-11-28 E2E 活体缺口——arrival 绕过 landAfter 的补 landing）：
+		// 扇出节点经审批边/判断边到达（ResumeSignal/判断词查表不走 landAfterAdvanceLocked）时，
+		// run 驻留在扇出相位而落点判定只在 advance 步命中——下一拍 advance 直接把扇出节点
+		// 机械跳过（run138 Planning→Executing 实证）。本门=驻留即补 landing（innerGate 同款
+		// 停留门语义）：当前相位=unit=workflow ∧ fanout 节点 ∧ History 无本相位 fanout-spawn
+		// 行（未落过）→ 挂起+锁外派发（挂起 run 后续拍不再进入本分支——挂起面零动作）。
+		// 父/子链同相位词分域（run140 活体教训）：子 run 驻留同相位是子链自己的节点语义
+		// （doc-apply 落稿续行）——扇出机械是父链专属，停留门只作用 ParentRun==0。
+		if r.opts.FanoutLauncher != nil && run.ParentRun == 0 {
+			if node, ok := nodeOfPhase(run.Nodes, run.Phase); ok && node.Unit == "workflow" && node.Fanout != nil {
+				landed := false
+				for _, h := range run.History {
+					if h.On == EdgeFanoutSpawn && h.To == run.Phase {
+						landed = true
+						break
+					}
+				}
+				if !landed {
+					at := stampNano(time.Now())
+					run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: EdgeFanoutSpawn, At: at})
+					run.Status = RunSuspended
+					run.SuspendWhy = SuspendFanout
+					run.FanoutPlan = node.Fanout.From
+					if r.opts.Store != nil {
+						persistAppend("run 扇出驻留挂起", r.opts.Store.AppendRun(runToRow(*run)))
+					}
+					spawnQ = append(spawnQ, spawnReq{kind: spawnKindFanout, run: *run, node: node})
+					continue // 本拍止于扇出挂起（join 判据在 FanoutSignal）
+				}
+			}
+		}
+		// inner 停留门前置（2026-11-28 E2E 活体缺口二——收敛判定先于执行门）：原序 advance
+		// 查表 miss（序列尾）→ converge 先落，inner 停留门排在 miss 之后=尾相位 inner 节点
+		// 永不执行（run139 merge-results@Reporting 静默收束实证——rv12 起 merge 判定恰在
+		// 尾相位：merge 完成才谈收束）。本门提至收敛判定前=真停留门语义：尾相位 inner 节点
+		// 未执行 → 挂起+派发；执行完（History 有 inner-spawn）门放行 → miss 照旧收敛。
+		// 中链 inner 节点行为不变（门命中时本就先于 advance 落挂起）。
+		if isp := r.innerGateLocked(run); isp != nil {
+			spawnQ = append(spawnQ, *isp) // executor=inner 轻量执行单元：当前相位停留执行——挂起+锁外派发
+			continue
+		}
 		next, ok := stepByTable(run.Transitions, run.Phase, EdgeAdvance)
 		if !ok {
 			// F-04 正向末步收束（2026-11-26，workflow.md §1：Reporting 完成即 converged，
@@ -80,10 +121,6 @@ func (r *RunLog) Advance() int {
 		if r.opts.VerifyGate != nil && Phase(run.Phase) == Verifying {
 			// Verify 硬 gate 候选：离开 Verifying 相位先过审（审核锁外——不持 run 锁）。
 			cands = append(cands, gateCand{run: *run})
-			continue
-		}
-		if isp := r.innerGateLocked(run); isp != nil {
-			spawnQ = append(spawnQ, *isp) // executor=inner 轻量执行单元（2026-11-28 润滑剂裁定）：当前相位停留执行——挂起+锁外派发
 			continue
 		}
 		if sp := r.landAfterAdvanceLocked(run, next); sp != nil {

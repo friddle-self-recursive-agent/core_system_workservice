@@ -52,6 +52,16 @@ func (g *Generator) JudgeApproval(run workflow.RunRecord, policy workflow.Approv
 	}
 	sys := "你是审批判决小 agent（ops_core_inner_agent）。严格按给定准则判断该审批能否自动通过；只依据输入文本，不编造。只输出 JSON 对象，字段 granted(bool)/risk(low|medium|high)/reason(中文≤200字)，不要 Markdown 包裹。"
 	subject := g.readSubject(ctx, objKey) // 被审物（对象现值/原始 issue 正文）——判决与人审兜底共用同一份
+	// 批量 run 被审物（2026-11-28 E2E 活体缺口——objKey=整仓词形 readSubject 读不到）：
+	// 本 run 的执行计划实体（plan-run<N>）在场=被审物改用计划摘要+项清单（judge 判什么批什么——
+	// 人审兜底卡同一份）。计划缺席=原词形（诚实缺席）。
+	if strings.Contains(subject, "不可读") {
+		if o, err := g.Repo.Get(ctx, "WorkflowPlan", "global", fmt.Sprintf("plan-run%d", run.Run)); err == nil && o != nil {
+			if s := planSubject(string(o.Content)); s != "" {
+				subject = s
+			}
+		}
+	}
 	user := fmt.Sprintf("对象=%s run=%d 审批准则=%s 允许自动批准的最高风险=%s\n待批内容：\n%s",
 		objKey, run.Run, criteria, maxRisk, clip(subject, 6000))
 	raw := g.complete(ctx, cfg, model, sys, user)
