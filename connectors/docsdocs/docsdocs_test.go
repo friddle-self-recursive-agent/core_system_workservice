@@ -64,7 +64,7 @@ func TestApplyConfigAndGitPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(res), `"committed":true`) {
+	if !strings.Contains(string(res), `"Committed":true`) {
 		t.Fatalf("首拍应产生提交: %s", res)
 	}
 	// 幂等：水位无变化=零提交。
@@ -72,7 +72,7 @@ func TestApplyConfigAndGitPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(res2), `"committed":true`) {
+	if strings.Contains(string(res2), `"Committed":true`) {
 		t.Fatalf("同水位第二拍应零提交: %s", res2)
 	}
 	// op 不在声明集=显式错误。
