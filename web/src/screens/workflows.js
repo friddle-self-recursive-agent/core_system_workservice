@@ -349,7 +349,7 @@ export function wfNodeGraphHtml(wf, runs) {
         const graph = wfGraphHtml(phasesRich, transitions);
         if (graph) {
           return '<div class="small faint" style="margin-bottom:6px">' + esc(tr('相位图——交叉出口=判断分叉边（边上词形=判断词；judge 会话 [decision:词] 标记或判定域 connectops-jev 回传点火，未命中=advance 兜底）。')) + '</div>' +
-            graph +
+            '<div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div>' +
             '<div class="small faint">' + esc(tr('点击节点：到达该节点的运行/任务与真实会话锚。')) + '</div>' +
             '<div data-wf-node-drawer class="wf-node-drawer"></div>';
         }

@@ -13435,7 +13435,7 @@ spec:
           const phasesRich = phasesRaw.map((n) => typeof n === "string" ? { name: n, phase: n } : n).filter((n) => n && (n.phase || n.name));
           const graph = wfGraphHtml(phasesRich, transitions);
           if (graph) {
-            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + "</div>" + graph + '<div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
+            return '<div class="small faint" style="margin-bottom:6px">' + esc(t("\u76F8\u4F4D\u56FE\u2014\u2014\u4EA4\u53C9\u51FA\u53E3=\u5224\u65AD\u5206\u53C9\u8FB9\uFF08\u8FB9\u4E0A\u8BCD\u5F62=\u5224\u65AD\u8BCD\uFF1Bjudge \u4F1A\u8BDD [decision:\u8BCD] \u6807\u8BB0\u6216\u5224\u5B9A\u57DF connectops-jev \u56DE\u4F20\u70B9\u706B\uFF0C\u672A\u547D\u4E2D=advance \u515C\u5E95\uFF09\u3002")) + '</div><div style="overflow-x:auto;padding-bottom:4px">' + graph + '</div><div class="small faint">' + esc(t("\u70B9\u51FB\u8282\u70B9\uFF1A\u5230\u8FBE\u8BE5\u8282\u70B9\u7684\u8FD0\u884C/\u4EFB\u52A1\u4E0E\u771F\u5B9E\u4F1A\u8BDD\u951A\u3002")) + '</div><div data-wf-node-drawer class="wf-node-drawer"></div>';
           }
         }
       } catch (e) {
