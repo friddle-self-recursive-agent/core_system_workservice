@@ -1,0 +1,10 @@
+# core-watchdog 每小时一拍（2026-11-28 用户裁定「现在阶段还是1小时监听一次」）
+[Unit]
+Description=core_agent watchdog hourly tick
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

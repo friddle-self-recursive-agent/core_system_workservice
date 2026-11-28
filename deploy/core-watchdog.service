@@ -1,0 +1,12 @@
+# core-watchdog —— core_agent 看门狗 oneshot 服务（部署：scp 到 /etc/systemd/system/）
+# 安装：sudo cp core-watchdog.{service,timer} /etc/systemd/system/ && sudo systemctl daemon-reload
+#       && sudo systemctl enable --now core-watchdog.timer
+[Unit]
+Description=core_agent watchdog: down-detect -> pull latest -> rebuild/swap -> restart; loop keepalive via LoopRequested
+After=network-online.target
+
+[Service]
+User=friddle
+Type=oneshot
+ExecStart=/home/friddle/bin/core-watchdog.sh
+TimeoutStartSec=900
