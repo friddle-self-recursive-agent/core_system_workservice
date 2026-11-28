@@ -395,11 +395,34 @@ function bindWfNodeGraph(el, runs, taskIdx, wfName, sessionRows = []) {
   });
 }
 
-/** ConnectorOps 骨架节点（真实 executionFlow；缺席=执行面未绑定，不伪造）。 */
-export function wfFlowNodesHtml(wf) {
+/**
+ * 执行面状态判定（同源单点：详情头部徽标/kv、执行节点段、空运行说明共用一词形）。
+ * 三值：bound=connector ops 已声明且引擎挂接门已开（CORE_SYSTEM_CONNECTOPS_RUN=on）；
+ *      partial=已声明但引擎门未开（声明在册，暂不实际拉起）；
+ *      unbound=无任何 connector ops 声明。
+ * 骨架文档缺席≠执行面未绑定——骨架只是可选落地说明，不作绑定判据（#21）。
+ * engineOn 缺席/on 之外一律 partial（诚实降级，不冒充已挂接）。
+ */
+export function wfExecState(wf, engineOn) {
+  const exec = (wf && wf.execution) || {};
+  const connector = String(exec.connector || '');
+  const declared = exec.state === 'bound' && !!connector; // connector/ops 已声明=可执行
+  const state = !declared ? 'unbound' : (engineOn === true ? 'bound' : 'partial');
+  const note = state === 'bound'
+    ? tr('执行面 bound——connector ops 已声明且引擎挂接门已开（CORE_SYSTEM_CONNECTOPS_RUN=on），节点可执行。')
+    : state === 'partial'
+      ? tr('执行面 partial——connector ops 已声明，但引擎挂接门未开（CORE_SYSTEM_CONNECTOPS_RUN≠on）；声明在册，暂不实际拉起。')
+      : tr('执行面 unbound——无任何 connector ops 声明，任务不会拉起 run。');
+  return { state, connector, note };
+}
+
+/** ConnectorOps 执行节点（真实 executionFlow 骨架节点投影；缺席=无落地说明节点，≠未绑定）。 */
+export function wfFlowNodesHtml(wf, execState) {
   const nodes = wf && Array.isArray(wf.executionFlow) ? wf.executionFlow : [];
+  const st = execState || wfExecState(wf); // 缺省回退同源判定（调用方不各自推词形）
   if (!nodes.length) {
-    return '<div class="small faint">' + esc(tr('执行面未绑定（ConnectorOps 骨架缺席）——workflow apply 后的落地 agent 待接线；当前节点=相位链，节点级会话未单独记录。')) + '</div>';
+    return '<div class="small faint">' + esc(st.note) + ' ' +
+      esc(tr('骨架落地说明节点缺席（可选说明，不作绑定判据）；当前节点=相位链。')) + '</div>';
   }
   return '<div class="wf-flow">' + nodes.map((n) =>
     '<div class="wf-flow-node"><div class="wf-flow-name mono">' + esc(String(n.name || '—')) + '</div>' +
@@ -512,6 +535,9 @@ function detailScreen(el, ctx, name) {
     const runsAll = wfApiRuns(runsRes);
     const taskIdx = wfTaskIndex(wfApiTasks(tasksRes));
     const serverAliases = (wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.aliases) || {};
+    // 引擎挂接态现读（/v1/workflows aggregate 投影 CORE_SYSTEM_CONNECTOPS_RUN=on）——
+    // 执行面三值判定的门输入；缺席/on 之外=false（诚实降级，不冒充已挂接）。
+    const engineOn = !!(wfsRes && wfsRes.ok && wfsRes.data && wfsRes.data.connectopsRun === true);
     const alias = serverAliases[String(name)] || WF_ALIASES[String(name)];
     let wf = rows.find((x) => String(x && x.name) === String(name));
     if (!wf && alias) wf = rows.find((x) => String(x && x.name) === String(alias));
@@ -545,14 +571,15 @@ function detailScreen(el, ctx, name) {
     }
     const latest = wf.latest || null;
     const exec = wf.execution || {};
+    const execState = wfExecState(wf, engineOn); // 三值状态同源单点（头部/段落/空运行说明共用）
     const aliasNote = String(name) !== usedName
       ? chip(tr('词形兼容') + '：' + String(name) + ' → ' + usedName, 'mute') : '';
     // 概览 kv（复用既有 kv 渲染）
     const kvRows = [
       [tr('来源'), chip(String(wf.specSource || '—'), wf.specSource === 'builtin' ? 'acc' : (wf.specSource === 'object' ? 'ok' : 'mute'))],
-      [tr('执行面'), exec.connector ? chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + ' ' +
-        chipGo(String(exec.connector), 'connectors', 'mute', true, tr('ConnectorOps')) : '—'],
-      [tr('骨架'), exec.skeleton ? chip(tr('在册'), 'ok') : chip(tr('缺席'), 'mute')],
+      [tr('执行面'), chip(execState.state, execState.state === 'bound' ? 'ok' : 'warn') +
+        (execState.connector ? ' ' + chipGo(execState.connector, 'connectors', 'mute', true, tr('ConnectorOps')) : '')],
+      [tr('骨架'), exec.skeleton ? chip(tr('在册'), 'ok') : chip(tr('缺席'), 'mute')], // 可选落地说明——不作绑定判据
       [tr('运行'), chip(tr('环内 ') + runs.length + ' / 累计 ' + String(wf.runsTotal != null ? wf.runsTotal : '—'), runs.length ? 'acc' : 'mute') +
         (wf.runs24h != null ? ' ' + chip('24h ' + String(wf.runs24h), 'mute') : '')],
       [tr('最新'), latest ? runChip(latest) + ' ' + chip('run #' + String(latest.run), 'mono') + ' ' + esc(relAge(latest.startedAt) || '') : '—'],
@@ -564,7 +591,7 @@ function detailScreen(el, ctx, name) {
       '<div class="run-hero"><div class="rh-top">' +
       (aliasNote ? aliasNote : '') + '</div>' +
       '<div class="rh-title">' + esc(usedName) + ' ' + chip(String(wf.specSource || '—'), 'acc') + ' ' +
-      chip(String(exec.state || '—'), exec.state === 'bound' ? 'ok' : 'warn') + '</div>' +
+      chip(execState.state, execState.state === 'bound' ? 'ok' : 'warn') + '</div>' +
       '<div class="rh-meta"><span>' + esc(tr('定义/运行/任务均为现读真实数据')) + '</span>' +
       (latest ? '<span>' + esc(tr('最近运行') + ' ') + runChip(latest) + '</span>' : '') + '</div>' +
       '<div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div>' +
@@ -573,13 +600,13 @@ function detailScreen(el, ctx, name) {
       (String(wf.rawYaml || '') ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(tr('YAML 声明')) + '</button>' : '') +
       '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
-      '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
+      '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf, execState) + '</div></div>' +
       // R-UX-10 二次收紧（2026-11-28）：配置详情表单（studio A–F 节+YAML 手改）默认不展示——
       // DOM 整体挂隐藏位，「配置详情」按钮点击移入弹窗（绑定随节点保留，关闭归位）。
       '<div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div>' +
       (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
       (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
-        esc(tr('该 workflow 暂无运行记录——')) + (exec.state === 'unbound' ? esc(tr('执行面未绑定（ConnectorOps 骨架缺席），任务不会拉起 run。')) : '') +
+        esc(tr('该 workflow 暂无运行记录——')) + (execState.state === 'unbound' ? esc(execState.note) : '') +
         '</div></div></div>');
     bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
     bindWorkflowStudio(el, ctx, wf, usedName, () => detailScreen(el, ctx, usedName));
