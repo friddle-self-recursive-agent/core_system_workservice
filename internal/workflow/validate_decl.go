@@ -133,8 +133,10 @@ func ValidateDecl(raw []byte, sch *scheme.Scheme) error {
 			if !phaseSet[t.From] {
 				add("transitions[%d] from=%q 未在 phases 声明（查表必空）", i, t.From)
 			}
-			if !phaseSet[t.To] {
-				add("transitions[%d] to=%q 未在 phases 声明（落点不可达）", i, t.To)
+			// to 侧豁免 "Failed"：F-04 终点锚（驳回边合法目标——run.Phase=Failed 终态词形，
+			// 引擎 ResumeSignal/收束判定专治；活体教训 2026-11-28 语义闸首拍即拦了存量驳回边）。
+			if !phaseSet[t.To] && t.To != "Failed" {
+				add("transitions[%d] to=%q 未在 phases 声明（落点不可达；Failed 终点锚豁免）", i, t.To)
 			}
 		}
 	}
