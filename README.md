@@ -55,3 +55,19 @@ corectl tick          # = 发布 ReconcileTick（系统事件触发 core-workflo
 - 驱动分仓（rule.md R-ENG-3）：本仓 connectors/ 只收 builtin 驱动（gitfs/dsh）；用法型驱动放部署侧用法仓（私域），依赖方向恒为用法仓→本仓。
 - 契约测试：Provider 五方法三例（首跑/重跑幂等/失败路径）先于实现；Ops 是运行时挂载（环境+op子集+Workflow），不写死在驱动里。
 - 骨架期的每个 `// TODO` 都对应 open-questions 或 runtime 文档里的一项（instance 仓 open-questions.md 与 runtime/*.md）。
+
+## 逐次正文账（doc_history）口径
+
+`GET /v1/doc-history/{kind}/{name}?scope=s` 的逐次账按 **每版一行** 记账（R-DOC-7 规则 4）：
+凡产生新 `resourceVersion` 的写——普通 apply、`fromDraft` 稿→面、回滚式改写——都在同一事务内
+落一行 `rev=新 rv` / `fieldManager=本次写者` / `at=落库时刻` / `content=该版正文逐字节`。
+因此对象现值 rv=N 时账面恰有 rev=1..N 全行，不存在「最新一次改动查不到」的缺口。
+
+明确不落账的写路径（口径边界，均**未产生新版本**，不属漏账）：
+- `noop`（幂等重入：内容规范文本与现行一致）与 `conflict`（乐观锁失败）：无新版本产生；
+- 种子导入（`SeedFromLayout`）：导入对象自**导入版本**起算一行（`fieldManager=seed:import`），
+  导入前的历史版本正文布局未提供，不伪造占位行；
+- 删除（`delete`）：被删版本在写入时已落账，删除不再重复插同 rev 行（历史库无账行时补兜底行）。
+
+元数据显示：`创建` 取逐次账最早一行时刻，`最近提交` 取最新一行时刻/写者（账按 rev 降序返回），
+两端不取反，避免「创建晚于最近提交」的时间线倒挂（issue #23）。

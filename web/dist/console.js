@@ -14019,12 +14019,12 @@ spec:
       if (!slot.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
       const rows = r && r.ok && Array.isArray(r.data && (r.data.rows || r.data.history || r.data.items)) ? r.data.rows || r.data.history || r.data.items : r && r.ok && Array.isArray(r.data) ? r.data : [];
       if (!rows.length) return;
-      const first = rows[0];
-      const last = rows[rows.length - 1];
+      const earliest = rows[rows.length - 1];
+      const latest = rows[0];
       slot.innerHTML = metaHeaderHtml(meta, Object.assign({}, base, {
-        createdAt: String(first && (first.at || first.appliedAt) || ""),
-        lastAt: String(last && (last.at || last.appliedAt) || ""),
-        lastBy: String(last && last.fieldManager || "")
+        createdAt: String(earliest && (earliest.at || earliest.appliedAt) || ""),
+        lastAt: String(latest && (latest.at || latest.appliedAt) || ""),
+        lastBy: String(latest && latest.fieldManager || "")
       }));
       slot.querySelectorAll("[data-go]").forEach((n) => {
         n.addEventListener("click", (ev) => {
