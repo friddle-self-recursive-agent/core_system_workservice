@@ -35,6 +35,7 @@ type TaskView struct {
 	ReadySince    time.Time     // ready 起算（零值=当拍入队——排序兜底当拍，避免零值抢先）
 	MaxConcurrent int           // 单任务覆写（只收紧全局上限）
 	Timeout       time.Duration // 单任务租约覆写（只收紧）
+	RV            int64         // 对象 resourceVersion 现势（Task watchdog 规则12：rv 推进=活性心跳——2026-11-28）
 }
 
 // Decision 单任务本拍处置（Phase 空=不写面；Start=本拍拉起；Reason=阻塞/排队原因——人看，

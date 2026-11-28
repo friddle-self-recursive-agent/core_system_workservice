@@ -109,6 +109,7 @@ type TriggerRecord struct {
 	CCExec    ExecutorBinding // cc 目标执行绑定投影（空 cc=零值绑定）
 	Scope     string          // metadata.scope 四层词（BUG-010，event.md 规则 19——总线侧强制回填的派发闸判据）
 	TargetRun int64           // 审批信号目标 run 序号（0=按锚最新挂起 run；>0=定向 run——console 批闸行携带）
+	ParentRun int64           // 子 run 的父 run 序号（0=非子 run；2026-11-28 #6 fanout 接线）
 }
 
 // ScopeGate 事件→Agent 投递的 scope 闸（BUG-010，event.md 规则 19③ 派发闸——

@@ -362,6 +362,10 @@ func run() error {
 	if repo != nil {
 		diffGen.Repo = repo
 		runOpts.DiffSummarizer = diffGen
+		// 自审批真判面（2026-11-28 #4）：mode=agent 闸锚挂起后由 ops_core_inner_agent 按
+		// autoCriteria 真判+DocumentDiff 留痕（inneragent-approval-run<N>），超险回退人审。
+		// nil=旧词形零翻转（未挂文档库时 agent 仍盲放行，缺口可见）。
+		runOpts.ApprovalJudge = diffGen
 	}
 	// 内置轻量 agent 执行面（2026-11-28 用户裁定「doc-apply 的审批以及部分服务运行起来可以
 	// 使用内置的 agent 来做润滑剂。即低智商要求的可以使用内置 agent」）：executor=inner 的
@@ -438,10 +442,10 @@ func run() error {
 	// gate 缺席缺口可见）。判定在推进拍锁外执行（checker 时长不阻塞订阅主干）。
 	if vg := newVerifyGate(verifyGateConfig{sch: sch, target: *verifyTarget,
 		schemeDir: filepath.Dir(sch.Source)}); vg != nil {
-		runOpts.VerifyGate = vg
-		runOpts.OnVerifyBlocked = verifyEscalatePublisher(bus, sch, func(f string, a ...any) {
+		// VerifyGate 装配后挂接（RunLog 已构建——setter 是权威挂接点，旧 runOpts 赋值不生效）。
+		runs.SetVerifyGate(vg, verifyEscalatePublisher(bus, sch, func(f string, a ...any) {
 			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
-		})
+		}))
 		fmt.Fprintf(os.Stderr, "cored: Verify 硬 gate=on（--verify-target %s；connectops-code-audit audit op 真实审核—— "+
 			"error findings/unbound=卡 Verify 不放行+Escalate source=core；R-TYPE-3 ruleChecks 三行接线）\n", *verifyTarget)
 	} else {
@@ -453,6 +457,17 @@ func run() error {
 	triggers.BindAgents(wakeSink)
 	if svcBridge != nil {
 		triggers.BindServiceSignals(svcBridge) // service 完成信号面（SessionCompleted→翻终态+续行）
+	}
+	// Task watchdog 规则14c 启动遍历之自审批清账（2026-11-28 用户裁定「builtin workflow 的
+	// llm agent 全自己审批」/ workservice #4）：装配完成后扫一遍存量 agent 模式闸锚挂起 run
+	// 逐条派发真判（重启孤儿/历史积压清账；human 模式挂起不碰——人工闸语义不变）。
+	if runOpts.ApprovalJudge != nil {
+		go func() {
+			defer func() { _ = recover() }()
+			time.Sleep(3 * time.Second) // 订阅面/恢复重放先落位再清账
+			d, skip := runs.JudgeSuspendedApprovals(50)
+			fmt.Fprintf(os.Stderr, "cored: 自审批启动清账=派发 %d 跳过 %d（存量 agent 模式挂起 run 真判——DocumentDiff 判决留痕）\n", d, skip)
+		}()
 	}
 	triggers.WireExecutor(workflow.ExecWorkflow, workflow.ExecNotification, workflow.ExecAgent) // 机械判别器：resolve execution.wired false→true（三执行面）
 	// 事件驱动推进源挂接（v0.29 事件拍——巡检拍与推进拍合一，workflow.md 规则 15 v0.29 段）：

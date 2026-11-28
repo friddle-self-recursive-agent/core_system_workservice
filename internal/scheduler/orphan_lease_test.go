@@ -106,9 +106,10 @@ func mustGet(t *testing.T, ctx context.Context, repo *repository.SQLiteRepo, sco
 	return o.Content
 }
 
-// L87-01 认领归档域收窄锚：running 在册但本库归档无 running 判定（跨域=另一实例判定面，
-// loop-87 18:00 活体实证：authority core-system.db 无 17:35 running 行、executor
-// core-headless.db 有）→ 不认领租约起点、不进 TTL 回收路（不误判 failed）。
+// L87-01 + 规则12（2026-11-28）：跨域 running（本库归档无 running 判定=另一实例判定面）
+// 由 watchLeases 的 rv 真相源认领——租约起点=首见 now（全 TTL 观察窗，不冒充历史起点；
+// loop-87 的误判 failed 根因=用陈旧归档 ts 当租约起点，now 锚已消除）。语义升级锚：
+// authority 对他 core 拉起的 running 不再「保守悬挂」，rv 停更超 TTL 照常回收（issue #1）。
 func TestAdoptOrphanLeases_CrossDomainRunningNotAdopted(t *testing.T) {
 	sch := func(t *testing.T) *scheme.Scheme {
 		t.Helper()
@@ -134,13 +135,59 @@ func TestAdoptOrphanLeases_CrossDomainRunningNotAdopted(t *testing.T) {
 	fresh := New(repo, eventbus.NewBus(&eventbus.Options{Ops: ops}), sch, ops, ops, Options{Sessions: ops})
 	fresh.Tick(ctx)
 	fresh.mu.Lock()
-	_, leased := fresh.leases["self-recursive-core/cross-domain-probe"]
+	at, leased := fresh.leases["self-recursive-core/cross-domain-probe"]
 	adopted := fresh.adopted
 	fresh.mu.Unlock()
 	if !adopted {
 		t.Fatalf("首拍应扫档（adopted=true）")
 	}
-	if leased {
-		t.Fatalf("跨域 running（本库归档无 running 判定）不应认领租约——认领即 TTL 到点误判 failed（loop-87 活体缺口复现）")
+	if !leased {
+		t.Fatalf("跨域 running 应由 watchLeases 认领（规则12 账目真相源——不再保守悬挂，issue #1）")
+	}
+	// now 锚+TTL 半窗内=不回收（loop-87 误判 failed 不复现：年轻任务不受陈旧起点拖累）。
+	views := []TaskView{{ID: "self-recursive-core/cross-domain-probe", Phase: PhaseRunning}}
+	half := ConfigDefaults().LeaseTTL / 2
+	d := Recover(views[0], at, ConfigDefaults(), time.Now().Add(half))
+	if d.Phase != "" {
+		t.Fatalf("TTL 半窗内不应回收（loop-87 误判复现）：got %+v", d)
+	}
+}
+
+// 规则12 活性锚（2026-11-28）：rv 推进=租约续期（长跑任务不被误回收）；
+// rv 停更超 leaseTtl=悬挂回收 ready（attempts+1 重拉——issue #1 悬挂病灶收口）。
+func TestWatchLeases_RVProgressRefreshAndStaleRecover(t *testing.T) {
+	sch, err := scheme.LoadFile(coreSchemePath())
+	if err != nil {
+		t.Fatalf("装载 scheme: %v", err)
+	}
+	repo, err := repository.OpenSQLite(t.TempDir()+"/docs.db", sch, nil, "")
+	if err != nil {
+		t.Fatalf("打开 sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+	ops, err := opslog.OpenSQLite(t.TempDir() + "/ops.db")
+	if err != nil {
+		t.Fatalf("打开 ops DB: %v", err)
+	}
+	t.Cleanup(func() { _ = ops.Close() })
+	ctx := context.Background()
+	base := time.Unix(1795860000, 0)
+	clock := base
+	fresh := New(repo, eventbus.NewBus(&eventbus.Options{Ops: ops}), sch, ops, ops,
+		Options{Sessions: ops, Now: func() time.Time { return clock }})
+	writeTaskObject(t, ctx, repo, "self-recursive-core", "rv-probe", "running", "")
+	fresh.Tick(ctx) // 首见认领：lease=base
+	// rv 推进（模拟 runner 心跳写面）+ 时钟过 2/3 TTL → 续期后不回收
+	writeTaskObject(t, ctx, repo, "self-recursive-core", "rv-probe", "running", "")
+	clock = base.Add(2 * ConfigDefaults().LeaseTTL / 3)
+	fresh.Tick(ctx)
+	if ph, _ := phaseOf(t, ctx, repo, "self-recursive-core", "rv-probe"); ph != PhaseRunning {
+		t.Fatalf("rv 推进+TTL 2/3 应续期保 running，got %s", ph)
+	}
+	// rv 停更（最后一次写面在 2/3 TTL 处）+ 时钟过「上次活性+TTL」→ 回收 ready
+	clock = base.Add(2*ConfigDefaults().LeaseTTL/3 + ConfigDefaults().LeaseTTL + time.Minute)
+	fresh.Tick(ctx)
+	if ph, _ := phaseOf(t, ctx, repo, "self-recursive-core", "rv-probe"); ph != PhaseReady {
+		t.Fatalf("rv 停更超 TTL 应回收 ready（规则12 重拉），got %s", ph)
 	}
 }
