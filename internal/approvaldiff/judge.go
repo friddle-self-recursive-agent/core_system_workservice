@@ -234,8 +234,41 @@ func approvalVerdictDoc(run workflow.RunRecord, objKey, docName string, policy w
 }
 
 // —— objKey 三段投影（splitObjKey 的容错版：缺席段=空串，不阻断判决留痕）——
-func splitKind(k string) string  { p := strings.Split(k, "/"); if len(p) > 0 { return p[0] }; return "" }
-func splitScope(k string) string { p := strings.Split(k, "/"); if len(p) > 1 { return p[1] }; return "" }
-func splitName(k string) string  { p := strings.Split(k, "/"); if len(p) > 2 { return p[2] }; return "" }
+func splitKind(k string) string {
+	p := strings.Split(k, "/")
+	if len(p) > 0 {
+		return p[0]
+	}
+	return ""
+}
+func splitScope(k string) string {
+	p := strings.Split(k, "/")
+	if len(p) > 1 {
+		return p[1]
+	}
+	return ""
+}
+func splitName(k string) string {
+	p := strings.Split(k, "/")
+	if len(p) > 2 {
+		return p[2]
+	}
+	return ""
+}
 
 var _ workflow.ApprovalJudge = (*Generator)(nil)
+
+// planSubject 执行计划实体 → 被审物词形（批量 run 的审批面——judge 判什么批什么）：
+// decision/summary + 逐项一行（key/title/action/risk）。解析失败=空串（诚实缺席）。
+func planSubject(content string) string {
+	_, summary, items, ok := parsePlanDoc(content)
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("批量执行计划（decision/汇总：" + summary + "）\n")
+	for _, it := range items {
+		fmt.Fprintf(&b, "#%s [%s/%s] %s — %s\n", it.Key, it.Action, it.Risk, it.Title, it.Reason)
+	}
+	return b.String()
+}
