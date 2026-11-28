@@ -15,7 +15,7 @@
 
 import { esc, relAge, fmtNum, trunc } from '../core/format.js';
 import { confirmModal, toast } from './modal.js';
-import { runApprovalInfoOf, runApprovalInfoHtml } from './approvals.js';
+import { runApprovalInfoOf, runApprovalInfoHtml, pendingItems, pendingItemScope } from './approvals.js';
 import { chip, chipGo, emptyBox, objRoute } from '../render/chips.js';
 import { t as tr } from '../core/i18n.js';
 
@@ -366,17 +366,24 @@ function agentsHtml(ctx, filterAgents) {
 }
 
 /* ── 大屏骨架（系统视角与 Service 视角共用布局——同构换数据源） ── */
+/** #20 收件箱计数单一口径：=审批中心清单（pendingItems）经 scope 过滤后的长度。
+ * welcome 大屏与 approvals 清单同读一个过滤函数——数字与卡片永远同源、可截图对照。 */
+export function inboxCountOf(ctx, scope = '') {
+  return pendingItems(ctx)
+    .filter((it) => !scope || !pendingItemScope(it) || pendingItemScope(it) === scope).length;
+}
+
 function dashLayout(ctx, opts) {
   const store = ctx.store;
   const scope = opts.scope || ''; // F-10：Service 视角 scope 收窄（空=系统视角全量）
   const inScope = (o) => !scope || String((o && (o.scope || (o.raw && o.raw.scope))) || '') === scope;
-  /* 收件箱卡：快照缺席（null/undefined）=整卡不渲染（§19.3——不显示「—」像坏了）。 */
+  /* 收件箱卡：快照缺席（null/undefined）=整卡不渲染（§19.3——不显示「—」像坏了）。
+   * #20：计数改读 pendingItems（审批中心清单同一过滤函数）——此前读 inbox.items 原始条数
+   * （陈旧草稿/历史归档行注水成「52 待你处理」），与点进去的 4-5 张清单对不上。 */
   const inbox = store.inbox();
-  const inboxItems = inbox ? ((Array.isArray(inbox) ? inbox : ((inbox && inbox.items) || [])) || []) : [];
-  const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
   const inboxCard = inbox
     ? statCard(tr('收件箱'),
-      inboxScoped.length,
+      inboxCountOf(ctx, scope),
       tr('待你处理'), 'inbox', '')
     : '';
   const stats =

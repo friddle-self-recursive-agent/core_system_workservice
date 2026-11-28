@@ -81,6 +81,7 @@ var CoreConsoleWeb = (() => {
     ["\u5F85\u5BA1\u533A\u4E3A\u7A7A", "No pending reviews (explicit empty state)"],
     ["\u6536\u4EF6\u7BB1", "Inbox"],
     ["\u5F85\u4F60\u5904\u7406", "awaiting you"],
+    ["\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09", "item(s) \u2014 same source as the Overview inbox"],
     ["\u8FDB\u884C\u4E2D\u4EFB\u52A1", "Running tasks"],
     ["\u4EFB\u52A1\u4E2D\u5FC3", "Task Center"],
     ["kinds \u6458\u8981", "kinds summary"],
@@ -1242,7 +1243,7 @@ var CoreConsoleWeb = (() => {
     return t2.length > n ? t2.slice(0, n) + "\u2026" : t2;
   }
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var core_exports = {};
   __export(core_exports, {
     JsonPatchError: () => JsonPatchError,
@@ -1256,7 +1257,7 @@ var CoreConsoleWeb = (() => {
     validator: () => validator
   });
 
-  // node_modules/fast-json-patch/module/helpers.mjs
+  // ../../../web/node_modules/fast-json-patch/module/helpers.mjs
   var __extends = /* @__PURE__ */ (function() {
     var extendStatics = function(d, b) {
       extendStatics = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(d2, b2) {
@@ -1383,7 +1384,7 @@ var CoreConsoleWeb = (() => {
     })(Error)
   );
 
-  // node_modules/fast-json-patch/module/core.mjs
+  // ../../../web/node_modules/fast-json-patch/module/core.mjs
   var JsonPatchError = PatchError;
   var deepClone = _deepClone;
   var objOps = {
@@ -1703,7 +1704,7 @@ var CoreConsoleWeb = (() => {
     return a !== a && b !== b;
   }
 
-  // node_modules/fast-json-patch/module/duplex.mjs
+  // ../../../web/node_modules/fast-json-patch/module/duplex.mjs
   var duplex_exports = {};
   __export(duplex_exports, {
     compare: () => compare,
@@ -1873,7 +1874,7 @@ var CoreConsoleWeb = (() => {
     return patches;
   }
 
-  // node_modules/fast-json-patch/index.mjs
+  // ../../../web/node_modules/fast-json-patch/index.mjs
   var fast_json_patch_default = Object.assign({}, core_exports, duplex_exports, {
     JsonPatchError: PatchError,
     deepClone: _deepClone,
@@ -2797,7 +2798,7 @@ var CoreConsoleWeb = (() => {
     return chip("\u540C\u6B65\u4E2D", "acc");
   }
 
-  // node_modules/diff/libesm/diff/base.js
+  // ../../../web/node_modules/diff/libesm/diff/base.js
   var Diff = class {
     diff(oldStr, newStr, options2 = {}) {
       let callback;
@@ -2999,7 +3000,7 @@ var CoreConsoleWeb = (() => {
     }
   };
 
-  // node_modules/diff/libesm/diff/line.js
+  // ../../../web/node_modules/diff/libesm/diff/line.js
   var LineDiff = class extends Diff {
     constructor() {
       super(...arguments);
@@ -3115,12 +3116,31 @@ var CoreConsoleWeb = (() => {
 
   // src/screens/approvals.js
   var ignored = /* @__PURE__ */ new Set();
+  var deadDrafts = /* @__PURE__ */ new Set();
+  function draftKey(d) {
+    return "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name;
+  }
+  function dequeueDeadDraft(d) {
+    if (d && d.kind && d.name) deadDrafts.add(draftKey(d));
+  }
   function pendingItems(ctx2) {
-    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: "draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name, draft: d }));
+    const drafts = ctx2.store.drafts().filter((d) => d && d.kind && d.name).map((d) => ({ kind: "draft", key: draftKey(d), draft: d })).filter((x) => !ignored.has(x.key) && !deadDrafts.has(x.key));
     const runs = ctx2.store.runs().filter((r) => r && (String(r.status || r.state || "") === "suspended" || String(r.phase || "") === "AwaitingApproval")).map((r) => ({ kind: "run", key: "run|" + String(r.workflow || "") + "#" + String(r.run != null ? r.run : ""), run: r }));
     const props = ctx2.store.proposals().filter((p) => p && p.name && String(p.status || "submitted") === "submitted").map((p) => ({ kind: "proposal", key: "proposal|" + String(p.scope || "global") + "|" + String(p.name), proposal: p }));
     const evs = ctx2.store.events().filter((e) => e && e.type === "ApprovalNeeded" && !ignored.has("ev|" + String(e.id ?? ""))).map((e) => ({ kind: "event", key: "ev|" + String(e.id ?? ""), ev: e }));
-    return drafts.filter((x) => !ignored.has(x.key)).concat(runs, props, evs);
+    return drafts.concat(runs, props, evs);
+  }
+  function pendingItemScope(it) {
+    if (!it) return "";
+    if (it.kind === "draft") return String(it.draft && it.draft.scope || "global");
+    if (it.kind === "run") {
+      const inv = String(it.run && (it.run.involved || it.run.route || "") || "");
+      const m = /^Workflow\/([^/\s]+)\//.exec(inv);
+      return m ? m[1] : String(it.run && (it.run.scope || it.run.ownerScope) || "") || "global";
+    }
+    if (it.kind === "proposal") return String(it.proposal && it.proposal.scope || "global");
+    if (it.kind === "event") return String(it.ev && it.ev.scope || "");
+    return "";
   }
   function apKeyOf(d) {
     return (d.kind + "/" + (d.scope || "global") + "/" + d.name).replace(/[^A-Za-z0-9]/g, "_");
@@ -3201,6 +3221,14 @@ var CoreConsoleWeb = (() => {
     const scope = d.scope || "global";
     return '<div class="card ap-item" data-ap-item="' + esc(apKeyOf(d)) + '"' + hl + '><div class="card-h"><span class="h-title"><span class="lk mono" data-go="' + esc(docRoute(d.kind, scope, d.name)) + '">' + esc(scope + "/" + d.name) + '</span></span><span class="h-right">' + kindBadge(d.kind) + " " + chip(t("\u7A3F: ") + (d.fieldManager || "\u2014"), "mute") + '</span></div><div class="card-b"><div data-apdiff="' + esc(apKeyOf(d)) + t('"><div class="small faint">diff \u73B0\u8BFB\u4E2D\u2026</div></div>') + '<div class="dh-actions" style="margin-top:10px"><button class="' + approveCls + '" data-ap-approve="' + esc(apKeyOf(d)) + t('">\u6279\u51C6\uFF08= Apply\uFF09</button> ') + '<button class="btn btn-ghost sm" data-ap-ignore="' + esc(it.key) + t('">\u5FFD\u7565</button> ') + '<button class="btn btn-secondary sm" data-go="' + esc(docRoute(d.kind, scope, d.name)) + t('">\u7F16\u8F91\u5668</button>') + "</div></div></div>";
   }
+  function refreshPendingCount(ctx2) {
+    const el = document.querySelector("[data-ap-count]");
+    if (!el) return;
+    el.innerHTML = esc(t("\u5F85\u4F60\u5904\u7406")) + " <b>" + pendingItems(ctx2).length + "</b> " + esc(t("\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09"));
+  }
+  function isDeadDraftResult(r) {
+    return !!r && !r.ok && (Number(r.status) === 404 || String(r.error || "").includes("\u8349\u7A3F\u4E0D\u5B58\u5728"));
+  }
   async function hydrateDiff(ctx2, d) {
     const stamp = typeof location !== "undefined" ? location.hash : "";
     const [draftR, faceR] = await Promise.all([
@@ -3208,6 +3236,13 @@ var CoreConsoleWeb = (() => {
       ctx2.api.object(d.kind, d.scope || "global", d.name)
     ]);
     if ((typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+    if (isDeadDraftResult(draftR)) {
+      dequeueDeadDraft(d);
+      const card = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
+      if (card) card.remove();
+      refreshPendingCount(ctx2);
+      return;
+    }
     const box = document.querySelector('[data-apdiff="' + apKeyOf(d) + '"]');
     if (!box) return;
     if (!draftR.ok) {
@@ -3314,7 +3349,8 @@ var CoreConsoleWeb = (() => {
       toast(esc(t("Apply \u5931\u8D25\uFF08") + String(r.error || r.status) + t("\uFF09\u2014\u2014\u7A3F\u4FDD\u7559\u8BED\u4E49\uFF0C\u672A\u843D\u5E93\u3002")), "error");
       return;
     }
-    ignored.add("draft|" + d.kind + "|" + (d.scope || "global") + "|" + d.name);
+    ignored.add(draftKey(d));
+    dequeueDeadDraft(d);
     const cardEl = document.querySelector('[data-ap-item="' + apKeyOf(d) + '"]');
     if (cardEl) cardEl.remove();
     ctx2.api.snapshot().then((s) => {
@@ -3434,7 +3470,7 @@ var CoreConsoleWeb = (() => {
       t("\u5BA1\u6279"),
       t("\u5F85\u5BA1\u533A=\u8349\u7A3F\u7F13\u5B58\uFF08DocReview \u7C7B\u540C\u6E90\uFF09\u222A ApprovalNeeded \u5F52\u6863\u884C\u3002\u4E8B\u4EF6\u884C\u6279\u51C6/\u9A73\u56DE=\u5BF9 Workflow \u951A\u53D1\u5E03 ApprovalGranted/ApprovalRejected\uFF08run \u7EED\u884C/\u7EC8\u6001 Failed\uFF09\uFF1B\u8349\u7A3F\u6279\u51C6=Apply\uFF1B\u5747=\u4EBA\u70B9\u786E\u8BA4\u3002"),
       chip(t("\u6279\u91CF\u6279\u51C6\u901A\u8DEF\u5F85\u540E\u7AEF\u8BCD\u5F62\u2014\u2014\u9010\u6761\u6279\u51C6\uFF08\u8BDA\u5B9E\u6CE8\u8BB0\uFF09"), "mute")
-    ) + focusBanner + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
+    ) + focusBanner + '<div class="small faint" data-ap-count style="margin-bottom:10px">' + esc(t("\u5F85\u4F60\u5904\u7406")) + " <b>" + items.length + "</b> " + esc(t("\u4EF6\uFF08\u4E0E\u603B\u89C8\u6536\u4EF6\u7BB1\u540C\u6E90\uFF09")) + "</div>" + (items.length ? items.map((it, idx) => itemHtml(ctx2, it, idx, !!focus && matchesApprovalFocus(it, focus))).join("") : emptyBox(t("\u6682\u65E0\u5F85\u5BA1\u4E8B\u9879"), "", chipGo(t("\u56DE Welcome"), "welcome", "acc", false))) + t('<div data-ap-ledger style="margin-top:20px"><div class="small faint">\u5DF2\u51B3\u8BB0\u5F55\u73B0\u8BFB\u4E2D\u2026</div></div>') + t('<h2 class="sec-title">\u6536\u4EF6\u7BB1\uFF08\u5F85\u4F60\u5904\u7406\uFF09</h2>') + inboxHtml(ctx2) + "</div>";
     items.filter((x) => x.kind === "draft").forEach((x) => hydrateDiff(ctx2, x.draft));
     items.filter((x) => x.kind === "run").forEach((x) => {
       const a = verdictAnchorOf(x.run);
@@ -3475,6 +3511,7 @@ var CoreConsoleWeb = (() => {
         ignored.add(btn.dataset.apIgnore);
         const card = btn.closest(".ap-item");
         if (card) card.remove();
+        refreshPendingCount(ctx2);
       });
     });
     el.querySelectorAll("[data-go]").forEach((x) => {
@@ -3751,16 +3788,17 @@ var CoreConsoleWeb = (() => {
     if (!rows) return '<div class="card"><div class="ob-empty">' + esc(t("\u6682\u65E0\u5BF9\u8C61")) + "</div></div>";
     return '<div class="card">' + rows + "</div>";
   }
+  function inboxCountOf(ctx2, scope = "") {
+    return pendingItems(ctx2).filter((it) => !scope || !pendingItemScope(it) || pendingItemScope(it) === scope).length;
+  }
   function dashLayout(ctx2, opts) {
     const store2 = ctx2.store;
     const scope = opts.scope || "";
     const inScope = (o) => !scope || String(o && (o.scope || o.raw && o.raw.scope) || "") === scope;
     const inbox = store2.inbox();
-    const inboxItems = inbox ? (Array.isArray(inbox) ? inbox : inbox && inbox.items || []) || [] : [];
-    const inboxScoped = scope ? inboxItems.filter((x) => !x || !x.scope || String(x.scope) === scope) : inboxItems;
     const inboxCard = inbox ? statCard(
       t("\u6536\u4EF6\u7BB1"),
-      inboxScoped.length,
+      inboxCountOf(ctx2, scope),
       t("\u5F85\u4F60\u5904\u7406"),
       "inbox",
       ""
@@ -4120,7 +4158,7 @@ var CoreConsoleWeb = (() => {
     reportScreen(el, ctx2);
   }
 
-  // node_modules/marked/lib/marked.esm.js
+  // ../../../web/node_modules/marked/lib/marked.esm.js
   function _getDefaults() {
     return {
       async: false,
@@ -6256,7 +6294,7 @@ ${text2}</tr>
   var parser = _Parser.parse;
   var lexer = _Lexer.lex;
 
-  // node_modules/dompurify/dist/purify.es.mjs
+  // ../../../web/node_modules/dompurify/dist/purify.es.mjs
   function _OverloadYield(e, d) {
     this.v = e, this.k = d;
   }
@@ -8405,7 +8443,7 @@ ${text2}</tr>
   }
   var purify_default = createDOMPurify();
 
-  // node_modules/js-yaml/dist/js-yaml.mjs
+  // ../../../web/node_modules/js-yaml/dist/js-yaml.mjs
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
