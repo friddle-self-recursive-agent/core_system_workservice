@@ -3,7 +3,26 @@
  * 词形兼容旧 console 全量路由：#/welcome #/obj(/:kind(/:scope/:name)) #/events #/event/:id
  * #/tasks #/task/:id #/report #/doc/:name #/doc/:kind/:scope/:name #/chat/:agent #/session/:id
  * #/approvals #/inbox #/proposals #/workflows #/wf/:name(/r/:n) #/tree #/docs
- * #/designdoc(/:repo/:path) #/connectors #/s/:name。 */
+ * #/designdoc(/:repo/:path) #/connectors #/s/:name。
+ * #22（2026-11-28 R-UX-3 同族）：需参数裸路径（#/task #/doc #/wf…）兜底=「缺参数+可点出口」，
+ * 不再把 :agent 这类工程参数拼写甩给人。 */
+
+import { esc } from './format.js';
+
+/* 需参数裸路径的人话出口（键=裸路径首段；只在「已注册模式的前缀命中」时启用——
+ * 不给未注册路由编造出口）。#/chat 的常规落点是显式 chat 路由（main.js 重定向默认 agent），
+ * 此处保留同词形出口供「只注册 chat/:agent」的嵌入宿主/兜底路径使用。 */
+const PARAM_EXITS = {
+  chat: { go: 'chat/core-headless', label: '进入会话（默认 agent）' },
+  session: { go: 'chat/core-headless', label: '回会话列表' },
+  task: { go: 'tasks', label: '回工作与流程' },
+  event: { go: 'events', label: '回事件流' },
+  doc: { go: 'docs', label: '回文档与资产' },
+  wf: { go: 'workflows', label: '回流程运行' },
+  prop: { go: 'proposals', label: '回提案' },
+  s: { go: 'home', label: '回首页' },
+  service: { go: 'welcome', label: '回总览' },
+};
 
 /** 解析 hash → 已解码段数组（空 hash=[]；查询串剥除；非法编码段原样保留不抛）。 */
 export function parseHash(hash) {
@@ -43,11 +62,38 @@ export function createRouter(opts = {}) {
     return null;
   }
 
-  function notFoundHtml(segs) {
+  /** 裸路径「缺参数」诊断：segs 是某已注册模式的前缀且下一段为 :param → 报缺失参数名；
+   * 完全不相干的词形仍走未知路径（不冒充）。 */
+  function missingParamOf(segs) {
+    for (const r of routes) {
+      const ps = r.pattern.split('/');
+      if (ps.length <= segs.length) continue;
+      let prefix = true;
+      for (let i = 0; i < segs.length; i++) {
+        if (ps[i].charAt(0) === ':' || ps[i] !== segs[i]) { prefix = false; break; }
+      }
+      if (prefix && ps[segs.length].charAt(0) === ':') {
+        return ps.slice(segs.length).filter((p) => p.charAt(0) === ':').map((p) => p.slice(1));
+      }
+    }
+    return null;
+  }
+
+  function notFoundHtml(segs, missing) {
+    const exit = missing && PARAM_EXITS[segs[0]];
+    const act = (exit
+      ? '<button class="btn btn-primary" data-go="' + esc(exit.go) + '">' + esc(exit.label) + '</button> '
+      : '') + '<button class="btn' + (exit ? ' btn-secondary' : ' btn-primary') + '" data-go="home">回首页</button>';
+    if (missing) {
+      return '<div class="view-inner">' +
+        '<div class="empty"><div class="e-title">缺参数：' + missing.map((p) => '<code>' + esc(p) + '</code>').join('、') + '</div>' +
+        '<div class="small faint">这个地址少了参数——不用手拼，点下面入口进。</div>' +
+        '<div class="e-act">' + act + '</div></div></div>';
+    }
     return '<div class="view-inner">' +
-      '<div class="empty"><div class="e-title">未知路径（' + segs.map((s) => s).join('/') + '）</div>' +
+      '<div class="empty"><div class="e-title">未知路径（' + esc(segs.join('/')) + '）</div>' +
       '<div class="small faint">路由词形见控制台导航——或从首页对话进入。</div>' +
-      '<div class="e-act"><button class="btn btn-primary" data-go="home">回首页</button></div></div></div>';
+      '<div class="e-act">' + act + '</div></div></div>';
   }
 
   const api = {
@@ -79,7 +125,7 @@ export function createRouter(opts = {}) {
       const hit = resolve(segs);
       if (!hit) {
         current = { route: '404', pattern: '', segs, params: {} };
-        viewEl.innerHTML = notFoundHtml(segs);
+        viewEl.innerHTML = notFoundHtml(segs, missingParamOf(segs));
         return null;
       }
       current = { route: hit.r.pattern.split('/')[0], pattern: hit.r.pattern, segs, params: hit.params };
