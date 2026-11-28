@@ -46,7 +46,15 @@ func TestOpsNodeSuspendResume(t *testing.T) {
 	if h.On != EdgeOpsRun {
 		t.Fatalf("落点迁移行 on=%s，欲 %s", h.On, EdgeOpsRun)
 	}
-	if len(runner.seen) != 1 || runner.seen[0].node.Connector != "connectops-docs" || runner.seen[0].node.Op != "release-publish" {
+	// 派发=出锁 goroutine（非阻塞契约）——轮询等待受理落账。
+	deadline := time.Now().Add(2 * time.Second)
+	for len(runner.seen) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("执行面未派发（2s 超时）")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if runner.seen[0].node.Connector != "connectops-docs" || runner.seen[0].node.Op != "release-publish" {
 		t.Fatalf("执行面未按节点 Connector/Op 派发：%+v", runner.seen)
 	}
 
