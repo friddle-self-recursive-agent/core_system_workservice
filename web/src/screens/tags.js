@@ -145,7 +145,7 @@ export function cachedIndexTagsOf(kind, scope, name) {
 /** 标签聚合屏（#/tags）。 */
 export function render(el, ctx) {
   const store = ctx.store;
-  const vocab = tagVocabFromKinds(store.kinds());
+  let vocab = tagVocabFromKinds(store.kinds());
   el.innerHTML = '<div class="view-inner">' +
     screenHead(tr('标签'), tr('tagType 分组聚合（三源严格去重：context/index 索引投影 ∪ 对象 tags ∪ 缓存 frontmatter；零假词表）——点 tag 看命中文档'),
       chipGo(tr('文档库'), 'docs', 'mute', false)) +
@@ -198,8 +198,18 @@ export function render(el, ctx) {
     })()
     : Promise.resolve();
 
-  Promise.all([loadContextIndexDocs(ctx.api), hydrateP]).then(([res]) => {
+  /* 词表现读注水（2026-11-28 tags 批：快照 kinds 只存名单字符串——spec.metadata.tagTypes 词表
+   * 声明随 kind 行，须 /v1/scheme/kinds 全行现读；objects 屏 scheme 弹窗同款兜底）。
+   * 词表缺席=前缀域兜底分组（type:value 词形不落未分组），存量裸词由词表精确映射兜。 */
+  const kindsP = (ctx.api && typeof ctx.api.kinds === 'function')
+    ? ctx.api.kinds().catch(() => null)
+    : Promise.resolve(null);
+
+  Promise.all([loadContextIndexDocs(ctx.api), hydrateP, kindsP]).then(([res, , kr]) => {
     if (!el.isConnected || (typeof location !== 'undefined' ? location.hash : '') !== stamp) return;
+    if (kr && kr.ok && kr.data && Array.isArray(kr.data.kinds)) {
+      vocab = tagVocabFromKinds(kr.data.kinds);
+    }
     if (!res.ok) {
       paint(
         aggregateTags(null, store.objects(), cachedFn, vocab),

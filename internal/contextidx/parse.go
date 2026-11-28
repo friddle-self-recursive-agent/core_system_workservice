@@ -155,6 +155,9 @@ func intIn(c1, c2 *yaml.Node, key string) (int, bool) {
 }
 
 // tagsOf tags 对清单（[{tag, tag_type}]；tagType/tag_type 双收；缺 tag 名的项跳过）。
+// 字符串词形三收（2026-11-28 tags 批）：["domain:console"]=前缀拆 tag_type（导出/手写便捷词形）、
+// ["console"]=裸词 TagType 空（存量对象 metadata.tags 兼容读——读侧不迁移旧词形，
+// 分组归并由读侧词表/前端兜，R-CTX-3 读侧兼容旧 spec.metadata.* 同口径）。
 func tagsOf(container *yaml.Node) []Tag {
 	n := mapGet(container, "tags")
 	if n == nil || n.Kind != yaml.SequenceNode {
@@ -163,10 +166,13 @@ func tagsOf(container *yaml.Node) []Tag {
 	var out []Tag
 	for _, item := range n.Content {
 		if item.Kind != yaml.MappingNode {
-			// 字符串词形 "domain:console" 兼容收（导出/手写便捷词形）
-			if item.Kind == yaml.ScalarNode && item.Value != "" {
-				if typ, tag, found := strings.Cut(item.Value, ":"); found {
-					out = append(out, Tag{Tag: tag, TagType: typ})
+			if item.Kind == yaml.ScalarNode {
+				if v := strings.TrimSpace(item.Value); v != "" {
+					if typ, tag, found := strings.Cut(v, ":"); found && tag != "" {
+						out = append(out, Tag{Tag: tag, TagType: typ})
+					} else if !found {
+						out = append(out, Tag{Tag: v})
+					}
 				}
 			}
 			continue

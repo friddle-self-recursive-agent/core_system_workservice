@@ -16189,7 +16189,7 @@ spec:
   }
   function render10(el, ctx2) {
     const store2 = ctx2.store;
-    const vocab = tagVocabFromKinds(store2.kinds());
+    let vocab = tagVocabFromKinds(store2.kinds());
     el.innerHTML = '<div class="view-inner">' + screenHead(
       t("\u6807\u7B7E"),
       t("tagType \u5206\u7EC4\u805A\u5408\uFF08\u4E09\u6E90\u4E25\u683C\u53BB\u91CD\uFF1Acontext/index \u7D22\u5F15\u6295\u5F71 \u222A \u5BF9\u8C61 tags \u222A \u7F13\u5B58 frontmatter\uFF1B\u96F6\u5047\u8BCD\u8868\uFF09\u2014\u2014\u70B9 tag \u770B\u547D\u4E2D\u6587\u6863"),
@@ -16227,8 +16227,12 @@ spec:
       };
       await Promise.all(Array.from({ length: Math.min(4, stale.length) }, w));
     })() : Promise.resolve();
-    Promise.all([loadContextIndexDocs(ctx2.api), hydrateP]).then(([res]) => {
+    const kindsP = ctx2.api && typeof ctx2.api.kinds === "function" ? ctx2.api.kinds().catch(() => null) : Promise.resolve(null);
+    Promise.all([loadContextIndexDocs(ctx2.api), hydrateP, kindsP]).then(([res, , kr]) => {
       if (!el.isConnected || (typeof location !== "undefined" ? location.hash : "") !== stamp) return;
+      if (kr && kr.ok && kr.data && Array.isArray(kr.data.kinds)) {
+        vocab = tagVocabFromKinds(kr.data.kinds);
+      }
       if (!res.ok) {
         paint3(
           aggregateTags(null, store2.objects(), cachedFn, vocab),
