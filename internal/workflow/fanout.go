@@ -26,7 +26,7 @@ const (
 	// EdgeChildConverged 子 run 终态通知父 run 的轨迹行（子 run 侧留痕）。
 	EdgeChildConverged = "child-done"
 	// SubRunSpawned / SubRunTerminal 子 run 行状态词形。
-	SubRunSpawned  = "spawned"
+	SubRunSpawned   = "spawned"
 	SubRunConverged = "converged"
 	SubRunFailed    = "failed"
 )
@@ -47,6 +47,13 @@ type FanoutLauncher interface {
 	LaunchChildRuns(run RunRecord, node NodeView) []ChildRunSpec
 }
 
+// ChildBindLauncher 扇出子 run 绑定钩子（可选能力——FanoutLauncher 附加实现）：子 run 建
+// 成功后引擎同拍回调（计划项→子 run 上下文绑定——子链节点经 run 上下文账读回自己的计划项
+// 内容，launcher 无需预知子 run 序号）。实现须轻量非阻塞（派发 goroutine 内同步调用）。
+type ChildBindLauncher interface {
+	ChildStarted(parentRun, childRun int64, item ChildRunSpec)
+}
+
 // dispatchFanout 扇出派发（锁外 goroutine——文档库 IO 不持 run 锁；panic 不崩主环）。
 func (r *RunLog) dispatchFanout(sp spawnReq) {
 	if r.opts.FanoutLauncher == nil {
@@ -56,14 +63,21 @@ func (r *RunLog) dispatchFanout(sp spawnReq) {
 		defer func() { _ = recover() }()
 		items := r.opts.FanoutLauncher.LaunchChildRuns(run, node)
 		refs := make([]SubRunRef, 0, len(items))
+		bind, canBind := r.opts.FanoutLauncher.(ChildBindLauncher)
 		for _, item := range items {
 			id, ok := r.StartChildRun(run, item)
 			if !ok {
 				continue
 			}
+			if canBind {
+				bind.ChildStarted(run.Run, id, item) // 计划项→子 run 上下文绑定（runmemo 键 planItem）
+			}
 			refs = append(refs, SubRunRef{Run: id, ItemKey: item.Key, Status: SubRunSpawned})
 		}
 		r.AttachSubRuns(run.Run, refs)
+		if len(refs) == 0 {
+			r.FanoutZero(run.Run) // 计划零项=显式放行（launcher 可另行发 fanout-complete 信号——零翻转兜底在引擎侧）
+		}
 		if r.opts.OnFanoutLaunched != nil {
 			r.opts.OnFanoutLaunched(run, refs)
 		}
@@ -135,6 +149,35 @@ func (r *RunLog) AttachSubRuns(parentRun int64, refs []SubRunRef) {
 		persistAppend("run 扇出子 run 回填", r.opts.Store.AppendRun(runToRow(*run)))
 	}
 	r.mu.Unlock()
+}
+
+// FanoutZero 计划零项的显式放行（2026-11-28 批量 fan-out——judge 判「无可下发项」时父 run
+// 不能永久 join 挂起：AttachSubRuns 空切片=零回填，join 判据 len(SubRuns)>0 永不满足）。
+// 命中口径=现势 run 挂起 ∧ SuspendWhy=fanout ∧ SubRuns 空 → 沿声明表 fanout-complete 边
+// 迁移到汇聚相位翻 running（history on=fanout-complete Note=zero-items——缺口词形如实留痕）。
+// 已有子 run（非零项场景）=不作用（join 权威在 FanoutSignal）。
+func (r *RunLog) FanoutZero(parentRun int64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	idx := r.indexOfRunLocked(parentRun)
+	if idx < 0 {
+		return false
+	}
+	run := &r.ring[idx]
+	if run.Status != RunSuspended || run.SuspendWhy != SuspendFanout || len(run.SubRuns) > 0 {
+		return false
+	}
+	next, ok := stepByTable(run.Transitions, run.Phase, EdgeFanoutComplete)
+	if !ok {
+		return false
+	}
+	histAppend(run, run.Phase, next, EdgeFanoutComplete)
+	run.History[len(run.History)-1].Note = "zero-items"
+	run.Phase, run.Status, run.SuspendWhy = next, RunRunning, ""
+	if r.opts.Store != nil {
+		persistAppend("run 扇出零项放行", r.opts.Store.AppendRun(runToRow(*run)))
+	}
+	return true
 }
 
 // FanoutSignal 子 run 终态信号（父 run join 判据）：回填 SubRuns[i].Status；全部终态

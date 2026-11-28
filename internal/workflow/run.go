@@ -316,8 +316,10 @@ func (r *RunLog) SetVerifyGate(g VerifyGate, onBlocked func(run RunRecord, v Ver
 
 // InnerAgentRunner 内置轻量 agent 契约（ops_core_inner_agent 词形——润滑剂：低智商环节
 // 不拉 session 引擎内直调 LLM）。实现侧自管产物落库与幂等；err 非 nil=留挂起（续行靠重试）。
+// 返回值 decision=判断词（2026-11-28 分叉裁决——judge 型 inner 产出的分叉边词，如
+// worth_fixing/ignore/release/defer；空串=机械 advance 兜底）。
 type InnerAgentRunner interface {
-	RunInner(run RunRecord, node NodeView) error
+	RunInner(run RunRecord, node NodeView) (string, error)
 }
 
 // DiffSummarizer 审批判决文档生成契约（实现侧异步执行——引擎只通知不等待不重试；
@@ -467,6 +469,7 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 	phase := ""
 	status := RunTriggered
 	var hist []HistoryRow
+	var innerLand *NodeView // inner 落点钩子命中节点（nr 构建后统一翻挂起+派发——作用域跨出 phases 块）
 	if len(phases) > 0 {
 		phase = string(phases[0]) // 受理投影=声明首相位（起点词先落，迁移判定在其上判）
 		// 多节点入口切入（2026-11-27 解释器多入口：如用户对话修改文档或临时 BugDoc 触发 DocApplied，
@@ -477,12 +480,27 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 				phase, status = entryTo, RunRunning
 			}
 		}
+		// inner 落点钩子（2026-11-28 批量 fan-out 用户令「judge判断哪些要下发」——与 ops/service
+		// 钩子同缺口同修法）：受理入口步直落 executor=inner 执行单元且 InnerAgent 已挂接 →
+		// 与 Advance 同一挂起-派发落面（入口节点=batch-judge/doc-apply 这类 judge/落稿节点
+		// 原先被入口步+advance 步双跳机械越过不执行）。窄口=仅 inner 且非闸锚（闸锚挂起判定
+		// 优先）；命中即停步——advance 步以 status==RunRunning 为闸（下方），inner 完成回执
+		// 后续拍自然沿表续行。落点行先记 hist，run 落环时随行（nr 构建后统一翻挂起）。
+		if status == RunRunning && r.opts.InnerAgent != nil && Phase(phase) != AwaitingApproval {
+			if node, ok := innerNodeOf(nodes, phase); ok {
+				hist = append(hist, HistoryRow{From: phase, To: phase, On: EdgeInnerSpawn, At: stampNano(rec.ReceivedAt)})
+				status = RunSuspended
+				innerLand = &node
+			}
+		}
 		// 相位推进器首段（v0.23）+显式迁移表首段（v0.25）：受理即启动信号——引擎单步迁移
 		// 判定，按声明表查推进行（from=当前入口相位 on=advance）并把状态词翻转为 running
 		//（stepByTable 纯查表，判定口径见包注释——序列前进=表的特例）。
-		if next, ok := stepByTable(trans, phase, EdgeAdvance); ok {
-			hist = append(hist, HistoryRow{From: phase, To: next, On: EdgeAdvance, At: stampNano(rec.ReceivedAt)})
-			phase, status = next, RunRunning
+		if status != RunSuspended { // 受理首步 advance（v0.23 口径——triggered 无入口/running 有入口都推；仅 inner 钩子挂起拦步）
+			if next, ok := stepByTable(trans, phase, EdgeAdvance); ok {
+				hist = append(hist, HistoryRow{From: phase, To: next, On: EdgeAdvance, At: stampNano(rec.ReceivedAt)})
+				phase, status = next, RunRunning
+			}
 		}
 		// 挂起-恢复首段（v0.24）：迁移判定落点=闸锚 → 挂起（相位机等待外部审批信号，
 		// workflows 规则 13 第一层判定；auto 盲放行；agent 挂接 judge=真判决挂起，
@@ -509,6 +527,13 @@ func (r *RunLog) StartRun(rec TriggerRecord, b ExecutorBinding) {
 		if sp := r.beginSelfApproveLocked(&nr); sp != nil {
 			judgeQ = append(judgeQ, *sp)
 		}
+	}
+	// inner 落点回填（innerLand 命中时——挂起态+派发请求随 run 落环同拍收口；写穿透随下方
+	// run 投影 upsert 一并落账，挂起词形完整在案）。
+	if innerLand != nil {
+		nr.Status = RunSuspended
+		nr.SuspendWhy = SuspendInner
+		judgeQ = append(judgeQ, spawnReq{kind: spawnKindInner, run: nr, node: *innerLand})
 	}
 	// connectops 落点钩子（2026-11-28 opsrun.go）：受理首步直落 connectops 执行单元且
 	// ConnectOpsRunner 已挂接 → 与 Advance 同一挂起-派发落面（首步不走 landAfterAdvanceLocked

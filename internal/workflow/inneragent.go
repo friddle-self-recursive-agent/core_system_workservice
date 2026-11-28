@@ -70,10 +70,23 @@ func nodeOfPhase(nodes []NodeView, phase string) (NodeView, bool) {
 	return NodeView{}, false
 }
 
+// innerNodeOf 相位 → executor=inner 的执行单元节点（纯查投影；innerGateLocked 的查表半边
+// 独立形——StartRun 受理首步钩子复用同一判定口径，落点判定零双源漂移）。
+func innerNodeOf(nodes []NodeView, phase string) (NodeView, bool) {
+	for _, n := range nodes {
+		if n.Phase == phase && n.Executor == "inner" && (n.Unit == "agent" || n.Unit == "service") {
+			return n, true
+		}
+	}
+	return NodeView{}, false
+}
+
 // InnerDone 内置轻量 agent 完成信号的 run 域续行（匹配口径=ServiceSignal 同款但只作用于
 // SuspendWhy=inner-agent 的现势 run；TargetRun>0=定向覆盖）。命中=沿轨迹落续行行
 // （on=inner-resume）、status 翻回 running（SuspendWhy 清空），下拍 Advance 沿表续行。
-func (r *RunLog) InnerDone(runID int64, note string) {
+// decision 判断词（2026-11-28 分叉裁决——inner 产出 JSON decision 字段/[decision:词] 标记，
+// 语义同 OpsSignal：命中判断边立即走+落点钩子派发；未命中/未携带=机械 advance 兜底）。
+func (r *RunLog) InnerDone(runID int64, note, decision string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := len(r.ring) - 1; i >= 0; i-- {
@@ -85,14 +98,41 @@ func (r *RunLog) InnerDone(runID int64, note string) {
 			return // 非内置 agent 挂起态（已续行/被别的窗口接管）=幂等 noop
 		}
 		at := stampNano(time.Now())
-		run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: EdgeInnerResume, At: at, SessionID: note})
+		run.History = append(run.History, HistoryRow{From: run.Phase, To: run.Phase, On: EdgeInnerResume, At: at, SessionID: note, Note: truncateRunNote(note2Summary(decision))})
 		run.Status = RunRunning
 		run.SuspendWhy = ""
+		// 判断分叉（同 OpsSignal/ServiceSignal——judge 产出词驱动分叉边；命中即走+落点派发）。
+		if d := decision; d != "" {
+			if next, ok := stepByTable(run.Transitions, run.Phase, d); ok && next != run.Phase {
+				run.History = append(run.History, HistoryRow{From: run.Phase, To: next, On: d, At: stampNano(time.Now())})
+				run.Phase = next
+				if sp := r.landAfterAdvanceLocked(run, next); sp != nil {
+					r.dispatchSpawnReq(*sp) // InnerDone 调用方=派发 goroutine（非锁路径）——同步派发安全
+				}
+			}
+		}
 		if r.opts.Store != nil {
 			persistAppend("run 内置 agent 续行", r.opts.Store.AppendRun(runToRow(*run)))
 		}
 		return
 	}
+}
+
+// truncateRunNote 注记截断（history Note 词面上限——同 opsNoteMax 口径的引擎侧形）。
+func truncateRunNote(s string) string {
+	const noteMax = 220
+	if len(s) <= noteMax {
+		return s
+	}
+	return s[:noteMax] + "…"
+}
+
+// note2Summary 判断词的注记摘要（decision 携带的轨迹可读形——「decision:<词>」；空=空串）。
+func note2Summary(decision string) string {
+	if decision == "" {
+		return ""
+	}
+	return "decision:" + decision
 }
 
 // trace 部署探针（stderr 黑洞——文件尾随取证；R-ENG-8 tmp 口径）。

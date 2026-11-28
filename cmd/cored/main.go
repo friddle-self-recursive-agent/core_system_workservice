@@ -364,11 +364,16 @@ func run() error {
 		// nil=旧词形零翻转（未挂文档库时 agent 仍盲放行，缺口可见）。
 		runOpts.ApprovalJudge = diffGen
 	}
+	// run 上下文账（2026-11-28 批量 fan-out——E3 context 实体传递：op 结果全文/计划项/结论
+	// 按 run 键入账，下游 judge/merge/会话 briefing 读真内容——内存账，持久实体=落库文档）。
+	runMemo := workflow.NewRunMemo()
 	// 内置轻量 agent 执行面（2026-11-28 用户裁定「doc-apply 的审批以及部分服务运行起来可以
 	// 使用内置的 agent 来做润滑剂。即低智商要求的可以使用内置 agent」）：executor=inner 的
 	// agent/service 节点挂接 Runner（引擎内直调 Provider——不拉 session；产物 DocumentDiff
-	// inneragent-* 落库，完成 InnerDone 续行）。缺席=零翻转（inner 节点照旧纯查表推进）。
-	runOpts.InnerAgent = &approvaldiff.Runner{G: diffGen}
+	// inneragent-* 落库，完成 InnerDone 续行；2026-11-28 op 化——judge-issues-batch 出
+	// WorkflowPlan 实体/apply-doc 读计划项/merge-results 汇总子链）。缺席=零翻转。
+	innerRunner := &approvaldiff.Runner{G: diffGen, Memo: runMemo}
+	runOpts.InnerAgent = innerRunner
 	innerAgentState := "off（未挂文档库——inner 节点零翻转）"
 	if repo != nil {
 		innerAgentState = "on（ops_core_inner_agent：executor=inner 节点引擎内直调 LLM）"
@@ -384,7 +389,7 @@ func run() error {
 	var svcBridge *serviceSpawnBridge
 	svcSpawnState := "off（零翻转——service 节点照旧纯查表推进；CORE_SYSTEM_SERVICE_SPAWN_ADDR 缺席）"
 	if addr := strings.TrimSpace(os.Getenv("CORE_SYSTEM_SERVICE_SPAWN_ADDR")); addr != "" {
-		svcBridge = newServiceSpawnBridge(spawnLog, addr, serviceAgentLookup(repo), func(f string, a ...any) {
+		svcBridge = newServiceSpawnBridge(spawnLog, addr, serviceAgentLookup(repo), repo, runMemo, func(f string, a ...any) {
 			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
 		})
 		runOpts.ServiceSpawns = svcBridge
@@ -402,12 +407,25 @@ func run() error {
 		connectors.RegisterOpsConnector(docsdocs.New(repo, sch))
 		applyConnectorConfigs(repo)
 		if os.Getenv("CORE_SYSTEM_CONNECTOPS_RUN") == "on" {
-			opsBridge = &opsRunBridge{bus: bus, logf: func(f string, a ...any) {
+			opsBridge = &opsRunBridge{bus: bus, memo: runMemo, logf: func(f string, a ...any) {
 				fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
 			}}
 			runOpts.ConnectOpsRunner = opsBridge
 			opsSpawnState = "on（run 落 connectops 节点挂起+注册表 Invoke；回执续行 connectops-resume/error）"
 		}
+	}
+	// 批量 fan-out 执行桥（2026-11-28 用户令「issuse是一批的。judge判断哪些要下发…走多链条。
+	// 最后交叉汇总」——fanout.go 第四词形装配半边）：run 落 unit=workflow ∧ fanout 节点挂起
+	// 后由本桥读执行计划（run 上下文账/WorkflowPlan 实体）扇出子 run（每项一链）+ ChildStarted
+	// 计划项绑定；零项 FanoutZero 放行。缺席=零翻转（fanout 节点照旧纯查表推进）。
+	fanoutSpawnState := "off（零翻转——fanout 节点照旧纯查表推进）"
+	var fanBridge *fanoutBridge
+	if repo != nil {
+		fanBridge = &fanoutBridge{repo: repo, memo: runMemo, logf: func(f string, a ...any) {
+			fmt.Fprintf(os.Stderr, "cored: "+f+"\n", a...)
+		}}
+		runOpts.FanoutLauncher = fanBridge
+		fanoutSpawnState = "on（run 落 fanout 节点读计划扇出子 run；零项 FanoutZero 放行）"
 	}
 	objSpecState := "off（未挂文档库——object 源表不投影）"
 	brakesResolverState := "defaults"
@@ -426,6 +444,10 @@ func run() error {
 	if opsBridge != nil {
 		opsBridge.runs = runs // connectops 回执续行面注入（同上解环；opsrun.go/ops_bridge.go）
 	}
+	if fanBridge != nil {
+		fanBridge.runs = runs // FanoutZero 零项放行面注入（同上解环；fanout.go/fanout_bridge.go）
+	}
+	innerRunner.Runs = runs // merge-results 子链终态现查面（同上解环——runner 构造早于 RunLog）
 	// 通知门链接线（v0.35 KI-001 通知段——阶段门+dedup/minLevel 落地）：判定器
 	// NotifyPhaseGate（人注意终态族放行 ∧ 其余事件须 involved owner 现势 run 相位终态背书
 	// ——Report 序列尾/终点锚；无 run 面=fail-closed 拦）注入送达面；dedup 窗口缺省 10m
@@ -445,6 +467,7 @@ func run() error {
 	}
 	fmt.Fprintf(os.Stderr, "cored: service 桥=%s（2026-11-27 session 裁决——builtin service 的 agent 用 session 执行；投影面恒在 GET /v1/workflows/service-spawns）\n", svcSpawnState)
 	fmt.Fprintf(os.Stderr, "cored: connectops 执行=%s（2026-11-28 用户裁决「做成workflow的一个节点」——unit=connectops 真执行：挂起→注册表 Invoke→回执续行；调试面 POST /v1/connectops/{name}/{op}）\n", opsSpawnState)
+	fmt.Fprintf(os.Stderr, "cored: fanout 执行=%s（2026-11-28 批量 fan-out——unit=workflow 真扇出：读执行计划每项一子 run+计划项绑定，零项放行；父 run join 等全部子链终态）\n", fanoutSpawnState)
 	defer deliveries.Close() // 先于 stopTriggers 退场（LIFO）——停机期不再有新送达入队
 	outboundState := "off（送达止于受理投影）"
 	if dlOpts.Outbound != nil {

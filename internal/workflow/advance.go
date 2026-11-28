@@ -370,10 +370,11 @@ func (r *RunLog) dispatchSpawnReq(sp spawnReq) {
 		}
 		go func(run RunRecord, node NodeView) {
 			defer func() { _ = recover() }() // panic 不崩引擎（实现侧 trace 自记）
-			if err := r.opts.InnerAgent.RunInner(run, node); err != nil {
+			decision, err := r.opts.InnerAgent.RunInner(run, node)
+			if err != nil {
 				return // 失败=留挂起（run.status.lastError 由实现侧写；续行靠重试/人介入）
 			}
-			r.InnerDone(run.Run, "inner:"+node.Name)
+			r.InnerDone(run.Run, "inner:"+node.Name, decision)
 		}(sp.run, sp.node)
 	case spawnKindOps:
 		if r.opts.ConnectOpsRunner == nil {

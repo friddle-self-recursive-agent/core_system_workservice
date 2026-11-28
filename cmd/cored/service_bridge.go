@@ -25,7 +25,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -39,16 +41,19 @@ import (
 // TriggerHub.BindServiceSignals）。
 type serviceSpawnBridge struct {
 	spawns *workflow.ServiceSpawnLog
-	runs   *workflow.RunLog // 完成信号续行（构造后注入——runs 与 runOpts 循环依赖的解法）
+	runs   *workflow.RunLog      // 完成信号续行面（构造后注入——runs 与 runOpts 循环依赖的解法）
+	repo   repository.Repository // ServiceDesc job 文本现读（develop/deploy 作业定义——2026-11-28 用户裁决「developer-system 拉代码 build 接啊」）
+	memo   *workflow.RunMemo     // run 上下文账（briefing 实体：planItem/judge 结论——子链会话的输入内容）
 	url    string
 	hc     *http.Client
 	agent  func(service string) (string, bool) // ServiceDesc.instances.agentRefs 解析（装配层注入）
 	logf   func(string, ...any)
 }
 
-// newServiceSpawnBridge 构建拉起桥（addr 可为 host:port 或 http://host:port）。
+// newServiceSpawnBridge 构建拉起桥（addr 可为 host:port 或 http://host:port；repo/memo 可 nil
+// ——nil=briefing 缺席诚实降级，payload 只带锚不带实体）。
 func newServiceSpawnBridge(spawns *workflow.ServiceSpawnLog, addr string,
-	agentLookup func(string) (string, bool), logf func(string, ...any)) *serviceSpawnBridge {
+	agentLookup func(string) (string, bool), repo repository.Repository, memo *workflow.RunMemo, logf func(string, ...any)) *serviceSpawnBridge {
 	addr = strings.TrimSpace(addr)
 	if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
 		addr = "http://" + addr
@@ -61,6 +66,8 @@ func newServiceSpawnBridge(spawns *workflow.ServiceSpawnLog, addr string,
 	}
 	return &serviceSpawnBridge{
 		spawns: spawns,
+		repo:   repo,
+		memo:   memo,
 		url:    strings.TrimRight(addr, "/") + "/service/spawn",
 		hc:     &http.Client{Timeout: 5 * time.Second},
 		agent:  agentLookup,
@@ -87,6 +94,16 @@ func (b *serviceSpawnBridge) SpawnFromRun(run workflow.RunRecord, node workflow.
 		"node": rec.Node, "phase": rec.Phase, "service": rec.Service, "op": rec.Op,
 		"agent": rec.Agent, "role": rec.Role, "context": rec.Context,
 		"involved": run.Involved, // 溯源锚随载荷（2026-11-28 sybran-release-update——派发会话须知道「什么到了货」：GhReleaseEvent involved=Repository/<repo>）
+	}
+	// 作业定义随载荷（2026-11-28 用户裁决「都做到 developer/deploy-system 的 agent」：
+	// develop/deploy 作业文本=ServiceDesc spec.ops[].job 声明面——宿主会话 prompt 组装源）。
+	if job, ok := serviceJobLookup(b.repo, rec.Service, rec.Op); ok {
+		payload["job"] = job
+	}
+	// briefing 实体随载荷（2026-11-28 E3 context 实体传递——contextPassing 字段名的真内容）：
+	// 子 run=计划项+父 judge 结论；issue 词形 involved 附原文（title+body——会话知道要修什么）。
+	if brief := b.briefing(run); brief != nil {
+		payload["briefing"] = brief
 	}
 	go func() {
 		body, err := json.Marshal(payload)
@@ -183,6 +200,139 @@ func (b *serviceSpawnBridge) ServiceSignal(rec workflow.TriggerRecord) {
 		return
 	}
 	b.runs.ServiceSignal(rec, sess) // 续行（携带会话锚——续行 history 行回填真实会话锚）
+}
+
+// serviceJobLookup ServiceDesc spec.ops[].job 作业文本解析（2026-11-28 用户裁决「都做到
+// developer/deploy-system 的 agent」——作业定义在 ServiceDesc 层不在 workflow 节点层；节点只
+// 声明 service+op）。未挂库/未命中/未声明 job=ok=false（诚实缺席——会话退化为通用词形）。
+func serviceJobLookup(repo repository.Repository, service, op string) (string, bool) {
+	if repo == nil || service == "" || op == "" {
+		return "", false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	objs, err := repo.List(ctx, "ServiceDesc", "")
+	if err != nil {
+		return "", false
+	}
+	var raw []byte
+	for _, o := range objs {
+		if o.Name == service {
+			raw = o.Content
+			if o.Scope == "global" {
+				break // global 同名优先（serviceAgentLookup 同款确定性投影）
+			}
+		}
+	}
+	if raw == nil {
+		return "", false
+	}
+	var doc struct {
+		Spec struct {
+			Ops []struct {
+				Op  string `yaml:"op"`
+				Job string `yaml:"job"`
+			} `yaml:"ops"`
+		} `yaml:"spec"`
+	}
+	if yaml.Unmarshal(raw, &doc) != nil {
+		return "", false
+	}
+	for _, o := range doc.Spec.Ops {
+		if o.Op == op && strings.TrimSpace(o.Job) != "" {
+			return o.Job, true
+		}
+	}
+	return "", false
+}
+
+// briefing 会话输入实体组装（E3 context 实体传递——contextPassing 声明字段的真内容）：
+// planItem=子 run 计划项（fanout 桥 ChildStarted 绑定）；judge=父 run 合判结论；
+// issue=involved issue 词形的原文（title+body——会话知道要修什么，不编造）。全空=nil
+// （payload 不带 briefing 键——诚实缺席）。
+func (b *serviceSpawnBridge) briefing(run workflow.RunRecord) map[string]any {
+	brief := map[string]any{}
+	if b.memo != nil {
+		if m := b.memo.GetMap(run.Run, "planItem"); m != nil {
+			brief["planItem"] = m
+		}
+		if run.ParentRun > 0 {
+			if s := b.memo.GetString(run.ParentRun, "planSummary"); s != "" {
+				brief["judge"] = s
+			}
+		}
+		if s := b.memo.GetString(run.Run, "mergeSummary"); s != "" {
+			brief["merge"] = s
+		}
+	}
+	if repo, num, hit := involvedRepoIssue(run.Involved); hit && num > 0 {
+		if subj := ghIssueText(b.repo, repo, num); subj != "" {
+			brief["issue"] = subj
+		}
+	}
+	if len(brief) == 0 {
+		return nil
+	}
+	return brief
+}
+
+// ghIssueText GitHub REST 拉 issue 原文（title+body——approvaldiff.judge.go readSubject 的
+// cored 侧同源形；org 前缀由 ConnectorOps/global/connectops-gh config.owner 补全，零硬编码；
+// 10s 超时；GH_TOKEN 在场带认证头。失败=空串诚实缺席）。
+func ghIssueText(src repository.Repository, repo string, number int64) string {
+	if repo == "" || number <= 0 {
+		return ""
+	}
+	if !strings.Contains(repo, "/") {
+		if owner := ghOwnerOf(src); owner != "" {
+			repo = owner + "/" + repo
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("https://api.github.com/repos/%s/issues/%d", repo, number), nil)
+	if err != nil {
+		return ""
+	}
+	if tok := strings.TrimSpace(os.Getenv("GH_TOKEN")); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var d struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&d); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("#%d %s\n%s", number, d.Title, d.Body)
+}
+
+// ghOwnerOf org 前缀解析（ConnectorOps/global/connectops-gh 的 config.owner——judge.go
+// ghOwner 同款行级读，零 yaml 依赖零硬编码；未挂库=空串）。
+func ghOwnerOf(src repository.Repository) string {
+	if src == nil {
+		return ""
+	}
+	o, err := src.Get(context.Background(), "ConnectorOps", "global", "connectops-gh")
+	if err != nil || o == nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(o.Content), "\n") {
+		s := strings.TrimSpace(line)
+		if strings.HasPrefix(s, "owner:") {
+			return strings.TrimSpace(strings.TrimPrefix(s, "owner:"))
+		}
+	}
+	return ""
 }
 
 // serviceAgentLookup ServiceDesc.instances.agentRefs 解析（装配侧注入——文档库现读零缓存，

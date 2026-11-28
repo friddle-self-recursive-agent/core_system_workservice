@@ -33,8 +33,9 @@ import (
 // opsRunBridge connectops 节点 op 执行桥（workflow.ConnectOpsRunner 实现——cored 装配层注入
 // RunOptions.ConnectOpsRunner）。
 type opsRunBridge struct {
-	runs *workflow.RunLog // 回执续行面（构造后注入——runOpts 需桥、桥需 runs 的解环同款）
-	bus  *eventbus.Bus    // release 完成上报面（GhReleaseEvent 自产——2026-11-28 用户裁定「有Release最新版本[Report的Event]→触发更新」的产源半边；nil=只续行不发布）
+	runs *workflow.RunLog  // 回执续行面（构造后注入——runOpts 需桥、桥需 runs 的解环同款）
+	memo *workflow.RunMemo // run 上下文账（op 结果全文入账——下游 judge/summary 的输入实体；nil=只续行）
+	bus  *eventbus.Bus     // release 完成上报面（GhReleaseEvent 自产——2026-11-28 用户裁定「有Release最新版本[Report的Event]→触发更新」的产源半边；nil=只续行不发布）
 	logf func(string, ...any)
 }
 
@@ -74,6 +75,46 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 			params["number"] = num
 		}
 	}
+	// 子链 worktree 精化（2026-11-28 批量 fan-out——子 run 的改动在 worktrees/issue-<N>，
+	// 审计目标若沿用声明值=审的是干净基线假通过）：子 run 且目标目录在册 → target 精化到
+	// 子链 worktree。worktree 缺席（defer 项/会话未建）=保留声明值（诚实降级）。
+	if run.ParentRun > 0 && node.Op == "audit" && b.memo != nil {
+		if m := b.memo.GetMap(run.Run, "planItem"); m != nil {
+			if key, _ := m["key"].(string); key != "" {
+				if target, _ := params["target"].(string); target != "" {
+					wt := target + "/worktrees/issue-" + key
+					if _, err := os.Stat(wt); err == nil {
+						params["target"] = wt
+					}
+				}
+			}
+		}
+	}
+	// repo-push 只并本批分支（2026-11-28 用户令「最后交叉汇总。提交代码 push」——分支集=本
+	// run 子链锚定的 agent/issue-<N>，不碰历史 agent/* 在制支（如 agent/tags-tree））。
+	if node.Op == "repo-push" && b.runs != nil && len(run.SubRuns) > 0 {
+		prefix, _ := params["branchPrefix"].(string)
+		if prefix == "" {
+			prefix = "agent/"
+		}
+		only := make([]string, 0, len(run.SubRuns))
+		for _, sr := range run.SubRuns {
+			if sr.ItemKey != "" {
+				only = append(only, prefix+"issue-"+sr.ItemKey)
+			}
+		}
+		if len(only) > 0 {
+			params["only"] = only
+		}
+	}
+	// 回评 body 增富（2026-11-28 用户令「不做也有反馈。为什么不做」——声明 body=模板句，
+	// 执行事实随 run 上下文增富：defer 项带为什么不做/fix 项带下发事实。零编造：只写账面
+	// 有的词形，无账=原样发模板句）。首次 Invoke 前增富（单发一条——不重评）。
+	if node.Op == "issue-comment" {
+		if body, ok := params["body"].(string); ok {
+			params["body"] = b.enrichFeedbackBody(run, body)
+		}
+	}
 	raw, err := json.Marshal(params)
 	if err != nil {
 		b.done(run, "params 编码失败: "+err.Error(), false, "")
@@ -88,6 +129,9 @@ func (b *opsRunBridge) RunOp(run workflow.RunRecord, node workflow.NodeView) {
 		return
 	}
 	logf("ops 桥 %s/%s 完成（workflow=%s run=%d bytes=%d）", node.Connector, node.Op, run.Workflow, run.Run, len(res))
+	// op 结果全文入账（run 上下文账 op:<op> 键——下游 judge/merge 的输入实体；E3 context
+	// 实体传递的产源半边。上限 512KB 防异常大结果占账；失败只注记不翻转回执）。
+	b.memoResult(run, node.Op, res)
 	if node.Op == "release-publish" {
 		b.reportRelease(run, node, params, res)
 	}
@@ -146,6 +190,54 @@ func (b *opsRunBridge) done(run workflow.RunRecord, note string, ok bool, decisi
 		return
 	}
 	b.runs.OpsSignal(run.Run, run.Workflow, note, ok, decision)
+}
+
+// opsMemoCap op 结果入账上限（512KB——异常大结果截断留账头，不占爆内存）。
+const opsMemoCap = 512 << 10
+
+// memoResult op 结果全文入账（run 上下文账 op:<op> 键——judge/merge/简报的输入实体）。
+func (b *opsRunBridge) memoResult(run workflow.RunRecord, op string, res []byte) {
+	if b.memo == nil || op == "" || len(res) == 0 {
+		return
+	}
+	s := string(res)
+	if len(s) > opsMemoCap {
+		s = s[:opsMemoCap] + "…（截断）"
+	}
+	b.memo.Set(run.Run, "op:"+op, s)
+}
+
+// enrichFeedbackBody 回评 body 增富（「不做也有反馈。为什么不做」）：子 run 读计划项——
+// defer=为什么不做原样反馈；fix=下发事实+执行锚（run 卡/落稿/审计）。父 run（无计划项）
+// 附交叉汇总（merge 结论——批量批注的面）。只写账面有的词形，零编造。
+func (b *opsRunBridge) enrichFeedbackBody(run workflow.RunRecord, body string) string {
+	if b.memo == nil {
+		return body
+	}
+	var extra string
+	if m := b.memo.GetMap(run.Run, "planItem"); m != nil {
+		action, _ := m["action"].(string)
+		reason, _ := m["reason"].(string)
+		title, _ := m["title"].(string)
+		switch action {
+		case "defer":
+			extra = "\n\n**本次未下发修复**（judge 判定不做）：" + reason
+			if title != "" {
+				extra = "\n\n**本次未下发修复**（judge 判定不做「" + title + "」）：" + reason
+			}
+		case "fix":
+			extra = "\n\n**已下发自动修复链**（apply 落稿→developer-system 会话拉代码/编辑/build/提交→connectops 审计验收），执行留痕见本 run 卡与 DocumentDiff（inneragent-*）。"
+			if s := b.memo.GetString(run.ParentRun, "planSummary"); s != "" {
+				extra += "\n\n批次判定：" + s
+			}
+		}
+	} else if s := b.memo.GetString(run.Run, "mergeSummary"); s != "" {
+		extra = "\n\n**批次交叉汇总**：" + s
+	}
+	if extra == "" {
+		return body
+	}
+	return body + extra
 }
 
 // involvedRepoIssue run.Involved 溯源派生（Repository/global/<repo>#<n> 词形——issue 域 op
