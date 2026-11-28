@@ -1085,7 +1085,23 @@ var CoreConsoleWeb = (() => {
     ["\u6267\u884C\u7684\u4EFB\u52A1\uFF08\u672C\u4F1A\u8BDD\u7531\u4EFB\u52A1\u62C9\u8D77\u2014\u2014\u80CC\u666F\u5982\u4E0B\uFF09", "Task behind this session (spawned this session \u2014 background below)"],
     ["\u6765\u6E90\uFF1A", "Source: "],
     ["\u5173\u8054\u4E8B\u4EF6\uFF1A", "Related events: "],
-    ["\u5FEB\u7167\u53CD\u67E5\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002", "Snapshot reverse lookup (Task.agentSession \u222A events agentSession) found no registered links \u2014 standalone conversation session (nothing fabricated)."]
+    ["\u5FEB\u7167\u53CD\u67E5\uFF08Task.agentSession \u222A \u4E8B\u4EF6 agentSession\uFF09\u65E0\u5728\u518C\u5173\u8054\u2014\u2014\u4F1A\u8BDD\u578B\u72EC\u7ACB\u4F1A\u8BDD\uFF08\u96F6\u7F16\u9020\uFF09\u3002", "Snapshot reverse lookup (Task.agentSession \u222A events agentSession) found no registered links \u2014 standalone conversation session (nothing fabricated)."],
+    /* ── R-UX-10 二次收紧（2026-11-28）：对话修改主通路+详情配置弹窗 ── */
+    ["\u5BF9\u8BDD\u4FEE\u6539", "Chat-edit"],
+    ["\u5BF9\u8BDD\u4FEE\u6539\uFF08LLM \u6539\u6587\u6863\u2192Apply\u2014\u2014\u4E3B\u901A\u8DEF\uFF09", "Chat-edit (LLM edits the doc \u2192 Apply \u2014 primary path)"],
+    ["\u8BF7\u4FEE\u6539\u5DE5\u4F5C\u6D41 ", "Please modify workflow "],
+    ["\u8BF7\u4FEE\u6539\u5BF9\u8C61 ", "Please modify object "],
+    ["\uFF08YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A", " (YAML declaration is the authoritative source). Intent: "],
+    ["\uFF08\u5BF9\u8C61 YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A", " (object YAML declaration is the authoritative source). Intent: "],
+    ["\u53D1\u8D77\u5BF9\u8BDD\u4FEE\u6539\uFF08LLM \u6539\u6587\u6863\u2192Apply\u2014\u2014\u4E3B\u901A\u8DEF\uFF09", "Start a chat-edit (LLM edits the doc \u2192 Apply \u2014 primary path)"],
+    ["\u914D\u7F6E\u8BE6\u60C5", "Config details"],
+    ["\u914D\u7F6E\u8BE6\u60C5\uFF08\u8868\u5355/YAML \u624B\u6539\u2014\u2014\u9ED8\u8BA4\u4E0D\u5C55\u793A\uFF09", "Config details (form/YAML manual edit \u2014 hidden by default)"],
+    ["\u914D\u7F6E\u8BE6\u60C5\u7F3A\u5E2D\uFF08\u8BE5 workflow \u65E0\u53EF\u914D\u7F6E studio\uFF09", "Config details unavailable (no configurable studio for this workflow)"],
+    ["\u65B0\u5EFA Provider\uFF08\u8868\u5355\u624B\u586B=\u964D\u7EA7\u901A\u8DEF\u2014\u2014\u9ED8\u8BA4\u5BF9\u8BDD\u4FEE\u6539\uFF09", "New Provider (form = fallback path; chat-edit by default)"],
+    ["\u6DFB\u52A0 Provider\uFF08OpenAI \u517C\u5BB9\uFF09\u2014\u2014\u624B\u586B\u964D\u7EA7\u901A\u8DEF", "Add Provider (OpenAI-compatible) \u2014 manual fallback path"],
+    ["\u9ED8\u8BA4 Provider: ", "Default provider: "],
+    ["\u4FEE\u6539\u7ED1\u5B9A", "Edit binding"],
+    ["\u4FEE\u6539 Provider \u7ED1\u5B9A \xB7 ", "Edit provider binding \xB7 "]
   ];
 
   // src/core/i18n.js
@@ -2600,6 +2616,8 @@ var CoreConsoleWeb = (() => {
       const w = o.wide ? "width:640px;max-width:calc(100vw - 48px)" : "width:420px;max-width:calc(100vw - 48px)";
       modal.innerHTML = '<div class="chat-modal-mask" data-cc-modal-mask></div><div class="chat-modal-panel" style="' + w + '"><div class="chat-modal-head"><div class="chat-modal-title">' + esc(t(o.title || t("\u8BE6\u60C5"))) + '</div><button type="button" class="btn btn-ghost sm" data-cc-modal-x aria-label="close">\u2715</button></div><div class="chat-modal-body" style="max-height:70vh;overflow:auto">' + (o.html || "") + "</div></div>";
       const done = () => {
+        const body = modal.querySelector(".chat-modal-body");
+        if (o.node && o.holder && body && o.node.parentElement === body) o.holder.appendChild(o.node);
         modal.remove();
         document.removeEventListener("keydown", onKey, true);
         resolve();
@@ -2612,6 +2630,12 @@ var CoreConsoleWeb = (() => {
       modal.querySelector("[data-cc-modal-mask]").addEventListener("click", done);
       document.addEventListener("keydown", onKey, true);
       document.body.appendChild(modal);
+      if (o.node) {
+        const body = modal.querySelector(".chat-modal-body");
+        o.node.hidden = false;
+        body.innerHTML = "";
+        body.appendChild(o.node);
+      }
     });
   }
   function toast(message, kind) {
@@ -12969,11 +12993,12 @@ spec:
     }).join("") + "</div>";
   }
   function wfEditChips(wf, name) {
+    const chatFix = '<button type="button" class="btn btn-chip sm" data-wf-chatfix="' + esc(String(name)) + '" title="' + esc(t("\u53D1\u8D77\u5BF9\u8BDD\u4FEE\u6539\uFF08LLM \u6539\u6587\u6863\u2192Apply\u2014\u2014\u4E3B\u901A\u8DEF\uFF09")) + '">' + esc(t("\u5BF9\u8BDD\u4FEE\u6539")) + "</button> ";
     if (wf && String(wf.specSource || "") === "object") {
       const scope = String(wf.scope || "global");
-      return chipGo(t("\u7F16\u8F91 Workflow"), docRoute("Workflow", scope, name), "acc", true, t("\u7F16\u8F91 Workflow \u58F0\u660E")) + " " + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Workflow", scope, name), "mute", true);
+      return chatFix + '<button type="button" class="btn btn-chip sm" data-wf-config-btn title="' + esc(t("\u914D\u7F6E\u8BE6\u60C5\uFF08\u8868\u5355/YAML \u624B\u6539\u2014\u2014\u9ED8\u8BA4\u4E0D\u5C55\u793A\uFF09")) + '">' + esc(t("\u914D\u7F6E\u8BE6\u60C5")) + "</button> " + chipGo(t("\u5BF9\u8C61\u5DE5\u4F5C\u53F0"), objRoute("Workflow", scope, name), "mute", true);
     }
-    return chipGo(t("\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09"), wfDesignRoute(), "acc", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + " " + chipGo(t("\u76F8\u4F4D\u8868\uFF08scheme\uFF09"), "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("core/scheme.yaml"), "mute", true);
+    return chatFix + chipGo(t("\u7F16\u8F91\u5B9A\u4E49\uFF08workflow.md\uFF09"), wfDesignRoute(), "mute", true, t("\u8BBE\u8BA1\u6587\u6863\u5DE5\u4F5C\u53F0")) + " " + chipGo(t("\u76F8\u4F4D\u8868\uFF08scheme\uFF09"), "designdoc/" + encodeURIComponent("core_design") + "/" + encodeURIComponent("core/scheme.yaml"), "mute", true);
   }
   var wfDetailSeq = 0;
   function detailScreen(el, ctx2, name) {
@@ -13034,12 +13059,27 @@ spec:
       const runsHtml = wfRunsHtml(runs, taskIdx, sessionRows);
       const tasksHtml = wfTasksHtml(runs, taskIdx, sessionRows);
       detail.innerHTML = '<div class="run-hero"><div class="rh-top">' + (aliasNote ? aliasNote : "") + '</div><div class="rh-title">' + esc(usedName) + " " + chip(String(wf.specSource || "\u2014"), "acc") + " " + chip(String(exec.state || "\u2014"), exec.state === "bound" ? "ok" : "warn") + '</div><div class="rh-meta"><span>' + esc(t("\u5B9A\u4E49/\u8FD0\u884C/\u4EFB\u52A1\u5747\u4E3A\u73B0\u8BFB\u771F\u5B9E\u6570\u636E")) + "</span>" + (latest ? "<span>" + esc(t("\u6700\u8FD1\u8FD0\u884C") + " ") + runChip(latest) + "</span>" : "") + '</div><div class="dh-actions" style="margin-top:10px">' + wfEditChips(wf, usedName) + '</div></div><div class="card"><div class="card-h"><span class="h-title">' + esc(t("\u5B9A\u4E49")) + '</span><span class="h-right">' + // R-UX-10 2026-11-28：YAML 声明=弹窗按需（人不主动看 scheme——fixed 卡退役为按钮）。
-      (String(wf.rawYaml || "") ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(t("YAML \u58F0\u660E")) + "</button>" : "") + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + "</div></div>" + workflowStudioHtml(wf, usedName) + '<div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
+      (String(wf.rawYaml || "") ? '<button type="button" class="btn btn-chip sm" data-wf-yaml-btn>' + esc(t("YAML \u58F0\u660E")) + "</button>" : "") + '</span></div><div class="card-b">' + kv(kvRows) + '</div></div><h2 class="sec-title">' + esc(t("\u8282\u70B9\uFF08\u76F8\u4F4D\u94FE\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div><h2 class="sec-title">' + esc(t("\u6267\u884C\u8282\u70B9\uFF08ConnectorOps \u9AA8\u67B6\uFF09")) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div><div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div><div data-wf-export-cfg style="margin-top:14px"></div>' + (tasksHtml || (runs.length ? '<div class="small faint">' + esc(t("\u8FD0\u884C\u672A\u5173\u8054 Task \u5BF9\u8C61\uFF08\u89E6\u53D1\u6E90=Proposal/Template/\u5176\u4ED6\u2014\u2014\u89C1\u8FD0\u884C involved\uFF09\u3002")) + "</div>" : "")) + (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' + esc(t("\u8BE5 workflow \u6682\u65E0\u8FD0\u884C\u8BB0\u5F55\u2014\u2014")) + (exec.state === "unbound" ? esc(t("\u6267\u884C\u9762\u672A\u7ED1\u5B9A\uFF08ConnectorOps \u9AA8\u67B6\u7F3A\u5E2D\uFF09\uFF0C\u4EFB\u52A1\u4E0D\u4F1A\u62C9\u8D77 run\u3002")) : "") + "</div></div></div>");
       bindWfNodeGraph(el, runs, taskIdx, usedName, sessionRows);
       bindWorkflowStudio(el, ctx2, wf, usedName, () => detailScreen(el, ctx2, usedName));
       const yamlBtn = el.querySelector("[data-wf-yaml-btn]");
       if (yamlBtn) yamlBtn.addEventListener("click", () => {
         htmlModal({ title: t("YAML \u58F0\u660E \xB7 ") + usedName, wide: true, html: yamlTextView(String(wf.rawYaml || "")) });
+      });
+      const cfgBtn = el.querySelector("[data-wf-config-btn]");
+      const studioHolder = el.querySelector("[data-wf-studio-holder]");
+      if (cfgBtn && studioHolder) cfgBtn.addEventListener("click", () => {
+        const studio = studioHolder.querySelector("[data-wf-studio]");
+        if (!studio) {
+          toast(t("\u914D\u7F6E\u8BE6\u60C5\u7F3A\u5E2D\uFF08\u8BE5 workflow \u65E0\u53EF\u914D\u7F6E studio\uFF09"), "error");
+          return;
+        }
+        htmlModal({ title: t("\u914D\u7F6E\u8BE6\u60C5 \xB7 ") + usedName, wide: true, node: studio, holder: studioHolder });
+      });
+      const chatBtn = el.querySelector("[data-wf-chatfix]");
+      if (chatBtn) chatBtn.addEventListener("click", () => {
+        window.__CC_CHAT_PREFILL__ = t("\u8BF7\u4FEE\u6539\u5DE5\u4F5C\u6D41 ") + usedName + t("\uFF08YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A");
+        ctx2.go("chat/core-headless");
       });
       hydrateDocsExportConfig(el, ctx2);
     })().catch((e) => {
@@ -13615,8 +13655,8 @@ spec:
     el.innerHTML = '<div class="view-inner">' + screenHead(
       ref.name,
       t("\u5185\u5BB9\u4F18\u5148\uFF1A\u6B63\u6587\u4E0E\u76F8\u5173\u4EFB\u52A1\u4F1A\u8BDD\u76F4\u8FBE\uFF1Bscheme \u7ECF\u6309\u94AE\u6309\u9700\u67E5\u770B"),
-      kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute") + ' <button type="button" class="btn btn-chip sm" data-obj-scheme title="' + esc(t("scheme \u5B9A\u4E49\uFF08\u5F39\u7A97\u6309\u9700\u67E5\u770B\uFF09")) + '">scheme</button>'
-    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + (ref.kind === "Provider" ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(t("\u65B0\u5EFA Provider \u5BF9\u8C61\uFF08openai \u517C\u5BB9\u7F51\u5173/\u8D26\u53F7/\u5BC6\u94A5\u5F15\u7528/\u6A21\u578B\u5206\u7EA7\uFF09")) + '">+ ' + esc(t("\u6DFB\u52A0 Provider")) + "</button>" : "") + "</div>" : "") + "<div data-provider-create></div>" + (ref.kind === "Agent" ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>" : "") + t('<section class="card obj-content" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute(ref.kind, ref.scope, ref.name), "mute", true) + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD</span><span class="h-right">') + chipGo(t("\u6240\u5C5E scope"), "s/" + encodeURIComponent(ref.scope), "mute", true) + '</span></div><div class="card-b">' + related + '</div></section><div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + '</div></section></div><div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(t("\u64CD\u4F5C")) + '</span></div><div class="card-b">' + opsPanel(ref, cached ? content : "") + "</div></div></div>";
+      kindBadge(ref.kind) + " " + chip("r" + String(ref.rv || 0), "mute") + ' <button type="button" class="btn btn-chip sm" data-obj-chatfix title="' + esc(t("\u5BF9\u8BDD\u4FEE\u6539\uFF08LLM \u6539\u6587\u6863\u2192Apply\u2014\u2014\u4E3B\u901A\u8DEF\uFF09")) + '">' + esc(t("\u5BF9\u8BDD\u4FEE\u6539")) + '</button> <button type="button" class="btn btn-chip sm" data-obj-scheme title="' + esc(t("scheme \u5B9A\u4E49\uFF08\u5F39\u7A97\u6309\u9700\u67E5\u770B\uFF09")) + '">scheme</button>'
+    ) + (pickerHtml(el, ctx2, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx2, ref) + (ref.kind === "Provider" ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(t("\u65B0\u5EFA Provider\uFF08\u8868\u5355\u624B\u586B=\u964D\u7EA7\u901A\u8DEF\u2014\u2014\u9ED8\u8BA4\u5BF9\u8BDD\u4FEE\u6539\uFF09")) + '">+ ' + esc(t("\u6DFB\u52A0 Provider")) + "</button>" : "") + "</div>" : "") + "<div data-provider-create></div>" + (ref.kind === "Agent" ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(t("Provider \u7ED1\u5B9A\u73B0\u8BFB\u4E2D\u2026")) + "</div></div>" : "") + t('<section class="card obj-content" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u5185\u5BB9</span><span class="h-right">') + chip("scope: " + ref.scope, "mute") + " " + chipGo(t("\u7F16\u8F91\u5668"), docRoute(ref.kind, ref.scope, ref.name), "mute", true) + '</span></div><div class="card-b" data-panel="content">' + (cached ? contentPanel(ref.kind, ref.name, content) : t('<div class="small faint">\u6B63\u6587\u73B0\u8BFB\u4E2D\u2026</div>')) + "</div></section>" + t('<section class="card" style="margin-bottom:12px"><div class="card-h"><span class="h-title">\u76F8\u5173\u4EFB\u52A1\u4E0E\u4F1A\u8BDD</span><span class="h-right">') + chipGo(t("\u6240\u5C5E scope"), "s/" + encodeURIComponent(ref.scope), "mute", true) + '</span></div><div class="card-b">' + related + '</div></section><div class="obj-grid">' + t('<section class="card"><div class="card-h"><span class="h-title">\u6807\u7B7E</span></div><div class="card-b" data-panel="tags">') + tagPanel(tagGroups(tags, tagVocabFromKinds(kinds))) + "</div></section>" + t('<section class="card"><div class="card-h"><span class="h-title">\u9002\u7528\u89C4\u5219</span></div><div class="card-b" data-panel="rules">') + (ruleState ? rulePanel(ruleState) : t('<div class="small faint">\u89C4\u5219\u547D\u4E2D\u5224\u5B9A\u4E2D\u2026</div>')) + '</div></section></div><div class="card" style="margin-top:12px"><div class="card-h"><span class="h-title">' + esc(t("\u64CD\u4F5C")) + '</span></div><div class="card-b">' + opsPanel(ref, cached ? content : "") + "</div></div></div>";
     const picker = el.querySelector("[data-obj-picker]");
     if (picker) {
       picker.addEventListener("change", () => {
@@ -13625,6 +13665,11 @@ spec:
       });
     }
     bindSchemeModal(el, ctx2, ref.kind, cached ? content : "");
+    const chatBtn = el.querySelector("[data-obj-chatfix]");
+    if (chatBtn) chatBtn.addEventListener("click", () => {
+      window.__CC_CHAT_PREFILL__ = t("\u8BF7\u4FEE\u6539\u5BF9\u8C61 ") + ref.kind + "/" + ref.scope + "/" + ref.name + t("\uFF08\u5BF9\u8C61 YAML \u58F0\u660E\u4E3A\u6743\u5A01\u6E90\uFF09\u3002\u4FEE\u6539\u610F\u56FE\uFF1A");
+      ctx2.go("chat/core-headless");
+    });
     if (ref.kind === "Provider") hydrateProviderCreate(el, ctx2);
     if (ref.kind === "Agent") hydrateAgentProviderBinding(el, ctx2, ref);
     if (!cached) {
@@ -13680,16 +13725,12 @@ spec:
     const slot = el.querySelector("[data-provider-create]");
     const btn = el.querySelector("[data-add-provider]");
     if (!slot || !btn) return;
-    let open = false;
     btn.addEventListener("click", () => {
-      open = !open;
-      if (!open) {
-        slot.innerHTML = "";
-        return;
-      }
-      slot.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-bottom:10px"><div class="card-h"><span class="h-title">' + esc(t("\u6DFB\u52A0 Provider\uFF08OpenAI \u517C\u5BB9\uFF09")) + '</span></div><div class="card-b"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' + prow("name", "openai-2", t("\u5BF9\u8C61\u540D\uFF08\u5982 openai-2\uFF09")) + prow("account", "openai-main", t("\u8D26\u53F7\u6807\u8BC6 (auth.account)")) + prow("secretSrc", "secret:llm/openai-key", t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)\u2014\u2014\u96F6\u660E\u6587")) + prow("baseUrl", "https://api.openai.com/v1", t("Base \u5730\u5740 (config.baseUrl)")) + prow("lowModel", "flash-tier", t("Low \u6863\u6A21\u578B")) + prow("stdModel", "standard-tier", t("Standard \u6863\u6A21\u578B")) + prow("highModel", "reasoning-tier", t("High \u6863\u6A21\u578B")) + '</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button type="button" class="btn btn-chip sm" data-prov-create>' + esc(t("\u521B\u5EFA Provider")) + '</button><span class="small faint" data-prov-create-msg></span></div></div></div>';
-      const createBtn = slot.querySelector("[data-prov-create]");
-      if (createBtn) createBtn.addEventListener("click", () => createProvider(el, ctx2, slot));
+      const form = document.createElement("div");
+      form.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' + prow("name", "openai-2", t("\u5BF9\u8C61\u540D\uFF08\u5982 openai-2\uFF09")) + prow("account", "openai-main", t("\u8D26\u53F7\u6807\u8BC6 (auth.account)")) + prow("secretSrc", "secret:llm/openai-key", t("\u5BC6\u94A5\u5F15\u7528 (auth.secret.source)\u2014\u2014\u96F6\u660E\u6587")) + prow("baseUrl", "https://api.openai.com/v1", t("Base \u5730\u5740 (config.baseUrl)")) + prow("lowModel", "flash-tier", t("Low \u6863\u6A21\u578B")) + prow("stdModel", "standard-tier", t("Standard \u6863\u6A21\u578B")) + prow("highModel", "reasoning-tier", t("High \u6863\u6A21\u578B")) + '</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center"><button type="button" class="btn btn-chip sm" data-prov-create>' + esc(t("\u521B\u5EFA Provider")) + '</button><span class="small faint" data-prov-create-msg></span></div>';
+      const createBtn = form.querySelector("[data-prov-create]");
+      if (createBtn) createBtn.addEventListener("click", () => createProvider(el, ctx2, form));
+      htmlModal({ title: t("\u6DFB\u52A0 Provider\uFF08OpenAI \u517C\u5BB9\uFF09\u2014\u2014\u624B\u586B\u964D\u7EA7\u901A\u8DEF"), wide: true, node: form, holder: slot });
     });
   }
   function prow(key, def2, label) {
@@ -13749,34 +13790,40 @@ spec:
     const m = raw.match(/defaultProvider:\s*([^\n#]+)/);
     const cur = m ? m[1].trim().replace(/^["']|["']$/g, "") : "openai-default";
     const provs = (ctx2.store.objects() || []).filter((o) => o.kind === "Provider");
-    const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? " selected" : "") + ">" + esc(p.name) + "</option>").join("");
-    const freeIn = '<input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(t("\u6216\u624B\u586B provider \u540D")) + '" />';
-    slot.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(t("Agent \u9ED8\u8BA4 Provider \u7ED1\u5B9A")) + '</span><span class="h-right">' + chip("rv=" + rv, "mute") + '</span></div><div class="card-b" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="small faint">' + esc(t("spec.defaultProvider\uFF08\u7F3A\u7701 openai-default\uFF1B\u4E0D\u540C Agent \u53EF\u7ED1\u4E0D\u540C Provider\uFF09")) + ':</span><select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(t("\u2014 \u9009\u62E9\u5728\u518C Provider\uFF08") + provs.length + t(" \u5728\u518C\uFF09")) + " \u2014</option>" + opts + "</select>" + freeIn + '<button type="button" class="btn btn-chip sm" data-bind-save>' + esc(t("\u4FDD\u5B58\u7ED1\u5B9A")) + '</button><span class="small faint" data-bind-msg></span></div></div>';
-    const pick = slot.querySelector("[data-bind-pick]");
-    const free = slot.querySelector("[data-bind-free]");
-    if (pick) pick.addEventListener("change", () => {
-      if (free) free.value = String(pick.value || "");
-    });
-    const save = slot.querySelector("[data-bind-save]");
-    if (save) save.addEventListener("click", async () => {
-      const msg = slot.querySelector("[data-bind-msg]");
-      const val = String(free && free.value || "").trim().replace(/^["']|["']$/g, "");
-      if (!val) {
-        if (msg) msg.textContent = t("provider \u540D\u5FC5\u586B");
-        return;
-      }
-      const next = m && m[1] !== void 0 ? raw.replace(/defaultProvider:\s*[^\n#]*/, "defaultProvider: " + val) : raw.replace(/(spec:\n)/, "$1  defaultProvider: " + val + "\n");
-      if (msg) msg.textContent = t("\u6B63\u5728\u4FDD\u5B58\u7ED1\u5B9A\u2026");
-      const r = await ctx2.api.apply({
-        kind: "Agent",
-        scope: ref.scope,
-        name: ref.name,
-        resourceVersion: rv,
-        content: next,
-        fieldManager: "console:agent-provider-bind",
-        reasonRef: "agent-bind:" + ref.name
+    slot.innerHTML = '<div class="ob-ctx">' + chip(t("\u9ED8\u8BA4 Provider: ") + cur, "ok") + ' <button type="button" class="btn btn-chip sm" data-bind-open>' + esc(t("\u4FEE\u6539\u7ED1\u5B9A")) + '</button> <span class="small faint">rv=' + esc(String(rv)) + "</span></div>";
+    const openBtn = slot.querySelector("[data-bind-open]");
+    if (!openBtn) return;
+    openBtn.addEventListener("click", () => {
+      const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? " selected" : "") + ">" + esc(p.name) + "</option>").join("");
+      const form = document.createElement("div");
+      form.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="small faint">' + esc(t("spec.defaultProvider\uFF08\u7F3A\u7701 openai-default\uFF1B\u4E0D\u540C Agent \u53EF\u7ED1\u4E0D\u540C Provider\uFF09")) + ':</span><select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(t("\u2014 \u9009\u62E9\u5728\u518C Provider\uFF08") + provs.length + t(" \u5728\u518C\uFF09")) + " \u2014</option>" + opts + '</select><input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(t("\u6216\u624B\u586B provider \u540D")) + '" /><button type="button" class="btn btn-chip sm" data-bind-save>' + esc(t("\u4FDD\u5B58\u7ED1\u5B9A")) + '</button><span class="small faint" data-bind-msg></span></div>';
+      const pick = form.querySelector("[data-bind-pick]");
+      const free = form.querySelector("[data-bind-free]");
+      if (pick) pick.addEventListener("change", () => {
+        if (free) free.value = String(pick.value || "");
       });
-      if (msg) msg.textContent = r.ok ? t("\u7ED1\u5B9A\u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + ((r.data && r.data.rv) != null ? r.data.rv : "?") + ")\u2014\u2014\u8BE5 Agent \u540E\u7EED\u8C03\u7528\u6539\u7528\u6B64 Provider") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+      const save = form.querySelector("[data-bind-save]");
+      if (save) save.addEventListener("click", async () => {
+        const msg = form.querySelector("[data-bind-msg]");
+        const val = String(free && free.value || "").trim().replace(/^["']|["']$/g, "");
+        if (!val) {
+          if (msg) msg.textContent = t("provider \u540D\u5FC5\u586B");
+          return;
+        }
+        const next = m && m[1] !== void 0 ? raw.replace(/defaultProvider:\s*[^\n#]*/, "defaultProvider: " + val) : raw.replace(/(spec:\n)/, "$1  defaultProvider: " + val + "\n");
+        if (msg) msg.textContent = t("\u6B63\u5728\u4FDD\u5B58\u7ED1\u5B9A\u2026");
+        const r = await ctx2.api.apply({
+          kind: "Agent",
+          scope: ref.scope,
+          name: ref.name,
+          resourceVersion: rv,
+          content: next,
+          fieldManager: "console:agent-provider-bind",
+          reasonRef: "agent-bind:" + ref.name
+        });
+        if (msg) msg.textContent = r.ok ? t("\u7ED1\u5B9A\u5DF2\u4FDD\u5B58\u751F\u6548 (rv=" + ((r.data && r.data.rv) != null ? r.data.rv : "?") + ")\u2014\u2014\u8BE5 Agent \u540E\u7EED\u8C03\u7528\u6539\u7528\u6B64 Provider") : t("\u4FDD\u5B58\u5931\u8D25\uFF1A") + String(r.error || r.status);
+      });
+      htmlModal({ title: t("\u4FEE\u6539 Provider \u7ED1\u5B9A \xB7 ") + ref.name, wide: true, node: form, holder: slot });
     });
   }
 
@@ -15721,6 +15768,19 @@ spec:
     CHAT.el = el;
     el.innerHTML = screenShell(can);
     el.classList.add("route-chat");
+    try {
+      const pre = String(typeof window !== "undefined" && window.__CC_CHAT_PREFILL__ || "");
+      if (pre) {
+        const ta = el.querySelector("[data-cc-text]");
+        if (ta && !ta.value) {
+          ta.value = pre;
+          ta.dispatchEvent(new Event("input", { bubbles: true }));
+          ta.focus();
+        }
+        delete window.__CC_CHAT_PREFILL__;
+      }
+    } catch {
+    }
     const paintLinks = () => {
       const slot = el.querySelector("[data-sess-backlinks-slot]");
       if (slot) slot.innerHTML = sessBacklinksHtml(ctx2.store, CHAT.sessionId);

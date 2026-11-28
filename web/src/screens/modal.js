@@ -44,8 +44,10 @@ export function confirmModal(opts) {
 }
 
 /* htmlModal 内容弹窗（R-UX-10 2026-11-28：scheme 按需查看的默认形态——人不主动看 scheme，
- * 只有需要修改时才看；内容调用方拼好——一切动态文本过 esc 后传入）。{title, html, wide}
- * → Promise<void>（关闭即 resolve）；Esc/点 mask/✕=关。wide=true 宽体（scheme 全文 640px）。
+ * 只有需要修改时才看；内容调用方拼好——一切动态文本过 esc 后传入）。{title, html|node, holder, wide}
+ * → Promise<void>（关闭即 resolve）；Esc/点 mask/✕=关。wide=true 宽体（640px）。
+ * node 形态（R-UX-10 二次收紧：详情配置表单=DOM 整体移入弹窗——事件绑定随节点保留，
+ * 关闭时移回 holder 隐藏位，重开零重绑）：传 node+holder（关闭时 node 归位 holder）。
  * 复用 .chat-modal 族 token，零新样式类。 */
 export function htmlModal(opts) {
   const o = opts || {};
@@ -61,6 +63,8 @@ export function htmlModal(opts) {
       '<div class="chat-modal-body" style="max-height:70vh;overflow:auto">' + (o.html || '') + '</div>' +
       '</div>';
     const done = () => {
+      const body = modal.querySelector('.chat-modal-body');
+      if (o.node && o.holder && body && o.node.parentElement === body) o.holder.appendChild(o.node); // 归位隐藏位（绑定保真）
       modal.remove();
       document.removeEventListener('keydown', onKey, true);
       resolve();
@@ -71,6 +75,12 @@ export function htmlModal(opts) {
     modal.querySelector('[data-cc-modal-mask]').addEventListener('click', done);
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(modal);
+    if (o.node) {
+      const body = modal.querySelector('.chat-modal-body');
+      o.node.hidden = false;
+      body.innerHTML = '';
+      body.appendChild(o.node);
+    }
   });
 }
 

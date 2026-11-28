@@ -585,6 +585,16 @@ function dialogScreen(el, ctx) {
   CHAT.el = el;
   el.innerHTML = screenShell(can);
   el.classList.add('route-chat');
+  // R-UX-10 二次收紧（2026-11-28）：对话修改主通路预填——他屏（wf/obj）「对话修改」按钮置
+  // __CC_CHAT_PREFILL__ 后跳转本屏，composer 预填一次即清（人审后发送——不自动发）。
+  try {
+    const pre = String((typeof window !== 'undefined' && window.__CC_CHAT_PREFILL__) || '');
+    if (pre) {
+      const ta = el.querySelector('[data-cc-text]');
+      if (ta && !ta.value) { ta.value = pre; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); }
+      delete window.__CC_CHAT_PREFILL__;
+    }
+  } catch { /* 预填失败不阻断会话屏 */ }
   // V-10：回链块随会话切换重绘（快照在 WS 到账后也比初渲染丰富——订阅重绘兜底）
   const paintLinks = () => {
     const slot = el.querySelector('[data-sess-backlinks-slot]');

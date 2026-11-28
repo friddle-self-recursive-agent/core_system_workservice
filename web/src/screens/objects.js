@@ -353,9 +353,10 @@ function renderScreen(el, ctx, ref) {
   el.innerHTML = '<div class="view-inner">' +
     screenHead(ref.name, tr('内容优先：正文与相关任务会话直达；scheme 经按钮按需查看'),
       kindBadge(ref.kind) + ' ' + chip('r' + String(ref.rv || 0), 'mute') +
+      ' <button type="button" class="btn btn-chip sm" data-obj-chatfix title="' + esc(tr('对话修改（LLM 改文档→Apply——主通路）')) + '">' + esc(tr('对话修改')) + '</button>' +
       ' <button type="button" class="btn btn-chip sm" data-obj-scheme title="' + esc(tr('scheme 定义（弹窗按需查看）')) + '">scheme</button>') +
     (pickerHtml(el, ctx, ref) ? '<div style="margin-bottom:10px">' + pickerHtml(el, ctx, ref) +
-      (ref.kind === 'Provider' ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(tr('新建 Provider 对象（openai 兼容网关/账号/密钥引用/模型分级）')) + '">+ ' + esc(tr('添加 Provider')) + '</button>' : '') +
+      (ref.kind === 'Provider' ? '<button type="button" class="btn btn-chip sm" data-add-provider style="margin-left:8px" title="' + esc(tr('新建 Provider（表单手填=降级通路——默认对话修改）')) + '">+ ' + esc(tr('添加 Provider')) + '</button>' : '') +
       '</div>' : '') +
     '<div data-provider-create></div>' +
     (ref.kind === 'Agent' ? '<div data-agent-binding style="margin-bottom:10px"><div class="small faint">' + esc(tr('Provider 绑定现读中…')) + '</div></div>' : '') +
@@ -383,8 +384,14 @@ function renderScreen(el, ctx, ref) {
     });
   }
 
-  // R-UX-10：scheme=按钮弹窗按需。
+  // R-UX-10：scheme=按钮弹窗按需；对话修改=主通路预填跳会话屏。
   bindSchemeModal(el, ctx, ref.kind, cached ? content : '');
+  const chatBtn = el.querySelector('[data-obj-chatfix]');
+  if (chatBtn) chatBtn.addEventListener('click', () => {
+    window.__CC_CHAT_PREFILL__ = tr('请修改对象 ') + ref.kind + '/' + ref.scope + '/' + ref.name +
+      tr('（对象 YAML 声明为权威源）。修改意图：');
+    ctx.go('chat/core-headless');
+  });
 
   // Provider 工作台增强（2026-11-27 用户指令：页面上添加 Provider+配置 openai key）。
   if (ref.kind === 'Provider') hydrateProviderCreate(el, ctx);
@@ -450,19 +457,15 @@ export function render(el, ctx) {
   renderScreen(el, ctx, ref);
 }
 
-/** 添加 Provider 表单（2026-11-27 用户指令：页面上添加 Provider 配置 openai key）——
+/** 添加 Provider 表单（2026-11-27 用户指令；R-UX-10 二次收紧：表单=手填降级通路——点击弹窗，不占页面）——
  * 组装 Provider 对象 YAML（auth.secret 引用式零明文）apply 创建；默认 provider 名可自定。 */
 async function hydrateProviderCreate(el, ctx) {
   const slot = el.querySelector('[data-provider-create]');
   const btn = el.querySelector('[data-add-provider]');
   if (!slot || !btn) return;
-  let open = false;
   btn.addEventListener('click', () => {
-    open = !open;
-    if (!open) { slot.innerHTML = ''; return; }
-    slot.innerHTML = '<div class="card" style="border:1px solid var(--ds-accent);margin-bottom:10px"><div class="card-h">' +
-      '<span class="h-title">' + esc(tr('添加 Provider（OpenAI 兼容）')) + '</span></div><div class="card-b">' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' +
+    const form = document.createElement('div');
+    form.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">' +
       prow('name', 'openai-2', tr('对象名（如 openai-2）')) +
       prow('account', 'openai-main', tr('账号标识 (auth.account)')) +
       prow('secretSrc', 'secret:llm/openai-key', tr('密钥引用 (auth.secret.source)——零明文')) +
@@ -472,9 +475,10 @@ async function hydrateProviderCreate(el, ctx) {
       prow('highModel', 'reasoning-tier', tr('High 档模型')) +
       '</div><div style="margin-top:10px;display:flex;gap:8px;align-items:center">' +
       '<button type="button" class="btn btn-chip sm" data-prov-create>' + esc(tr('创建 Provider')) + '</button>' +
-      '<span class="small faint" data-prov-create-msg></span></div></div></div>';
-    const createBtn = slot.querySelector('[data-prov-create]');
-    if (createBtn) createBtn.addEventListener('click', () => createProvider(el, ctx, slot));
+      '<span class="small faint" data-prov-create-msg></span></div>';
+    const createBtn = form.querySelector('[data-prov-create]');
+    if (createBtn) createBtn.addEventListener('click', () => createProvider(el, ctx, form));
+    htmlModal({ title: tr('添加 Provider（OpenAI 兼容）——手填降级通路'), wide: true, node: form, holder: slot });
   });
 }
 
@@ -516,7 +520,8 @@ async function createProvider(el, ctx, slot) {
     : (tr('创建失败：') + String(r.error || r.status));
 }
 
-/** Agent 默认 Provider 绑定编辑（scheme Agent spec.defaultProvider；不同 agent 绑不同 provider）——
+/** Agent 默认 Provider 绑定（scheme Agent spec.defaultProvider）——R-UX-10 二次收紧：
+ * 默认=只读现势一行（值+修改按钮）；表单编辑收「修改绑定」弹窗（手改降级通路）。
  * 现读对象 YAML defaultProvider 行→下拉选在册 Provider→apply 更新（rv 乐观锁）。 */
 async function hydrateAgentProviderBinding(el, ctx, ref) {
   const slot = el.querySelector('[data-agent-binding]');
@@ -528,33 +533,41 @@ async function hydrateAgentProviderBinding(el, ctx, ref) {
   const m = raw.match(/defaultProvider:\s*([^\n#]+)/);
   const cur = m ? m[1].trim().replace(/^["']|["']$/g, '') : 'openai-default';
   const provs = (ctx.store.objects() || []).filter((o) => o.kind === 'Provider');
-  const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
-  const freeIn = '<input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(tr('或手填 provider 名')) + '" />';
-  slot.innerHTML = '<div class="card"><div class="card-h"><span class="h-title">' + esc(tr('Agent 默认 Provider 绑定')) +
-    '</span><span class="h-right">' + chip('rv=' + rv, 'mute') + '</span></div><div class="card-b" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
-    '<span class="small faint">' + esc(tr('spec.defaultProvider（缺省 openai-default；不同 Agent 可绑不同 Provider）')) + ':</span>' +
-    '<select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(tr('— 选择在册 Provider（') + provs.length + tr(' 在册）')) + ' —</option>' + opts + '</select>' +
-    freeIn +
-    '<button type="button" class="btn btn-chip sm" data-bind-save>' + esc(tr('保存绑定')) + '</button>' +
-    '<span class="small faint" data-bind-msg></span></div></div>';
-  const pick = slot.querySelector('[data-bind-pick]');
-  const free = slot.querySelector('[data-bind-free]');
-  if (pick) pick.addEventListener('change', () => { if (free) free.value = String(pick.value || ''); });
-  const save = slot.querySelector('[data-bind-save]');
-  if (save) save.addEventListener('click', async () => {
-    const msg = slot.querySelector('[data-bind-msg]');
-    const val = String((free && free.value) || '').trim().replace(/^["']|["']$/g, '');
-    if (!val) { if (msg) msg.textContent = tr('provider 名必填'); return; }
-    const next = m && m[1] !== undefined
-      ? raw.replace(/defaultProvider:\s*[^\n#]*/, 'defaultProvider: ' + val)
-      : raw.replace(/(spec:\n)/, '$1  defaultProvider: ' + val + '\n');
-    if (msg) msg.textContent = tr('正在保存绑定…');
-    const r = await ctx.api.apply({
-      kind: 'Agent', scope: ref.scope, name: ref.name, resourceVersion: rv,
-      content: next, fieldManager: 'console:agent-provider-bind', reasonRef: 'agent-bind:' + ref.name,
+  // 默认只读行（当前绑定值+修改按钮——表单不占页面）
+  slot.innerHTML = '<div class="ob-ctx">' + chip(tr('默认 Provider: ') + cur, 'ok') + ' ' +
+    '<button type="button" class="btn btn-chip sm" data-bind-open>' + esc(tr('修改绑定')) + '</button> ' +
+    '<span class="small faint">rv=' + esc(String(rv)) + '</span></div>';
+  const openBtn = slot.querySelector('[data-bind-open]');
+  if (!openBtn) return;
+  openBtn.addEventListener('click', () => {
+    const opts = provs.map((p) => '<option value="' + esc(p.name) + '"' + (p.name === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+    const form = document.createElement('div');
+    form.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<span class="small faint">' + esc(tr('spec.defaultProvider（缺省 openai-default；不同 Agent 可绑不同 Provider）')) + ':</span>' +
+      '<select class="inp" data-bind-pick style="max-width:220px"><option value="">' + esc(tr('— 选择在册 Provider（') + provs.length + tr(' 在册）')) + ' —</option>' + opts + '</select>' +
+      '<input class="inp mono" data-bind-free style="width:170px" placeholder="' + esc(tr('或手填 provider 名')) + '" />' +
+      '<button type="button" class="btn btn-chip sm" data-bind-save>' + esc(tr('保存绑定')) + '</button>' +
+      '<span class="small faint" data-bind-msg></span></div>';
+    const pick = form.querySelector('[data-bind-pick]');
+    const free = form.querySelector('[data-bind-free]');
+    if (pick) pick.addEventListener('change', () => { if (free) free.value = String(pick.value || ''); });
+    const save = form.querySelector('[data-bind-save]');
+    if (save) save.addEventListener('click', async () => {
+      const msg = form.querySelector('[data-bind-msg]');
+      const val = String((free && free.value) || '').trim().replace(/^["']|["']$/g, '');
+      if (!val) { if (msg) msg.textContent = tr('provider 名必填'); return; }
+      const next = m && m[1] !== undefined
+        ? raw.replace(/defaultProvider:\s*[^\n#]*/, 'defaultProvider: ' + val)
+        : raw.replace(/(spec:\n)/, '$1  defaultProvider: ' + val + '\n');
+      if (msg) msg.textContent = tr('正在保存绑定…');
+      const r = await ctx.api.apply({
+        kind: 'Agent', scope: ref.scope, name: ref.name, resourceVersion: rv,
+        content: next, fieldManager: 'console:agent-provider-bind', reasonRef: 'agent-bind:' + ref.name,
+      });
+      if (msg) msg.textContent = r.ok
+        ? tr('绑定已保存生效 (rv=' + ((r.data && r.data.rv) != null ? r.data.rv : '?') + ')——该 Agent 后续调用改用此 Provider')
+        : (tr('保存失败：') + String(r.error || r.status));
     });
-    if (msg) msg.textContent = r.ok
-      ? tr('绑定已保存生效 (rv=' + ((r.data && r.data.rv) != null ? r.data.rv : '?') + ')——该 Agent 后续调用改用此 Provider')
-      : (tr('保存失败：') + String(r.error || r.status));
+    htmlModal({ title: tr('修改 Provider 绑定 · ') + ref.name, wide: true, node: form, holder: slot });
   });
 }

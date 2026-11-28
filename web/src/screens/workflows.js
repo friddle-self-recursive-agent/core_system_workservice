@@ -459,12 +459,17 @@ function wfRunsHtml(runs, taskIdx, sessionRows = []) {
 
 /** 编辑入口：object 源=编辑器；builtin 源=设计文档/scheme（高敏，不伪造表单）。 */
 function wfEditChips(wf, name) {
+  // R-UX-10 二次收紧（2026-11-28）：修改默认=对话（LLM 改文档→Apply）；手改=配置详情弹窗（studio 表单/YAML）。
+  const chatFix = '<button type="button" class="btn btn-chip sm" data-wf-chatfix="' + esc(String(name)) + '" title="' +
+    esc(tr('发起对话修改（LLM 改文档→Apply——主通路）')) + '">' + esc(tr('对话修改')) + '</button> ';
   if (wf && String(wf.specSource || '') === 'object') {
     const scope = String(wf.scope || 'global');
-    return chipGo(tr('编辑 Workflow'), docRoute('Workflow', scope, name), 'acc', true, tr('编辑 Workflow 声明')) + ' ' +
+    return chatFix +
+      '<button type="button" class="btn btn-chip sm" data-wf-config-btn title="' + esc(tr('配置详情（表单/YAML 手改——默认不展示）')) + '">' + esc(tr('配置详情')) + '</button> ' +
       chipGo(tr('对象工作台'), objRoute('Workflow', scope, name), 'mute', true);
   }
-  return chipGo(tr('编辑定义（workflow.md）'), wfDesignRoute(), 'acc', true, tr('设计文档工作台')) + ' ' +
+  return chatFix +
+    chipGo(tr('编辑定义（workflow.md）'), wfDesignRoute(), 'mute', true, tr('设计文档工作台')) + ' ' +
     chipGo(tr('相位表（scheme）'), 'designdoc/' + encodeURIComponent('core_design') + '/' + encodeURIComponent('core/scheme.yaml'), 'mute', true);
 }
 
@@ -547,7 +552,9 @@ function detailScreen(el, ctx, name) {
       '</span></div><div class="card-b">' + kv(kvRows) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('节点（相位链）')) + '</h2><div class="card"><div class="card-b">' + wfNodeGraphHtml(wf, runs) + '</div></div>' +
       '<h2 class="sec-title">' + esc(tr('执行节点（ConnectorOps 骨架）')) + '</h2><div class="card"><div class="card-b">' + wfFlowNodesHtml(wf) + '</div></div>' +
-      workflowStudioHtml(wf, usedName) +
+      // R-UX-10 二次收紧（2026-11-28）：配置详情表单（studio A–F 节+YAML 手改）默认不展示——
+      // DOM 整体挂隐藏位，「配置详情」按钮点击移入弹窗（绑定随节点保留，关闭归位）。
+      '<div data-wf-studio-holder style="display:none">' + workflowStudioHtml(wf, usedName) + '</div>' +
       '<div data-wf-export-cfg style="margin-top:14px"></div>' +
       (tasksHtml || (runs.length ? '<div class="small faint">' + esc(tr('运行未关联 Task 对象（触发源=Proposal/Template/其他——见运行 involved）。')) + '</div>' : '')) +
       (runsHtml || '<div class="card"><div class="card-b"><div class="small faint">' +
@@ -558,6 +565,20 @@ function detailScreen(el, ctx, name) {
     const yamlBtn = el.querySelector('[data-wf-yaml-btn]');
     if (yamlBtn) yamlBtn.addEventListener('click', () => {
       htmlModal({ title: tr('YAML 声明 · ') + usedName, wide: true, html: yamlTextView(String(wf.rawYaml || '')) });
+    });
+    // 配置详情=studio 移动式弹窗（手改最后手段——表单/YAML 手填都在弹窗内，默认不占页面）。
+    const cfgBtn = el.querySelector('[data-wf-config-btn]');
+    const studioHolder = el.querySelector('[data-wf-studio-holder]');
+    if (cfgBtn && studioHolder) cfgBtn.addEventListener('click', () => {
+      const studio = studioHolder.querySelector('[data-wf-studio]');
+      if (!studio) { toast(tr('配置详情缺席（该 workflow 无可配置 studio）'), 'error'); return; }
+      htmlModal({ title: tr('配置详情 · ') + usedName, wide: true, node: studio, holder: studioHolder });
+    });
+    // 对话修改=主通路：预填 composer → 会话屏（LLM 改文档→Apply；上下文带本 workflow ref）。
+    const chatBtn = el.querySelector('[data-wf-chatfix]');
+    if (chatBtn) chatBtn.addEventListener('click', () => {
+      window.__CC_CHAT_PREFILL__ = tr('请修改工作流 ') + usedName + tr('（YAML 声明为权威源）。修改意图：');
+      ctx.go('chat/core-headless');
     });
     hydrateDocsExportConfig(el, ctx);
   })().catch((e) => {
